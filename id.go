@@ -1,8 +1,10 @@
 package c4
 
 import (
+	"bytes"
 	"crypto/sha512"
 	"math/big"
+	"strconv"
 
 	"hash"
 )
@@ -26,10 +28,10 @@ func init() {
 	}
 }
 
-type errBadChar int64
+type errBadChar int
 
 func (e errBadChar) Error() string {
-	return "non c4 character at position " + string(e)
+	return "non c4 character at position " + strconv.Itoa(int(e))
 }
 
 // ID represents a C4 Asset ID.
@@ -71,6 +73,10 @@ func (id *ID) Bytes() []byte {
 		bigNum.DivMod(&bigNum, bigBase, bigMod)
 		encoded = append([]byte{charset[bigMod.Int64()]}, encoded...)
 	}
+	// padding
+	diff := len(`1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`) - len(encoded)
+	encoded = append(bytes.Repeat([]byte("1"), diff), encoded...)
+	// c4... prefix
 	encoded = append([]byte{'c', '4'}, encoded...)
 	return encoded
 }

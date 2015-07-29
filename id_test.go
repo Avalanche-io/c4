@@ -62,7 +62,26 @@ func TestAllFFFF(t *testing.T) {
 	for _, bb := range b {
 		is.Equal(bb, 0xFF)
 	}
+}
 
+func TestAll0000(t *testing.T) {
+	is := is.New(t)
+	var b []byte
+	for i := 0; i < 64; i++ {
+		b = append(b, 0x00)
+	}
+	bignum := big.NewInt(0)
+	bignum = bignum.SetBytes(b)
+	id := c4.ID(*bignum)
+	is.Equal(id.String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
+
+	id2, err := c4.ParseID(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
+	is.NoErr(err)
+	bignum2 := big.Int(*id2)
+	b = (&bignum2).Bytes()
+	for _, bb := range b {
+		is.Equal(bb, 0x00)
+	}
 }
 
 func TestIDEncoder(t *testing.T) {
