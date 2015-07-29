@@ -3,6 +3,7 @@ package c4_test
 import (
 	"fmt"
 	"io"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -12,6 +13,57 @@ import (
 
 var _ io.Writer = (*c4.IDEncoder)(nil)
 var _ fmt.Stringer = (*c4.ID)(nil)
+
+func encode(src io.Reader) *c4.ID {
+	e := c4.NewIDEncoder()
+	_, err := io.Copy(e, strings.NewReader(`This is a pretend asset file, for testing asset id generation.
+`))
+	if err != nil {
+		panic(err)
+	}
+	return e.ID()
+}
+
+func TestEncoding(t *testing.T) {
+	is := is.New(t)
+
+	for _, test := range []struct {
+		In  io.Reader
+		Exp string
+	}{
+		{
+			In:  strings.NewReader(``),
+			Exp: "c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d",
+		},
+	} {
+
+		actual := encode(test.In)
+		is.Equal(actual.String(), test.Exp)
+
+	}
+
+}
+
+func TestAllFFFF(t *testing.T) {
+	is := is.New(t)
+	var b []byte
+	for i := 0; i < 64; i++ {
+		b = append(b, 0xFF)
+	}
+	bignum := big.NewInt(0)
+	bignum = bignum.SetBytes(b)
+	id := c4.ID(*bignum)
+	is.Equal(id.String(), `c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`)
+
+	id2, err := c4.ParseID(`c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`)
+	is.NoErr(err)
+	bignum2 := big.Int(*id2)
+	b = (&bignum2).Bytes()
+	for _, bb := range b {
+		is.Equal(bb, 0xFF)
+	}
+
+}
 
 func TestIDEncoder(t *testing.T) {
 	is := is.New(t)
@@ -24,7 +76,6 @@ func TestIDEncoder(t *testing.T) {
 	id := e.ID()
 	is.OK(id)
 	is.Equal(id.String(), `c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`)
-
 }
 
 func TestParseBytesID(t *testing.T) {
