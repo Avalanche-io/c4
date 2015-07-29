@@ -17,7 +17,12 @@ const (
 	base    = 58
 )
 
-var lut [256]byte
+var (
+	lut     [256]byte
+	lowbyte = []byte("1")
+	prefix  = []byte{'c', '4'}
+	idlen   = len(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
+)
 
 func init() {
 	for i := 0; i < len(lut); i++ {
@@ -74,10 +79,10 @@ func (id *ID) Bytes() []byte {
 		encoded = append([]byte{charset[bigMod.Int64()]}, encoded...)
 	}
 	// padding
-	diff := len(`1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`) - len(encoded)
-	encoded = append(bytes.Repeat([]byte("1"), diff), encoded...)
+	diff := idlen - 2 - len(encoded)
+	encoded = append(bytes.Repeat(lowbyte, diff), encoded...)
 	// c4... prefix
-	encoded = append([]byte{'c', '4'}, encoded...)
+	encoded = append(prefix, encoded...)
 	return encoded
 }
 
