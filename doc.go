@@ -10,5 +10,7 @@
 //
 // Parsing IDs
 //
-// To parse an ID from a string, use c4.ParseID(src)
+// To parse an ID from a string, use the ParseID function.
+//
+//     c4.ParseID(src)
 package c4
