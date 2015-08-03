@@ -16,8 +16,7 @@ var _ fmt.Stringer = (*c4.ID)(nil)
 
 func encode(src io.Reader) *c4.ID {
 	e := c4.NewIDEncoder()
-	_, err := io.Copy(e, strings.NewReader(`This is a pretend asset file, for testing asset id generation.
-`))
+	_, err := io.Copy(e, src)
 	if err != nil {
 		panic(err)
 	}
@@ -33,7 +32,7 @@ func TestEncoding(t *testing.T) {
 	}{
 		{
 			In:  strings.NewReader(``),
-			Exp: "c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d",
+			Exp: "c459CSJESBh38BxDwwxNFKTXE4cC9HASGe3bhtN6z58GbwLqpCyRaKyZSvBAvTdF5NpSTPdUMH4hHRJ75geLsB1Sfs",
 		},
 	} {
 
