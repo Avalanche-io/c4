@@ -2,3 +2,4 @@
 
 Go package implementation of C4 Asset ID
 
+  * see [c4id command line tool](https://github.com/etcenter/c4go/tree/master/cmd/c4id)
