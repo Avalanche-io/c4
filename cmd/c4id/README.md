@@ -4,9 +4,9 @@ Command line tool to generate C4 identifiers.
 
 ```
 Usage of c4id:
-  -n	omit final line-feed
-  -src string
-    	source file (rather than stdin)
+  -n	  omit final line-feed
+  -src  (string) source file (rather than stdin)
+  -help show usage
 ```
 
 ## Install
