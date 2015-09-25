@@ -3,10 +3,9 @@ package c4
 import (
 	"bytes"
 	"crypto/sha512"
+	"hash"
 	"math/big"
 	"strconv"
-
-	"hash"
 )
 
 // using the flickr character set which removes:
