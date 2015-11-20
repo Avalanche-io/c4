@@ -55,7 +55,6 @@ func (s IDSlice) Sort() {
 }
 
 func (s *IDSlice) Push(id *ID) {
-  // bigID := (*big.Int)(id)
   *s = append(*s, id)
 }
 
