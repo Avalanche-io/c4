@@ -111,7 +111,7 @@ func TestIDSliceSort(t *testing.T) {
 
 func TestIDofIDSlice(t *testing.T) {
   is := is.New(t)
-  var b, s, c []byte
+  var b, s []byte
   for i := 0; i < 64; i++ {
     b = append(b, 0xFF)
     s = append(s, 0x00)
@@ -123,8 +123,6 @@ func TestIDofIDSlice(t *testing.T) {
   bigID := c4.ID(*bigBig)
   smallID := c4.ID(*bigSmall)
 
-  c = append(s, b...)
-  _ = c
   encoder := c4.NewIDEncoder()
   is.OK(encoder)
   _, err := io.Copy(encoder, strings.NewReader(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`))
