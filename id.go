@@ -186,8 +186,5 @@ func (e *IDEncoder) Size() int {
 // sha512 hash object.
 // Recommended to use ID() instead.
 func (e *IDEncoder) Sum(b []byte) []byte {
-	if b != nil {
-		panic("c4go: Sum must be called with nil")
-	}
-	return e.ID().Bytes()
+	return e.h.Sum(b)
 }

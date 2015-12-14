@@ -188,12 +188,9 @@ func TestIDEncoder(t *testing.T) {
 	// Added test for mutability bug. Calling String() should not alter id!
 	is.Equal(id.String(), `c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`)
 
+	// ensure it implements hash.Hash
 	is.Equal(e.BlockSize(), sha512.BlockSize)
 	is.Equal(e.Size(), sha512.Size)
-	is.Equal(e.Sum(nil), e.ID().Bytes())
-	old := e.ID().Bytes()
-	e.Reset()
-	is.NotEqual(e.Sum(nil), old)
 
 }
 
