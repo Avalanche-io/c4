@@ -3,10 +3,11 @@ package c4
 import (
 	"bytes"
 	"crypto/sha512"
-	"math/big"
-	"strconv"
-
 	"hash"
+	"io"
+	"math/big"
+	"sort"
+	"strconv"
 )
 
 // using the flickr character set which removes:
@@ -42,6 +43,49 @@ func (e errBadChar) Error() string {
 // ID represents a C4 Asset ID.
 type ID big.Int
 
+// IDSlice represents a slice of IDs.
+type IDSlice []*ID
+
+func (s IDSlice) Len() int           { return len(s) }
+func (s IDSlice) Less(i, j int) bool { return s[i].Cmp(s[j]) < 0 }
+func (s IDSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+// Sort is a convenience method.
+func (s IDSlice) Sort() {
+	sort.Sort(s)
+}
+
+// Push adds the item to the IDSlice.
+func (s *IDSlice) Push(id *ID) {
+	*s = append(*s, id)
+}
+
+func (s *IDSlice) String() string {
+	result := "[ "
+	for _, bigID := range *s {
+		result += ((*ID)(bigID)).String() + " "
+	}
+	return result + "]"
+}
+
+// SearchIDs searches for x in a sorted slice of *ID and returns the index
+// as specified by sort.Search. The slice must be sorted in ascending order.
+func SearchIDs(a IDSlice, x *ID) int {
+	return sort.Search(len(a), func(i int) bool { return a[i].Cmp(x) >= 0 })
+}
+
+// ID gets the ID from the IDSlice.
+func (s IDSlice) ID() *ID {
+	s.Sort()
+	encoder := NewIDEncoder()
+	for _, bigID := range s {
+		if _, err := io.Copy(encoder, bytes.NewReader(bigID.Bytes())); err != nil {
+			panic(err)
+		}
+	}
+	return encoder.ID()
+}
+
 // ParseID parses a C4 ID string into an ID.
 func ParseID(src string) (*ID, error) {
 	return ParseBytesID([]byte(src))
@@ -67,9 +111,18 @@ func (id *ID) String() string {
 	return string(id.Bytes())
 }
 
+// Cmp compares two IDs.
+func (id *ID) Cmp(y *ID) int {
+	bigX := big.Int(*id)
+	bigY := big.Int(*y)
+	return bigX.Cmp(&bigY)
+}
+
 // Bytes encodes the written bytes to C4 ID format.
 func (id *ID) Bytes() []byte {
-	bigNum := big.Int(*id)
+	var bigNum big.Int
+	bigID := big.Int(*id)
+	bigNum.Set(&bigID)
 	bigBase := big.NewInt(base)
 	bigZero := big.NewInt(0)
 	bigMod := new(big.Int)
