@@ -1,7 +1,9 @@
 package c4_test
 
 import (
+	"crypto/sha512"
 	"fmt"
+	"hash"
 	"io"
 	"math/big"
 	"strings"
@@ -12,6 +14,7 @@ import (
 )
 
 var _ io.Writer = (*c4.IDEncoder)(nil)
+var _ hash.Hash = (*c4.IDEncoder)(nil)
 var _ fmt.Stringer = (*c4.ID)(nil)
 
 func encode(src io.Reader) *c4.ID {
@@ -94,6 +97,14 @@ func TestIDEncoder(t *testing.T) {
 	id := e.ID()
 	is.OK(id)
 	is.Equal(id.String(), `c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`)
+
+	is.Equal(e.BlockSize(), sha512.BlockSize)
+	is.Equal(e.Size(), sha512.Size)
+	is.Equal(e.Sum(nil), e.ID().Bytes())
+	old := e.ID().Bytes()
+	e.Reset()
+	is.NotEqual(e.Sum(nil), old)
+
 }
 
 func TestParseBytesID(t *testing.T) {

@@ -110,3 +110,31 @@ func (e *IDEncoder) ID() *ID {
 	id := ID(*b)
 	return &id
 }
+
+// BlockSize gets the block size of the underlying
+// sha512 hash object.
+func (e *IDEncoder) BlockSize() int {
+	return e.h.BlockSize()
+}
+
+// Reset resets the underlying
+// sha512 hash object.
+func (e *IDEncoder) Reset() {
+	e.h.Reset()
+}
+
+// Size gets the size of the underlying
+// sha512 hash object.
+func (e *IDEncoder) Size() int {
+	return e.h.Size()
+}
+
+// Sum gets the C4ID sum of the underlying
+// sha512 hash object.
+// Recommended to use ID() instead.
+func (e *IDEncoder) Sum(b []byte) []byte {
+	if b != nil {
+		panic("c4go: Sum must be called with nil")
+	}
+	return e.ID().Bytes()
+}
