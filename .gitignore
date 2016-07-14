@@ -2,6 +2,7 @@
 *.o
 *.a
 *.so
+cmd/c4/c4
 
 # Folders
 _obj

@@ -1,4 +1,4 @@
-package c4_test
+package asset_test
 
 import (
 	"crypto/sha512"
@@ -10,15 +10,15 @@ import (
 	"testing"
 
 	"github.com/cheekybits/is"
-	"github.com/etcenter/c4go"
+	"github.com/etcenter/c4/asset"
 )
 
-var _ io.Writer = (*c4.IDEncoder)(nil)
-var _ hash.Hash = (*c4.IDEncoder)(nil)
-var _ fmt.Stringer = (*c4.ID)(nil)
+var _ io.Writer = (*asset.IDEncoder)(nil)
+var _ hash.Hash = (*asset.IDEncoder)(nil)
+var _ fmt.Stringer = (*asset.ID)(nil)
 
-func encode(src io.Reader) *c4.ID {
-	e := c4.NewIDEncoder()
+func encode(src io.Reader) *asset.ID {
+	e := asset.NewIDEncoder()
 	_, err := io.Copy(e, src)
 	if err != nil {
 		panic(err)
@@ -54,10 +54,10 @@ func TestAllFFFF(t *testing.T) {
 	}
 	bignum := big.NewInt(0)
 	bignum = bignum.SetBytes(b)
-	id := c4.ID(*bignum)
+	id := asset.ID(*bignum)
 	is.Equal(id.String(), `c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`)
 
-	id2, err := c4.ParseID(`c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`)
+	id2, err := asset.ParseID(`c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`)
 	is.NoErr(err)
 	bignum2 := big.Int(*id2)
 	b = (&bignum2).Bytes()
@@ -74,10 +74,10 @@ func TestAll0000(t *testing.T) {
 	}
 	bignum := big.NewInt(0)
 	bignum = bignum.SetBytes(b)
-	id := c4.ID(*bignum)
+	id := asset.ID(*bignum)
 	is.Equal(id.String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
 
-	id2, err := c4.ParseID(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
+	id2, err := asset.ParseID(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
 	is.NoErr(err)
 	bignum2 := big.Int(*id2)
 	b = (&bignum2).Bytes()
@@ -98,10 +98,10 @@ func TestIDSliceSort(t *testing.T) {
 	bigSmall := big.NewInt(0)
 	bigBig = bigBig.SetBytes(b)
 	bigSmall = bigSmall.SetBytes(s)
-	bigID := c4.ID(*bigBig)
-	smallID := c4.ID(*bigSmall)
+	bigID := asset.ID(*bigBig)
+	smallID := asset.ID(*bigSmall)
 
-	var idSlice c4.IDSlice
+	var idSlice asset.IDSlice
 
 	idSlice.Push(&bigID)
 	idSlice.Push(&smallID)
@@ -123,16 +123,16 @@ func TestIDofIDSlice(t *testing.T) {
 	bigSmall := big.NewInt(0)
 	bigBig = bigBig.SetBytes(b)
 	bigSmall = bigSmall.SetBytes(s)
-	bigID := c4.ID(*bigBig)
-	smallID := c4.ID(*bigSmall)
+	bigID := asset.ID(*bigBig)
+	smallID := asset.ID(*bigSmall)
 
-	encoder := c4.NewIDEncoder()
+	encoder := asset.NewIDEncoder()
 	is.OK(encoder)
 	_, err := io.Copy(encoder, strings.NewReader(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`))
 	is.NoErr(err)
 	id := encoder.ID()
 
-	var idSlice c4.IDSlice
+	var idSlice asset.IDSlice
 	idSlice.Push(&bigID)
 	idSlice.Push(&smallID)
 	is.Equal(idSlice.ID().String(), id.String())
@@ -156,10 +156,10 @@ func TestAppendOrder(t *testing.T) {
 		b := byteData[k]
 		bignum := big.NewInt(0)
 		bignum = bignum.SetBytes(b)
-		id := c4.ID(*bignum)
+		id := asset.ID(*bignum)
 		is.Equal(id.String(), expectedIDs[k])
 
-		id2, err := c4.ParseID(expectedIDs[k])
+		id2, err := asset.ParseID(expectedIDs[k])
 		is.NoErr(err)
 		bignum2 := big.Int(*id2)
 		b = (&bignum2).Bytes()
@@ -176,7 +176,7 @@ func TestAppendOrder(t *testing.T) {
 
 func TestIDEncoder(t *testing.T) {
 	is := is.New(t)
-	e := c4.NewIDEncoder()
+	e := asset.NewIDEncoder()
 	is.OK(e)
 	_, err := io.Copy(e, strings.NewReader(`This is a pretend asset file, for testing asset id generation.
 `))
@@ -196,17 +196,17 @@ func TestIDEncoder(t *testing.T) {
 
 func TestParseBytesID(t *testing.T) {
 	is := is.New(t)
-	e := c4.NewIDEncoder()
+	e := asset.NewIDEncoder()
 	is.OK(e)
 	_, err := io.Copy(e, strings.NewReader(`This is a pretend asset file, for testing asset id generation.
 `))
 	is.NoErr(err)
 
-	id, err := c4.ParseBytesID([]byte(`c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`))
+	id, err := asset.ParseBytesID([]byte(`c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`))
 	is.NoErr(err)
 	is.Equal(id, e.ID())
 
-	id2, err := c4.ParseID(`c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`)
+	id2, err := asset.ParseID(`c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`)
 	is.NoErr(err)
 	is.Equal(id2, e.ID())
 }
