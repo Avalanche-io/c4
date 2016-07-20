@@ -54,7 +54,10 @@ func walkFilesystem(depth int, filename string, relative_path string) (id *asset
 			item["link"] = newFilepath
 			var linkId asset.IDSlice
 			linkId.Push(walkFilesystem(depth-1, newFilepath, relative_path))
-			id = linkId.ID()
+			id, err = linkId.ID()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Internal issue identifying IDs %s\n", err)
+			}
 		}
 	} else {
 		if item["folder"] == true {
@@ -68,7 +71,10 @@ func walkFilesystem(depth int, filename string, relative_path string) (id *asset
 				path := filename + string(filepath.Separator) + file.Name()
 				childIDs.Push(walkFilesystem(depth-1, path, relative_path))
 			}
-			id = childIDs.ID()
+			id, err = childIDs.ID()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Internal issue identifying IDs %s\n", err)
+			}
 		} else {
 			id = fileID(path)
 		}

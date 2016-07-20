@@ -1,7 +1,9 @@
+// Package asset provides c4id functions.
 package asset
 
 import (
 	"bytes"
+	"io"
 	"math/big"
 )
 
@@ -32,6 +34,23 @@ func init() {
 // ID represents a C4 Asset ID.
 type ID big.Int
 
+// Sum returns the ID of two IDs in sorted order.
+func (i *ID) Sum(j *ID) (*ID, error) {
+	var ids [2]*ID
+	ids[0] = i
+	ids[1] = j
+	l := 0
+	r := 1
+
+	if ids[r].Cmp(ids[l]) < 0 {
+		r = 0
+		l = 1
+	}
+	e := NewIDEncoder()
+	_, err := io.Copy(e, bytes.NewReader(append(ids[l].Bytes(), ids[r].Bytes()...)))
+	return e.ID(), err
+}
+
 // ParseID parses a C4 ID string into an ID.
 func ParseID(src string) (*ID, error) {
 	return ParseBytesID([]byte(src))
@@ -56,13 +75,25 @@ func ParseBytesID(src []byte) (*ID, error) {
 	return &id, nil
 }
 
-func (id *ID) String() string {
+// String returns the standard string representation of a C4 id.
+func (id *ID) String() (s string) {
 	return string(id.Bytes())
 }
 
-// Cmp compares two IDs.
-func (id *ID) Cmp(y *ID) int {
-	bigX := big.Int(*id)
+/*
+ * Cmp compares to c4ids.
+ * There are 3 possible return values.
+ * -1 : Argument id is less than calling id.
+ * 0: Argument id and calling id are identical.
+ * +1: Argument id is greater than calling id.
+ * Comparison is done on the actual numerical value of the ids.
+ * Not the string representation.
+ */
+func (x *ID) Cmp(y *ID) int {
+	if y == nil {
+		return -1
+	}
+	bigX := big.Int(*x)
 	bigY := big.Int(*y)
 	return bigX.Cmp(&bigY)
 }
@@ -86,4 +117,8 @@ func (id *ID) Bytes() []byte {
 	// c4... prefix
 	encoded = append(prefix, encoded...)
 	return encoded
+}
+
+func (id *ID) Less(idArg *ID) bool {
+	return id.Cmp(idArg) < 0
 }

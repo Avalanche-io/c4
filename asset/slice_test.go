@@ -2,13 +2,14 @@ package asset_test
 
 import (
 	// "bytes"
+
 	"io"
 	"math/big"
 	"strings"
 	"testing"
 
-	"github.com/Avalanche-io/c4/asset"
 	"github.com/cheekybits/is"
+	"github.com/etcenter/c4/asset"
 )
 
 func TestIDSliceSort(t *testing.T) {
@@ -63,4 +64,43 @@ func TestIDofIDSlice(t *testing.T) {
 	is.NoErr(err)
 
 	is.Equal(sliceID.String(), id.String())
+}
+
+func TestIDSliceString(t *testing.T) {
+	is := is.New(t)
+
+	var ids asset.IDSlice
+	id1, err := asset.Identify(strings.NewReader("foo"))
+	is.NoErr(err)
+	id2, err := asset.Identify(strings.NewReader("bar"))
+	is.NoErr(err)
+
+	ids.Push(id1)
+	ids.Push(id2)
+
+	is.Equal(ids.String(), id1.String()+id2.String())
+}
+
+func TestIDSliceSearchIDs(t *testing.T) {
+	is := is.New(t)
+
+	var ids asset.IDSlice
+	id1, err := asset.Identify(strings.NewReader("foo"))
+	is.NoErr(err)
+	id2, err := asset.Identify(strings.NewReader("bar"))
+	is.NoErr(err)
+	id3, err := asset.Identify(strings.NewReader("baz"))
+	is.NoErr(err)
+
+	ids.Push(id1)
+	ids.Push(id2)
+	ids.Push(id3)
+	ids.Sort()
+
+	is.True(id2.Less(id1))
+	is.True(id3.Less(id2))
+
+	is.Equal(asset.SearchIDs(ids, id1), 2)
+	is.Equal(asset.SearchIDs(ids, id2), 1)
+	is.Equal(asset.SearchIDs(ids, id3), 0)
 }
