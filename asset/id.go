@@ -2,8 +2,6 @@ package asset
 
 import (
 	"bytes"
-	"crypto/sha512"
-	"hash"
 	"math/big"
 )
 
@@ -88,54 +86,4 @@ func (id *ID) Bytes() []byte {
 	// c4... prefix
 	encoded = append(prefix, encoded...)
 	return encoded
-}
-
-// IDEncoder generates C4 Asset IDs.
-type IDEncoder struct {
-	h hash.Hash
-}
-
-// NewIDEncoder makes a new IDEncoder.
-func NewIDEncoder() *IDEncoder {
-	return &IDEncoder{
-		h: sha512.New(),
-	}
-}
-
-// Write writes bytes to the hash that makes up the ID.
-func (e *IDEncoder) Write(b []byte) (int, error) {
-	return e.h.Write(b)
-}
-
-// ID gets the ID for the written bytes.
-func (e *IDEncoder) ID() *ID {
-	b := new(big.Int)
-	b.SetBytes(e.h.Sum(nil))
-	id := ID(*b)
-	return &id
-}
-
-// BlockSize gets the block size of the underlying
-// sha512 hash object.
-func (e *IDEncoder) BlockSize() int {
-	return e.h.BlockSize()
-}
-
-// Reset resets the underlying
-// sha512 hash object.
-func (e *IDEncoder) Reset() {
-	e.h.Reset()
-}
-
-// Size gets the size of the underlying
-// sha512 hash object.
-func (e *IDEncoder) Size() int {
-	return e.h.Size()
-}
-
-// Sum gets the C4ID sum of the underlying
-// sha512 hash object.
-// Recommended to use ID() instead.
-func (e *IDEncoder) Sum(b []byte) []byte {
-	return e.h.Sum(b)
 }
