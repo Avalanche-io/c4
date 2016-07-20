@@ -1,7 +1,6 @@
-# C4 - The Cinema Content Creation Cloud
+# C4 - The Cinema Content Creation Cloud [![GoDoc](https://godoc.org/github.com/etcenter/c4go?status.svg)](https://godoc.org/github.com/etcenter/c4) [![Build Status](https://travis-ci.org/etcenter/c4.svg?branch=master)](https://travis-ci.org/etcenter/c4)
 
-Go package and cli for c4.  [![GoDoc](https://godoc.org/github.com/etcenter/c4go?status.svg)](https://godoc.org/github.com/etcenter/c4)
-
+Go package and cli for c4.
 ### Command line tool
 See [c4 command line tool](https://github.com/etcenter/c4/tree/master/cmd/c4)
 
