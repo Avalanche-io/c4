@@ -119,6 +119,7 @@ func (id *ID) Bytes() []byte {
 	return encoded
 }
 
+// Returns true if B less than A in: A.Less(B)
 func (id *ID) Less(idArg *ID) bool {
 	return id.Cmp(idArg) < 0
 }

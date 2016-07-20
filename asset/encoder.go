@@ -46,6 +46,7 @@ func (e *IDEncoder) ID() *ID {
 	return &id
 }
 
+// Reset the encoder so it can identify a new block of data.
 func (e *IDEncoder) Reset() {
 	e.h.Reset()
 }

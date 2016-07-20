@@ -17,6 +17,7 @@ func (s IDSlice) Sort() {
 	sort.Sort(s)
 }
 
+// Append id to slice.
 func (s *IDSlice) Push(id *ID) {
 	*s = append(*s, id)
 }
@@ -36,6 +37,7 @@ func SearchIDs(a IDSlice, x *ID) int {
 	return sort.Search(len(a), func(i int) bool { return a[i].Cmp(x) >= 0 })
 }
 
+// ID of a sorted slice of IDs
 func (s IDSlice) ID() (*ID, error) {
 	s.Sort()
 	encoder := NewIDEncoder()

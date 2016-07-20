@@ -6,6 +6,7 @@ import (
 	"math/big"
 )
 
+// Return the 64 raw bytes of a c4 id.  I.e. the actual sha512.
 func (id *ID) RawBytes() (b []byte) {
 	bignum := big.Int(*id)
 	b_raw := (&bignum).Bytes()
@@ -21,6 +22,7 @@ func (id *ID) RawBytes() (b []byte) {
 	return bytes64[:]
 }
 
+// Create an ID from SHA-512 bytes.
 func BytesToID(b []byte) *ID {
 	bignum := big.NewInt(0)
 	bignum = bignum.SetBytes(b)
@@ -28,6 +30,8 @@ func BytesToID(b []byte) *ID {
 	return &id
 }
 
+// Generate a c4 id from the raw bytes of two sorted c4 ids.
+// As apposed to the .Sum(*ID) function that uses encoded ids.
 func (i *ID) RawSum(j *ID) (*ID, error) {
 	var ids [2]*ID
 	ids[0] = i

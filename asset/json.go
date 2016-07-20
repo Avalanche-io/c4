@@ -1,4 +1,3 @@
-// Package asset provides c4id functions.
 package asset
 
 import "math/big"

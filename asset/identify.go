@@ -4,6 +4,7 @@ import (
 	"io"
 )
 
+// Generate an id from an io.Reader
 func Identify(src io.Reader) (*ID, error) {
 	e := NewIDEncoder()
 	_, err := io.Copy(e, src)
