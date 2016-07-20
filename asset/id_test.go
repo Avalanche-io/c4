@@ -145,17 +145,41 @@ func TestIDEncoder(t *testing.T) {
 
 func TestParseBytesID(t *testing.T) {
 	is := is.New(t)
-	e := asset.NewIDEncoder()
-	is.OK(e)
-	_, err := io.Copy(e, strings.NewReader(`This is a pretend asset file, for testing asset id generation.
-`))
-	is.NoErr(err)
 
-	id, err := asset.ParseBytesID([]byte(`c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`))
-	is.NoErr(err)
-	is.Equal(id, e.ID())
-
-	id2, err := asset.ParseID(`c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`)
-	is.NoErr(err)
-	is.Equal(id2, e.ID())
+	for _, test := range []struct {
+		In  string
+		Err string
+		Exp string
+	}{
+		{
+			In:  `c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`,
+			Err: ``,
+			Exp: "This is a pretend asset file, for testing asset id generation.\n",
+		},
+		{
+			In:  `c430BJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`,
+			Err: `non c4 id character at position 3`,
+			Exp: "",
+		},
+		{
+			In:  ``,
+			Err: `c4 ids must be 90 characters long, input length 0`,
+			Exp: "",
+		},
+		{
+			In:  `c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9`,
+			Err: `c4 ids must be 90 characters long, input length 89`,
+			Exp: "",
+		},
+	} {
+		id, err := asset.ParseBytesID([]byte(test.In))
+		if len(test.Err) != 0 {
+			is.Err(err)
+			is.Equal(err.Error(), test.Err)
+		} else {
+			expectedID, err := asset.Identify(strings.NewReader(test.Exp))
+			is.NoErr(err)
+			is.Equal(expectedID.Cmp(id), 0)
+		}
+	}
 }

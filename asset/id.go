@@ -5,7 +5,6 @@ import (
 	"crypto/sha512"
 	"hash"
 	"math/big"
-	"strconv"
 )
 
 // using the flickr character set which removes:
@@ -32,12 +31,6 @@ func init() {
 	}
 }
 
-type errBadChar int
-
-func (e errBadChar) Error() string {
-	return "non c4 character at position " + strconv.Itoa(int(e))
-}
-
 // ID represents a C4 Asset ID.
 type ID big.Int
 
@@ -48,6 +41,9 @@ func ParseID(src string) (*ID, error) {
 
 // ParseBytesID parses a C4 ID as []byte into an ID.
 func ParseBytesID(src []byte) (*ID, error) {
+	if len(src) != 90 {
+		return nil, errBadLength(len(src))
+	}
 	bigNum := new(big.Int)
 	bigBase := big.NewInt(base)
 	for i := 2; i < len(src); i++ {
