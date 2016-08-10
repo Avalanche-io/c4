@@ -5,47 +5,47 @@ import (
 	"path/filepath"
 )
 
-func metadata_output(item map[string]interface{}, path string, baseName string, rootPath string) {
+func metadata_output(item *FsItem, path string, baseName string, rootPath string) {
 	if formatting_string == "path" {
 		fmt.Printf("\"%s\":\n", path)
-		fmt.Printf("  c4id: %s\n", item["c4id"])
+		fmt.Printf("  c4id: %s\n", item.Id.String())
 	} else {
-		fmt.Printf("%s:\n", item["c4id"])
+		fmt.Printf("%s:\n", item.Id.String())
 		fmt.Printf("  path: \"%s\"\n", path)
 	}
 	fmt.Printf("  name:  \"%s\"\n", baseName)
-	if item["folder"] == false {
-		fmt.Printf("  folder:  false\n")
-	} else {
+	if item.Folder {
 		fmt.Printf("  folder:  true\n")
+	} else {
+		fmt.Printf("  folder:  false\n")
 	}
-	if item["link"] == false {
+	if item.Link {
 		fmt.Printf("  link:  false\n")
 	} else {
-		linkPath := item["link"].(string)
+		linkPath := *item.LinkPath
 		if !absolute_flag {
 			linkPath, _ = filepath.Rel(rootPath, linkPath)
 		}
 		fmt.Printf("  link:  \"%s\"\n", linkPath)
 	}
-	fmt.Printf("  bytes:  %d\n", item["bytes"])
+	fmt.Printf("  bytes:  %d\n", item.Bytes)
 }
 
-func output(path string, item map[string]interface{}) {
+func output(item *FsItem) {
 	rootPath, _ := filepath.Abs(".")
-	baseName := filepath.Base(path)
+	baseName := filepath.Base(*item.Path)
 
-	newPath := path
+	newPath := *item.Path
 	if !absolute_flag {
-		newPath, _ = filepath.Rel(rootPath, path)
+		newPath, _ = filepath.Rel(rootPath, *item.Path)
 	}
 	if include_meta {
 		metadata_output(item, newPath, baseName, rootPath)
 	} else {
 		if formatting_string == "path" {
-			fmt.Printf("%s:  %s\n", newPath, item["c4id"])
+			fmt.Printf("%s:  %s\n", newPath, item.Id.String())
 		} else {
-			fmt.Printf("%s:  %s\n", item["c4id"], newPath)
+			fmt.Printf("%s:  %s\n", item.Id.String(), newPath)
 		}
 	}
 }

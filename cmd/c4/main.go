@@ -10,7 +10,7 @@ import (
 	flag "github.com/ogier/pflag"
 )
 
-const version_number = "0.6"
+const version_number = "0.6.5"
 
 func versionString() string {
 	return `c4 version ` + version_number + ` (` + runtime.GOOS + `)`
@@ -50,7 +50,11 @@ func identify_file(filename string) {
 		fmt.Fprintf(os.Stderr, "Unable to find absolute path for %s. %s\n", filename, err)
 		os.Exit(1)
 	}
-	id := walkFilesystem(-1, path, "")
+	id, err := walkFilesystem(-1, path, "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error in walkFilesystem %s. %s\n", filename, err)
+		os.Exit(1)
+	}
 	printID(id)
 }
 

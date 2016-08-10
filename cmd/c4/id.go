@@ -19,15 +19,17 @@ func encode(src io.Reader) *asset.ID {
 	return e.ID()
 }
 
-func fileID(path string) (id *asset.ID) {
-	f, err := os.Open(path)
+func fileID(path *string) (*asset.ID, error) {
+	f, err := os.Open(*path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to identify %s. %v\n", path, err)
-		os.Exit(1)
+		return nil, err
 	}
-	id = encode(f)
-	f.Close()
-	return
+	defer f.Close()
+	id, err := asset.Identify(f)
+	if err != nil {
+		return nil, err
+	}
+	return id, nil
 }
 
 func nullId() *asset.ID {

@@ -1,87 +1,143 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/etcenter/c4/asset"
 )
 
-func newItem(path string) (item map[string]interface{}) {
-	item = make(map[string]interface{})
-	if item == nil {
-		fmt.Fprintf(os.Stderr, "Unable to allocate space for file information for \"%s\".", path)
-		os.Exit(1)
-	}
-	f, err := os.Lstat(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get status for \"%s\": %s\n", path, err)
-		os.Exit(1)
-	}
-
-	item["folder"] = f.IsDir()
-	item["link"] = f.Mode()&os.ModeSymlink == os.ModeSymlink
-	item["socket"] = f.Mode()&os.ModeSocket == os.ModeSocket
-	item["bytes"] = f.Size()
-	item["modified"] = f.ModTime().UTC()
-
-	return item
+type FsItem struct {
+	Id       *asset.ID
+	Path     *string
+	Folder   bool
+	Link     bool
+	LinkPath *string
+	Socket   bool
+	Bytes    int64
+	Modified time.Time
 }
 
-func walkFilesystem(depth int, filename string, relative_path string) (id *asset.ID) {
-	path, err := filepath.Abs(filename)
+// func newItem(path string) (item map[string]interface{}) {
+// 	item = make(map[string]interface{})
+// 	if item == nil {
+// 		fmt.Fprintf(os.Stderr, "Unable to allocate space for file information for \"%s\".", path)
+// 		os.Exit(1)
+// 	}
+// 	f, err := os.Lstat(path)
+// 	if err != nil {
+// 		fmt.Fprintf(os.Stderr, "Unable to get status for \"%s\": %s\n", path, err)
+// 		os.Exit(1)
+// 	}
+
+// 	item["folder"] = f.IsDir()
+// 	item["link"] = f.Mode()&os.ModeSymlink == os.ModeSymlink
+// 	item["socket"] = f.Mode()&os.ModeSocket == os.ModeSocket
+// 	item["bytes"] = f.Size()
+// 	item["modified"] = f.ModTime().UTC()
+
+// 	return item
+// }
+
+func newItem(path string) (*FsItem, error) {
+
+	f, err := os.Lstat(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to find absolute path for %s. %s\n", filename, err)
-		os.Exit(1)
+		return nil, err
 	}
 
-	item := newItem(path)
-	if item["socket"] == true {
-		id = nullId()
-	} else if item["link"] == true && !links_flag {
-		newFilepath, _ := filepath.EvalSymlinks(filename)
-		item["link"] = newFilepath
-		id = nullId()
-	} else if item["link"] == true {
+	item := FsItem{
+		Path:     &path,
+		Folder:   f.IsDir(),
+		Link:     f.Mode()&os.ModeSymlink == os.ModeSymlink,
+		Socket:   f.Mode()&os.ModeSocket == os.ModeSocket,
+		Bytes:    f.Size(),
+		Modified: f.ModTime().UTC(),
+	}
+	return &item, nil
+}
+
+func (f *FsItem) Stat(path string) error {
+	stat, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+
+	f.Path = &path
+	f.Folder = stat.IsDir()
+	f.Link = stat.Mode()&os.ModeSymlink == os.ModeSymlink
+	f.Socket = stat.Mode()&os.ModeSocket == os.ModeSocket
+	f.Bytes = stat.Size()
+	f.Modified = stat.ModTime().UTC()
+	if f.Socket || f.Link {
+		f.Id = nullId()
+	}
+	return nil
+}
+
+func (f *FsItem) IsFile() bool {
+	return !f.Folder && !f.Link && !f.Socket
+}
+
+func (f *FsItem) Identify() (*asset.ID, error) {
+	return fileID(f.Path)
+}
+
+func walkFilesystem(depth int, filename string, relative_path string) (*asset.ID, error) {
+	path, err := filepath.Abs(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	item := &FsItem{}
+	err = item.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if item.IsFile() {
+		id, err := item.Identify()
+		if err != nil {
+			return nil, err
+		}
+		item.Id = id
+	} else if item.Link {
 		newFilepath, err := filepath.EvalSymlinks(filename)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to follow link %s. %s\n", newFilepath, err)
-			item["link"] = newFilepath
-			id = nullId()
-		} else {
-			item["link"] = newFilepath
-			var linkId asset.IDSlice
-			linkId.Push(walkFilesystem(depth-1, newFilepath, relative_path))
-			id, err = linkId.ID()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Internal issue identifying IDs %s\n", err)
-			}
+			return nil, err
 		}
-	} else {
-		if item["folder"] == true {
-			files, err := ioutil.ReadDir(path)
+		item.LinkPath = &newFilepath
+		if links_flag { // Then follow the link
+			id, err := walkFilesystem(depth, newFilepath, relative_path)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Unable to read directory: %v\n", err)
-				os.Exit(1)
+				return item.Id, err
 			}
-			var childIDs asset.IDSlice
-			for _, file := range files {
-				path := filename + string(filepath.Separator) + file.Name()
-				childIDs.Push(walkFilesystem(depth-1, path, relative_path))
-			}
-			id, err = childIDs.ID()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Internal issue identifying IDs %s\n", err)
-			}
-		} else {
-			id = fileID(path)
+			item.Id = id
 		}
+	} else if item.Folder {
+		files, err := ioutil.ReadDir(path)
+		if err != nil {
+			return item.Id, err
+		}
+		var childIDs asset.IDSlice
+		for _, file := range files {
+			path := filename + string(filepath.Separator) + file.Name()
+			id, err := walkFilesystem(depth-1, path, relative_path)
+			if err != nil {
+				return item.Id, err
+			}
+			childIDs.Push(id)
+		}
+		id, err := childIDs.ID()
+		if err != nil {
+			return item.Id, err
+		}
+		item.Id = id
 	}
-	item["c4id"] = id.String()
 	if depth >= 0 || recursive_flag {
-		output(path, item)
+		output(item)
 	}
-	return
+	return item.Id, nil
 }
