@@ -76,7 +76,7 @@ all communications.  This system works automatically via strong cryptography. It
 environments such as productions in remote locations.
 
 x.509 has a much longer history than OAuth, and is a well vetted component of standard secure web traffic.
-OAuth is a system designed around the idea that some identity providers which to 'own' a user's account.
+OAuth is a system designed around the idea that some identity providers want to 'own' a user's account.
 In media production, however, a more robust system that does not require a trusted 3rd party is required.
 
 ### Go Package
