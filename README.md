@@ -14,10 +14,10 @@ and the c4 demon.  We are in the process of rolling out the following features:
 
 - [x] Identify any file or block of data.
 - [x] Identify folders and arbitrarily complex filesystems.
+- [x] Key/c4 id store
 - [ ] Threaded multi-target copy and id
 - [ ] Optimized remote file sync ("the rsync killer").
 - [ ] Dependency graph/workflow language
-- [ ] Key/c4 id store
 - [ ] Fuse based file system.
 - [ ] PKI Security Model
 
@@ -35,7 +35,7 @@ other shared information.  This allows organizations to communicate with others 
 consistently and unambiguously, while managing assets internally in anyway they choose.  This can be
 done without prior agreement or communication of any kind.
 
-This ‘agreement without communication’ is an essential feature of C4 IDs and a key differentiator
+This 'agreement without communication' is an essential feature of C4 IDs and a key differentiator
 between it and other identification systems. It enables interoperability between human beings,
 organizations, databases, software applications, and networks, and it is essential to the globally
 distributed workflows of media production.
