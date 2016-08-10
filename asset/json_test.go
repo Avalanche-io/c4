@@ -4,6 +4,7 @@ import (
 	// "bytes"
 
 	"encoding/json"
+	"math/big"
 	"testing"
 
 	"github.com/cheekybits/is"
@@ -18,6 +19,7 @@ func TestMarshalJSON(t *testing.T) {
 		ID   *asset.ID `json:"id"`
 	}
 
+	big_empty := big.NewInt(0)
 	for _, test := range []struct {
 		In  testType
 		Exp string
@@ -29,6 +31,10 @@ func TestMarshalJSON(t *testing.T) {
 		{
 			In:  testType{"Test", nil},
 			Exp: `{"name":"Test","id":null}`,
+		},
+		{
+			In:  testType{"Test", (*asset.ID)(big_empty)},
+			Exp: `{"name":"Test","id":""}`,
 		},
 	} {
 		actual, err := json.Marshal(test.In)

@@ -232,8 +232,3 @@ func TestNILID(t *testing.T) {
 	nilid := asset.NIL_ID
 	is.Equal(nilid.String(), "c459CSJESBh38BxDwwxNFKTXE4cC9HASGe3bhtN6z58GbwLqpCyRaKyZSvBAvTdF5NpSTPdUMH4hHRJ75geLsB1Sfs")
 }
-
-// func TestFail(t *testing.T) {
-// 	is := is.New(t)
-// 	is.True(false)
-// }

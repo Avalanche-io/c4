@@ -104,3 +104,12 @@ func TestIDSliceSearchIDs(t *testing.T) {
 	is.Equal(asset.SearchIDs(ids, id2), 1)
 	is.Equal(asset.SearchIDs(ids, id3), 0)
 }
+
+func TestSliceIDFile(t *testing.T) {
+	is := is.New(t)
+
+	id, err := asset.Identify(errorReader(true))
+	is.Err(err)
+	is.Nil(id)
+	is.Equal(err.Error(), "errorReader triggered error.")
+}
