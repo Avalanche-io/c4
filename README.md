@@ -14,11 +14,15 @@ universal ID system. **C4 Lang** is a domain language for workflows. **C4 PKI** 
 security model.
 
 Videos:
+
   https://youtu.be/ZHQY0WYmGYU
+
   https://youtu.be/vzh0JzKhY4o
 
 Web: http://www.cccc.io/
+
 Mailing list: https://groups.google.com/forum/#!forum/c4-framework
+
 Twitter: https://twitter.com/CinemaC4
 
 ---
