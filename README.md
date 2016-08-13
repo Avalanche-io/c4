@@ -6,7 +6,25 @@
 [![Build Status](https://travis-ci.org/etcenter/c4.svg?branch=master)](https://travis-ci.org/etcenter/c4)
 [![Coverage Status](https://coveralls.io/repos/github/etcenter/c4/badge.svg?branch=master)](https://coveralls.io/github/etcenter/c4?branch=master)
 
+
+### The C4 framework
+C4 the Cinema Content Creation Cloud is an open source framework for content creation
+using remote resources. It consists of C4 ID, C4 Lang, and C4 PKI. **C4 ID** is a
+universal ID system. **C4 Lang** is a domain language for workflows. **C4 PKI** is a federated
+security model.
+
+Videos:
+  https://youtu.be/ZHQY0WYmGYU
+  https://youtu.be/vzh0JzKhY4o
+
+Web: http://www.cccc.io/
+Mailing list: https://groups.google.com/forum/#!forum/c4-framework
+Twitter: https://twitter.com/CinemaC4
+
+---
+
 Go package and cli for c4.
+
 ### Command line tool
 See [c4 command line tool](https://github.com/etcenter/c4/tree/master/cmd/c4)
 
@@ -22,9 +40,6 @@ and the c4 demon.  We are in the process of rolling out the following features:
 - [ ] Fuse based file system.
 - [ ] PKI Security Model
 
-### The C4 framework
-There are 3 major parts of the C4 Framework.  The ID system, the Domian Spacific Language,
-and the Security Model.
 
 ### C4 ID
 
@@ -134,4 +149,4 @@ Current release: [v0.6.0](https://github.com/etcenter/c4/tree/v0.6.0)
 Check the `release` branch for the latest release, or tags to find a specific release.  The `master` branch holds currently development.
 
 ### License
-This software is released under the MIT license.  See LICENSE for more information.
+This software is released under the MIT license.  See [LICENSE](./LICENSE) for more information.
