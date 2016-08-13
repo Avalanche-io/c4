@@ -13,17 +13,13 @@ using remote resources. It consists of C4 ID, C4 Lang, and C4 PKI. **C4 ID** is 
 universal ID system. **C4 Lang** is a domain language for workflows. **C4 PKI** is a federated
 security model.
 
-Videos:
+- Videos:
+  - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU)
+  - [The Magic of C4](https://youtu.be/vzh0JzKhY4o)
 
-  https://youtu.be/ZHQY0WYmGYU
-
-  https://youtu.be/vzh0JzKhY4o
-
-Web: http://www.cccc.io/
-
-Mailing list: https://groups.google.com/forum/#!forum/c4-framework
-
-Twitter: https://twitter.com/CinemaC4
+- Web: http://www.cccc.io/
+- Mailing list: https://groups.google.com/forum/#!forum/c4-framework
+- Twitter: https://twitter.com/CinemaC4
 
 ---
 
@@ -44,6 +40,7 @@ and the c4 demon.  We are in the process of rolling out the following features:
 - [ ] Fuse based file system.
 - [ ] PKI Security Model
 
+---
 
 ### C4 ID
 
@@ -72,7 +69,6 @@ Here is an example of a c4 id:
 ```
 c44jVTEz8y7wCiJcXvsX66BHhZEUdmtf7TNcZPy1jdM6S14qqrzsiLyoZRSvRGcAMLnKn4zVBvAFimNg14NFKp46cC
 ```
-
 
 
 ### C4 Lang
