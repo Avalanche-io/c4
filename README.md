@@ -44,6 +44,8 @@ and the c4 demon.  We are in the process of rolling out the following features:
 
 ### C4 ID
 
+[C4 ID Whitepaper](http://www.cccc.io/downloads/C4ID%20ETC%20Whitepaper_u1.pdf)
+
 The C4 ID system is a standardized encoding of a SHA-512 hash.  It provides an unambiguous, universally
 unique id for any file or block of data.  However, not only is the C4 ID universally unique, it is also
 universally consistent.  This means given identical files in two different organizations, both
@@ -70,8 +72,35 @@ Here is an example of a c4 id:
 c44jVTEz8y7wCiJcXvsX66BHhZEUdmtf7TNcZPy1jdM6S14qqrzsiLyoZRSvRGcAMLnKn4zVBvAFimNg14NFKp46cC
 ```
 
+There are no universal standard encodings for common cryptographic hashes.  Labeled hex representations (i.e. sha512-cf83...) seem to
+be a tad more popular at the moment, so those are used for comparison below.  Note that c4 is a sha-512, yet it's only 19 characters
+longer than a hex encoded sha-256, and also faster to compute (on 64 bit hardware).
+
+```yaml
+# Comparison
+sha-256: sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+c4:      c44jVTEz8y7wCiJcXvsX66BHhZEUdmtf7TNcZPy1jdM6S14qqrzsiLyoZRSvRGcAMLnKn4zVBvAFimNg14NFKp46cC
+sha-512: sha512-cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e
+```
+
+It might seem like Base62 or even Base64 would be better because it would make the string shorter.  However Base64 only saves 4 characters
+even if we cheat and remove the label.
+
+```yaml
+# Base64 vs C4
+
+c4:      c45XyDwWmrPQwJPdULBhma6LGNaLghKtN7R9vLn2tFrepZJ9jJFSDzpCKei11EgA5r1veenBu3Q8qfvWeDuPc7fJK2
+Sha-512: 9/u6bgY2+JDlb7vzKD5STG+jIErimDgtYkdB0NxmODJuKCxBvl5CVNiCB3LFUYosWowMf37aGVlKfrU5RT4e1w
+```
+
+The c4 id, only 4 characters longer, includes a label and is easily selectable by double clicking.  If you double click on
+the above sha-512 you'll see that it you don't select the entire string.
+
 
 ### C4 Lang
+
+*(Whitepaper coming soon)*
+
 The C4 Domain Specific Language (DSL) is a declarative language that is designed to represent a
 dependency graph of operations that are repeatable and verifiable. C4lang can describe processes that
 span any number of physical domains, making it much easer to design and reason about distributed
@@ -85,6 +114,9 @@ computation and storage is a very powerful property of the language and reduces 
 of distributed computation for media production.
 
 ### C4 PKI
+
+*(Whitepaper in the works)*
+
 Under the C4 Public Key Infrastructure model there are no logins (other than a user on their own device).
 Identity is automatically federated without the need for an "Identity Provider" provider
 (i.e. the OAuth model).  Instead a standard x.509 certificate chain is used to validate *both* sides of
