@@ -94,7 +94,7 @@ Sha-512: 9/u6bgY2+JDlb7vzKD5STG+jIErimDgtYkdB0NxmODJuKCxBvl5CVNiCB3LFUYosWowMf37
 ```
 
 The c4 id, only 4 characters longer, includes a label and is easily selectable by double clicking.  If you double click on
-the above sha-512 you'll see that it you don't select the entire string.
+the above sha-512 you'll see that you don't select the entire string.
 
 
 ### C4 Lang
