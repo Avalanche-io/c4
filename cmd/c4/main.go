@@ -19,7 +19,6 @@ func main() {
 		flag.Usage()
 		os.Exit(0)
 	}
-
 	switch os.Args[1] {
 	case "-h", "--help":
 		flag.Usage()
@@ -30,10 +29,14 @@ func main() {
 	case "id":
 		if err := id_flags.Parse(os.Args[2:]); err == nil {
 			id_main(id_flags)
+		} else {
+			fmt.Fprintf(os.Stderr, "id_flags %s\n", err)
 		}
 	case "cp":
 		if err := cp_flags.Parse(os.Args[2:]); err == nil {
 			cp_main(cp_flags)
+		} else {
+			fmt.Fprintf(os.Stderr, "cp_flags %s\n", err)
 		}
 	}
 }

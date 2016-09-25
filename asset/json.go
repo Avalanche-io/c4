@@ -1,6 +1,9 @@
 package asset
 
-import "math/big"
+import (
+	"encoding/json"
+	"math/big"
+)
 
 // MarshalJSON adds output support for package encoding/json.
 func (id *ID) MarshalJSON() ([]byte, error) {
@@ -17,4 +20,21 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 	id2, err := ParseBytesID(data[1 : len(data)-1])
 	*id = *id2
 	return err
+}
+
+// MarshalJSON adds output support for package encoding/json.
+func (ids IDSlice) MarshalJSON() ([]byte, error) {
+	ids2 := ([]*ID)(ids)
+	return json.Marshal(ids2)
+}
+
+// MarshalJSON adds parsing support for package encoding/json.
+func (ids *IDSlice) UnmarshalJSON(data []byte) error {
+	var ids_in []*ID
+	err := json.Unmarshal(data, &ids_in)
+	if err != nil {
+		return err
+	}
+	copy(*ids, ids_in)
+	return nil
 }

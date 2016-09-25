@@ -1,143 +1,159 @@
 package main
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/etcenter/c4/asset"
+	"github.com/etcenter/c4/attributes"
 )
 
-type FsItem struct {
-	Id       *asset.ID
-	Path     *string
-	Folder   bool
-	Link     bool
-	LinkPath *string
-	Socket   bool
-	Bytes    int64
-	Modified time.Time
-}
-
-// func newItem(path string) (item map[string]interface{}) {
-// 	item = make(map[string]interface{})
-// 	if item == nil {
-// 		fmt.Fprintf(os.Stderr, "Unable to allocate space for file information for \"%s\".", path)
-// 		os.Exit(1)
-// 	}
-// 	f, err := os.Lstat(path)
+// func fileID(path *string) (*asset.ID, error) {
+// 	f, err := os.Open(*path)
 // 	if err != nil {
-// 		fmt.Fprintf(os.Stderr, "Unable to get status for \"%s\": %s\n", path, err)
-// 		os.Exit(1)
+// 		return nil, err
 // 	}
-
-// 	item["folder"] = f.IsDir()
-// 	item["link"] = f.Mode()&os.ModeSymlink == os.ModeSymlink
-// 	item["socket"] = f.Mode()&os.ModeSocket == os.ModeSocket
-// 	item["bytes"] = f.Size()
-// 	item["modified"] = f.ModTime().UTC()
-
-// 	return item
+// 	defer f.Close()
+// 	id, err := asset.Identify(f)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return id, nil
 // }
 
-func newItem(path string) (*FsItem, error) {
-
-	f, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-
-	item := FsItem{
-		Path:     &path,
-		Folder:   f.IsDir(),
-		Link:     f.Mode()&os.ModeSymlink == os.ModeSymlink,
-		Socket:   f.Mode()&os.ModeSocket == os.ModeSocket,
-		Bytes:    f.Size(),
-		Modified: f.ModTime().UTC(),
-	}
-	return &item, nil
-}
-
-func (f *FsItem) Stat(path string) error {
-	stat, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-
-	f.Path = &path
-	f.Folder = stat.IsDir()
-	f.Link = stat.Mode()&os.ModeSymlink == os.ModeSymlink
-	f.Socket = stat.Mode()&os.ModeSocket == os.ModeSocket
-	f.Bytes = stat.Size()
-	f.Modified = stat.ModTime().UTC()
-	if f.Socket || f.Link {
-		f.Id = nullId()
+func identify_file(path string, item attributes.FsInfo) error {
+	switch item := item.(type) {
+	case *attributes.FileInfo:
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		id, err := asset.Identify(f)
+		if err != nil {
+			return err
+		}
+		item.Id = id
+	case *attributes.FolderInfo:
+		return errors.New("Wrong type (*attributes.FolderInfo)")
+	default:
+		return errors.New("Wrong type (unknown)")
 	}
 	return nil
 }
 
-func (f *FsItem) IsFile() bool {
-	return !f.Folder && !f.Link && !f.Socket
+func update_folder_ids(item attributes.FsInfo, id *asset.ID) error {
+	switch item := item.(type) {
+	case *attributes.FileInfo:
+		return errors.New("Wrong type (*attributes.FileInfo)")
+	case *attributes.FolderInfo:
+		item.Ids.Push(id)
+	default:
+		return errors.New("Wrong type (unknown)")
+	}
+	return nil
 }
 
-func (f *FsItem) Identify() (*asset.ID, error) {
-	return fileID(f.Path)
-}
-
-func walkFilesystem(depth int, filename string, relative_path string) (*asset.ID, error) {
+func walkFilesystem(depth int, filename string, relative_path string, achan chan<- attributes.FsInfo) (*asset.ID, error) {
+	// fmt.Fprintf(os.Stderr, "\nwalkFilesystem %d, %s\n", depth, filename)
 	path, err := filepath.Abs(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	item := &FsItem{}
-	err = item.Stat(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
+	item := attributes.NewFsInfo(info)
 
-	if item.IsFile() {
-		id, err := item.Identify()
+	switch {
+	case item.Regular():
+		err := identify_file(path, item)
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
-		item.Id = id
-	} else if item.Link {
-		newFilepath, err := filepath.EvalSymlinks(filename)
-		if err != nil {
-			return nil, err
-		}
-		item.LinkPath = &newFilepath
-		if links_flag { // Then follow the link
-			id, err := walkFilesystem(depth, newFilepath, relative_path)
-			if err != nil {
-				return item.Id, err
+		if depth >= 0 || recursive_flag {
+			// // jout.Encode(item)
+			// kv := make(attributes.KeyFsInfo)
+			// kv[path] = item
+			// // KeyFsInfo
+			if achan != nil {
+				achan <- item
 			}
-			item.Id = id
 		}
-	} else if item.Folder {
+	case item.Folder():
 		files, err := ioutil.ReadDir(path)
 		if err != nil {
-			return item.Id, err
+			return nil, err
 		}
-		var childIDs asset.IDSlice
+		ch := item.EncodedNestedJsonChan(os.Stdout)
+		// go func() {
 		for _, file := range files {
 			path := filename + string(filepath.Separator) + file.Name()
-			id, err := walkFilesystem(depth-1, path, relative_path)
+			id, err := walkFilesystem(depth-1, path, relative_path, ch)
 			if err != nil {
-				return item.Id, err
+				return nil, err
 			}
-			childIDs.Push(id)
+			err = update_folder_ids(item, id)
+			if err != nil {
+				panic(err)
+			}
 		}
-		id, err := childIDs.ID()
+		if achan != nil {
+			close(achan)
+		}
+		// }()
+	case item.Link():
+		newFilepath, err := filepath.EvalSymlinks(filename)
 		if err != nil {
-			return item.Id, err
+			panic(err)
 		}
-		item.Id = id
+		if links_flag { // Then follow the link
+			return walkFilesystem(depth, newFilepath, relative_path, achan)
+		}
 	}
-	if depth >= 0 || recursive_flag {
-		output(item)
-	}
-	return item.Id, nil
+	// if item.IsFile() {
+	// 	id, err := item.Identify()
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	item.Id = id
+	// } else if item.Link {
+	// 	newFilepath, err := filepath.EvalSymlinks(filename)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	item.LinkPath = &newFilepath
+	// 	if links_flag { // Then follow the link
+	// 		id, err := walkFilesystem(depth, newFilepath, relative_path)
+	// 		if err != nil {
+	// 			return item.Id, err
+	// 		}
+	// 		item.Id = id
+	// 	}
+	// } else if item.Folder {
+	// 	files, err := ioutil.ReadDir(path)
+	// 	if err != nil {
+	// 		return item.Id, err
+	// 	}
+	// 	var childIDs asset.IDSlice
+	// 	for _, file := range files {
+	// 		path := filename + string(filepath.Separator) + file.Name()
+	// 		id, err := walkFilesystem(depth-1, path, relative_path)
+	// 		if err != nil {
+	// 			return item.Id, err
+	// 		}
+	// 		childIDs.Push(id)
+	// 	}
+	// 	id, err := childIDs.ID()
+	// 	if err != nil {
+	// 		return item.Id, err
+	// 	}
+	// 	item.Id = id
+	// }
+
+	return item.ID(), nil
 }
