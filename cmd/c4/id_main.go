@@ -72,7 +72,7 @@ func walk_one(filename string) {
 
 func walk_all(file_list []string) {
 	fmt.Fprintf(os.Stderr, "walk_all\n")
-	item := attributes.NewFsInfo(info)
+	// item := attributes.NewFsInfo(info)
 	for _, file := range file_list {
 		path, err := filepath.Abs(file)
 		if err != nil {
@@ -90,11 +90,11 @@ func walk_all(file_list []string) {
 		// item := attributes.NewFsInfo(info)
 
 		// ch := make(chan attributes.FsInfo)
-		ch := item.EncodedNestedJsonChan(os.Stdout)
+		// ch := item.EncodedNestedJsonChan(os.Stdout)
 
 		// fmt.Fprintf(os.Stdout, "{")
 
-		id, err := walkFilesystem(depth, path, "", ch)
+		id, err := walkFilesystem(depth, path, "", nil)
 		if err != nil {
 			panic(err)
 		}
