@@ -5,12 +5,8 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"testing"
 
 	"github.com/cheekybits/is"
-	"github.com/etcenter/c4/test"
-
-	"github.com/etcenter/c4/store"
 )
 
 func build_test_fs(is is.I, dir string, depth int, breadth int) []string {
@@ -52,20 +48,20 @@ func build_test_fs(is is.I, dir string, depth int, breadth int) []string {
 	return paths
 }
 
-func TestWalkFS(t *testing.T) {
-	is := is.New(t)
-	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
-	build_test_fs(is, tmp, 4, 10)
-	f := store.Walk(tmp)
-	ch := f.Enqueue()
-	for n := range ch {
-		if n != nil {
-			path := n.Path
-			name := n.Label
-			_ = path
-			_ = name
-			// fmt.Println(*path, *name)
-		}
-	}
-}
+// func TestWalkFS(t *testing.T) {
+// 	is := is.New(t)
+// 	tmp := test.TempDir(is)
+// 	defer test.DeleteDir(&tmp)
+// 	build_test_fs(is, tmp, 4, 10)
+// 	f := store.Walk(tmp)
+// 	ch := f.Enqueue()
+// 	for n := range ch {
+// 		if n != nil {
+// 			path := n.Path
+// 			name := n.Label
+// 			_ = path
+// 			_ = name
+// 			// fmt.Println(*path, *name)
+// 		}
+// 	}
+// }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -57,7 +58,7 @@ func update_folder_ids(item attributes.FsInfo, id *asset.ID) error {
 }
 
 func walkFilesystem(depth int, filename string, relative_path string, achan chan<- attributes.FsInfo) (*asset.ID, error) {
-	// fmt.Fprintf(os.Stderr, "\nwalkFilesystem %d, %s\n", depth, filename)
+	fmt.Fprintf(os.Stderr, "\nwalkFilesystem %d, %s\n", depth, filename)
 	path, err := filepath.Abs(filename)
 	if err != nil {
 		return nil, err

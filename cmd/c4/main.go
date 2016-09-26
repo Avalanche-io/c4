@@ -38,5 +38,8 @@ func main() {
 		} else {
 			fmt.Fprintf(os.Stderr, "cp_flags %s\n", err)
 		}
+	default:
+		flag.Usage()
+		os.Exit(0)
 	}
 }

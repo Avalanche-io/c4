@@ -129,6 +129,7 @@ func (f *FileInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (f *FileInfo) EncodedNestedJsonChan(w io.Writer) chan<- FsInfo {
+	fmt.Fprintf(os.Stderr, "\nFileInfo.EncodedNestedJsonChan %s\n", f.Name())
 	ch := make(chan FsInfo)
 	go func() {
 		JsonEncodeArrayChan(w, ch)
@@ -281,7 +282,7 @@ End:
 }
 
 func (f *FolderInfo) EncodedNestedJsonChan(w io.Writer) chan<- FsInfo {
-	// fmt.Fprintf(os.Stderr, "\nEncodedNestedJsonChan %s\n", f.Name())
+	fmt.Fprintf(os.Stderr, "\nEncodedNestedJsonChan %s\n", f.Name())
 
 	_, err := w.Write([]byte(`"` + f.Name() + `":{`))
 	if err != nil {
