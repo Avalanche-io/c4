@@ -3,6 +3,7 @@ package fs_test
 import (
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -20,7 +21,8 @@ func TestDuplicationReport(t *testing.T) {
 	tmp := test.TempDir(is)
 	defer test.DeleteDir(&tmp)
 	threads := 8
-	build_test_fs(is, tmp, 8, 20, 35)
+	dup_rate := 35
+	build_test_fs(is, tmp, 8, 20, uint32(dup_rate))
 	f := fs.New(tmp)
 	f.IdWorkers(threads)
 	is.NotNil(f)
@@ -33,17 +35,28 @@ func TestDuplicationReport(t *testing.T) {
 	f.Wait()
 	f.IndexIds()
 	dup_list := f.Duplication()
-	t.Log("Duplication: ", len(dup_list))
 	size := int64(0)
 	for _, nodes := range dup_list {
 		if len(nodes) > 0 {
 			size += int64(len(nodes)-1) * int64(nodes[0].Size())
 		}
 	}
-	t.Log("Size: ", f.Size())
-	t.Log("Duplicate Data: ", size)
-	t.Log("Duplication: ", float64(size)/float64(f.Size()))
 
+	rate := float64(size) / float64(f.Size())
+	rate_diff := math.Abs(float64(dup_rate) - (100 * rate))
+
+	files, _ := f.Count()
+	t.Log("Total files: ", files)
+	t.Log("Duplicate files: ", len(dup_list))
+	t.Log("Total Size: ", float64(f.Size())/(1024*1024), "MB")
+	t.Log("Duplicate Size: ", float64(size)/(1024*1024), "MB")
+	t.Log("Duplication Rate: ", rate)
+	t.Log("Rate Error: ", rate_diff)
+
+	is.True(f.Size() > 0)
+	is.True(size > 0)
+	is.True(f.Size() > size)
+	is.True(rate_diff < 5)
 }
 
 func TestWalkFS(t *testing.T) {
@@ -82,14 +95,6 @@ func TestWalkFS(t *testing.T) {
 	files, folders := f.Count()
 
 	f.IndexIds()
-	// dup_list := f.Duplication()
-	// t.Log("Duplication: ", len(dup_list))
-	// for id, nodes := range dup_list {
-	// 	t.Log(id, ":")
-	// 	for i, n := range nodes {
-	// 		t.Log("\t", i, ": ", n.Path())
-	// 	}
-	// }
 	t.Log("file count:", files, "folder count:", folders)
 	t.Log("threads:", threads, " time:", d)
 }
@@ -127,7 +132,7 @@ func build_test_fs(is is.I, dir string, depth int, breadth int, duplication uint
 			is.NoErr(err)
 			if (len(duplicate_files) == 0) || ((rand.Uint32() % 101) > duplication) {
 				duplicate_files = append(duplicate_files, file_name)
-				data := make([]byte, 4096*(rand.Uint32()%40))
+				data := make([]byte, 4096*(rand.Uint32()%400))
 				_, err = rand.Read(data)
 				is.NoErr(err)
 				fout.Write(data)
