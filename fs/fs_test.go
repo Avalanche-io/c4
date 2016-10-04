@@ -66,8 +66,8 @@ func TestWalkFS(t *testing.T) {
 	threads := 8
 	build_test_fs(is, tmp, 8, 20, 0)
 	f := fs.New(tmp)
-	f.IdWorkers(threads)
 	is.NotNil(f)
+	f.IdWorkers(threads)
 	tmr := time.Now()
 	ch := f.Walk()
 	is.OK(ch)

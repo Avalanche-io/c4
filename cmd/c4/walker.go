@@ -11,19 +11,6 @@ import (
 	"github.com/etcenter/c4/attributes"
 )
 
-// func fileID(path *string) (*asset.ID, error) {
-// 	f, err := os.Open(*path)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer f.Close()
-// 	id, err := asset.Identify(f)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return id, nil
-// }
-
 func identify_file(path string, item attributes.FsInfo) error {
 	switch item := item.(type) {
 	case *attributes.FileInfo:
@@ -58,7 +45,8 @@ func update_folder_ids(item attributes.FsInfo, id *asset.ID) error {
 }
 
 func walkFilesystem(depth int, filename string, relative_path string, achan chan<- attributes.FsInfo) (*asset.ID, error) {
-	fmt.Fprintf(os.Stderr, "\nwalkFilesystem %d, %s\n", depth, filename)
+	str := fmt.Sprintf("\nwalkFilesystem %d, %s\n", depth, cyan(filename))
+	fmt.Fprintf(os.Stderr, bold(str))
 	path, err := filepath.Abs(filename)
 	if err != nil {
 		return nil, err
@@ -77,10 +65,6 @@ func walkFilesystem(depth int, filename string, relative_path string, achan chan
 			panic(err)
 		}
 		if depth >= 0 || recursive_flag {
-			// // jout.Encode(item)
-			// kv := make(attributes.KeyFsInfo)
-			// kv[path] = item
-			// // KeyFsInfo
 			if achan != nil {
 				achan <- item
 			}
@@ -91,7 +75,7 @@ func walkFilesystem(depth int, filename string, relative_path string, achan chan
 			return nil, err
 		}
 		ch := item.EncodedNestedJsonChan(os.Stdout)
-		// go func() {
+
 		for _, file := range files {
 			path := filename + string(filepath.Separator) + file.Name()
 			id, err := walkFilesystem(depth-1, path, relative_path, ch)
@@ -106,7 +90,6 @@ func walkFilesystem(depth int, filename string, relative_path string, achan chan
 		if achan != nil {
 			close(achan)
 		}
-		// }()
 	case item.Link():
 		newFilepath, err := filepath.EvalSymlinks(filename)
 		if err != nil {
@@ -116,45 +99,5 @@ func walkFilesystem(depth int, filename string, relative_path string, achan chan
 			return walkFilesystem(depth, newFilepath, relative_path, achan)
 		}
 	}
-	// if item.IsFile() {
-	// 	id, err := item.Identify()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	item.Id = id
-	// } else if item.Link {
-	// 	newFilepath, err := filepath.EvalSymlinks(filename)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	item.LinkPath = &newFilepath
-	// 	if links_flag { // Then follow the link
-	// 		id, err := walkFilesystem(depth, newFilepath, relative_path)
-	// 		if err != nil {
-	// 			return item.Id, err
-	// 		}
-	// 		item.Id = id
-	// 	}
-	// } else if item.Folder {
-	// 	files, err := ioutil.ReadDir(path)
-	// 	if err != nil {
-	// 		return item.Id, err
-	// 	}
-	// 	var childIDs asset.IDSlice
-	// 	for _, file := range files {
-	// 		path := filename + string(filepath.Separator) + file.Name()
-	// 		id, err := walkFilesystem(depth-1, path, relative_path)
-	// 		if err != nil {
-	// 			return item.Id, err
-	// 		}
-	// 		childIDs.Push(id)
-	// 	}
-	// 	id, err := childIDs.ID()
-	// 	if err != nil {
-	// 		return item.Id, err
-	// 	}
-	// 	item.Id = id
-	// }
-
 	return item.ID(), nil
 }

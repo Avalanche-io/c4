@@ -10,8 +10,42 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/fatih/color"
+
 	"github.com/etcenter/c4/asset"
 )
+
+type ColorFunc func(...interface{}) string
+
+var (
+	bold    ColorFunc
+	red     ColorFunc
+	yellow  ColorFunc
+	green   ColorFunc
+	blue    ColorFunc
+	magenta ColorFunc
+	cyan    ColorFunc
+	white   ColorFunc
+)
+
+func init() {
+	bold = color.New(color.Bold).SprintFunc()
+	red = color.New(color.FgRed).SprintFunc()
+	yellow = color.New(color.FgYellow).SprintFunc()
+	green = color.New(color.FgGreen).SprintFunc()
+	blue = color.New(color.FgBlue).SprintFunc()
+	magenta = color.New(color.FgMagenta).SprintFunc()
+	cyan = color.New(color.FgCyan).SprintFunc()
+	white = color.New(color.FgWhite).SprintFunc()
+	_ = red
+	_ = yellow
+	_ = green
+	_ = blue
+	_ = magenta
+	_ = cyan
+	_ = white
+
+}
 
 type FsInfo interface {
 	ID() *asset.ID
@@ -129,7 +163,7 @@ func (f *FileInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (f *FileInfo) EncodedNestedJsonChan(w io.Writer) chan<- FsInfo {
-	fmt.Fprintf(os.Stderr, "\nFileInfo.EncodedNestedJsonChan %s\n", f.Name())
+	fmt.Fprintf(os.Stderr, "\n%s: %s\n", cyan("FileInfo.EncodedNestedJsonChan"), bold(white(f.Name())))
 	ch := make(chan FsInfo)
 	go func() {
 		JsonEncodeArrayChan(w, ch)
@@ -282,7 +316,7 @@ End:
 }
 
 func (f *FolderInfo) EncodedNestedJsonChan(w io.Writer) chan<- FsInfo {
-	fmt.Fprintf(os.Stderr, "\nEncodedNestedJsonChan %s\n", f.Name())
+	fmt.Fprintf(os.Stderr, "\n%s: %s\n", cyan("nEncodedNestedJsonChan"), white(f.Name()))
 
 	_, err := w.Write([]byte(`"` + f.Name() + `":{`))
 	if err != nil {
