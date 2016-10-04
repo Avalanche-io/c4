@@ -38,7 +38,7 @@ func TestDuplicationReport(t *testing.T) {
 	size := int64(0)
 	for _, nodes := range dup_list {
 		if len(nodes) > 0 {
-			size += int64(len(nodes)-1) * int64(nodes[0].Size())
+			size += int64(len(nodes)-1) * int64(nodes[0].Size)
 		}
 	}
 
@@ -80,7 +80,6 @@ func TestWalkFS(t *testing.T) {
 	var idWalk func(node *fs.Node)
 	idWalk = func(node *fs.Node) {
 		is.NotNil(node.Id)
-		// defer t.Log(node.Path(), ": ", node.Id)
 		if node.Children == nil {
 			return
 		}
@@ -132,7 +131,7 @@ func build_test_fs(is is.I, dir string, depth int, breadth int, duplication uint
 			is.NoErr(err)
 			if (len(duplicate_files) == 0) || ((rand.Uint32() % 101) > duplication) {
 				duplicate_files = append(duplicate_files, file_name)
-				data := make([]byte, 4096*(rand.Uint32()%400))
+				data := make([]byte, 4096*(rand.Uint32()%20))
 				_, err = rand.Read(data)
 				is.NoErr(err)
 				fout.Write(data)

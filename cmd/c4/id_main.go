@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"time"
 
 	"github.com/fatih/color"
 
@@ -52,8 +50,6 @@ func id_main(f *flag.FlagSet) {
 	file_list := f.Args()
 	if len(file_list) == 0 {
 		identify_pipe()
-		// } else if len(file_list) == 1 && !(recursive_flag || include_meta) && depth == 0 {
-		// walk_one(file_list[0])
 	} else {
 		walk(file_list)
 	}
@@ -73,39 +69,10 @@ func identify_pipe() {
 	}
 }
 
-// func walk_one(filename string) {
-// 	fmt.Fprintf(os.Stderr, "%s\n", cyan("walk_one"))
-// 	path, err := filepath.Abs(filename)
-// 	if err != nil {
-// 		fmt.Fprintf(os.Stderr, "Unable to find absolute path for %s. %s\n", filename, err)
-// 		os.Exit(1)
-// 	}
-// 	// ch := make(chan attributes.FsInfo)
-// 	info, err := os.Stat(path)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	item := attributes.NewFsInfo(info)
-
-// 	ch := item.EncodedNestedJsonChan(os.Stdout)
-// 	defer close(ch)
-
-// 	id, err := walkFilesystem(-1, path, "", ch)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	printID(id)
-// 	// attributes.JsonEncodeKVChan(os.Stdout, ch)
-// 	// if err != nil {
-// 	// 	panic(err)
-// 	// }
-// }
-
 func walk(file_list []string) {
-	start := time.Now()
+	// start := time.Now()
 	threads := 8
-
-	wd, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
@@ -116,58 +83,15 @@ func walk(file_list []string) {
 	f.IdWorkers(threads)
 	ch := f.Add(file_list...)
 	for n := range ch {
-		fmt.Fprintf(os.Stderr, "%s\n", cyan(n.Name))
+		_ = n
+		// fmt.Fprintf(os.Stderr, "%s\n", cyan(n.Name))
 	}
 	f.Wait()
+
 	data, err := json.Marshal(f)
 	if err != nil {
 		panic(err)
 	}
-	d := time.Now().Sub(start)
-	fmt.Fprintf(os.Stderr, "%s\n", cyan(d))
+	// d := time.Now().Sub(start)
 	fmt.Println(string(data))
-	// fmt.Fprintf(os.Stderr, "%s\n", cyan("walk_all"))
-
-	// for _, file := range file_list {
-	// 	path, err := filepath.Abs(file)
-	// 	if err != nil {
-	// 		fmt.Fprintf(os.Stderr, "Unable to find absolute path for %s. %s\n", file, err)
-	// 		os.Exit(1)
-	// 	}
-
-	// 	info, err := os.Stat(path)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	item := attributes.NewFsInfo(info)
-
-	// 	if depth < 0 {
-	// 		depth = 0
-	// 	}
-
-	// 	// info, err := os.Stat(path)
-	// 	// if err != nil {
-	// 	// 	panic(err)
-	// 	// }
-	// 	// item := attributes.NewFsInfo(info)
-
-	// 	// ch := make(chan attributes.FsInfo)
-	// 	ch := item.EncodedNestedJsonChan(os.Stdout)
-
-	// 	// fmt.Fprintf(os.Stdout, "{")
-
-	// 	id, err := walkFilesystem(depth, path, "", ch)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	_ = id
-	// 	// fmt.Fprintf(os.Stdout, "}")
-
-	// 	// printID(id)
-
-	// 	// err = attributes.JsonEncodeKVChan(os.Stdout, ch)
-	// 	// if err != nil {
-	// 	// 	panic(err)
-	// 	// }
-	// }
 }

@@ -2,11 +2,12 @@ package fs_test
 
 import (
 	"fmt"
-	"github.com/shirou/gopsutil/mem"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/shirou/gopsutil/mem"
 
 	"github.com/cheekybits/is"
 
@@ -72,12 +73,12 @@ func TestMultiTargetFileCopy(t *testing.T) {
 	tmp[1] = test.TempDir(is)
 	tmp[2] = test.TempDir(is)
 	defer func() {
-		for i, _ := range tmp {
+		for i := range tmp {
 			test.DeleteDir(&tmp[i])
 		}
 	}()
 
-	build_test_fs(is, tmp[0], 4, 100, 0)
+	build_test_fs(is, tmp[0], 4, 10, 0)
 
 	start := time.Now()
 	names := []string{"Id", tmp[1], tmp[2]}
@@ -117,8 +118,8 @@ func TestMultiTargetFileCopy(t *testing.T) {
 	for i := 1; i < 3; i++ {
 		temppath := tmp[i]
 		engine.TaskHandler(temppath, func(src string, b *fs.Buffer) {
-			time.Sleep(time.Duration(10) * time.Millisecond)
-			filename := temppath + src[len(tmp[0]):len(src)]
+			// time.Sleep(time.Duration(10) * time.Millisecond)
+			filename := temppath + src[len(tmp[0]):]
 			path := filepath.Dir(filename)
 			if _, err := os.Stat(path); os.IsNotExist(err) {
 				err := os.MkdirAll(path, 0777)

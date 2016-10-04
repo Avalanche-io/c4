@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	flag "github.com/ogier/pflag"
 	// "os"
 
@@ -9,22 +10,16 @@ import (
 )
 
 func cp_main(f *flag.FlagSet) {
-	// fmt.Fprintf(os.Stderr, "cp_main\n")
 	file_list := f.Args()
 	_ = file_list
 	queue_names := []string{"Id"}
 	for _, t := range target_cp_flag {
-		queue_names = append(queue_names, *t)
+		queue_names = append(queue_names, t)
 	}
 	engine := fs.NewTaskEngine(queue_names)
 	engine.Start()
 	defer func() {
 		engine.Close()
-		// 	end := time.Now()
-		// 	t.Log("Time: ", end.Sub(start))
-		// 	for _, q := range engine.Queues {
-		// 		t.Log("Average Task Time: ", q.Key, q.AvgTime())
-		// 	}
 	}()
 
 	engine.TaskHandler("Id", func(src string, b *fs.Buffer) {
@@ -39,7 +34,7 @@ func cp_main(f *flag.FlagSet) {
 
 	go func() {
 		for _, n := range file_list {
-			engine.Add(fs.Task(n))
+			engine.Add(n)
 		}
 		engine.InputDone()
 	}()

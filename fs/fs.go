@@ -59,67 +59,12 @@ type Node struct {
 	Sys     interface{} `json:"sys,omitempty"`
 	// children if this is a folder
 	Children NodeMap `json:"children,omitempty"`
+	fs       *FileSystem
 }
 
 type NodeMap map[string]*Node
 type NodeSlice []*Node
 type NodeSliceMap map[string]NodeSlice
-
-// func (f *NodeMap) MarshalJSON() ([]byte, error) {
-// 	data, err := json.Marshal(f.Id)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	output := []byte(`{"id":`)
-// 	output = append(output, data...)
-// 	output = append(output, []byte(`,`)...)
-// 	info := osfileinfo{
-// 		f.Info.Name(),
-// 		f.Info.Size(),
-// 		uint32(f.Info.Mode()),
-// 		f.Info.ModTime().UTC(),
-// 		f.Info.IsDir(),
-// 		nil,
-// 		// f.Info.Sys(),
-// 	}
-// 	data, err = json.Marshal(&info)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	output = append(output, []byte(`"info":`)...)
-// 	output = append(output, data...)
-// 	output = append(output, byte('}'))
-// 	// fmt.Printf("data: %s\n", string(output))
-// 	return output, nil
-// }
-
-// func (n *Node) MarshalJSON() ([]byte, error) {
-// 	data, err := json.Marshal(n.Id)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	output := []byte(`{"id":`)
-// 	output = append(output, data...)
-// 	output = append(output, []byte(`,`)...)
-// 	info := osfileinfo{
-// 		f.Info.Name(),
-// 		f.Info.Size(),
-// 		uint32(f.Info.Mode()),
-// 		f.Info.ModTime().UTC(),
-// 		f.Info.IsDir(),
-// 		nil,
-// 		// f.Info.Sys(),
-// 	}
-// 	data, err = json.Marshal(&info)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	output = append(output, []byte(`"info":`)...)
-// 	output = append(output, data...)
-// 	output = append(output, byte('}'))
-// 	// fmt.Printf("data: %s\n", string(output))
-// 	return output, nil
-// }
 
 type FileSystem struct {
 	Root    string
@@ -134,8 +79,6 @@ func (fs *FileSystem) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// output := []byte('[')
-	// output = append(output, byte(']'))
 	return data, nil
 }
 
@@ -150,32 +93,23 @@ func (fs *FileSystem) Add(filenames ...string) <-chan *Node {
 	ch := make(chan *Node)
 
 	go func() {
-
 		for _, f := range filenames {
-			path := f
-			dir, _ := filepath.Split(f)
-			if dir == "" {
-				path, err := filepath.Abs(f)
+			info, fserr := os.Stat(f)
+			if info.IsDir() {
+				filepath.Walk(fs.Root+string(filepath.Separator)+f, func(path string, info os.FileInfo, fserr error) error {
+					return fs.Process(ch, path, info, fserr)
+				})
+			} else {
+				err := fs.Process(ch, fs.Root+string(filepath.Separator)+f, info, fserr)
 				if err != nil {
 					panic(err)
 				}
-				dir, _ = filepath.Split(path)
-			}
-			if fs.Root == "" {
-				fs.Root = dir
-			}
-			info, fserr := os.Stat(path)
-			err := fs.Process(ch, path, info, fserr)
-			if err != nil {
-				panic(err)
 			}
 		}
 		close(fs.IdChan)
 		close(ch)
 	}()
-
 	return ch
-
 }
 
 func (f *FileSystem) Wait() {
@@ -240,11 +174,10 @@ func (f *FileSystem) Count() (files int64, folders int64) {
 	return
 }
 
-func (f *FileSystem) IdWorkers(n int) chan<- *Node {
+func (f *FileSystem) IdWorkers(n int) {
 	if f.IdChan == nil {
 		f.IdChan = make(chan *Node, 16)
 	}
-
 	f.IDwg.Add(n)
 	for i := 0; i < n; i++ {
 		go func() {
@@ -260,7 +193,24 @@ func (f *FileSystem) IdWorkers(n int) chan<- *Node {
 			f.IDwg.Done()
 		}()
 	}
-	return f.IdChan
+	return
+}
+
+func (n *Node) UpdateSize() bool {
+	if n.IsDir {
+		size := int64(0)
+		for _, c := range n.Children {
+			if c.Size == -1 {
+				return false
+			}
+			size += c.Size
+		}
+		n.Size = size
+		if n.Parent != nil {
+			return n.Parent.UpdateSize()
+		}
+	}
+	return true
 }
 
 func (n *Node) ResolveIds() int {
@@ -282,28 +232,15 @@ func (n *Node) ResolveIds() int {
 
 func (n *Node) Path() string {
 	p := n.Parent
+	s := n.fs.Root + string(filepath.Separator) + n.Name
 	if p != nil {
-		s := p.Path() + n.Name
-		if !n.Regular {
-			s += "/"
-		}
-		return s
+		s = p.Path() + n.Name
 	}
-	return "/" + n.Name + "/"
+	if !n.Regular {
+		s += string(filepath.Separator)
+	}
+	return s
 }
-
-// TODO: change to update parent size during walk
-// func (n *Node) Size() int64 {
-// 	if n.Regular && n.info != nil {
-// 		return n.info.Size()
-// 	} else {
-// 		size := int64(0)
-// 		for _, v := range n.Children {
-// 			size += v.Size()
-// 		}
-// 		return size
-// 	}
-// }
 
 func (n *Node) Count() (files int64, folders int64) {
 	files = 0
@@ -370,22 +307,33 @@ func (n *Node) Identify() {
 	return
 }
 
-// TODO: NewNodeFromInfo(info os.Info, parent *Node)
-func NewNode(regular bool, name string, parent *Node) (node *Node) {
+func (fs *FileSystem) newNodeFromInfo(info os.FileInfo, parent *Node) *Node {
+	var m NodeMap
+	var size int64
+	if info.IsDir() {
+		m = make(NodeMap)
+		size = -1
+	} else {
+		m = nil
+		size = info.Size()
+	}
+	n := Node{nil, !info.IsDir(), parent, info.Name(), size, uint32(info.Mode()), info.ModTime(), info.IsDir(), nil, m, fs}
+	return &n
+}
+
+func (fs *FileSystem) newNode(regular bool, name string, parent *Node) (node *Node) {
 	if regular {
-		// n := Node{nil, regular, name, parent, nil, nil}
-		n := Node{nil, regular, parent, name, -1, 0, time.Time{}, !regular, nil, nil}
+		n := Node{nil, regular, parent, name, -1, 0, time.Time{}, !regular, nil, nil, fs}
 		node = &n
 	} else {
 		m := make(NodeMap)
-		n := Node{nil, regular, parent, name, -1, 0, time.Time{}, !regular, nil, m}
-		// n := Node{nil, regular, name, parent, nil, m}
+		n := Node{nil, regular, parent, name, -1, 0, time.Time{}, !regular, nil, m, fs}
 		node = &n
 	}
 	return
 }
 
-func (fs *FileSystem) MkChildren(dirs []string) *Node {
+func (fs *FileSystem) mkChildren(dirs []string) *Node {
 	m := fs.Nodes
 	var p *Node
 	p = nil
@@ -395,7 +343,7 @@ func (fs *FileSystem) MkChildren(dirs []string) *Node {
 		}
 
 		if m[d] == nil {
-			m[d] = NewNode(false, d, p)
+			m[d] = fs.newNode(false, d, p)
 		}
 		p = m[d]
 		m = m[d].Children
@@ -426,47 +374,50 @@ func (fs *FileSystem) Process(ch chan<- *Node, path string, info os.FileInfo, fs
 		}
 		dir, filename = filepath.Split(path)
 	}
-	dirs := strings.Split(dir, string(filepath.Separator))
-	p := fs.MkChildren(dirs)
-	var n *Node
-	n = p.Children[filename]
-	if n == nil {
-		n = NewNode(!info.IsDir(), filename, p)
-		p.Children[filename] = n
+	if len(dir) <= len(fs.Root) {
+		return nil
+	} else {
+		dir = dir[len(fs.Root):]
 	}
-	// n.info = info
+	var p *Node
+	if dir != string(filepath.Separator) {
+		// fmt.Fprintf(os.Stderr, "Dir: %s\n", dir)
+		dirs := strings.Split(dir, string(filepath.Separator))
+		p = fs.mkChildren(dirs)
+	}
 
-	if info.IsDir() {
-		// n.Name = info.Name()
-		n.Size = 0
-		n.Mode = uint32(info.Mode())
-		n.ModTime = info.ModTime()
-		n.IsDir = true
-		n.Sys = info.Sys()
+	var n *Node
+	if p == nil {
+		n = fs.Nodes[filename]
+	} else {
+		n = p.Children[filename]
+	}
 
+	if n == nil {
+		n = fs.newNodeFromInfo(info, p)
+		if p == nil {
+			fs.Nodes[filename] = n
+		} else {
+			p.Children[filename] = n
+			p.UpdateSize()
+		}
+
+	}
+
+	if n.IsDir {
 		files, err := ioutil.ReadDir(path)
 		if err != nil {
 			return err
 		}
-
 		for _, f := range files {
-			// n.Name = info.Name()
-			if !f.IsDir() {
-				n.Size += f.Size()
-			}
 			if n.Children[f.Name()] == nil {
-				cn := NewNode(!f.IsDir(), f.Name(), n)
-				n.Children[f.Name()] = cn
+				cn := fs.newNodeFromInfo(f, n)
+				n.Children[cn.Name] = cn
 			}
 		}
-	} else {
-		// n.Name = info.Name()
-		n.Size = info.Size()
-		n.Mode = uint32(info.Mode())
-		n.ModTime = info.ModTime()
-		n.IsDir = false
-		n.Sys = info.Sys()
+		n.UpdateSize()
 	}
+
 	fs.IdChan <- n
 	ch <- n
 	return nil

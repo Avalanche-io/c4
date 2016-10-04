@@ -24,15 +24,15 @@ var (
 var id_flags *flag.FlagSet
 var cp_flags *flag.FlagSet
 
-type CPTargetList []*string
+type CPTargetList []string
 
-func (t *CPTargetList) String() string {
-	return fmt.Sprintf("%s", *t)
+func (t CPTargetList) String() string {
+	return fmt.Sprintf("%s", []string(t))
 }
 
-func (t *CPTargetList) Set(value string) error {
+func (t CPTargetList) Set(value string) error {
 	// fmt.Printf("%s\n", value)
-	*t = append(*t, &value)
+	t = append(t, value)
 	return nil
 }
 
