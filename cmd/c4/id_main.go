@@ -2,9 +2,10 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/fatih/color"
 
@@ -47,11 +48,11 @@ func init() {
 }
 
 func id_main(f *flag.FlagSet) {
-	file_list := f.Args()
-	if len(file_list) == 0 {
+	filelist := f.Args()
+	if len(filelist) == 0 {
 		identify_pipe()
 	} else {
-		walk(file_list)
+		walk(filelist)
 	}
 }
 
@@ -69,29 +70,94 @@ func identify_pipe() {
 	}
 }
 
-func walk(file_list []string) {
-	// start := time.Now()
-	threads := 8
+func walk(filelist []string) {
 	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
+	wd = filepath.Join(wd, filelist[0])
 	f := fs.New(wd)
-	if f == nil {
-		panic("Failed to create c4.FileSystem walker.")
-	}
-	f.IdWorkers(threads)
-	ch := f.Add(file_list...)
-	for n := range ch {
-		_ = n
-		// fmt.Fprintf(os.Stderr, "%s\n", cyan(n.Name))
-	}
-	f.Wait()
+	f.Add(filelist...)
+	engine := fs.NewTaskEngine([]string{"Id"}, 20)
+	errCh := engine.Start()
+	go func() {
+		for e := range errCh {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", red(e.Error()))
+		}
+	}()
+	defer func() {
+		engine.EnqueueFS(f)
+		engine.Close()
+	}()
 
-	data, err := json.Marshal(f)
-	if err != nil {
-		panic(err)
-	}
-	// d := time.Now().Sub(start)
-	fmt.Println(string(data))
+	basedirs := strings.Split(wd, string(os.PathSeparator))
+	folder_ids := fs.NewEmptyItem()
+	id_counts := fs.NewEmptyItem()
+	// pending_files := fs.NewEmptyItem()
+	engine.TaskHandler("Id", func(item *fs.Item, b *fs.Buffer) error {
+		dirs := strings.Split(item.Path(), string(os.PathSeparator))
+		dirs = dirs[1 : len(dirs)-1]
+		count := 0
+
+		var dirpath string
+		if !item.IsDir() {
+			id, err := asset.Identify(b.Reader())
+			if err != nil {
+				return err
+			}
+			item.SetAttribute("id", id)
+			fmt.Printf("%[1]*[2]s%s:\n", len(dirs)-len(basedirs), "", item.Name())
+			fmt.Printf("  ID:%s\n", item.Id())
+
+			dirpath = filepath.Dir(item.Path())
+			if parent := folder_ids.Get(dirpath); parent == nil {
+				if c := id_counts.Get(dirpath); c != nil {
+					count = c.(int)
+				}
+				id_counts.Set(dirpath, count-1)
+				return nil
+			}
+
+		} else {
+
+			dirpath = item.Path()
+		}
+
+		if c := id_counts.Get(dirpath); c != nil {
+			count = c.(int)
+		} else {
+			id_counts.Set(dirpath, 0)
+		}
+
+		if d := folder_ids.Get(dirpath); d != nil {
+			var ids asset.IDSlice
+			dir := d.(*fs.Item)
+			for ele := range dir.Iterator(nil) {
+				if ele.Key == "." {
+					continue
+				}
+				if child := ele.Value; child != nil {
+					c := (child.(*fs.Item))
+					if id := c.GetAttribute("id"); id != nil {
+						ids.Push(id.(*asset.ID))
+					} else {
+						return nil
+					}
+				} else {
+					return nil
+				}
+			}
+			id, err := ids.ID()
+			if err != nil {
+				return err
+			}
+			dir.SetAttribute("id", id)
+
+		}
+		fmt.Printf("%s:\n", item.Path())
+		fmt.Printf("  name:%s\n", item.Name())
+		fmt.Printf("  ID:%s\n", item.Id())
+		return nil
+	})
+
 }

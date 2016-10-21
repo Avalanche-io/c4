@@ -1,19 +1,24 @@
 package fs
 
 import (
-	// "fmt"
+	// "errors"
+	"fmt"
+	"os"
 	"sync"
 	"time"
+
+	"github.com/etcenter/c4/asset"
 )
 
-type Task string
+// type Task string
 
-type TaskFunc func(src string, b *Buffer)
-type StartFunc func(src string) *Buffer
+// type TaskFunc func(src string, b *Buffer)
+type TaskFunc func(i *Item, b *Buffer) error
+type StartFunc func(i *Item, mtb *MultiTaskBuffer) (*Buffer, error)
 
 type TaskBuffer struct {
 	Engine   *TaskEngine
-	Source   string
+	Source   *Item
 	Data     *Buffer
 	Complete []bool
 }
@@ -28,7 +33,9 @@ func (b *TaskBuffer) Done(qId int) {
 		}
 	}
 	if done == true {
-		b.Data.Release()
+		if b.Data != nil {
+			b.Data.Release()
+		}
 	}
 }
 
@@ -36,13 +43,21 @@ type TaskQueue struct {
 	Key     string
 	Ch      chan *TaskBuffer
 	Do      TaskFunc
-	WG      sync.WaitGroup
+	wg      sync.WaitGroup
 	Timelog []time.Duration
 }
 
 func (q *TaskQueue) Close() {
-	q.WG.Wait()
+	q.wg.Wait()
 	close(q.Ch)
+}
+
+func (q *TaskQueue) AddWait() {
+	q.wg.Add(1)
+}
+
+func (q *TaskQueue) DoneWait() {
+	q.wg.Done()
 }
 
 func (q *TaskQueue) LogTime(d time.Duration) {
@@ -61,13 +76,14 @@ type TaskEngine struct {
 	Threads int
 	Queues  []*TaskQueue
 	Index   map[string]int
-	Ich     chan string
-	// MTB       *MultiTaskBuffer
-	WG      sync.WaitGroup
+	Ich     chan *Item
+	errCh   chan error
+	MTB     *MultiTaskBuffer
+	wg      sync.WaitGroup
 	DoStart StartFunc
 }
 
-func NewTaskEngine(names []string) *TaskEngine {
+func NewTaskEngine(names []string, buffers uint64) *TaskEngine {
 	qs := make([]*TaskQueue, len(names))
 	idx := make(map[string]int)
 	for i, n := range names {
@@ -83,37 +99,45 @@ func NewTaskEngine(names []string) *TaskEngine {
 		Threads: 0,
 		Queues:  qs,
 		Index:   idx,
-		Ich:     make(chan string),
-		// MTB:    NewMTB(200),
+		Ich:     make(chan *Item),
+		DoStart: DefaultStartTask,
+		MTB:     NewMTB(buffers),
 	}
 	return &e
 }
 
-func (e *TaskEngine) Add(s string) {
-	e.Ich <- s
-}
-
-// Starts the read thread, reading and closing all inputs
-// inputs are consumed, or buffer is full.
-func (e *TaskEngine) InputDone() {
+func (e *TaskEngine) EnqueueFS(fs *FileSystem) {
+	ch := fs.Walk()
+	for item := range ch {
+		e.Ich <- item
+	}
 	close(e.Ich)
 }
 
-func (e *TaskEngine) Start() {
+func (e *TaskEngine) Start() <-chan error {
+	ech := make(chan error)
+	e.errCh = ech
 	go func() {
-		for t := range e.Ich {
-			d := e.DoStart(t)
+		for item := range e.Ich {
+			d, err := e.DoStart(item, e.MTB)
+			if err != nil {
+				ech <- err
+			}
+			if !item.IsDir() && d == nil {
+				fmt.Printf("err = %s\n", Red(err.Error()))
+				panic("Start(): ")
+			}
 			b := TaskBuffer{
 				Engine:   e,
-				Source:   t,
-				Data:     d, // blocks if all buffers are in use, until buffer is released
+				Source:   item,
+				Data:     d,
 				Complete: make([]bool, len(e.Queues)),
 			}
 			for _, q := range e.Queues {
-				q.WG.Add(1)
+				q.AddWait()
 				go func(b *TaskBuffer, q *TaskQueue) {
 					q.Ch <- b
-					q.WG.Done()
+					q.DoneWait()
 				}(&b, q)
 			}
 		}
@@ -123,7 +147,8 @@ func (e *TaskEngine) Start() {
 			}(q)
 		}
 	}()
-	e.do()
+	e.do(ech)
+	return ech
 }
 
 func (e *TaskEngine) StartTask(f StartFunc) {
@@ -135,32 +160,79 @@ func (e *TaskEngine) TaskHandler(queue_name string, f TaskFunc) {
 	e.Queues[i].Do = f
 }
 
-func (e *TaskEngine) do() {
+func (e *TaskEngine) do(ech chan<- error) {
 	threads := len(e.Queues)
-	if e.Threads > 0 && e.Threads <= threads {
+	if threads <= 0 {
+		panic("Cannot run tasks, queues not initialized")
+	} else if e.Threads > 0 && e.Threads <= threads {
 		threads = e.Threads
 	}
-	e.WG.Add(threads)
 	batch := len(e.Queues) / threads
 	for j := 0; j < threads; j++ {
+		e.AddWait()
 		go func(j int) {
 			for k := 0; k < batch; k++ {
 				qID := j*batch + k
 				q := e.Queues[qID]
 				for b := range q.Ch {
-					// outstr := fmt.Sprintf("Queue %d %s: source: %s", qID, q.Key, b.Source)
 					start := time.Now()
-					q.Do(b.Source, b.Data)
+					err := q.Do(b.Source, b.Data)
+					if err != nil {
+						ech <- err
+					}
 					end := time.Now()
 					q.LogTime(end.Sub(start))
 					b.Done(qID)
 				}
 			}
-			e.WG.Done()
+			e.DoneWait()
 		}(j)
 	}
 }
 
 func (e *TaskEngine) Close() {
-	e.WG.Wait()
+	e.wg.Wait()
+	close(e.errCh)
+}
+
+func (e *TaskEngine) AddWait() {
+	e.wg.Add(1)
+}
+
+func (e *TaskEngine) DoneWait() {
+	e.wg.Done()
+}
+
+func DefaultStartTask(item *Item, mtb *MultiTaskBuffer) (*Buffer, error) {
+	if item.IsDir() {
+		return nil, nil
+	}
+
+	f, err := os.OpenFile(item.Path(), os.O_RDONLY, 0777)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b := mtb.Get(uint64(item.Get("size").(int64)))
+	f.Read(b.Bytes())
+	return b, nil
+}
+
+func IdTask(item *Item, b *Buffer) error {
+	var id *asset.ID
+	var err error
+	if item.IsDir() {
+		item.Set("id", id)
+		return nil
+	}
+	if b == nil {
+		item.Print()
+		panic(Bold(Blue("Buffer is nil")))
+	}
+	id, err = asset.Identify(b.Reader())
+	if err != nil {
+		return err
+	}
+	item.SetAttribute("id", id)
+	return nil
 }

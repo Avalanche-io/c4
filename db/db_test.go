@@ -1,6 +1,8 @@
 package db_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -88,7 +90,7 @@ func TestGet(t *testing.T) {
 	is.Equal(data, []byte(value))
 }
 
-func TestItterate(t *testing.T) {
+func TestIterate(t *testing.T) {
 	is := is.New(t)
 
 	tmp := test.TempDir(is)
@@ -123,4 +125,31 @@ func TestItterate(t *testing.T) {
 		i++
 		return true
 	})
+}
+
+func TestIterator(t *testing.T) {
+	is := is.New(t)
+	tmp := test.TempDir(is)
+	defer test.DeleteDir(&tmp)
+
+	db_path := tmp + "/c4.db"
+	test_db, err := db.Open(db_path)
+	is.NoErr(err)
+
+	err = test_db.CreateBucket("bucket")
+	is.NoErr(err)
+
+	key_list := map[string]int{}
+	var i int
+	for i = 0; i < 1000; i++ {
+		key := fmt.Sprintf("%08d", i)
+		key_list[key] = i
+		b, err := json.Marshal(i)
+		is.NoErr(err)
+		err = test_db.Put("bucket", []byte(key), b)
+		is.NoErr(err)
+	}
+	for ele := range test_db.Iterator("bucket", nil) {
+		is.Equal(key_list[ele.Key()], ele.Value())
+	}
 }

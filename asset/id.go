@@ -12,7 +12,9 @@ import (
 // to reduce transcription errors, and make friendlier URLs
 const (
 	charset = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
-	base    = 58
+	// new character order to reduce sorting error.
+	// charset = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	base = 58
 )
 
 var (

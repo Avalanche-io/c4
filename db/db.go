@@ -2,9 +2,34 @@
 // The keys are typically raw c4 ids, the values are *always* raw c4 ids.
 package db
 
-import "github.com/boltdb/bolt"
+import (
+	// "bytes"
+	"encoding/json"
+	"errors"
+	"log"
+
+	"github.com/boltdb/bolt"
+)
 
 type DB bolt.DB
+
+type Element interface {
+	Key() string
+	Value() interface{}
+}
+
+type DBE struct {
+	key   string
+	value interface{}
+}
+
+func (k *DBE) Key() string {
+	return k.key
+}
+
+func (k *DBE) Value() interface{} {
+	return k.value
+}
 
 // Open creates or opens the given db path with permissions 0600.
 func Open(path string) (*DB, error) {
@@ -106,4 +131,75 @@ func (db *DB) Iterate(bucket string, f func(k []byte, v []byte) bool) error {
 		return nil
 	})
 	return err
+}
+
+func (db *DB) Iterator(bucket string, key []byte, cancel <-chan struct{}) <-chan Element {
+	bdb := (*bolt.DB)(db)
+
+	out := make(chan Element)
+	if key == nil {
+		log.Println("key: NIL")
+
+	} else {
+		log.Printf("key: %s\n", string(key))
+	}
+	go func() {
+		err := bdb.View(func(tx *bolt.Tx) error {
+			// Assume bucket exists and has keys
+			b := tx.Bucket([]byte(bucket))
+			if b == nil {
+				return errors.New("No bucket " + bucket)
+			}
+			c := b.Cursor()
+			var k, v []byte
+			if key == nil {
+				k, v = c.First()
+			} else {
+				log.Println("Seeking")
+				k, v = c.Seek(key)
+			}
+
+			for ; k != nil; k, v = c.Next() {
+				var val interface{}
+				err := json.Unmarshal(v, &val)
+				if err != nil {
+					return err
+				}
+				ent := DBE{string(k), val}
+				select {
+				case out <- &ent:
+				case <-cancel:
+					return nil
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			panic(err)
+		}
+		close(out)
+	}()
+	return out
+}
+
+type KeyValueInterface interface {
+	Set(key string, value interface{})
+	Get(key string) interface{}
+	Iterator(cancel <-chan struct{}) <-chan Element
+}
+
+func (db *DB) Commit(bucket string, item KeyValueInterface) error {
+	for ele := range item.Iterator(nil) {
+		b, err := json.Marshal(ele.Value())
+		if err != nil {
+			return err
+		}
+		db.Put(bucket, []byte(ele.Key()), b)
+	}
+	return nil
+}
+
+func (db *DB) Stats() bolt.Stats {
+	bdb := (*bolt.DB)(db)
+	return bdb.Stats()
 }

@@ -34,6 +34,9 @@ func main() {
 		}
 	case "cp":
 		if err := cp_flags.Parse(os.Args[2:]); err == nil {
+			// fmt.Fprintf(os.Stderr, "os.Args[2:0] %v\n", os.Args[2:])
+			// fmt.Fprintf(os.Stderr, "cp_flags %v\n", cp_flags)
+			// os.Exit(0)
 			cp_main(cp_flags)
 		} else {
 			fmt.Fprintf(os.Stderr, "cp_flags %s\n", err)

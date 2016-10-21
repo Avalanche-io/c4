@@ -1,17 +1,17 @@
 package fs_test
 
 import (
-	"fmt"
+	// "errors"
+	// "fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/shirou/gopsutil/mem"
+	// "github.com/shirou/gopsutil/mem"
 
 	"github.com/cheekybits/is"
 
-	"github.com/etcenter/c4/asset"
 	"github.com/etcenter/c4/fs"
 	"github.com/etcenter/c4/test"
 )
@@ -19,11 +19,11 @@ import (
 func TestBufferedMultiTasks(t *testing.T) {
 	is := is.New(t)
 	_ = is
-	dir := "/source/foo/bar"
+	// dir := "/source/foo/bar"
 
 	start := time.Now()
 	names := []string{"Id", "/target1/bar", "/target2/bat", "/target3/baz"}
-	engine := fs.NewTaskEngine(names)
+	engine := fs.NewTaskEngine(names, 20)
 	engine.Start()
 	defer func() {
 		engine.Close()
@@ -34,35 +34,44 @@ func TestBufferedMultiTasks(t *testing.T) {
 		}
 	}()
 
-	mtb := fs.NewMTB(20000)
-	engine.StartTask(func(src string) *fs.Buffer {
-		return mtb.Get(20)
+	// mtb := fs.NewMTB(20000)
+	engine.StartTask(func(item *fs.Item, mtb *fs.MultiTaskBuffer) (*fs.Buffer, error) {
+		return mtb.Get(20), nil
 	})
 
-	engine.TaskHandler("Id", func(src string, b *fs.Buffer) {
-		time.Sleep(time.Duration(1) * time.Millisecond)
-		// fmt.Printf("Id task for: %s\n", src)
-	})
-	engine.TaskHandler("/target1/bar", func(src string, b *fs.Buffer) {
+	// type TaskFunc func(i Item, b *Buffer) error
+	engine.TaskHandler("Id", fs.IdTask)
+	//                    func(src string, b *fs.Buffer) {
+	// 	time.Sleep(time.Duration(1) * time.Millisecond)
+	// 	// fmt.Printf("Id task for: %s\n", src)
+	// })
+	engine.TaskHandler("/target1/bar", func(i *fs.Item, b *fs.Buffer) error {
 		time.Sleep(time.Duration(10) * time.Millisecond)
 		// fmt.Printf("Copy to '/target1/bar' task: %s\n", src)
-	})
-	engine.TaskHandler("/target2/bat", func(src string, b *fs.Buffer) {
-		time.Sleep(time.Duration(3) * time.Millisecond)
-		// fmt.Printf("Copy to '/target2/bat' task: %s\n", src)
-	})
-	engine.TaskHandler("/target3/baz", func(src string, b *fs.Buffer) {
-		time.Sleep(time.Duration(6) * time.Millisecond)
-		// fmt.Printf("Copy to '/target3/baz' task: %s\n", src)
+		return nil
 	})
 
-	go func() {
-		for i := 0; i < 100; i++ {
-			s := fmt.Sprintf("%s/file_%04d.dat", dir, i)
-			engine.Add(s)
-		}
-		engine.InputDone()
-	}()
+	engine.TaskHandler("/target2/bat", func(i *fs.Item, b *fs.Buffer) error {
+		time.Sleep(time.Duration(3) * time.Millisecond)
+		// fmt.Printf("Copy to '/target2/bat' task: %s\n", src)
+		return nil
+	})
+
+	engine.TaskHandler("/target3/baz", func(i *fs.Item, b *fs.Buffer) error {
+		time.Sleep(time.Duration(6) * time.Millisecond)
+		// fmt.Printf("Copy to '/target3/baz' task: %s\n", src)
+		return nil
+	})
+
+	tmp := test.TempDir(is)
+	defer test.DeleteDir(&tmp)
+	// threads := 8
+	build_test_fs(is, tmp, 8, 20, 0)
+
+	f := fs.New(tmp)
+	f.Add(tmp)
+	engine.EnqueueFS(f)
+
 }
 
 func TestMultiTargetFileCopy(t *testing.T) {
@@ -78,71 +87,55 @@ func TestMultiTargetFileCopy(t *testing.T) {
 		}
 	}()
 
-	build_test_fs(is, tmp[0], 4, 10, 0)
+	build_test_fs(is, tmp[0], 20, 20, 0)
 
 	start := time.Now()
 	names := []string{"Id", tmp[1], tmp[2]}
-	engine := fs.NewTaskEngine(names)
-	// engine.Threads = 1
-	engine.Start()
-	v, _ := mem.VirtualMemory()
-	mtb := fs.NewMTB(v.Available)
+	engine := fs.NewTaskEngine(names, 20)
+	ech := engine.Start()
+	go func() {
+		for e := range ech {
+			t.Error("Task engine error: ", fs.Red(e.Error()))
+		}
+	}()
 	defer func() {
 		engine.Close()
 		end := time.Now()
 
-		t.Log("Peak Ram: ", mtb.Peak/(1024*1024), "MB")
 		t.Log("Time: ", end.Sub(start))
 		for _, q := range engine.Queues {
 			t.Log("Average Task Time: ", q.Key, q.AvgTime())
 		}
 	}()
 
-	engine.StartTask(func(src string) *fs.Buffer {
-		info, err := os.Stat(src)
-		is.NoErr(err)
-		f, err := os.OpenFile(src, os.O_RDONLY, 0600)
-		is.NoErr(err)
-		defer f.Close()
-		b := mtb.Get(uint64(info.Size()))
-		f.Read(b.Bytes())
-		return b
-	})
-
-	engine.TaskHandler("Id", func(src string, b *fs.Buffer) {
-		id, err := asset.Identify(b.Reader())
-		_ = id
-		is.NoErr(err)
-	})
+	engine.TaskHandler("Id", fs.IdTask)
+	source_prefix := tmp[0]
 
 	for i := 1; i < 3; i++ {
 		temppath := tmp[i]
-		engine.TaskHandler(temppath, func(src string, b *fs.Buffer) {
-			// time.Sleep(time.Duration(10) * time.Millisecond)
-			filename := temppath + src[len(tmp[0]):]
-			path := filepath.Dir(filename)
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				err := os.MkdirAll(path, 0777)
-				is.NoErr(err)
+		engine.TaskHandler(temppath, func(item *fs.Item, b *fs.Buffer) error {
+			target := temppath + item.Path()[len(source_prefix):]
+
+			if item.IsDir() {
+				os.MkdirAll(target, 0777)
+			} else {
+				os.MkdirAll(filepath.Dir(target), 0777)
+				f, err := os.Create(target)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				n, err := f.Write(b.Bytes())
+				if err != nil {
+					return err
+				}
+				is.Equal(n, item.Size())
 			}
-			f, err := os.Create(filename)
-			is.NoErr(err)
-			defer f.Close()
-			// fmt.Printf("Writing: %s\n", filename)
-			n, err := f.Write(b.Bytes())
-			is.NoErr(err)
-			if n != len(b.Bytes()) {
-				t.Error("Bad write size ", n, "vs", len(b.Bytes()))
-			}
+			return nil
 		})
 	}
 
-	filepath.Walk(tmp[0], func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			engine.Add(path)
-		}
-		return nil
-	})
-	engine.InputDone()
-
+	f := fs.New(tmp[0])
+	f.Add(tmp[0])
+	engine.EnqueueFS(f)
 }

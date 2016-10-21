@@ -24,15 +24,17 @@ var (
 var id_flags *flag.FlagSet
 var cp_flags *flag.FlagSet
 
-type CPTargetList []string
-
-func (t CPTargetList) String() string {
-	return fmt.Sprintf("%s", []string(t))
+type CPTargetList struct {
+	List []string
 }
 
-func (t CPTargetList) Set(value string) error {
-	// fmt.Printf("%s\n", value)
-	t = append(t, value)
+func (t *CPTargetList) String() string {
+	return fmt.Sprintf("%s", []string(t.List))
+}
+
+func (t *CPTargetList) Set(value string) error {
+	t.List = append(t.List, value)
+
 	return nil
 }
 
@@ -48,6 +50,7 @@ var (
 	recursive_cp_flag        bool
 	verbose_cp_flag          bool
 	target_cp_flag           CPTargetList
+	target_string_flag       string
 )
 
 func init() {
