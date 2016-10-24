@@ -46,7 +46,7 @@ func TestCreateKVStoreIterator(t *testing.T) {
 func TestCreateKVStoreCommit(t *testing.T) {
 	is := is.New(t)
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 	db_path := tmp + "/test.db"
 	test_db, err := db.Open(db_path)
 	is.NoErr(err)
@@ -70,7 +70,7 @@ func TestCreateKVStoreCommit(t *testing.T) {
 	is.NoErr(err)
 	defer test_db2.Close()
 
-	for ele := range test_db2.Iterator("bucket", nil) {
+	for ele := range test_db2.Iterator("bucket", nil, nil) {
 		is.Equal(ele.Key(), "foo")
 		is.Equal(ele.Value(), "bar")
 	}

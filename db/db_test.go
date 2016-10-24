@@ -15,7 +15,7 @@ import (
 func TestCreatesDB(t *testing.T) {
 	is := is.New(t)
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 
 	db_path := tmp + "/c4.db"
 	test_db, err := db.Open(db_path)
@@ -30,7 +30,7 @@ func TestCreatesBuckets(t *testing.T) {
 	is := is.New(t)
 
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 
 	db_path := tmp + "/c4.db"
 	test_db, err := db.Open(db_path)
@@ -54,7 +54,7 @@ func TestPut(t *testing.T) {
 	is := is.New(t)
 
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 
 	db_path := tmp + "/c4.db"
 	test_db, err := db.Open(db_path)
@@ -71,7 +71,7 @@ func TestGet(t *testing.T) {
 	is := is.New(t)
 
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 
 	db_path := tmp + "/c4.db"
 	test_db, err := db.Open(db_path)
@@ -94,7 +94,7 @@ func TestIterate(t *testing.T) {
 	is := is.New(t)
 
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 
 	db_path := tmp + "/c4.db"
 	test_db, err := db.Open(db_path)
@@ -130,7 +130,7 @@ func TestIterate(t *testing.T) {
 func TestIterator(t *testing.T) {
 	is := is.New(t)
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 
 	db_path := tmp + "/c4.db"
 	test_db, err := db.Open(db_path)
@@ -149,7 +149,7 @@ func TestIterator(t *testing.T) {
 		err = test_db.Put("bucket", []byte(key), b)
 		is.NoErr(err)
 	}
-	for ele := range test_db.Iterator("bucket", nil) {
+	for ele := range test_db.Iterator("bucket", nil, nil) {
 		is.Equal(key_list[ele.Key()], ele.Value())
 	}
 }
