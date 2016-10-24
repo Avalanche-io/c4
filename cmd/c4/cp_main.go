@@ -48,6 +48,9 @@ func CpMain(f *flag.FlagSet, stdioch chan string, stderrch chan error) {
 		if info.IsDir() {
 			if recursive_cp_flag {
 				err := filepath.Walk(file, func(path string, info os.FileInfo, err error) error {
+					if verbose_cp_flag {
+						stdioch <- fmt.Sprintf("%s -> %s\n", path, target_arg+string(os.PathSeparator)+path)
+					}
 					return mkdirOrCopy(path, info, target)
 				})
 				if err != nil {
@@ -59,6 +62,9 @@ func CpMain(f *flag.FlagSet, stdioch chan string, stderrch chan error) {
 				continue
 			}
 		} else {
+			if verbose_cp_flag {
+				stdioch <- fmt.Sprintf("%s -> %s\n", file, target_arg+string(os.PathSeparator)+file)
+			}
 			err := mkdirOrCopy(file, info, target)
 			if err != nil {
 				stderrch <- err

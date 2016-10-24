@@ -14,32 +14,32 @@ import (
 type ColorFunc func(...interface{}) string
 
 var (
-	bold    ColorFunc
-	red     ColorFunc
-	yellow  ColorFunc
-	green   ColorFunc
-	blue    ColorFunc
-	magenta ColorFunc
-	cyan    ColorFunc
-	white   ColorFunc
+	Bold    ColorFunc
+	Red     ColorFunc
+	Yellow  ColorFunc
+	Green   ColorFunc
+	Blue    ColorFunc
+	Magenta ColorFunc
+	Cyan    ColorFunc
+	White   ColorFunc
 )
 
 func init() {
-	bold = color.New(color.Bold).SprintFunc()
-	red = color.New(color.FgRed).SprintFunc()
-	yellow = color.New(color.FgYellow).SprintFunc()
-	green = color.New(color.FgGreen).SprintFunc()
-	blue = color.New(color.FgBlue).SprintFunc()
-	magenta = color.New(color.FgMagenta).SprintFunc()
-	cyan = color.New(color.FgCyan).SprintFunc()
-	white = color.New(color.FgWhite).SprintFunc()
-	_ = red
-	_ = yellow
-	_ = green
-	_ = blue
-	_ = magenta
-	_ = cyan
-	_ = white
+	Bold = color.New(color.Bold).SprintFunc()
+	Red = color.New(color.FgRed).SprintFunc()
+	Yellow = color.New(color.FgYellow).SprintFunc()
+	Green = color.New(color.FgGreen).SprintFunc()
+	Blue = color.New(color.FgBlue).SprintFunc()
+	Magenta = color.New(color.FgMagenta).SprintFunc()
+	Cyan = color.New(color.FgCyan).SprintFunc()
+	White = color.New(color.FgWhite).SprintFunc()
+	_ = Red
+	_ = Yellow
+	_ = Green
+	_ = Blue
+	_ = Magenta
+	_ = Cyan
+	_ = White
 
 }
 

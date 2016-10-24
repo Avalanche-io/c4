@@ -26,7 +26,7 @@ func setup(is is.I) []string {
 		t := test.TempDir(is)
 		tempdirs = append(tempdirs, t)
 	}
-	build_test_fs(is, tempdirs[0], 8, 20, 0)
+	build_test_fs(is, tempdirs[0], 3, 5, 0)
 
 	return tempdirs
 }
@@ -57,6 +57,7 @@ func TestAllCpFlags(t *testing.T) {
 		{[]string{"-R"}, []string{"*"}, true, 0},
 		{[]string{}, []string{"*.txt"}, true, 0},
 		{[]string{}, []string{"*"}, true, 1},
+		{[]string{"-Rv"}, []string{"*"}, true, 1},
 	}
 
 	os.Chdir(srcdir)
@@ -106,39 +107,96 @@ func TestAllCpFlags(t *testing.T) {
 		err := c4.CpFlags.Parse(args)
 		is.NoErr(err)
 		// c4_out, c4_err :=
-		stdoutch := make(chan string)
-		stderrch := make(chan error)
+		stdoutch := make(chan string, 100)
+		stderrch := make(chan error, 100)
 
 		go func() {
 			c4.CpMain(c4.CpFlags, stdoutch, stderrch)
 			close(stdoutch)
 			close(stderrch)
 		}()
-		var c4_stdout, c4_stderr bytes.Buffer
+		// var c4_stdout, c4_stderr bytes.Buffer
+		c4_stdout := []string{}
+		c4_stderr := []string{}
+
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
+			error_lines := strings.Split(stderr.String(), "\n")
+			i := 0
 			for err := range stderrch {
-				_, err := c4_stderr.Write([]byte(err.Error()))
-				is.NoErr(err)
+				message_lines := strings.Split(err.Error(), "\n")
+				for j, line := range message_lines {
+					if line == "" {
+						continue
+					}
+					error_lines[i] = strings.Replace(error_lines[i], targets[0], "targetdir", -1)
+					message_lines[j] = strings.Replace(message_lines[j], targets[1], "targetdir", -1)
+					is.Equal(error_lines[i], message_lines[j])
+					c4_stderr = append(c4_stderr, message_lines[j])
+
+					// fmt.Printf("%s stderr: %q\n", c4.Red("cp"), error_lines[i])
+					// fmt.Printf("%s stderr: %q\n", c4.Green("cp"), message_lines[j])
+					i++
+				}
+				// c4_stderr.Write([]byte(strings.Join(message_lines, "\n")))
 			}
 			wg.Done()
 		}()
 		go func() {
+			out_lines := strings.Split(stdout.String(), "\n")
+			i := 0
 			for str := range stdoutch {
-				_, err := c4_stdout.Write([]byte(str))
-				is.NoErr(err)
+				message_lines := strings.Split(str, "\n")
+				for j, line := range message_lines {
+					if line == "" {
+						continue
+					}
+					out_lines[i] = strings.Replace(out_lines[i], targets[0], "targetdir", -1)
+					message_lines[j] = strings.Replace(message_lines[j], targets[1], "targetdir", -1)
+					is.Equal(out_lines[i], message_lines[j])
+					c4_stdout = append(c4_stdout, message_lines[j])
+
+					// if len(message_lines[j]) < 60 {
+					// 	fmt.Printf("%s stdout: %q\n", c4.Red("cp"), out_lines[i])
+					// 	fmt.Printf("%s stdout: %q\n", c4.Green("c4"), message_lines[j])
+					// }
+					i++
+				}
+				// c4_stdout.Write([]byte(strings.Join(message_lines, "\n")))
 			}
 			wg.Done()
 		}()
 		wg.Wait()
 
 		if cp_err != nil {
-			// expected := fmt.Sprintf("exit status %d", tt.status)
-			// is.Equal(expected, cp_err.Error())
-			is.Equal(stderr.String(), c4_stderr.String())
+			expected := fmt.Sprintf("exit status %d", tt.status)
+			is.Equal(expected, cp_err.Error())
+			// is.Equal(stderr.String(), c4_stderr.String())
+			cp_stderr := strings.Replace(stderr.String(), targets[0], "targetdir", -1)
+			for i, cp_line := range strings.Split(cp_stderr, "\n") {
+				c4_line := ""
+				if i < len(c4_stderr) {
+					c4_line = c4_stderr[i]
+				}
+				is.Equal(cp_line, c4_line)
+			}
 		}
-		is.Equal(stdout.String(), c4_stdout.String())
+		cp_stdout := strings.Replace(stdout.String(), targets[0], "targetdir", -1)
+		cp_stdout_lines := strings.Split(cp_stdout, "\n")
+		// fmt.Printf("cp_stdout: \n%s\n", cp_stdout)
+		for i, cp_line := range cp_stdout_lines {
+			c4_line := ""
+			if i < len(c4_stdout) {
+				c4_line = c4_stdout[i]
+			}
+			// if len(message_lines[j]) < 60 {
+			// fmt.Printf("%s stdout[%d]: %q\n", c4.Red("cp"), i, cp_line)
+			// fmt.Printf("%s stdout[%d]: %q\n", c4.Green("c4"), i, c4_line)
+			// }
+			is.Equal(cp_line, c4_line)
+		}
+		// is.Equal(cp_stdout, c4_stdout.String())
 		ok := compare_folders(is, targets[0], targets[1])
 		is.OK(ok)
 	}

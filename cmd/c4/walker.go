@@ -45,8 +45,8 @@ func update_folder_ids(item attributes.FsInfo, id *asset.ID) error {
 }
 
 func walkFilesystem(depth int, filename string, relative_path string, achan chan<- attributes.FsInfo) (*asset.ID, error) {
-	str := fmt.Sprintf("\nwalkFilesystem %d, %s\n", depth, cyan(filename))
-	fmt.Fprintf(os.Stderr, bold(str))
+	str := fmt.Sprintf("\nwalkFilesystem %d, %s\n", depth, Cyan(filename))
+	fmt.Fprintf(os.Stderr, Bold(str))
 	path, err := filepath.Abs(filename)
 	if err != nil {
 		return nil, err
