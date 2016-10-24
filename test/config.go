@@ -14,8 +14,8 @@ func TempDir(is is.I) string {
 	return dir
 }
 
-func DeleteDir(dir *string) {
-	os.RemoveAll(*dir)
+func DeleteDir(dir string) {
+	os.RemoveAll(dir)
 }
 
 func TestConfig(is is.I) *env.Config {
@@ -24,5 +24,5 @@ func TestConfig(is is.I) *env.Config {
 }
 
 func TestDeleteConfig(cfg *env.Config) {
-	DeleteDir(cfg.Root)
+	DeleteDir(*cfg.Root)
 }

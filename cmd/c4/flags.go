@@ -22,7 +22,7 @@ var (
 )
 
 var id_flags *flag.FlagSet
-var cp_flags *flag.FlagSet
+var CpFlags *flag.FlagSet
 
 type CPTargetList struct {
 	List []string
@@ -70,12 +70,12 @@ func init() {
 		fmt.Fprintf(os.Stderr, id_message)
 		id_flags.PrintDefaults()
 		fmt.Fprintf(os.Stderr, cp_message)
-		cp_flags.PrintDefaults()
+		CpFlags.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 	id_flags = flag.NewFlagSet("id", flag.ContinueOnError)
-	cp_flags = flag.NewFlagSet("cp", flag.ContinueOnError)
+	CpFlags = CpFlagsInit()
 
 	// id
 	// id_flags.BoolVarP(&version_flag, "version", "v", false, "Show version information.")
@@ -88,16 +88,22 @@ func init() {
 	id_flags.BoolVarP(&include_meta, "metadata", "m", false, "Include filesystem metadata.")
 	id_flags.StringVarP(&formatting_string, "formatting", "f", "id", "Output formatting options.\n          \"id\": c4id oriented.\n          \"path\": path oriented.")
 
+}
+
+func CpFlagsInit() *flag.FlagSet {
+	fs := flag.NewFlagSet("cp", flag.ContinueOnError)
 	// cp
-	cp_flags.BoolVarP(&archive_cp_flag, "archive", "a", false, "Same as -pPR options.")
-	cp_flags.BoolVarP(&force_cp_flag, "force", "f", false, "Force.")
-	cp_flags.BoolVarP(&follow_all_links_cp_flag, "follow_all_links", "H", false, "Follow all symbolic links.")
-	cp_flags.BoolVarP(&prompt_cp_flag, "prompt", "i", false, "Prompt before overwriting an existing file.")
-	cp_flags.BoolVarP(&follow_links_cp_flag, "follow_links", "L", false, "Follow links instead of copy with -R option.")
-	cp_flags.BoolVarP(&noclobber_cp_flag, "noclobber", "n", false, "Do not overwrite existing files.")
-	cp_flags.BoolVarP(&copy_links_cp_flag, "copy_links", "P", true, "Copy links with -R option (default).")
-	cp_flags.BoolVarP(&preserve_cp_flag, "preserve", "p", false, "Preserve attributes.")
-	cp_flags.BoolVarP(&recursive_cp_flag, "recursive", "R", false, "Copy recursively.")
-	cp_flags.BoolVarP(&verbose_cp_flag, "verbose", "v", false, "Verbose output.")
-	cp_flags.VarP(&target_cp_flag, "target", "T", "Specify additional target paths, can be used more than once.")
+	fs.BoolVarP(&archive_cp_flag, "archive", "a", false, "Same as -pPR options.")
+	fs.BoolVarP(&force_cp_flag, "force", "f", false, "Force.")
+	fs.BoolVarP(&follow_all_links_cp_flag, "follow_all_links", "H", false, "Follow all symbolic links.")
+	fs.BoolVarP(&prompt_cp_flag, "prompt", "i", false, "Prompt before overwriting an existing file.")
+	fs.BoolVarP(&follow_links_cp_flag, "follow_links", "L", false, "Follow links instead of copy with -R option.")
+	fs.BoolVarP(&noclobber_cp_flag, "noclobber", "n", false, "Do not overwrite existing files.")
+	fs.BoolVarP(&copy_links_cp_flag, "copy_links", "P", true, "Copy links with -R option (default).")
+	fs.BoolVarP(&preserve_cp_flag, "preserve", "p", false, "Preserve attributes.")
+	fs.BoolVarP(&recursive_cp_flag, "recursive", "R", false, "Copy recursively.")
+	fs.BoolVarP(&verbose_cp_flag, "verbose", "v", false, "Verbose output.")
+	fs.VarP(&target_cp_flag, "target", "T", "Specify additional target paths, can be used more than once.")
+
+	return fs
 }

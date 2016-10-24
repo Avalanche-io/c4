@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 
 	flag "github.com/ogier/pflag"
 )
@@ -33,13 +34,42 @@ func main() {
 			fmt.Fprintf(os.Stderr, "id_flags %s\n", err)
 		}
 	case "cp":
-		if err := cp_flags.Parse(os.Args[2:]); err == nil {
+		if err := CpFlags.Parse(os.Args[2:]); err == nil {
 			// fmt.Fprintf(os.Stderr, "os.Args[2:0] %v\n", os.Args[2:])
 			// fmt.Fprintf(os.Stderr, "cp_flags %v\n", cp_flags)
 			// os.Exit(0)
-			cp_main(cp_flags)
+
+			stdoutch := make(chan string)
+			stderrch := make(chan error)
+
+			go func() {
+				CpMain(CpFlags, stdoutch, stderrch)
+				close(stdoutch)
+				close(stderrch)
+			}()
+
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				for err := range stderrch {
+					fmt.Fprintf(os.Stderr, "%s", err.Error())
+				}
+				wg.Done()
+			}()
+			go func() {
+				for str := range stdoutch {
+					fmt.Fprintf(os.Stdout, "%s", str)
+				}
+				wg.Done()
+			}()
+			wg.Wait()
+
+			// CpMain(CpFlags)
+			// if err != nil {
+			// 	fmt.Fprintf(os.Stderr, "%s", err.Error())
+			// }
 		} else {
-			fmt.Fprintf(os.Stderr, "cp_flags %s\n", err)
+			fmt.Fprintf(os.Stderr, "Cp_flags %s\n", err)
 		}
 	default:
 		flag.Usage()
