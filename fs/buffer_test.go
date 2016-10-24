@@ -64,7 +64,7 @@ func TestBufferedMultiTasks(t *testing.T) {
 	})
 
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 	// threads := 8
 	build_test_fs(is, tmp, 8, 20, 0)
 
@@ -83,7 +83,7 @@ func TestMultiTargetFileCopy(t *testing.T) {
 	tmp[2] = test.TempDir(is)
 	defer func() {
 		for i := range tmp {
-			test.DeleteDir(&tmp[i])
+			test.DeleteDir(tmp[i])
 		}
 	}()
 

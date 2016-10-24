@@ -19,7 +19,7 @@ import (
 func TestDuplicationReport(t *testing.T) {
 	is := is.New(t)
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 	// threads := 8
 	dup_rate := 35
 	build_test_fs(is, tmp, 8, 20, uint32(dup_rate))
@@ -65,7 +65,7 @@ func TestDuplicationReport(t *testing.T) {
 func TestWalkFS(t *testing.T) {
 	is := is.New(t)
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 	threads := 8
 	build_test_fs(is, tmp, 8, 20, 0)
 	f := fs.New(tmp)

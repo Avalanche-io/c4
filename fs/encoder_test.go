@@ -17,7 +17,7 @@ import (
 func TestEncode(t *testing.T) {
 	is := is.New(t)
 	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	defer test.DeleteDir(tmp)
 	build_test_fs(is, tmp, 2, 2, 0)
 
 	f := fs.New(tmp)
