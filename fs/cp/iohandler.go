@@ -4,7 +4,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
+	"github.com/etcenter/c4/asset"
 	"github.com/etcenter/c4/db"
 )
 
@@ -15,20 +17,27 @@ type IoHandler struct {
 	Target    string
 	Buffers   *db.MultiTaskBuffer
 	files     []string
+	fwchan    chan Filewriter
+	wg        sync.WaitGroup
 }
 
-func NewIo(args []string, buffer_count uint64, stdioch chan string, stderrch chan error) *IoHandler {
-	io := &IoHandler{stdioch, stderrch, "", "", db.NewMTB(buffer_count), nil}
+type Filewriter struct {
+	Reader io.Reader
+	Path   string
+}
+
+func NewIo(args []string, buffer_count uint64, stdioch chan string, stderrch chan error) (*IoHandler, bool) {
+	io := &IoHandler{stdioch, stderrch, "", "", db.NewMTB(buffer_count), nil, nil, sync.WaitGroup{}}
 	switch {
 	case io.ifUsage(len(args) == 0):
-		return nil
+		return io, false
 	case io.ifUsage(len(args) == 1 && args[0] == ""):
-		return nil
+		return io, false
 	case io.setTarget(args[len(args)-1]):
-		return nil
+		return io, false
 	}
 	io.files = args[:len(args)-1]
-	return io
+	return io, true
 }
 
 func (io *IoHandler) IfError(err error) bool {
@@ -90,12 +99,27 @@ func (io *IoHandler) Copy(path string, src_info os.FileInfo) {
 	return
 }
 
-func (i *IoHandler) copyFileContents(src, dst string) {
-	in, err := os.Open(src)
-	if i.IfError(err) {
-		return
-	}
-	defer in.Close()
+func (i *IoHandler) read(src string) io.Reader {
+	reader, out := io.Pipe()
+
+	go func() {
+		in, err := os.Open(src)
+		if i.IfError(err) {
+			return
+		}
+		defer func() {
+			in.Close()
+			i.IfError(out.Close())
+		}()
+		_, err = io.Copy(out, in)
+		if i.IfError(err) {
+			return
+		}
+	}()
+	return reader
+}
+
+func (i *IoHandler) write(in io.Reader, dst string) {
 	out, err := os.Create(dst)
 	if i.IfError(err) {
 		return
@@ -110,6 +134,36 @@ func (i *IoHandler) copyFileContents(src, dst string) {
 	i.IfError(out.Sync())
 }
 
+func (i *IoHandler) copyFileContents(src string, dst string) {
+	reader := i.read(src)
+
+	idr, idw := io.Pipe()
+	fr, fw := io.Pipe()
+
+	go func() {
+		defer fw.Close()
+		defer idw.Close()
+
+		mw := io.MultiWriter(idw, fw)
+		_, err := io.Copy(mw, reader)
+		if i.IfError(err) {
+			return
+		}
+
+	}()
+	go func() {
+		e := asset.NewIDEncoder()
+		_, err := io.Copy(e, idr)
+		if i.IfError(err) {
+			return
+		}
+		id := e.ID()
+		_ = id
+		// fmt.Printf("%s: %s\n", id, src)
+	}()
+	i.fwchan <- Filewriter{fr, dst}
+}
+
 func (io *IoHandler) ifUsage(test bool) bool {
 	if test {
 		io.ErrCh <- cpError(usage)
@@ -121,6 +175,10 @@ func (io *IoHandler) TargetPathTo(path string) string {
 	return io.TargetArg + string(os.PathSeparator) + path
 }
 
+func (i *IoHandler) Wait() {
+	i.wg.Wait()
+}
+
 func (io *IoHandler) setTarget(target_arg string) bool {
 	io.TargetArg = target_arg
 	var err error
@@ -129,5 +187,13 @@ func (io *IoHandler) setTarget(target_arg string) bool {
 		io.ErrCh <- err
 		return true
 	}
+	fwchan := make(chan Filewriter)
+	io.fwchan = fwchan
+
+	go func() {
+		for fw := range fwchan {
+			io.write(fw.Reader, fw.Path)
+		}
+	}()
 	return false
 }

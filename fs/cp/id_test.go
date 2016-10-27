@@ -29,11 +29,14 @@ func TestID(t *testing.T) {
 	c4_stderrch := make(chan error, 1)
 	var c4_stderr, c4_stdout []string
 
+	io, ok := c4.NewIo(client.CpFlags.Args(), uint64(1), c4_stdoutch, c4_stderrch)
 	go func() {
-		io := c4.NewIo(client.CpFlags.Args(), uint64(1), c4_stdoutch, c4_stderrch)
+		defer close(c4_stdoutch)
+		defer close(c4_stderrch)
+		if !ok {
+			return
+		}
 		c4.CpMain(io, client.RecursiveFlag, client.VerboseFlag)
-		close(c4_stdoutch)
-		close(c4_stderrch)
 	}()
 
 	var wg sync.WaitGroup
