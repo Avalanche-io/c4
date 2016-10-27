@@ -1,4 +1,4 @@
-package fs_test
+package db_test
 
 import (
 	// "errors"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/cheekybits/is"
 
+	"github.com/etcenter/c4/db"
 	"github.com/etcenter/c4/fs"
 	"github.com/etcenter/c4/test"
 )
@@ -35,29 +36,29 @@ func TestBufferedMultiTasks(t *testing.T) {
 	}()
 
 	// mtb := fs.NewMTB(20000)
-	engine.StartTask(func(item *fs.Item, mtb *fs.MultiTaskBuffer) (*fs.Buffer, error) {
+	engine.StartTask(func(item *fs.Item, mtb *db.MultiTaskBuffer) (*db.Buffer, error) {
 		return mtb.Get(20), nil
 	})
 
 	// type TaskFunc func(i Item, b *Buffer) error
 	engine.TaskHandler("Id", fs.IdTask)
-	//                    func(src string, b *fs.Buffer) {
+	//                    func(src string, b *db.Buffer) {
 	// 	time.Sleep(time.Duration(1) * time.Millisecond)
 	// 	// fmt.Printf("Id task for: %s\n", src)
 	// })
-	engine.TaskHandler("/target1/bar", func(i *fs.Item, b *fs.Buffer) error {
+	engine.TaskHandler("/target1/bar", func(i *fs.Item, b *db.Buffer) error {
 		time.Sleep(time.Duration(10) * time.Millisecond)
 		// fmt.Printf("Copy to '/target1/bar' task: %s\n", src)
 		return nil
 	})
 
-	engine.TaskHandler("/target2/bat", func(i *fs.Item, b *fs.Buffer) error {
+	engine.TaskHandler("/target2/bat", func(i *fs.Item, b *db.Buffer) error {
 		time.Sleep(time.Duration(3) * time.Millisecond)
 		// fmt.Printf("Copy to '/target2/bat' task: %s\n", src)
 		return nil
 	})
 
-	engine.TaskHandler("/target3/baz", func(i *fs.Item, b *fs.Buffer) error {
+	engine.TaskHandler("/target3/baz", func(i *fs.Item, b *db.Buffer) error {
 		time.Sleep(time.Duration(6) * time.Millisecond)
 		// fmt.Printf("Copy to '/target3/baz' task: %s\n", src)
 		return nil
@@ -66,7 +67,7 @@ func TestBufferedMultiTasks(t *testing.T) {
 	tmp := test.TempDir(is)
 	defer test.DeleteDir(tmp)
 	// threads := 8
-	build_test_fs(is, tmp, 8, 20, 0)
+	test.TestFs(is, tmp, 8, 20, 0)
 
 	f := fs.New(tmp)
 	f.Add(tmp)
@@ -87,7 +88,7 @@ func TestMultiTargetFileCopy(t *testing.T) {
 		}
 	}()
 
-	build_test_fs(is, tmp[0], 20, 20, 0)
+	test.TestFs(is, tmp[0], 20, 20, 0)
 
 	start := time.Now()
 	names := []string{"Id", tmp[1], tmp[2]}
@@ -113,7 +114,7 @@ func TestMultiTargetFileCopy(t *testing.T) {
 
 	for i := 1; i < 3; i++ {
 		temppath := tmp[i]
-		engine.TaskHandler(temppath, func(item *fs.Item, b *fs.Buffer) error {
+		engine.TaskHandler(temppath, func(item *fs.Item, b *db.Buffer) error {
 			target := temppath + item.Path()[len(source_prefix):]
 
 			if item.IsDir() {

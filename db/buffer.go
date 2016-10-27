@@ -1,4 +1,4 @@
-package fs
+package db
 
 import (
 	"bytes"
@@ -69,13 +69,13 @@ func (mtb *MultiTaskBuffer) Get(n uint64) (b *Buffer) {
 		mtb.count += 1
 		buf := make([]byte, n)
 		if buf == nil {
-			panic(Red("MultiTaskBuffer Get failed to allocated a buffer."))
+			panic("MultiTaskBuffer Get failed to allocated a buffer.")
 		}
 		bb := Buffer{mtb, buf}
 		b = &bb
 	}
 	if b == nil {
-		panic(Red("b unexpected nil!!!"))
+		panic("b unexpected nil!!!")
 	}
 	return b
 }

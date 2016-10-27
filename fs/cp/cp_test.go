@@ -19,10 +19,10 @@ import (
 	c4 "github.com/etcenter/c4/fs/cp"
 )
 
-func setup(is is.I) []string {
+func setup(is is.I, count int) []string {
 	var tempdirs []string
 
-	temp_count := 3
+	temp_count := count
 	for i := 0; i < temp_count; i++ {
 		t := test.TempDir(is)
 		tempdirs = append(tempdirs, t)
@@ -38,16 +38,12 @@ func teardown(is is.I, tempdirs []string) {
 	}
 }
 
-func versionString() string {
-	return `c4 test`
-}
-
 // TestCPFlags evaluates the build in 'cp' command with various flags
 // and insures that the c4 cp function has the same output, and effect.
 // TODO: currently only working for os x, it needs to switch based on OS.
 func TestCpFlags(t *testing.T) {
 	is := is.New(t)
-	tempdirs := setup(is)
+	tempdirs := setup(is, 3)
 	defer teardown(is, tempdirs)
 	is.Equal(len(tempdirs), 3)
 	srcdir := tempdirs[0]
@@ -110,7 +106,8 @@ func TestCpFlags(t *testing.T) {
 		var c4_stderr, c4_stdout []string
 
 		go func() {
-			c4.CpMain(client.CpFlags.Args(), client.RecursiveFlag, client.VerboseFlag, c4_stdoutch, c4_stderrch)
+			io := c4.NewIo(client.CpFlags.Args(), uint64(1), c4_stdoutch, c4_stderrch)
+			c4.CpMain(io, client.RecursiveFlag, client.VerboseFlag)
 			close(c4_stdoutch)
 			close(c4_stderrch)
 		}()

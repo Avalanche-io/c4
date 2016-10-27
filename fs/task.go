@@ -8,19 +8,39 @@ import (
 	"time"
 
 	"github.com/etcenter/c4/asset"
+	"github.com/etcenter/c4/db"
 )
 
 // type Task string
 
 // type TaskFunc func(src string, b *Buffer)
-type TaskFunc func(i *Item, b *Buffer) error
-type StartFunc func(i *Item, mtb *MultiTaskBuffer) (*Buffer, error)
+type TaskFunc func(i *Item, b *db.Buffer) error
+type StartFunc func(i *Item, mtb *db.MultiTaskBuffer) (*db.Buffer, error)
 
 type TaskBuffer struct {
 	Engine   *TaskEngine
 	Source   *Item
-	Data     *Buffer
+	Data     *db.Buffer
 	Complete []bool
+}
+
+type TaskQueue struct {
+	Key     string
+	Ch      chan *TaskBuffer
+	Do      TaskFunc
+	wg      sync.WaitGroup
+	Timelog []time.Duration
+}
+
+type TaskEngine struct {
+	Threads int
+	Queues  []*TaskQueue
+	Index   map[string]int
+	Ich     chan *Item
+	errCh   chan error
+	MTB     *db.MultiTaskBuffer
+	wg      sync.WaitGroup
+	DoStart StartFunc
 }
 
 func (b *TaskBuffer) Done(qId int) {
@@ -37,14 +57,6 @@ func (b *TaskBuffer) Done(qId int) {
 			b.Data.Release()
 		}
 	}
-}
-
-type TaskQueue struct {
-	Key     string
-	Ch      chan *TaskBuffer
-	Do      TaskFunc
-	wg      sync.WaitGroup
-	Timelog []time.Duration
 }
 
 func (q *TaskQueue) Close() {
@@ -72,17 +84,6 @@ func (q *TaskQueue) AvgTime() time.Duration {
 	return total / time.Duration(len(q.Timelog))
 }
 
-type TaskEngine struct {
-	Threads int
-	Queues  []*TaskQueue
-	Index   map[string]int
-	Ich     chan *Item
-	errCh   chan error
-	MTB     *MultiTaskBuffer
-	wg      sync.WaitGroup
-	DoStart StartFunc
-}
-
 func NewTaskEngine(names []string, buffers uint64) *TaskEngine {
 	qs := make([]*TaskQueue, len(names))
 	idx := make(map[string]int)
@@ -101,7 +102,7 @@ func NewTaskEngine(names []string, buffers uint64) *TaskEngine {
 		Index:   idx,
 		Ich:     make(chan *Item),
 		DoStart: DefaultStartTask,
-		MTB:     NewMTB(buffers),
+		MTB:     db.NewMTB(buffers),
 	}
 	return &e
 }
@@ -203,7 +204,7 @@ func (e *TaskEngine) DoneWait() {
 	e.wg.Done()
 }
 
-func DefaultStartTask(item *Item, mtb *MultiTaskBuffer) (*Buffer, error) {
+func DefaultStartTask(item *Item, mtb *db.MultiTaskBuffer) (*db.Buffer, error) {
 	if item.IsDir() {
 		return nil, nil
 	}
@@ -218,7 +219,7 @@ func DefaultStartTask(item *Item, mtb *MultiTaskBuffer) (*Buffer, error) {
 	return b, nil
 }
 
-func IdTask(item *Item, b *Buffer) error {
+func IdTask(item *Item, b *db.Buffer) error {
 	var id *asset.ID
 	var err error
 	if item.IsDir() {

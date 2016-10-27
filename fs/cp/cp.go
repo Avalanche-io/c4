@@ -1,12 +1,9 @@
 package cp
 
-import (
-	"fmt"
-	"os"
-)
+import "os"
 
-func CpMain(filelist []string, recursive bool, verbose bool, stdioch chan string, stderrch chan error) {
-	io := NewIo(filelist, stdioch, stderrch)
+func CpMain(io *IoHandler, recursive bool, verbose bool) {
+
 	if io == nil {
 		return
 	}
@@ -20,11 +17,11 @@ func CpMain(filelist []string, recursive bool, verbose bool, stdioch chan string
 			if recursive {
 				io.Walk(file, verbose)
 			} else {
-				io.IfError(Error(fmt.Sprintf("cp: %s is a directory (not copied).\n", file)))
+				io.IfError(dirError(file))
 			}
 		} else {
 			if verbose {
-				io.Out(fmt.Sprintf("%s -> %s\n", file, io.TargetPathTo(file)))
+				io.LogCopy(file)
 			}
 			io.Copy(file, info)
 		}

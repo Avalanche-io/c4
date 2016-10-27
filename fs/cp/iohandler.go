@@ -1,10 +1,11 @@
 package cp
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/etcenter/c4/db"
 )
 
 type IoHandler struct {
@@ -12,11 +13,12 @@ type IoHandler struct {
 	ErrCh     chan error
 	TargetArg string
 	Target    string
+	Buffers   *db.MultiTaskBuffer
 	files     []string
 }
 
-func NewIo(args []string, stdioch chan string, stderrch chan error) *IoHandler {
-	io := &IoHandler{stdioch, stderrch, "", "", nil}
+func NewIo(args []string, buffer_count uint64, stdioch chan string, stderrch chan error) *IoHandler {
+	io := &IoHandler{stdioch, stderrch, "", "", db.NewMTB(buffer_count), nil}
 	switch {
 	case io.ifUsage(len(args) == 0):
 		return nil
@@ -45,10 +47,14 @@ func (io *IoHandler) Files() []string {
 	return io.files
 }
 
+func (io *IoHandler) LogCopy(path string) {
+	io.Out(path + " -> " + io.TargetPathTo(path) + "\n")
+}
+
 func (io *IoHandler) Walk(file string, verbose bool) {
 	filepath.Walk(file, func(path string, info os.FileInfo, err error) error {
 		if verbose {
-			io.Out(fmt.Sprintf("%s -> %s\n", path, io.TargetPathTo(path)))
+			io.LogCopy(path)
 		}
 		io.Copy(path, info)
 		return nil
@@ -66,7 +72,7 @@ func (io *IoHandler) Copy(path string, src_info os.FileInfo) {
 
 	target_info, err := os.Stat(target_path)
 	if err == nil && os.SameFile(src_info, target_info) {
-		io.IfError(Error("Failed to copy files identical " + src_path))
+		io.IfError(cpError("Failed to copy files identical " + src_path))
 		return
 	} else if !os.IsNotExist(err) {
 		io.IfError(err)
@@ -76,7 +82,7 @@ func (io *IoHandler) Copy(path string, src_info os.FileInfo) {
 	if src_info.IsDir() {
 		os.MkdirAll(target_path, src_info.Mode().Perm())
 	} else if !src_info.Mode().IsRegular() {
-		io.IfError(Error("Failed to copy non regular file " + src_path))
+		io.IfError(cpError("Failed to copy non regular file " + src_path))
 	} else {
 		io.copyFileContents(src_path, target_path)
 	}
@@ -106,7 +112,7 @@ func (i *IoHandler) copyFileContents(src, dst string) {
 
 func (io *IoHandler) ifUsage(test bool) bool {
 	if test {
-		io.ErrCh <- Error(usage)
+		io.ErrCh <- cpError(usage)
 	}
 	return test
 }

@@ -137,12 +137,12 @@ func (db *DB) Iterator(bucket string, key []byte, cancel <-chan struct{}) <-chan
 	bdb := (*bolt.DB)(db)
 
 	out := make(chan Element)
-	if key == nil {
-		log.Println("key: NIL")
+	// if key == nil {
+	// 	log.Println("key: NIL")
 
-	} else {
-		log.Printf("key: %s\n", string(key))
-	}
+	// } else {
+	// 	log.Printf("key: %s\n", string(key))
+	// }
 	go func() {
 		err := bdb.View(func(tx *bolt.Tx) error {
 			// Assume bucket exists and has keys
