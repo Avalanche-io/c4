@@ -1,9 +1,8 @@
-package fs
+package lang
 
 import (
-	// "encoding/json"
-	// "errors"
-	// "fmt"
+	"github.com/etcenter/c4/fs"
+
 	"io"
 )
 
@@ -18,7 +17,7 @@ const (
 
 type NodeEncoder struct {
 	// node  *Node
-	item  Item
+	item  fs.Item
 	buf   []byte
 	state EncoderState
 }
@@ -27,7 +26,7 @@ func (n *NodeEncoder) Read(p []byte) (int, error) {
 	return 0, nil
 }
 
-func JsonEncoder(ch <-chan Item) <-chan []byte {
+func JsonEncoder(ch <-chan fs.Item) <-chan []byte {
 	out := make(chan []byte)
 	go func() {
 		data := make([]byte, 512)
@@ -51,7 +50,7 @@ func JsonEncoder(ch <-chan Item) <-chan []byte {
 	return out
 }
 
-func NewNodeEncoder(item Item) *NodeEncoder {
+func NewNodeEncoder(item fs.Item) *NodeEncoder {
 	e := NodeEncoder{item, []byte{}, EncoderStart}
 	return &e
 }

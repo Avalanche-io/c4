@@ -13,6 +13,7 @@ script:
   - go test -coverprofile=db.coverprofile ./db
   - go test -coverprofile=env.coverprofile ./env
   - go test -coverprofile=env.coverprofile ./fs
+  - go test -coverprofile=lang.coverprofile ./lang
   - go test -coverprofile=cli.coverprofile ./cmd/c4
   - $HOME/gopath/bin/gover
   - $HOME/gopath/bin/goveralls -coverprofile=gover.coverprofile -service travis-ci

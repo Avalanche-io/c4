@@ -1,4 +1,4 @@
-package fs_test
+package lang_test
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/cheekybits/is"
 
+	// "github.com/etcenter/c4/dsl"
 	"github.com/etcenter/c4/fs"
 	"github.com/etcenter/c4/test"
 )
@@ -18,7 +19,7 @@ func TestEncode(t *testing.T) {
 	is := is.New(t)
 	tmp := test.TempDir(is)
 	defer test.DeleteDir(tmp)
-	build_test_fs(is, tmp, 2, 2, 0)
+	test.TestFs(is, tmp, 2, 2, 0)
 
 	f := fs.New(tmp)
 	// f.IdWorkers(8)

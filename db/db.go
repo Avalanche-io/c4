@@ -1,5 +1,5 @@
-// The c4 db package wraps the bolt db for use as a simple key value store.
-// The keys are typically raw c4 ids, the values are *always* raw c4 ids.
+// The c4 db package provide Key/Value memory types, db interface, and
+// buffers for multiprocessing.
 package db
 
 import (
