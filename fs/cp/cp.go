@@ -1,126 +1,34 @@
-package main
+package cp
 
 import (
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
-
-	flag "github.com/ogier/pflag"
 )
 
-const (
-	cp_usage string = "usage: cp [-R [-H | -L | -P]] [-fi | -n] [-apvX] source_file target_file\n       cp [-R [-H | -L | -P]] [-fi | -n] [-apvX] source_file ... target_directory\n"
-)
-
-type CpError string
-
-func (e CpError) Error() string {
-	return string(e)
-}
-
-func CpMain(f *flag.FlagSet, stdioch chan string, stderrch chan error) {
-	args := f.Args()
-	if len(args) == 0 {
-		stderrch <- CpError(cp_usage)
+func CpMain(filelist []string, recursive bool, verbose bool, stdioch chan string, stderrch chan error) {
+	io := NewIo(filelist, stdioch, stderrch)
+	if io == nil {
 		return
 	}
-	if len(args) == 1 && args[0] == "" {
-		stderrch <- CpError(cp_usage)
-		return
-	}
-
-	target_arg := args[len(args)-1]
-	target, err := filepath.EvalSymlinks(target_arg)
-	if err != nil {
-		stderrch <- err
-		return
-	}
-	for _, file := range args[:len(args)-1] {
+	for _, file := range io.Files() {
 		if file == "" {
 			continue
 		}
-		info, err := os.Stat(file)
-		if err != nil {
-			stderrch <- err
-			continue
-		}
-		if info.IsDir() {
-			if recursive_cp_flag {
-				err := filepath.Walk(file, func(path string, info os.FileInfo, err error) error {
-					if verbose_cp_flag {
-						stdioch <- fmt.Sprintf("%s -> %s\n", path, target_arg+string(os.PathSeparator)+path)
-					}
-					return mkdirOrCopy(path, info, target)
-				})
-				if err != nil {
-					stderrch <- err
-					continue
-				}
+		if info, err := os.Stat(file); err != nil {
+			io.IfError(err)
+		} else if info.IsDir() {
+			if recursive {
+				io.Walk(file, verbose)
 			} else {
-				stderrch <- CpError(fmt.Sprintf("cp: %s is a directory (not copied).\n", file))
-				continue
+				io.IfError(Error(fmt.Sprintf("cp: %s is a directory (not copied).\n", file)))
 			}
 		} else {
-			if verbose_cp_flag {
-				stdioch <- fmt.Sprintf("%s -> %s\n", file, target_arg+string(os.PathSeparator)+file)
+			if verbose {
+				io.Out(fmt.Sprintf("%s -> %s\n", file, io.TargetPathTo(file)))
 			}
-			err := mkdirOrCopy(file, info, target)
-			if err != nil {
-				stderrch <- err
-				continue
-			}
+			io.Copy(file, info)
 		}
 	}
-	return
-}
-
-func mkdirOrCopy(path string, info os.FileInfo, target string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	src_path := cwd + string(os.PathSeparator) + path
-	target_path := target + string(os.PathSeparator) + path
-
-	target_info, err := os.Stat(target_path)
-	if err == nil && os.SameFile(info, target_info) {
-		return CpError("Failed to copy files identical " + src_path)
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	if info.IsDir() {
-		return os.MkdirAll(target_path, info.Mode().Perm())
-	} else if !info.Mode().IsRegular() {
-		return CpError("Failed to copy non regular file " + src_path)
-	}
-
-	return copyFileContents(src_path, target_path)
-}
-
-func copyFileContents(src, dst string) (err error) {
-	in, err := os.Open(src)
-	if err != nil {
-		return
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return
-	}
-	defer func() {
-		cerr := out.Close()
-		if err == nil {
-			err = cerr
-		}
-	}()
-	if _, err = io.Copy(out, in); err != nil {
-		return
-	}
-	err = out.Sync()
-	return
 }
 
 // func cp_main(f *flag.FlagSet) {

@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"fmt"
@@ -47,14 +47,22 @@ var (
 	noclobber_cp_flag        bool
 	copy_links_cp_flag       bool
 	preserve_cp_flag         bool
-	recursive_cp_flag        bool
-	verbose_cp_flag          bool
+	RecursiveFlag            bool
+	VerboseFlag              bool
 	target_cp_flag           CPTargetList
 	target_string_flag       string
 )
 
+var Version func() string
+
 func init() {
-	id_message := versionString() + "\n\nUsage: c4 [mode] [flags] [files]\n\n" +
+	if Version == nil {
+		Version = func() string {
+			return "c4 test"
+		}
+	}
+
+	id_message := Version() + "\n\nUsage: c4 [mode] [flags] [files]\n\n" +
 		"# `id` mode \n\n" +
 		"    c4 generates c4ids for all files and folders spacified.\n" +
 		"    If no file is given c4 will read piped data.\n" +
@@ -101,8 +109,8 @@ func CpFlagsInit() *flag.FlagSet {
 	fs.BoolVarP(&noclobber_cp_flag, "noclobber", "n", false, "Do not overwrite existing files.")
 	fs.BoolVarP(&copy_links_cp_flag, "copy_links", "P", true, "Copy links with -R option (default).")
 	fs.BoolVarP(&preserve_cp_flag, "preserve", "p", false, "Preserve attributes.")
-	fs.BoolVarP(&recursive_cp_flag, "recursive", "R", false, "Copy recursively.")
-	fs.BoolVarP(&verbose_cp_flag, "verbose", "v", false, "Verbose output.")
+	fs.BoolVarP(&RecursiveFlag, "recursive", "R", false, "Copy recursively.")
+	fs.BoolVarP(&VerboseFlag, "verbose", "v", false, "Verbose output.")
 	fs.VarP(&target_cp_flag, "target", "T", "Specify additional target paths, can be used more than once.")
 
 	return fs
