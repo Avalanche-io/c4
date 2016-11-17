@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/etcenter/c4/client"
+	"github.com/etcenter/c4/fs/cp"
 	flag "github.com/ogier/pflag"
 )
 
@@ -28,13 +30,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, versionString())
 		os.Exit(0)
 	case "id":
-		if err := id_flags.Parse(os.Args[2:]); err == nil {
-			id_main(id_flags)
+		if err := client.IdFlags.Parse(os.Args[2:]); err == nil {
+			id_main(client.IdFlags)
 		} else {
-			fmt.Fprintf(os.Stderr, "id_flags %s\n", err)
+			fmt.Fprintf(os.Stderr, "IdFlags %s\n", err)
 		}
 	case "cp":
-		if err := CpFlags.Parse(os.Args[2:]); err == nil {
+		client.CpFlags = client.CpFlagsInit()
+		if err := client.CpFlags.Parse(os.Args[2:]); err == nil {
 			// fmt.Fprintf(os.Stderr, "os.Args[2:0] %v\n", os.Args[2:])
 			// fmt.Fprintf(os.Stderr, "cp_flags %v\n", cp_flags)
 			// os.Exit(0)
@@ -42,11 +45,20 @@ func main() {
 			stdoutch := make(chan string)
 			stderrch := make(chan error)
 
+			io, ok := cp.NewController(client.CpFlags.Args(), uint64(1), stdoutch, stderrch)
 			go func() {
-				CpMain(CpFlags, stdoutch, stderrch)
-				close(stdoutch)
-				close(stderrch)
+				defer close(stdoutch)
+				defer close(stderrch)
+				if !ok {
+					return
+				}
+				c4.CpMain(io, client.RecursiveFlag, client.VerboseFlag)
 			}()
+			// go func() {
+			// 	CpMain(client.CpFlags.Args(), stdoutch, stderrch)
+			// 	close(stdoutch)
+			// 	close(stderrch)
+			// }()
 
 			var wg sync.WaitGroup
 			wg.Add(2)

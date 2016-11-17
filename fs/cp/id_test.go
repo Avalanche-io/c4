@@ -29,7 +29,7 @@ func TestID(t *testing.T) {
 	c4_stderrch := make(chan error, 1)
 	var c4_stderr, c4_stdout []string
 
-	io, ok := c4.NewIo(client.CpFlags.Args(), uint64(1), c4_stdoutch, c4_stderrch)
+	io, ok := c4.NewController(client.CpFlags.Args(), uint64(1), c4_stdoutch, c4_stderrch)
 	go func() {
 		defer close(c4_stdoutch)
 		defer close(c4_stderrch)

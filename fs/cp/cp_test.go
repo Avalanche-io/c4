@@ -20,24 +20,28 @@ import (
 func setup(is is.I, count int) []string {
 	var tempdirs []string
 
-	temp_count := count
-	for i := 0; i < temp_count; i++ {
+	// Creates 'count' temp directories.
+	for i := 0; i < count; i++ {
 		t := test.TempDir(is)
 		tempdirs = append(tempdirs, t)
 	}
+	// Creates a fake files and folders to act as a copy source.
+	// TODO: also create symbolic links
 	test.TestFs(is, tempdirs[0], 3, 5, 0)
 
 	return tempdirs
 }
 
+// Removes the temp directories.
 func teardown(is is.I, tempdirs []string) {
 	for _, tmp := range tempdirs {
 		test.DeleteDir(tmp)
 	}
 }
 
-// TestCPFlags evaluates the build in 'cp' command with various flags
-// and insures that the c4 cp function has the same output, and effect.
+// TestCPFlags evaluates the operating system's built-in 'cp' command with
+// various flags and insures that the c4 cp function has the same output,
+// and effect.
 // TODO: currently only working for os x, it needs to switch based on OS.
 func TestCpFlags(t *testing.T) {
 	is := is.New(t)
@@ -55,10 +59,15 @@ func TestCpFlags(t *testing.T) {
 		target bool
 		status int
 	}{
+		// No Flags, No Arguments
 		{[]string{}, []string{}, false, 64},
+		// No Flags, Glob all
 		{[]string{}, []string{"*"}, true, 1},
+		// No Flags, Glob .txt files
 		{[]string{}, []string{"*.txt"}, true, 0},
+		// Recursive flag, Glob all
 		{[]string{"-R"}, []string{"*"}, true, 0},
+		// Recursive, verbose flags, Glob all
 		{[]string{"-Rv"}, []string{"*"}, true, 0},
 	}
 
@@ -67,17 +76,19 @@ func TestCpFlags(t *testing.T) {
 	c4_target := targets[1]
 
 	for _, tt := range cptests {
+		// Clean up previous loops
 		for _, dir := range targets {
 			clean_temp_dir(is, dir)
 		}
 		clean_temp_dir(is, cp_target)
 		clean_temp_dir(is, c4_target)
 
-		flag_str := strings.Join(tt.flags, " ")
-		glob_str := strings.Join(tt.glob, " ")
 		var target string
 		var stdout, stderr bytes.Buffer
 
+		// Build argument strings
+		flag_str := strings.Join(tt.flags, " ")
+		glob_str := strings.Join(tt.glob, " ")
 		args := tt.flags
 		args = append(args, build_file_list(is, tt.glob)...)
 
@@ -86,7 +97,7 @@ func TestCpFlags(t *testing.T) {
 			args = append(args, c4_target)
 		}
 
-		// Test real cp'
+		// Test os cp command
 		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("cp %s %s %s", flag_str, glob_str, target))
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
@@ -98,12 +109,12 @@ func TestCpFlags(t *testing.T) {
 		err := client.CpFlags.Parse(args)
 		is.NoErr(err)
 
-		// c4_out, c4_err :=
+		// C4 cp uses channels for stderr, and stdout
 		c4_stdoutch := make(chan string, 1)
 		c4_stderrch := make(chan error, 1)
 		var c4_stderr, c4_stdout []string
 
-		io, ok := c4.NewIo(client.CpFlags.Args(), uint64(1), c4_stdoutch, c4_stderrch)
+		io, ok := c4.NewController(client.CpFlags.Args(), uint64(1), c4_stdoutch, c4_stderrch)
 		go func() {
 			defer close(c4_stdoutch)
 			defer close(c4_stderrch)
@@ -113,8 +124,7 @@ func TestCpFlags(t *testing.T) {
 			c4.CpMain(io, client.RecursiveFlag, client.VerboseFlag)
 		}()
 
-		// io.Wait()
-
+		// String replace the differences in the temp path to comparison
 		cp_stderr := normalize_buffer(stderr, cp_target)
 		cp_stdout := normalize_buffer(stdout, cp_target)
 
@@ -128,14 +138,18 @@ func TestCpFlags(t *testing.T) {
 			c4_stdout = normalize_strch(c4_stdoutch, c4_target)
 			wg.Done()
 		}()
+		// Read all stderr and stdout channels before continuing
 		wg.Wait()
+		// Compare outputs
 		compare_slices(is, c4_stderr, cp_stderr)
 		compare_slices(is, c4_stdout, cp_stdout)
+		// Compare exit status
 		if tt.status != 0 {
 			is.NotNil(cp_err)
 			expected := fmt.Sprintf("exit status %d", tt.status)
 			is.Equal(expected, cp_err.Error())
 		}
+		// Compare file systems to insure the copy actually happed.
 		ok = compare_folders(is, cp_target, c4_target)
 		is.OK(ok)
 	}

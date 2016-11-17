@@ -21,7 +21,7 @@ var (
 	formatting_string string
 )
 
-var id_flags *flag.FlagSet
+var IdFlags *flag.FlagSet
 var CpFlags *flag.FlagSet
 
 type CPTargetList struct {
@@ -76,25 +76,25 @@ func init() {
 		"  flags:\n"
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, id_message)
-		id_flags.PrintDefaults()
+		IdFlags.PrintDefaults()
 		fmt.Fprintf(os.Stderr, cp_message)
 		CpFlags.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 
-	id_flags = flag.NewFlagSet("id", flag.ContinueOnError)
+	IdFlags = flag.NewFlagSet("id", flag.ContinueOnError)
 	CpFlags = CpFlagsInit()
 
 	// id
-	// id_flags.BoolVarP(&version_flag, "version", "v", false, "Show version information.")
-	id_flags.BoolVarP(&recursive_flag, "recursive", "R", false, "Recursively identify all files for the given url.")
-	id_flags.BoolVarP(&absolute_flag, "absolute", "a", false, "Output absolute paths, instead of relative paths.")
-	// id_flags.BoolVarP(&arg_links, "arg_links", "H", false, "If the -R option is specified, symbolic links on the command line are followed.\n          (Symbolic links encountered in the tree traversal are not followed by default.)")
-	id_flags.BoolVarP(&links_flag, "links", "L", false, "All symbolic links are followed.")
-	// id_flags.BoolVarP(&no_links, "no_links", "P", true, "If the -R option is specified, no symbolic links are followed.  This is the default.")
-	id_flags.IntVarP(&depth, "depth", "d", 0, "Only output ids for files and folders 'depth' directories deep.")
-	id_flags.BoolVarP(&include_meta, "metadata", "m", false, "Include filesystem metadata.")
-	id_flags.StringVarP(&formatting_string, "formatting", "f", "id", "Output formatting options.\n          \"id\": c4id oriented.\n          \"path\": path oriented.")
+	// IdFlags.BoolVarP(&version_flag, "version", "v", false, "Show version information.")
+	IdFlags.BoolVarP(&recursive_flag, "recursive", "R", false, "Recursively identify all files for the given url.")
+	IdFlags.BoolVarP(&absolute_flag, "absolute", "a", false, "Output absolute paths, instead of relative paths.")
+	// IdFlags.BoolVarP(&arg_links, "arg_links", "H", false, "If the -R option is specified, symbolic links on the command line are followed.\n          (Symbolic links encountered in the tree traversal are not followed by default.)")
+	IdFlags.BoolVarP(&links_flag, "links", "L", false, "All symbolic links are followed.")
+	// IdFlags.BoolVarP(&no_links, "no_links", "P", true, "If the -R option is specified, no symbolic links are followed.  This is the default.")
+	IdFlags.IntVarP(&depth, "depth", "d", 0, "Only output ids for files and folders 'depth' directories deep.")
+	IdFlags.BoolVarP(&include_meta, "metadata", "m", false, "Include filesystem metadata.")
+	IdFlags.StringVarP(&formatting_string, "formatting", "f", "id", "Output formatting options.\n          \"id\": c4id oriented.\n          \"path\": path oriented.")
 
 }
 

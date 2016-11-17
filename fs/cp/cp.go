@@ -2,7 +2,7 @@ package cp
 
 import "os"
 
-func CpMain(io *IoHandler, recursive bool, verbose bool) {
+func CpMain(io *CpController, recursive bool, verbose bool) {
 
 	if io == nil {
 		return
