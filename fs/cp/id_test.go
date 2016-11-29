@@ -1,6 +1,7 @@
 package cp_test
 
 import (
+	"os"
 	"sync"
 	"testing"
 
@@ -19,8 +20,10 @@ func TestID(t *testing.T) {
 	targetdir := tempdirs[1]
 	_ = srcdir
 
-	args := []string{"-R"}
+	os.Chdir(srcdir)
+	args := []string{"-Rv"}
 	args = append(args, build_file_list(is, []string{"*"})...)
+	args = append(args, targetdir)
 	client.CpFlags = client.CpFlagsInit()
 	err := client.CpFlags.Parse(args)
 	is.NoErr(err)
@@ -50,6 +53,6 @@ func TestID(t *testing.T) {
 		wg.Done()
 	}()
 	wg.Wait()
-
+	io.Wait()
 	is.OK(true)
 }
