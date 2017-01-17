@@ -7,10 +7,8 @@ import (
 	"math/big"
 )
 
-// using the flickr character set which removes:
-// ['=', '+', '_', '0', 'O', 'I', 'l'] from base64
-// to reduce transcription errors, and make friendlier URLs
 const (
+	// charset = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
 	charset = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 	base    = 58
 )

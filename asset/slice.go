@@ -42,7 +42,7 @@ func (s IDSlice) ID() (*ID, error) {
 	s.Sort()
 	encoder := NewIDEncoder()
 	for _, bigID := range s {
-		_, err := io.Copy(encoder, bytes.NewReader(bigID.Bytes()))
+		_, err := io.Copy(encoder, bytes.NewReader(bigID.RawBytes()))
 		if err != nil {
 			return nil, err
 		}

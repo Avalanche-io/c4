@@ -34,9 +34,9 @@ func TestAllFFFF(t *testing.T) {
 	bignum := big.NewInt(0)
 	bignum = bignum.SetBytes(b)
 	id := asset.ID(*bignum)
-	is.Equal(id.String(), `c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`)
+	is.Equal(id.String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
 
-	id2, err := asset.ParseID(`c467RPWkcUr5dga8jgywjSup7CMoA9FNqkNjEFgAkEpF9vNktFnx77e2Js11EDL3BNu9MaKFUbacZRt1HYym4b8RNp`)
+	id2, err := asset.ParseID(`c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
 	is.NoErr(err)
 	bignum2 := big.Int(*id2)
 	b = (&bignum2).Bytes()
@@ -111,12 +111,12 @@ func TestParseBytesID(t *testing.T) {
 		Exp string
 	}{
 		{
-			In:  `c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`,
+			In:  `c43ucjRutKqZSCrW43QGU1uwRZTGoVD7A7kPHKQ1z4X1Ge8mhW4Q1gk48Ld8VFpprQBfUC8JNvHYVgq453hCFrgf9D`,
 			Err: ``,
 			Exp: "This is a pretend asset file, for testing asset id generation.\n",
 		},
 		{
-			In:  `c430BJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9d`,
+			In:  `c430cjRutKqZSCrW43QGU1uwRZTGoVD7A7kPHKQ1z4X1Ge8mhW4Q1gk48Ld8VFpprQBfUC8JNvHYVgq453hCFrgf9D`,
 			Err: `non c4 id character at position 3`,
 			Exp: "",
 		},
@@ -126,7 +126,7 @@ func TestParseBytesID(t *testing.T) {
 			Exp: "",
 		},
 		{
-			In:  `c43UBJqUTjQyrcRv43pgt1UWqysgNud7a7Kohjp1Z4w1gD8LGv4p1FK48kC8ufPPRpbEtc8inVhxuFQ453GcfRFE9`,
+			In:  `c430cjRutKqZSCrW43QGU1uwRZTGoVD7A7kPHKQ1z4X1Ge8mhW4Q1gk48Ld8VFpprQBfUC8JNvHYVgq453hCFrgf9`,
 			Err: `c4 ids must be 90 characters long, input length 89`,
 			Exp: "",
 		},
@@ -230,5 +230,5 @@ func TestNILID(t *testing.T) {
 
 	// ID of nothing constant
 	nilid := asset.NIL_ID
-	is.Equal(nilid.String(), "c459CSJESBh38BxDwwxNFKTXE4cC9HASGe3bhtN6z58GbwLqpCyRaKyZSvBAvTdF5NpSTPdUMH4hHRJ75geLsB1Sfs")
+	is.Equal(nilid.String(), "c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT")
 }

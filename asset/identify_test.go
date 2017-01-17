@@ -16,7 +16,7 @@ func TestIdentify(t *testing.T) {
 
 	id, err := asset.Identify(iotest.DataErrReader(strings.NewReader("foo")))
 	is.NoErr(err)
-	is.Equal(id.String(), "c45XyDwWmrPQwJPdULBhma6LGNaLghKtN7R9vLn2tFrepZJ9jJFSDzpCKei11EgA5r1veenBu3Q8qfvWeDuPc7fJK2")
+	is.Equal(id.String(), "c45xZeXwMSpqXjpDumcHMA6mhoAmGHkUo7r9WmN2UgSEQzj9KjgseaQdkEJ11fGb5S1WEENcV3q8RFWwEeVpC7Fjk2")
 }
 
 // returns error on read for testing the negative case

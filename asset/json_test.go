@@ -26,7 +26,7 @@ func TestMarshalJSON(t *testing.T) {
 	}{
 		{
 			In:  testType{"Test", asset.NIL_ID},
-			Exp: `{"name":"Test","id":"c459CSJESBh38BxDwwxNFKTXE4cC9HASGe3bhtN6z58GbwLqpCyRaKyZSvBAvTdF5NpSTPdUMH4hHRJ75geLsB1Sfs"}`,
+			Exp: `{"name":"Test","id":"c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT"}`,
 		},
 		{
 			In:  testType{"Test", nil},
@@ -56,7 +56,7 @@ func TestUnarshalJSON(t *testing.T) {
 		Exp testType
 	}{
 		{
-			In:  `{"name":"Test","id":"c459CSJESBh38BxDwwxNFKTXE4cC9HASGe3bhtN6z58GbwLqpCyRaKyZSvBAvTdF5NpSTPdUMH4hHRJ75geLsB1Sfs"}`,
+			In:  `{"name":"Test","id":"c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT"}`,
 			Exp: testType{"Test", asset.NIL_ID},
 		},
 		{
