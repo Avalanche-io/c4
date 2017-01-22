@@ -1,10 +1,6 @@
 package asset
 
-import (
-	"bytes"
-	"io"
-	"sort"
-)
+import "sort"
 
 type IDSlice []*ID
 
@@ -40,12 +36,37 @@ func SearchIDs(a IDSlice, x *ID) int {
 // ID of a sorted slice of IDs
 func (s IDSlice) ID() (*ID, error) {
 	s.Sort()
-	encoder := NewIDEncoder()
-	for _, bigID := range s {
-		_, err := io.Copy(encoder, bytes.NewReader(bigID.RawBytes()))
-		if err != nil {
-			return nil, err
+	var previous_idset IDSlice
+	idset := s
+	round := 0
+	for {
+		previous_idset = idset
+		idset = idset[:0]
+		var left *ID
+		for _, right := range previous_idset {
+			if left == nil {
+				left = right
+				continue
+			}
+			label, err := left.Sum(right)
+			if err != nil {
+				return nil, err
+			}
+			idset.Push(label)
+			left = nil
 		}
+		round += 1
+
+		if left != nil {
+			idset.Push(left)
+			left = nil
+		}
+
+		if idset.Len() == 1 {
+			break
+		}
+
 	}
-	return encoder.ID(), nil
+
+	return idset[0], nil
 }

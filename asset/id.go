@@ -45,7 +45,7 @@ func (i *ID) Sum(j *ID) (*ID, error) {
 		l = 1
 	}
 	e := NewIDEncoder()
-	_, err := io.Copy(e, bytes.NewReader(append(ids[l].Bytes(), ids[r].Bytes()...)))
+	_, err := io.Copy(e, bytes.NewReader(append(ids[l].RawBytes(), ids[r].RawBytes()...)))
 	return e.ID(), err
 }
 

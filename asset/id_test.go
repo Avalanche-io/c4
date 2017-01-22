@@ -3,6 +3,7 @@ package asset_test
 import (
 	// "bytes"
 
+	"bytes"
 	"fmt"
 	"io"
 	"math/big"
@@ -215,8 +216,8 @@ func TestSum(t *testing.T) {
 
 	is.True(id2.Less(id1))
 
-	sr := strings.NewReader(id2.String() + id1.String())
-	expectedSum, err := asset.Identify(sr)
+	bts := append(id2.RawBytes(), id1.RawBytes()...)
+	expectedSum, err := asset.Identify(bytes.NewReader(bts))
 	is.NoErr(err)
 
 	testSum, err := id1.Sum(id2)

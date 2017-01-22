@@ -32,7 +32,7 @@ func TestIdentification(t *testing.T) {
 	}
 }
 
-func TestIDTree(t *testing.T) {
+func TestSliceID(t *testing.T) {
 	is := is.New(t)
 	var ids asset.IDSlice
 	for _, t := range test_vectors {
@@ -42,5 +42,5 @@ func TestIDTree(t *testing.T) {
 	}
 	id, err := ids.ID()
 	is.NoErr(err)
-	is.Equal(id.String(), "")
+	is.Equal(id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
 }
