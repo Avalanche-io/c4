@@ -35,5 +35,10 @@ func main() {
 		if err := cp_flags.Parse(os.Args[2:]); err == nil {
 			cp_main(cp_flags)
 		}
+	case "util":
+		if err := util_flags.Parse(os.Args[2:]); err == nil {
+			util_main(util_flags)
+		}
 	}
+
 }

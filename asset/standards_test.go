@@ -44,3 +44,51 @@ func TestSliceID(t *testing.T) {
 	is.NoErr(err)
 	is.Equal(id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
 }
+
+func TestPreSortedSliceID(t *testing.T) {
+	is := is.New(t)
+	var ids_sorted, ids_unsorted asset.IDSlice
+	for i := 0; i < 64; i++ {
+		id, err := asset.Identify(bytes.NewReader([]byte{byte(i)}))
+		is.NoErr(err)
+		ids_sorted.Push(id)
+		ids_unsorted.Push(id)
+	}
+	ids_sorted.Sort()
+
+	// start := time.Now()
+	id_unsorted, err := ids_unsorted.ID()
+	// fmt.Printf("ids_unsorted speed: %s\n", time.Now().Sub(start))
+	is.NoErr(err)
+	// start = time.Now()
+	id_sorted, err := ids_sorted.PreSortedID()
+	// fmt.Printf("ids_PreSorted speed: %s\n", time.Now().Sub(start))
+	is.NoErr(err)
+	is.Equal(id_unsorted.String(), id_sorted.String())
+}
+
+func TestCombinableSliceIDs(t *testing.T) {
+	is := is.New(t)
+	var all_ids, idsA, idsB asset.IDSlice
+	test_count := 64 // must be a power of 2
+	for i := 0; i < test_count; i++ {
+		id, err := asset.Identify(bytes.NewReader([]byte{byte(i)}))
+		is.NoErr(err)
+		all_ids.Push(id)
+	}
+	all_ids.Sort()
+	idsA = all_ids[0 : test_count/2]
+	idsB = all_ids[test_count/2 : test_count]
+	is.Equal(test_count/2, idsA.Len())
+	is.Equal(test_count/2, idsB.Len())
+
+	id_all, err := all_ids.PreSortedID()
+	is.NoErr(err)
+	id_A, err := idsA.PreSortedID()
+	is.NoErr(err)
+	id_B, err := idsB.PreSortedID()
+	is.NoErr(err)
+	id_AB, err := id_A.Sum(id_B)
+	is.NoErr(err)
+	is.Equal(id_AB.String(), id_all.String())
+}

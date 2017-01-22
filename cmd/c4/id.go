@@ -11,12 +11,11 @@ import (
 )
 
 func encode(src io.Reader) *asset.ID {
-	e := asset.NewIDEncoder()
-	_, err := io.Copy(e, src)
+	id, err := asset.Identify(src)
 	if err != nil {
 		panic(err)
 	}
-	return e.ID()
+	return id
 }
 
 func fileID(path *string) (*asset.ID, error) {

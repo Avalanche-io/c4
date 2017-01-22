@@ -23,6 +23,7 @@ var (
 
 var id_flags *flag.FlagSet
 var cp_flags *flag.FlagSet
+var util_flags *flag.FlagSet
 
 type CPTargetList []*string
 
@@ -50,6 +51,11 @@ var (
 	target_cp_flag           CPTargetList
 )
 
+var (
+	cmd_util_string string
+	help_util_flag  bool
+)
+
 func init() {
 	id_message := versionString() + "\n\nUsage: c4 [mode] [flags] [files]\n\n" +
 		"# `id` mode \n\n" +
@@ -63,16 +69,23 @@ func init() {
 		"    It acts the same as the normal cp command, but ids files on the fly\n" +
 		"    It also adds the ability to specify multiple copy targets with the -T flag.\n\n" +
 		"  flags:\n"
+	util_message := "\n\n" +
+		"# `util` mode\n\n" +
+		"    util mode provides utilities that are not part of the c4 spec.\n" +
+		"  flags:\n"
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, id_message)
 		id_flags.PrintDefaults()
 		fmt.Fprintf(os.Stderr, cp_message)
 		cp_flags.PrintDefaults()
+		fmt.Fprintf(os.Stderr, util_message)
+		util_flags.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 	id_flags = flag.NewFlagSet("id", flag.ContinueOnError)
 	cp_flags = flag.NewFlagSet("cp", flag.ContinueOnError)
+	util_flags = flag.NewFlagSet("util", flag.ContinueOnError)
 
 	// id
 	// id_flags.BoolVarP(&version_flag, "version", "v", false, "Show version information.")
@@ -97,4 +110,8 @@ func init() {
 	cp_flags.BoolVarP(&recursive_cp_flag, "recursive", "R", false, "Copy recursively.")
 	cp_flags.BoolVarP(&verbose_cp_flag, "verbose", "v", false, "Verbose output.")
 	cp_flags.VarP(&target_cp_flag, "target", "T", "Specify additional target paths, can be used more than once.")
+
+	// util
+	util_flags.StringVarP(&cmd_util_string, "command", "c", "", "Name of utility to run.")
+	util_flags.BoolVarP(&help_util_flag, "help", "h", false, "List all commands and documentation.")
 }

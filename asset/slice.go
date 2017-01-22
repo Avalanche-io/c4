@@ -33,15 +33,23 @@ func SearchIDs(a IDSlice, x *ID) int {
 	return sort.Search(len(a), func(i int) bool { return a[i].Cmp(x) >= 0 })
 }
 
+func (s IDSlice) Range(start int, end int) IDSlice {
+	return s[start:end]
+}
+
 // ID of a sorted slice of IDs
-func (s IDSlice) ID() (*ID, error) {
+func (s *IDSlice) ID() (*ID, error) {
 	s.Sort()
+	return s.PreSortedID()
+}
+
+func (s IDSlice) PreSortedID() (*ID, error) {
 	var previous_idset IDSlice
 	idset := s
 	round := 0
 	for {
 		previous_idset = idset
-		idset = idset[:0]
+		idset = IDSlice{} //idset[:0]
 		var left *ID
 		for _, right := range previous_idset {
 			if left == nil {

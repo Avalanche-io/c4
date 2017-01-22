@@ -25,8 +25,7 @@ func id_main(f *flag.FlagSet) {
 func identify_pipe() {
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		reader := bufio.NewReader(os.Stdin)
-		printID(encode(reader))
+		printID(encode(bufio.NewReader(os.Stdin)))
 	} else {
 		flag.Usage()
 	}
