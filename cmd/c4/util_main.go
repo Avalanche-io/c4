@@ -28,21 +28,33 @@ func oldnewid_pipe() {
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		ids := find_ids(bufio.NewReader(os.Stdin))
-		for old := range ids {
-			fmt.Println(oldnewid(old))
-		}
+		oldnewid_output(ids)
+		// for old := range ids {
+		// 	fmt.Println(oldnewid(old))
+		// }
 	} else {
 		flag.Usage()
 	}
 }
 
+func oldnewid_output(ids <-chan string) {
+	fmt.Printf("{")
+	first := true
+	for old_id := range ids {
+		if !first {
+			fmt.Printf(",")
+		}
+		first = false
+		new_id := oldnewid(old_id)
+		fmt.Printf("\"%s\":\"%s\"", old_id, new_id)
+	}
+	fmt.Printf("}")
+}
+
 func oldnewid_args(list []string) {
 	for _, item := range list {
 		ids := find_ids(bytes.NewReader([]byte(item)))
-		for old := range ids {
-
-			fmt.Println(oldnewid(old))
-		}
+		oldnewid_output(ids)
 	}
 }
 
