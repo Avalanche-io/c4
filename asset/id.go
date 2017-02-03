@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	// charset = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
-	charset = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	// Charset = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
+	Charset = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 	base    = 58
 )
 
@@ -24,8 +24,8 @@ func init() {
 	for i := 0; i < len(lut); i++ {
 		lut[i] = 0xFF
 	}
-	for i := 0; i < len(charset); i++ {
-		lut[charset[i]] = byte(i)
+	for i := 0; i < len(Charset); i++ {
+		lut[Charset[i]] = byte(i)
 	}
 }
 
@@ -107,7 +107,7 @@ func (id *ID) Bytes() []byte {
 	var encoded []byte
 	for bigNum.Cmp(bigZero) > 0 {
 		bigNum.DivMod(&bigNum, bigBase, bigMod)
-		encoded = append([]byte{charset[bigMod.Int64()]}, encoded...)
+		encoded = append([]byte{Charset[bigMod.Int64()]}, encoded...)
 	}
 	// padding
 	diff := idlen - 2 - len(encoded)
