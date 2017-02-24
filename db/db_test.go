@@ -1,126 +1,99 @@
 package db_test
 
 import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"path/filepath"
+
 	"os"
 	"testing"
 
-	"github.com/etcenter/c4/db"
-	"github.com/etcenter/c4/test"
-
+	c4db "github.com/Avalanche-io/c4/db"
+	c4id "github.com/Avalanche-io/c4/id"
 	"github.com/cheekybits/is"
 )
 
-func TestCreatesDB(t *testing.T) {
+func Setup(t *testing.T) (is.I, *c4db.DB, func()) {
 	is := is.New(t)
-	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
-
-	db_path := tmp + "/c4.db"
-	test_db, err := db.Open(db_path)
+	dir, err := ioutil.TempDir("", "c4_tests")
 	is.NoErr(err)
-	test_db.Close()
-	if _, err = os.Stat(db_path); os.IsNotExist(err) {
-		is.Fail("DB not created " + db_path)
+
+	tmpdb := filepath.Join(dir, "c4.db")
+	db, err := c4db.Open(tmpdb, 0700, nil)
+	is.NoErr(err)
+	is.NotNil(db)
+
+	return is, db, func() {
+		err := db.Close()
+		is.NoErr(err)
+		os.RemoveAll(dir)
 	}
 }
 
-func TestCreatesBuckets(t *testing.T) {
-	is := is.New(t)
-
-	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
-
-	db_path := tmp + "/c4.db"
-	test_db, err := db.Open(db_path)
-	is.NoErr(err)
-
-	bucketsIn := []string{"bucket1", "bucket2", "bucket3"}
-
-	err = test_db.CreateBuckets(bucketsIn)
-	is.NoErr(err)
-
-	bucketsOut, err := test_db.ListBuckets()
-	is.NoErr(err)
-
-	for i, bucket := range bucketsOut {
-		is.Equal(bucket, bucketsIn[i])
-	}
-
+func TestDBOpenClose(t *testing.T) {
+	_, _, Teardown := Setup(t)
+	defer Teardown()
 }
 
-func TestPut(t *testing.T) {
-	is := is.New(t)
+func TestDBSetGet(t *testing.T) {
+	is, db, Teardown := Setup(t)
+	defer Teardown()
 
-	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
-
-	db_path := tmp + "/c4.db"
-	test_db, err := db.Open(db_path)
+	in_id, err := c4id.Identify(bytes.NewReader([]byte("bar")))
 	is.NoErr(err)
-
-	err = test_db.CreateBucket("bucket")
+	is.NotNil(in_id)
+	err = db.SetAssetID([]byte("foo"), in_id)
 	is.NoErr(err)
-
-	err = test_db.Put("bucket", []byte("key"), []byte("value: 42"))
+	out_id := db.GetAssetID([]byte("foo"))
 	is.NoErr(err)
+	is.NotNil(out_id)
+
+	is.Equal(in_id.String(), out_id.String())
+
+	err = db.SetAttributesID([]byte("foo"), in_id)
+	is.NoErr(err)
+	out_id = db.GetAttributesID([]byte("foo"))
+	is.NoErr(err)
+	is.NotNil(out_id)
+
+	is.Equal(in_id.String(), out_id.String())
 }
 
-func TestGet(t *testing.T) {
-	is := is.New(t)
+func TestDBForEach(t *testing.T) {
+	is, db, Teardown := Setup(t)
+	defer Teardown()
 
-	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
+	m := make(map[string][][]byte)
 
-	db_path := tmp + "/c4.db"
-	test_db, err := db.Open(db_path)
-	is.NoErr(err)
+	for i := 0; i < 100; i++ {
+		key := []byte(fmt.Sprintf("%d", i))
+		asset_value := []byte(fmt.Sprintf("%d", rand.Int()))
+		attribute_value := []byte(fmt.Sprintf("%d", rand.Int()))
+		m[string(key)] = [][]byte{asset_value, attribute_value}
+		id, err := c4id.Identify(bytes.NewReader(asset_value))
+		is.NoErr(err)
+		is.NotNil(id)
+		err = db.SetAssetID(key, id)
 
-	err = test_db.CreateBucket("bucket")
-	is.NoErr(err)
-
-	value := "value: 42"
-	err = test_db.Put("bucket", []byte("key"), []byte(value))
-	is.NoErr(err)
-
-	data, err := test_db.Get("bucket", []byte("key"))
-	is.NoErr(err)
-
-	is.Equal(data, []byte(value))
-}
-
-func TestItterate(t *testing.T) {
-	is := is.New(t)
-
-	tmp := test.TempDir(is)
-	defer test.DeleteDir(&tmp)
-
-	db_path := tmp + "/c4.db"
-	test_db, err := db.Open(db_path)
-	is.NoErr(err)
-
-	err = test_db.CreateBucket("bucket")
-	is.NoErr(err)
-
-	keys := [][]byte{
-		[]byte("key1"),
-		[]byte("key2"),
-	}
-	values := [][]byte{
-		[]byte("value: 42"),
-		[]byte("value: 42, Oh no, not again."),
+		id, err = c4id.Identify(bytes.NewReader(attribute_value))
+		is.NoErr(err)
+		is.NotNil(id)
+		is.NoErr(err)
+		err = db.SetAttributesID(key, id)
+		is.NoErr(err)
 	}
 
-	err = test_db.Put("bucket", keys[0], values[0])
-	is.NoErr(err)
-
-	err = test_db.Put("bucket", keys[1], values[1])
-	is.NoErr(err)
-
-	i := 0
-	test_db.Iterate("bucket", func(k []byte, v []byte) bool {
-		is.Equal(k, keys[i])
-		is.Equal(v, values[i])
-		i++
-		return true
+	db.ForEach(func(key []byte, asset_id *c4id.ID, attribute_id *c4id.ID) error {
+		expected := m[string(key)]
+		values := []*c4id.ID{asset_id, attribute_id}
+		for i, v := range values {
+			id, err := c4id.Identify(bytes.NewReader(expected[i]))
+			is.NoErr(err)
+			is.NotNil(id)
+			is.Equal(id, v)
+		}
+		return nil
 	})
 }

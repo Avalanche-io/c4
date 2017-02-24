@@ -1,16 +1,9 @@
-// Package c4 contains Go implementations for core C4 concepts.
+// Package c4 implements the c4 framework.
 //
-// Creating IDs
+// The framework consists of three primary components.
 //
-// To create a C4 ID, use the IDEncoder type as a hash writer.
+// Completed so far is the C4ID component.
 //
-//     e := c4.NewIDEncoder()
-//     io.Copy(e, src)
-//     id := e.ID()
+// The other components C4GRAPH, and C4PKI are still being implemented.
 //
-// Parsing IDs
-//
-// To parse an ID from a string, use the ParseID function.
-//
-//     c4.ParseID(src)
 package c4

@@ -1,0 +1,63 @@
+// type 2
+{ "/": [
+  { "root/": [
+      { "folder_one/": [
+          { "test": [
+              "foo",
+              { "info": {"IsDir": false, "ModTime": "2017-02-09T01:35:13-08:00", "Mode": 2147484096, "Name": "test", "Size": 3 } },
+              3,
+              1,
+              "c45XyDwWmrPQwJPdULBhma6LGNaLghKtN7R9vLn2tFrepZJ9jJFSDzpCKei11EgA5r1veenBu3Q8qfvWeDuPc7fJK2"
+            ],
+            "a/": [
+              null,
+              {"c4": {"keys": 0, "size": 300, "type": "c4fs"}, "info": {"IsDir": true, "ModTime": "2017-02-09T01:35:13-08:00", "Mode": 2147484096, "Name": "three", "Size": 0 }
+              },
+              0,
+              1,
+              null
+            ]
+          },
+          {
+            "c4": {
+              "keys": 23,
+              "size": 300,
+              "type": "c4fs"
+            },
+            "info": {
+              "IsDir": true,
+              "ModTime": "2017-02-09T01:35:13-08:00",
+              "Mode": 2147484096,
+              "Name": "three",
+              "Size": 102
+            }
+          },
+          3,
+          3,
+          "c44yRBBNsrA23ESBcWVYq1M2JFfvCcUFeDaiQ6av2rmzJzQLaRE1pgdvjq1ExfXKQZDL9hBHnEHvPNKbKbaHZp7MQq"
+        ]
+      },
+      {
+        "c4": {
+          "keys": 23,
+          "size": 300,
+          "type": "c4fs"
+        },
+        "info": {
+          "IsDir": true,
+          "ModTime": "2017-02-09T01:35:13-08:00",
+          "Mode": 2147484096,
+          "Name": "three",
+          "Size": 102
+        }
+      },
+      3,
+      4,
+      "c41WTqs1fwssSMLNpHurvs9UNC18xVCUAACfxatT6gh3mv3dVJyanvR2eKjuGWAg3BwEiT5vKK86VKFnbSm4jqZ7B5"
+    ]
+  },
+  {"c4": {"keys": 23, "size": 300, "type": "c4fs"}, "info": {"IsDir": true, "ModTime": "2017-02-09T01:35:13-08:00", "Mode": 2147484096, "Name": "three", "Size": 102 } },
+  3,
+  4,
+  "c42NZJH5TPDdgJhLZ5eNWiiFZbz7Ff3KgTJ63K6DTqYYmwrJR9MVDW3JoWB1DGNfuide6xxuZzVshqQXUPo5SSmefU"
+]}

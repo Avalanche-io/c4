@@ -1,109 +1,92 @@
-// The c4 db package wraps the bolt db for use as a simple key value store.
-// The keys are typically raw c4 ids, the values are *always* raw c4 ids.
 package db
 
-import "github.com/boltdb/bolt"
+import (
+	"os"
+
+	c4 "github.com/Avalanche-io/c4/id"
+	"github.com/boltdb/bolt"
+)
 
 type DB bolt.DB
 
-// Open creates or opens the given db path with permissions 0600.
-func Open(path string) (*DB, error) {
-	db, err := bolt.Open(path, 0600, nil)
-	return (*DB)(db), err
+func Open(path string, mode os.FileMode, options *bolt.Options) (*DB, error) {
+	bdb, err := bolt.Open(path, mode, options)
+	if err != nil {
+		return nil, err
+	}
+	err = bdb.Update(func(tx *bolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte("assets")); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists([]byte("attributes")); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	return (*DB)(bdb), err
 }
 
-// Close closes a the database file.
-func (db *DB) Close() {
-	(*bolt.DB)(db).Close()
+func (d *DB) getIDFromBucket(key []byte, bucket string) *c4.ID {
+	var id *c4.ID
+	db := (*bolt.DB)(d)
+	db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		idbytes := b.Get(key)
+		if len(idbytes) == 64 {
+			id = c4.BytesToID(idbytes)
+		}
+		return nil
+	})
+	return id
 }
 
-type createBucketError string
-
-func (e createBucketError) Error() string {
-	return "Error creating bucket: " + string(e)
+func (d *DB) setIDForBucket(key []byte, id *c4.ID, bucket string) error {
+	db := (*bolt.DB)(d)
+	return db.Batch(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		return b.Put(key, id.RawBytes())
+		return nil
+	})
 }
 
-// CreateBuckets creates the given array of bucket.
-func (db *DB) CreateBuckets(names []string) error {
-	bdb := (*bolt.DB)(db)
+func (db *DB) SetAssetID(key []byte, id *c4.ID) error {
+	return db.setIDForBucket(key, id, "assets")
+}
 
-	return bdb.Update(func(tx *bolt.Tx) error {
-		for _, name := range names {
-			_, err := tx.CreateBucketIfNotExists([]byte(name))
-			if err != nil {
-				return createBucketError(name + err.Error())
+func (db *DB) SetAttributesID(key []byte, id *c4.ID) error {
+	return db.setIDForBucket(key, id, "attributes")
+}
+
+func (db *DB) GetAssetID(key []byte) *c4.ID {
+	return db.getIDFromBucket(key, "assets")
+}
+
+func (db *DB) GetAttributesID(key []byte) *c4.ID {
+	return db.getIDFromBucket(key, "attributes")
+}
+
+func (d *DB) ForEach(f func(key []byte, asset *c4.ID, attributes *c4.ID) error) {
+	db := (*bolt.DB)(d)
+	db.View(func(tx *bolt.Tx) error {
+		assets_bkt := tx.Bucket([]byte([]byte("assets")))
+		attributes_bkt := tx.Bucket([]byte([]byte("attributes")))
+		return assets_bkt.ForEach(func(key []byte, asset_value []byte) error {
+			if len(asset_value) != 64 {
+				return nil
 			}
-		}
-		return nil
-	})
-}
-
-// CreateBucket creates a single bucket
-func (db *DB) CreateBucket(name string) error {
-	bdb := (*bolt.DB)(db)
-
-	return bdb.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(name))
-		if err != nil {
-			return createBucketError(name + err.Error())
-		}
-		return nil
-	})
-}
-
-// List buckets returns a list of buckets as an array of strings
-func (db *DB) ListBuckets() ([]string, error) {
-	bdb := (*bolt.DB)(db)
-
-	var result []string
-	err := bdb.View(func(tx *bolt.Tx) error {
-		err := tx.ForEach(func(name []byte, b *bolt.Bucket) error {
-			result = append(result, string(name))
-			return nil
+			attribute_value := attributes_bkt.Get(key)
+			if len(attribute_value) != 64 {
+				return nil
+			}
+			asset_id := c4.BytesToID(asset_value)
+			attribute_id := c4.BytesToID(attribute_value)
+			return f(key, asset_id, attribute_id)
 		})
-		return err
-	})
-	return result, err
-}
-
-// Put sets the value of a key for a given bucket
-func (db *DB) Put(bucket string, key []byte, data []byte) error {
-	bdb := (*bolt.DB)(db)
-
-	return bdb.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		return b.Put(key, data)
 	})
 }
 
-// Get retrieves the value a key for the given bucket
-func (db *DB) Get(bucket string, key []byte) ([]byte, error) {
-	bdb := (*bolt.DB)(db)
-
-	var data []byte
-	err := bdb.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		data = b.Get(key)
-		return nil
-	})
-	return data, err
-}
-
-// Iterate over keys
-func (db *DB) Iterate(bucket string, f func(k []byte, v []byte) bool) error {
-	bdb := (*bolt.DB)(db)
-
-	err := bdb.View(func(tx *bolt.Tx) error {
-		// Assume bucket exists and has keys
-		b := tx.Bucket([]byte(bucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			if !f(k, v) {
-				break
-			}
-		}
-		return nil
-	})
-	return err
+func (d *DB) Close() error {
+	db := (*bolt.DB)(d)
+	return db.Close()
 }
