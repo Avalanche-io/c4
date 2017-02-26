@@ -1,10 +1,10 @@
 
 # C4 - The Cinema Content Creation Cloud
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![GoDoc](https://godoc.org/github.com/etcenter/c4go?status.svg)](https://godoc.org/github.com/etcenter/c4)
-[![Stories in Ready](https://badge.waffle.io/etcenter/c4.png?label=ready&title=Ready)](https://waffle.io/etcenter/c4)
-[![Build Status](https://travis-ci.org/etcenter/c4.svg?branch=master)](https://travis-ci.org/etcenter/c4)
-[![Coverage Status](https://coveralls.io/repos/github/etcenter/c4/badge.svg?branch=master)](https://coveralls.io/github/etcenter/c4?branch=master)
+[![GoDoc](https://godoc.org/github.com/Avalanche-io/c4?status.svg)](https://godoc.org/github.com/Avalanche-io/c4)
+[![Stories in Ready](https://badge.waffle.io/Avalanche-io/c4.png?label=ready&title=Ready)](https://waffle.io/Avalanche-io/c4)
+[![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
+[![Coverage Status](https://coveralls.io/repos/github/Avalanche-io/c4/badge.svg?branch=master)](https://coveralls.io/github/Avalanche-io/c4?branch=master)
 
 
 ### The C4 framework
@@ -26,7 +26,7 @@ security model.
 Go package and cli for c4.
 
 ### Command line tool
-See [c4 command line tool](https://github.com/etcenter/c4/tree/master/cmd/c4)
+See [c4 command line tool](https://github.com/Avalanche-io/c4/tree/master/cmd/c4)
 
 C4 is the Cinema Content Creation Cloud.  This repo contains the c4 command line interface,
 and the c4 demon.  We are in the process of rolling out the following features:
@@ -139,7 +139,7 @@ import (
   "os"
 
   // import 'asset' asset identification
-  "github.com/etcenter/c4/asset"
+  "github.com/Avalanche-io/c4/asset"
 )
 
 func main() {
@@ -176,7 +176,7 @@ C4id of "main.go": c44jVTEz8y7wCiJcXvsX66BHhZEUdmtf7TNcZPy1jdM6S14qqrzsiLyoZRSvR
 
 ### Releases 
 
-Current release: [v0.6.0](https://github.com/etcenter/c4/tree/v0.6.0)
+Current release: [v0.6.0](https://github.com/Avalanche-io/c4/tree/v0.6.0)
 
 Check the `release` branch for the latest release, or tags to find a specific release.  The `master` branch holds currently development.
 
