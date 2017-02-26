@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/blang/vfs"
 	"github.com/blang/vfs/memfs"
@@ -104,7 +105,7 @@ func TestFSWalk(t *testing.T) {
 		is.Equal(info2.Name(), info.Name())
 		is.Equal(info2.IsDir(), info.IsDir())
 		is.Equal(info2.Mode(), info.Mode())
-		is.Equal(info2.ModTime(), info.ModTime())
+		is.Equal(info2.ModTime().Format(time.RFC3339), info.ModTime().Format(time.RFC3339))
 		return nil
 	})
 	is.NoErr(err)
