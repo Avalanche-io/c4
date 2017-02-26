@@ -44,7 +44,7 @@ and the c4 demon.  We are in the process of rolling out the following features:
 
 ### C4 ID
 
-[C4 ID Whitepaper](http://www.cccc.io/downloads/C4ID%20ETC%20Whitepaper_u1.pdf)
+[C4 ID Whitepaper](http://www.cccc.io/downloads/C4ID%20ETC%20Whitepaper_u2.pdf)
 
 The C4 ID system is a standardized encoding of a SHA-512 hash.  It provides an unambiguous, universally
 unique id for any file or block of data.  However, not only is the C4 ID universally unique, it is also
