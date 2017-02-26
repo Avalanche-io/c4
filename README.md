@@ -102,7 +102,7 @@ The c4 id, only 4 characters longer, includes a label and is easily selectable b
     - `(?=(c4[1-9A-HJ-NP-Za-km-z]{88}))`
     - `(?=(c4[1-6][1-9A-HJ-NP-Za-km-z]{87}))`
     - `(?=(c46[1-7][1-9A-HJ-NP-Za-km-z]{86}|c4[1-5][1-9A-HJ-NP-Za-km-z]{87}))`
-2. In practice C4 IDs are not likely to be similar by more than 5 characters. IDs with 6 identical characters in sequence appear only once per 38 billion.  Further if sets of IDs are in sorted order the right most digits are statistically unlikely to ever match unless IDs are identical, and this is very easy to detect visually especially in large blocks of IDs.  When comparing IDs visually that are in different locations (i.e. paper and screen), compare the right most digits first for best results.
+2. In practice C4 IDs are not likely to be similar by more than 5 characters. IDs with 6 identical characters in sequence appear only once per 38 billion. Further if a sets of IDs are in sorted order the right most digits are statistically unlikely to ever match unless the IDs are identical. Because of this, matching IDs are very easy to detect visually especially in large blocks of IDs.  When comparing IDs visually that are in different locations (i.e. paper and screen), compare the right most digits first for best results.
 
 ### C4 Dependency Graph (c4dg)
 
