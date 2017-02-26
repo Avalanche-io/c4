@@ -1,4 +1,4 @@
-package db_test
+package store_test
 
 import (
 	// "errors"
@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	c4db "github.com/Avalanche-io/c4/db"
 	c4id "github.com/Avalanche-io/c4/id"
+	c4store "github.com/Avalanche-io/c4/store"
 	"github.com/cheekybits/is"
 )
 
@@ -34,7 +34,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	// defer done()
 	_ = done
 
-	st, err := c4db.OpenStorage(dir + "/asset_storage")
+	st, err := c4store.Open(dir + "/asset_storage")
 	is.NoErr(err)
 	is.NotNil(st)
 
@@ -56,7 +56,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	err = st.Close()
 	is.NoErr(err)
 
-	st2, err := c4db.OpenStorage(dir + "/asset_storage")
+	st2, err := c4store.Open(dir + "/asset_storage")
 	is.NoErr(err)
 	is.NotNil(st)
 
@@ -78,7 +78,7 @@ func TestStoreDirs(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
 	defer done()
 	_ = done
-	st, err := c4db.OpenStorage(dir + "/asset_storage")
+	st, err := c4store.Open(dir + "/asset_storage")
 	is.NoErr(err)
 	is.NotNil(st)
 

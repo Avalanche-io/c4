@@ -1,4 +1,4 @@
-package db
+package store
 
 import (
 	"bufio"
@@ -11,13 +11,14 @@ import (
 	"sort"
 	"strings"
 
-	c4 "github.com/Avalanche-io/c4/id"
+	c4db "github.com/Avalanche-io/c4/db"
+	c4id "github.com/Avalanche-io/c4/id"
 )
 
 // Store represents a Asset storage location.
 type Store struct {
 	path string
-	db   *DB
+	db   *c4db.DB
 }
 
 // Asset represents
@@ -27,21 +28,21 @@ type Asset struct {
 	mode int
 	f    *os.File
 	st   *Store
-	en   *c4.IDEncoder
-	id   *c4.ID
+	en   *c4id.IDEncoder
+	id   *c4id.ID
 }
 
 // OpenStorage opens the storage at the given path.  If the path doesn't already
 // exist, OpenStorage will attempt to create it.
-func OpenStorage(path string) (*Store, error) {
+func Open(path string) (*Store, error) {
 	temp_path := filepath.Join(path, "temp")
 	err := makepaths(path, temp_path)
 	if err != nil {
 		return nil, err
 	}
 
-	db_path := filepath.Join(path, "c4.db")
-	db, err := Open(db_path, 0600, nil)
+	db_path := filepath.Join(path, "c4id.db")
+	db, err := c4db.Open(db_path, 0600, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +67,7 @@ func (s *Store) Create(name string) (a *Asset, err error) {
 	if err != nil {
 		return nil, err
 	}
-	en := c4.NewIDEncoder(file)
+	en := c4id.NewIDEncoder(file)
 	_, filename := filepath.Split(name)
 	key := []byte(name)
 	a = &Asset{
@@ -139,7 +140,7 @@ func (s *Store) Mkdir(name string) error {
 	return err
 }
 
-func (s *Store) AssetID(name string) *c4.ID {
+func (s *Store) AssetID(name string) *c4id.ID {
 	return s.db.GetAssetID([]byte(name))
 }
 
@@ -173,7 +174,7 @@ func (s *Store) Exists(path string) bool {
 	return e
 }
 
-func exists(path string, id *c4.ID) bool {
+func exists(path string, id *c4id.ID) bool {
 	idpath := filepath.Join(pathtoasset(path, id), id.String())
 	if _, err := os.Stat(idpath); os.IsNotExist(err) {
 		return false
@@ -188,7 +189,7 @@ func (s *Store) Open(name string) (a *Asset, err error) {
 		return nil, os.ErrNotExist
 	}
 	var file *os.File
-	var en *c4.IDEncoder
+	var en *c4id.IDEncoder
 	file_name := filepath.Join(pathtoasset(s.path, id), id.String())
 	file, err = os.OpenFile(file_name, os.O_RDONLY, 0600)
 	if err != nil {
@@ -226,11 +227,11 @@ func (s *Store) OpenAsset(name string, flag int, perm os.FileMode) (a *Asset, er
 	return
 }
 
-func (a *Asset) ID() *c4.ID {
+func (a *Asset) ID() *c4id.ID {
 	return a.id
 }
 
-func (s *Store) movetoid(path string, id *c4.ID) error {
+func (s *Store) movetoid(path string, id *c4id.ID) error {
 	idpath := filepath.Join(pathtoasset(s.path, id), id.String())
 	if !exists(s.path, id) {
 		dir, _ := filepath.Split(idpath)
@@ -495,7 +496,7 @@ func makepaths(paths ...string) error {
 	return nil
 }
 
-func pathtoasset(path string, id *c4.ID) string {
+func pathtoasset(path string, id *c4id.ID) string {
 	str := id.String()
 
 	newpath := path

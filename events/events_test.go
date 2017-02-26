@@ -2,11 +2,11 @@ package events_test
 
 import (
 	"errors"
+	"testing"
 
-	"github.com/Avalanche-io/c4/events"
 	"github.com/cheekybits/is"
 
-	"testing"
+	"github.com/Avalanche-io/c4/events"
 )
 
 type test_event string

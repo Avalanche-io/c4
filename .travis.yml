@@ -9,13 +9,16 @@ before_install:
   - go get github.com/modocache/gover
   - go get github.com/mattn/goveralls
 script:
-  - go test -coverprofile=asset.coverprofile ./id
+  - go test -coverprofile=id.coverprofile ./id
   - go test -coverprofile=db.coverprofile ./db
-  - go test -coverprofile=env.coverprofile ./os
-  - go test -coverprofile=env.coverprofile ./time
-  - go test -coverprofile=env.coverprofile ./util
-  - go test -coverprofile=env.coverprofile ./events
-  - go test -coverprofile=env.coverprofile ./pki
-  - go test -coverprofile=cli.coverprofile ./cmd/c4id
+  - go test -coverprofile=ar.coverprofile ./ar
+  - go test -coverprofile=store.coverprofile ./store
+  - go test -coverprofile=os.coverprofile ./os
+  - go test -coverprofile=time.coverprofile ./time
+  - go test -coverprofile=util.coverprofile ./util
+  - go test -coverprofile=events.coverprofile ./events
+  - go test -coverprofile=pki.coverprofile ./pki
+  - go test -coverprofile=dep.coverprofile ./dep
+  - go test -coverprofile=c4id.coverprofile ./cmd/c4id
   - $HOME/gopath/bin/gover
   - $HOME/gopath/bin/goveralls -coverprofile=gover.coverprofile -service travis-ci
