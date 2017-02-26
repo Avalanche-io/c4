@@ -65,7 +65,7 @@ func TestTimeAge(t *testing.T) {
 	// There will be slight difference in ut.Age call to time.Now, and
 	// the one in the test, perhaps 10 microseconds is reasonable margin.
 	// Or else use the equalTime function for much larger margin.
-	is.Equal(ut.Age()/(100*time.Microsecond), dif/(100*time.Microsecond))
+	is.Equal(ut.Age()/(time.Millisecond), dif/(time.Millisecond))
 }
 
 func TestTimeJSON(t *testing.T) {
