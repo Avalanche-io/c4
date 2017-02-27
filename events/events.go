@@ -57,7 +57,7 @@ func (e ErrorChan) If(err error) bool {
 }
 
 // Keeping this here for now, but should probably moved, or removed.
-func merge(cs ...<-chan Event) <-chan Event {
+func Merge(cs ...<-chan Event) <-chan Event {
 	var wg sync.WaitGroup
 	merged_out := make(chan Event)
 
@@ -84,13 +84,13 @@ func merge(cs ...<-chan Event) <-chan Event {
 }
 
 // from: https://gist.github.com/icholy/5449954
-type Acc string
+type Acc interface{}
 
-func NewWordChan(words []Event) Chan {
+func EventsChan(events []Event) Chan {
 	stream := make(Chan)
 	go func() {
-		for _, w := range words {
-			stream <- w
+		for _, e := range events {
+			stream <- e
 		}
 		close(stream)
 	}()
@@ -121,13 +121,14 @@ func (in Chan) Filter(fn func(Event) bool) Chan {
 	return out
 }
 
-func (in Chan) Reduce(fn func(Acc, Event) (Acc, Acc)) chan Acc {
-	out := make(chan Acc)
+func (in Chan) Reduce(fn func(Acc, Event) (Acc, Event)) chan Event {
+	out := make(chan Event)
 	go func() {
-		var val, acc Acc
+		var val Event
+		var acc Acc
 		for x := range in {
 			acc, val = fn(acc, x)
-			if val != "" {
+			if val != nil {
 				out <- val
 			}
 		}
@@ -161,12 +162,13 @@ func (in Chan) Split() (Chan, Chan) {
 	return out1, out2
 }
 
-func (in Chan) ReduceAll(fn func(Acc, Event) Acc) Acc {
+func (in Chan) ReduceAll(fn func(Acc, Event) (Acc, Event)) Event {
 	var acc Acc
+	var e Event
 	for x := range in {
-		acc = fn(acc, x)
+		acc, e = fn(acc, x)
 	}
-	return acc
+	return e
 }
 
 func (in Chan) Collect() []Event {
@@ -182,86 +184,3 @@ func (in Chan) Do(fn func(Event)) {
 		fn(x)
 	}
 }
-
-// func main() {
-
-// 	reverse := func(word Event) Event {
-// 		s := string(word)
-// 		o := make([]rune, utf8.RuneCountInString(s))
-// 		i := len(o)
-// 		for _, c := range s {
-// 			i--
-// 			o[i] = c
-// 		}
-// 		return Event(o)
-// 	}
-
-// 	longerThan := func(n int) func(Event) bool {
-// 		return func(w Event) bool {
-// 			return len(w) > n
-// 		}
-// 	}
-
-// 	not := func(s string) func(Event) bool {
-// 		Event := Event(s)
-// 		return func(w Event) bool {
-// 			return Event != w
-// 		}
-// 	}
-
-// 	words := []Event{"this", "is", "pretty", "cool", "1", "2", "3"}
-
-// 	NewWordStream(words).Map(reverse).Filter(longerThan(2)).Map(reverse).Filter(not("this")).Do(func(w Event) {
-// 		println(w)
-// 	})
-// }
-
-// func (m *Manager) FilteredEvents(types ...Event) <-chan Event {
-// 	filter := make(map[string]bool)
-// 	for _, v := range types {
-// 		filter[reflect.TypeOf(v).String()] = true
-// 	}
-// 	fout := make(chan Event, 1)
-// 	in := m.unfiltered
-// 	out := m.all
-// 	stop := m.stop
-// 	ctl := m.control
-// 	go func() {
-// 		select {
-// 		case ctl <- struct{}{}:
-// 		case <-time.After(1 * time.Second):
-// 			fmt.Printf("ReceiveFilteredEvents is unable to take control, did you forget to Start()?\n")
-// 		}
-
-// 		fmt.Printf("ReceiveFilteredEvents - running\n")
-// 		for {
-// 			select {
-// 			case <-ctl:
-// 			case <-stop:
-// 				return
-// 			}
-// 		}
-// 	}()
-
-// 	go func() {
-
-// 		defer func() {
-// 			close(fout)
-// 		}()
-
-// 		for e := range in {
-// 			select {
-// 			case out <- e:
-// 				fmt.Printf("Echoing to all events channel: %v\n", e)
-// 			case <-stop:
-// 				fmt.Printf("ReceiveFilteredEvents - Stopping\n")
-// 				return
-// 			}
-// 			if filter[reflect.TypeOf(e).String()] {
-// 				fmt.Printf("ReceiveFilteredEvents - sending filtered event\n")
-// 				fout <- e
-// 			}
-// 		}
-// 	}()
-// 	return fout
-// }

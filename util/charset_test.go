@@ -34,6 +34,24 @@ func TestCheckCharacterSet(t *testing.T) {
 			IsError: true,
 			ID:      "",
 		},
+		{
+			A:       "c41111VPsgiUnMBCtmjMgyWNKVb8fbnqGiqBf3aXMaVPn2EQhaeEtWKpyEEViWahHEgRb1Y4qe84x7UVPrRxMLUiRr",
+			B:       "c41111uoSFHtMmbcTLJmFYvnjuA8EAMQgHQbE3zwmzuoM2epGzDeTvjPYeeuHvzGheFqA1x4RE84Y7uvpSrYnmuJrS",
+			IsError: true,
+			ID:      "",
+		},
+		{
+			A:       "c41111uoSFHtMmbcTLJmFYvnjuA8EAMQgHQbE3zwmzuoM2epGzDeTvjPYeeuHvzGheFqA1x4RE84Y7uvpSrYnmuJrS",
+			B:       "c41111VPsgiUnMBCtmjMgyWNKVb8fbnqGiqBf3aXMaVPn2EQhaeEtWKpyEEViWahHEgRb1Y4qe84x7UVPrRxMLUiRr",
+			IsError: true,
+			ID:      "",
+		},
+		{
+			A:       "",
+			B:       "c41111VPsgiUnMBCtmjMgyWNKVb8fbnqGiqBf3aXMaVPn2EQhaeEtWKpyEEViWahHEgRb1Y4qe84x7UVPrRxMLUiRr",
+			IsError: true,
+			ID:      "",
+		},
 	}
 
 	for _, test := range tests {
@@ -57,6 +75,8 @@ func TestOldCharsetIDToNew(t *testing.T) {
 	id := c4util.OldCharsetIDToNew(oldid)
 	is.NotNil(id)
 	is.Equal(newid.String(), id.String())
+	id = c4util.OldCharsetIDToNew(nil)
+	is.Nil(id)
 }
 
 func TestNewCharsetIDToOld(t *testing.T) {
@@ -66,4 +86,6 @@ func TestNewCharsetIDToOld(t *testing.T) {
 	id := c4util.NewCharsetIDToOld(newid)
 	is.NotNil(id)
 	is.Equal(oldid.String(), id.String())
+	id = c4util.NewCharsetIDToOld(nil)
+	is.Nil(id)
 }

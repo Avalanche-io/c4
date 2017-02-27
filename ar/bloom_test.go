@@ -87,6 +87,8 @@ func TestPeformanceBloom(t *testing.T) {
 		// We expect 100% positive rate for the IDs added.
 		is.True(b.Test(id))
 	}
+	// does not re-initialize
+	b.Initialize()
 	is.Equal(b.Count, positives)
 	t.Logf("Successfully matched %d ids", positives)
 	false_positive := 0
@@ -103,4 +105,18 @@ func TestPeformanceBloom(t *testing.T) {
 	rate := float64(false_positive) / float64(negatives)
 	t.Logf("\nfilter size: %d\nfalse positives: %d in %d\nrate: %0.8f", b.Size(), false_positive, negatives, rate)
 	is.True(fp_rate >= rate)
+}
+
+func TestErrors(t *testing.T) {
+	is := is.New(t)
+	b := c4ar.NewBloom().Capacity(10).Rate(0.15) //float64(1.0)
+	id, err := c4id.Identify(strings.NewReader("foo"))
+	is.NoErr(err)
+	is.False(b.Test(id))
+	b.Add(id)
+	is.Equal(b.String(), "*c4.Bloom=&{False Positives:0.150000, Cap:10, Bits:64, Hashes:5, Ids:1, Bitfiled:2322168557933568}")
+	id, err = c4id.Identify(strings.NewReader("bar"))
+	is.NoErr(err)
+	b.Add(id)
+	is.Equal(b.String(), "*c4.Bloom=&{False Positives:0.150000, Cap:10, Bits:64, Hashes:5, Ids:2, Bitfiled:11364552186991872}")
 }

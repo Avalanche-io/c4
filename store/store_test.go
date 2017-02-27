@@ -6,6 +6,7 @@ import (
 	// "github.com/Avalanche-io/c4/events"
 
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -89,6 +90,9 @@ func TestStoreDirs(t *testing.T) {
 	asset, err := st.Create("/dir2/foo/bar/foo.txt")
 	is.NoErr(err)
 	is.NotNil(asset)
+	asset2, err := st.Create("/dir2/foo/bar/cat.txt")
+	is.NoErr(err)
+	is.NotNil(asset2)
 
 	n, err := asset.Write([]byte("foo"))
 	is.NoErr(err)
@@ -96,12 +100,41 @@ func TestStoreDirs(t *testing.T) {
 	err = asset.Close()
 	is.NoErr(err)
 
+	n, err = asset2.WriteString("bar")
+	is.NoErr(err)
+	is.Equal(n, 3)
+	n, err = asset2.WriteAt([]byte("bar"), 2) // "babar"
+	err = asset2.Close()
+	is.NoErr(err)
+
+	is.Equal(asset.Name(), "foo.txt")
+	is.Equal(asset2.Name(), "cat.txt")
+
+	asset3, err := st.Open("/dir2/foo/bar/cat.txt")
+	is.NoErr(err)
+	data := make([]byte, 512)
+	n, err = asset3.Read(data)
+	is.NoErr(err)
+	is.Equal(n, len("babar"))
+	data = data[:n]
+	is.Equal(string(data), "babar")
+	ret, err := asset3.Seek(0, os.SEEK_SET)
+	is.NoErr(err)
+	is.Equal(ret, 0)
+	data2 := make([]byte, 512)
+	n, err = asset3.ReadAt(data2, 1)
+	is.Equal(err, io.EOF)
+	is.Equal(n, len("abar"))
+	data2 = data2[:n]
+	is.Equal(string(data2), "abar")
+
 	folder_asset, err := st.Open("/dir2/foo/bar/")
 	is.NoErr(err)
 	names, err := folder_asset.Readdirnames(-1)
 	is.NoErr(err)
 	expected := []string{
 		"baz/",
+		"cat.txt",
 		"foo.txt",
 	}
 	is.Equal(len(names), len(expected))
@@ -109,8 +142,66 @@ func TestStoreDirs(t *testing.T) {
 		is.True(i < len(expected))
 		is.Equal(expected[i], name)
 	}
+	folder_asset.Seek(0, os.SEEK_SET)
+	names2, err := folder_asset.Readdirnames(2)
+	is.NoErr(err)
+	expected2 := []string{
+		"baz/",
+		"cat.txt",
+	}
+	is.Equal(len(names2), len(expected2))
+	for i, name := range names2 {
+		is.True(i < len(expected2))
+		is.Equal(expected2[i], name)
+	}
+
+	// Not yet implemented
+	filesinfo, err := folder_asset.Readdir(-1)
+	is.Err(err)
+	is.Nil(filesinfo)
 
 	err = folder_asset.Close()
 	is.NoErr(err)
+
+}
+
+func TestErrors(t *testing.T) {
+	is, dir, done := SetupTestFolder(t, "store")
+	defer done()
+
+	// Setup
+
+	unwriteableFilepath := filepath.Join(dir, "unwriteableFile")
+	unwriteableFolderpath := filepath.Join(dir, "unwriteableFolder")
+	unwriteableDbfolder := filepath.Join(dir, "unwriteableDbfolder")
+	unwriteableDbpath := filepath.Join(unwriteableDbfolder, "c4id.db")
+	os.Mkdir(unwriteableFolderpath, 0000)
+	os.Mkdir(unwriteableDbfolder, 0777)
+	f, err := os.Create(unwriteableFilepath)
+	is.NoErr(err)
+	data := "foo"
+	n, err := f.Write([]byte(data))
+	is.NoErr(err)
+	is.Equal(n, len(data))
+	f.Close()
+	err = os.Chmod(unwriteableFilepath, 0000)
+	is.NoErr(err)
+	f, err = os.Create(unwriteableDbpath)
+	is.NoErr(err)
+	f.Close()
+	err = os.Chmod(unwriteableDbpath, 0000)
+	is.NoErr(err)
+
+	st, err := c4store.Open(unwriteableFilepath)
+	is.Err(err)
+	is.Nil(st)
+
+	st, err = c4store.Open(unwriteableFolderpath)
+	is.Err(err)
+	is.Nil(st)
+
+	st, err = c4store.Open(unwriteableDbfolder)
+	is.Err(err)
+	is.Nil(st)
 
 }

@@ -2,6 +2,7 @@ package ar
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"math/big"
 
@@ -38,6 +39,11 @@ func ln(x float64) float64 {
 	return math.Log(x)
 }
 
+func (b *Bloom) String() string {
+	return fmt.Sprintf("*c4.Bloom=&{False Positives:%06f, Cap:%d, Bits:%d, Hashes:%d, Ids:%d, Bitfiled:%s}",
+		b.p, b.n, b.m, b.k, b.Count, b.bits)
+}
+
 func (b *Bloom) Initialize() {
 	if b.bits != nil {
 		return
@@ -46,7 +52,8 @@ func (b *Bloom) Initialize() {
 	// b.k = int(math.Ceil(m / float64(b.n) * math.Ln2))
 
 	// For the time being we extract up to 16 32 bit hashes from the c4 id
-	hash_period := math.Pow(2, 32)
+	// hash_period := math.Pow(2, 32)
+	hash_period := float64(4294967296)
 	if m > hash_period {
 		// We constraint the size of the bitfiled to the largest number the hash can represent
 		m = hash_period
@@ -108,7 +115,7 @@ func (b *Bloom) Add(ids ...*c4.ID) error {
 }
 
 func (b *Bloom) Test(id *c4.ID) bool {
-	if b.bits == nil {
+	if b.bits == nil || id == nil {
 		return false
 	}
 

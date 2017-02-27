@@ -473,13 +473,11 @@ func (a *Asset) Write(b []byte) (n int, err error) {
 }
 
 func (a *Asset) WriteAt(b []byte, off int64) (n int, err error) {
-	err = errors.New("unimplemented")
-	return
+	return a.f.WriteAt(b, off)
 }
 
 func (a *Asset) WriteString(s string) (n int, err error) {
-	err = errors.New("unimplemented")
-	return
+	return a.Write([]byte(s))
 }
 
 func (a *Asset) Stat() (info os.FileInfo, err error) {
