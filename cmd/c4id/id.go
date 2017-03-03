@@ -11,7 +11,7 @@ import (
 )
 
 func encode(src io.Reader) *c4.ID {
-	e := c4.NewIDEncoder()
+	e := c4.NewEncoder()
 	_, err := io.Copy(e, src)
 	if err != nil {
 		panic(err)
@@ -25,15 +25,12 @@ func fileID(path *string) (*c4.ID, error) {
 		return nil, err
 	}
 	defer f.Close()
-	id, err := c4.Identify(f)
-	if err != nil {
-		return nil, err
-	}
+	id := c4.Identify(f)
 	return id, nil
 }
 
 func nullId() *c4.ID {
-	e := c4.NewIDEncoder()
+	e := c4.NewEncoder()
 	io.Copy(e, strings.NewReader(``))
 	return e.ID()
 }

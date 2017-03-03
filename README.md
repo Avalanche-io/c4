@@ -141,7 +141,7 @@ func main() {
   defer f.Close()
 
   // create a ID encoder.
-  e := c4.NewIDEncoder()
+  e := c4.NewEncoder()
   // the encoder is an io.Writer
   _, err = io.Copy(e, f)
   if err != nil {
@@ -161,7 +161,7 @@ Output:
 
 ```bash
 >go run main.go 
-C4id of "main.go": c44skR7eEM9VPEop3QNNZjMWYUmKLwQDu4zq3Kh1LyrbdxX2zNb1j1YRCKGViNb4V1hzCrb4z1dCp7S53JMZ7Ao9U9
+C4id of "main.go": c45oF5Jdtx29kuyxGt1vV9rALbAbhhgZde51FYHxJHDNB1rnFjmgzvJCgFH61ChV8MMcmnPuiDthiva7LYgAbhuy1X
 ```
 
 ### Releases 

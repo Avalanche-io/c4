@@ -17,7 +17,7 @@ func main() {
 	defer f.Close()
 
 	// create a ID encoder.
-	e := c4.NewIDEncoder()
+	e := c4.NewEncoder()
 	// the encoder is an io.Writer
 	_, err = io.Copy(e, f)
 	if err != nil {
