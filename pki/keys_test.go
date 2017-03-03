@@ -2,7 +2,6 @@ package pki_test
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	"github.com/cheekybits/is"
@@ -26,11 +25,10 @@ func TestKeys(t *testing.T) {
 	prk := ent.Private()
 	is.NotNil(prk)
 
-	fmt.Printf("private key pem: \n%s\n", prk.PEM())
+	t.Logf("private key pem: \n%s\n", prk.PEM())
 
 	doc := []byte("foo")
-	id, err := c4id.Identify(bytes.NewReader(doc))
-	is.NoErr(err)
+	id := c4id.Identify(bytes.NewReader(doc))
 	is.NotNil(id)
 
 	sig, err := ent.Sign(id)
@@ -40,7 +38,7 @@ func TestKeys(t *testing.T) {
 	ent2, err := c4pki.NewUser("john.doe@example.com", c4pki.EMail)
 	pubKey := ent.Public()
 	ent2.SetPublic(pubKey)
-	fmt.Printf("public key pem: \n%s\n", pubKey.PEM())
+	t.Logf("public key pem: \n%s\n", pubKey.PEM())
 
 	is.True(ent2.Verify(sig))
 

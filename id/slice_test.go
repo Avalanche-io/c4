@@ -1,8 +1,6 @@
 package id_test
 
 import (
-	// "bytes"
-
 	"math/big"
 	"strings"
 	"testing"
@@ -11,7 +9,7 @@ import (
 	"github.com/cheekybits/is"
 )
 
-func TestIDSliceSort(t *testing.T) {
+func TestSliceSort(t *testing.T) {
 	is := is.New(t)
 	var b, s []byte
 	for i := 0; i < 64; i++ {
@@ -22,64 +20,40 @@ func TestIDSliceSort(t *testing.T) {
 	bigSmall := big.NewInt(0)
 	bigBig = bigBig.SetBytes(b)
 	bigSmall = bigSmall.SetBytes(s)
-	bigID := c4.ID(*bigBig)
-	smallID := c4.ID(*bigSmall)
+	bigID := (*c4.ID)(bigBig)
+	smallID := (*c4.ID)(bigSmall)
 
-	var idSlice c4.IDSlice
+	var slice c4.Slice
 
-	idSlice.Push(&bigID)
-	idSlice.Push(&smallID)
-	is.Equal(idSlice[0].String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
-	is.Equal(idSlice[1].String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
-	idSlice.Sort()
-	is.Equal(idSlice[0].String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
-	is.Equal(idSlice[1].String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
+	slice.Insert(bigID)
+	slice.Insert(smallID)
+	is.Equal(slice[0].String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
+	is.Equal(slice[1].String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
 }
 
-func TestIDSliceString(t *testing.T) {
+func TestSliceString(t *testing.T) {
 	is := is.New(t)
 
-	var ids c4.IDSlice
-	id1, err := c4.Identify(strings.NewReader("foo"))
-	is.NoErr(err)
-	id2, err := c4.Identify(strings.NewReader("bar"))
-	is.NoErr(err)
-
-	ids.Push(id1)
-	ids.Push(id2)
-
-	is.Equal(ids.String(), id1.String()+id2.String())
+	var ids c4.Slice
+	id1 := c4.Identify(strings.NewReader("foo"))
+	id2 := c4.Identify(strings.NewReader("bar"))
+	ids.Insert(id1)
+	ids.Insert(id2)
+	is.Equal(ids.String(), id2.String()+id1.String())
 }
 
-func TestIDSliceSearchIDs(t *testing.T) {
+func TestSliceSearchIDs(t *testing.T) {
 	is := is.New(t)
 
-	var ids c4.IDSlice
-	id1, err := c4.Identify(strings.NewReader("foo"))
-	is.NoErr(err)
-	id2, err := c4.Identify(strings.NewReader("bar"))
-	is.NoErr(err)
-	id3, err := c4.Identify(strings.NewReader("baz"))
-	is.NoErr(err)
+	var ids c4.Slice
+	id1 := c4.Identify(strings.NewReader("foo"))
+	id2 := c4.Identify(strings.NewReader("bar"))
+	id3 := c4.Identify(strings.NewReader("baz"))
 
-	ids.Push(id1)
-	ids.Push(id2)
-	ids.Push(id3)
-	ids.Sort()
-
-	is.True(id2.Less(id1))
-	is.True(id3.Less(id2))
-
-	is.Equal(c4.SearchIDs(ids, id1), 2)
-	is.Equal(c4.SearchIDs(ids, id2), 1)
-	is.Equal(c4.SearchIDs(ids, id3), 0)
-}
-
-func TestSliceIDFile(t *testing.T) {
-	is := is.New(t)
-
-	id, err := c4.Identify(errorReader(true))
-	is.Err(err)
-	is.Nil(id)
-	is.Equal(err.Error(), "errorReader triggered error.")
+	ids.Insert(id1)
+	ids.Insert(id2)
+	ids.Insert(id3)
+	is.Equal(ids.Index(id1), 2)
+	is.Equal(ids.Index(id2), 1)
+	is.Equal(ids.Index(id3), 0)
 }

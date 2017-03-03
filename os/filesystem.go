@@ -286,7 +286,7 @@ func (fs *FileSystem) IdFile(filename string) (*c4id.ID, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return c4id.Identify(f)
+	return c4id.Identify(f), nil
 }
 
 func mustStat(info os.FileInfo, err error) os.FileInfo {
@@ -400,7 +400,7 @@ func (fs *FileSystem) descend(path string, info os.FileInfo, f AttributeFunc) (*
 		return id, size, nil
 	}
 
-	var ids c4id.IDSlice
+	var ids c4id.Slice
 	dirs, err := fs.ReadDir(key)
 	for _, child := range dirs {
 		p := filepath.Join(path, child.Name())
@@ -412,17 +412,15 @@ func (fs *FileSystem) descend(path string, info os.FileInfo, f AttributeFunc) (*
 			continue
 		}
 		size.Add(size, s)
-		ids.Push(id)
+		// ids.Push(id)
+		ids.Insert(id)
 	}
-	if ids.Len() == 0 {
+	if len(ids) == 0 {
 		at.Set(idK, nil)
 		err := f(key, at)
 		return nil, size, err
 	}
-	id, err := ids.ID()
-	if err != nil {
-		return nil, size, err
-	}
+	id := ids.ID()
 	at.Set(idK, id)
 	err = f(key, at)
 	return id, size, err

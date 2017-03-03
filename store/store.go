@@ -28,7 +28,7 @@ type Asset struct {
 	mode int
 	f    *os.File
 	st   *Store
-	en   *c4id.IDEncoder
+	en   *c4id.Encoder
 	id   *c4id.ID
 }
 
@@ -67,7 +67,7 @@ func (s *Store) Create(name string) (a *Asset, err error) {
 	if err != nil {
 		return nil, err
 	}
-	en := c4id.NewIDEncoder(file)
+	en := c4id.NewEncoder()
 	_, filename := filepath.Split(name)
 	key := []byte(name)
 	a = &Asset{
@@ -189,7 +189,7 @@ func (s *Store) Open(name string) (a *Asset, err error) {
 		return nil, os.ErrNotExist
 	}
 	var file *os.File
-	var en *c4id.IDEncoder
+	var en *c4id.Encoder
 	file_name := filepath.Join(pathtoasset(s.path, id), id.String())
 	file, err = os.OpenFile(file_name, os.O_RDONLY, 0600)
 	if err != nil {
@@ -468,11 +468,13 @@ func directoryscanner(data []byte, atEOF bool) (advance int, token []byte, err e
 }
 
 func (a *Asset) Write(b []byte) (n int, err error) {
-	n64, er := io.Copy(a.en, bytes.NewReader(b))
+	w := io.MultiWriter(a.en, a.f)
+	n64, er := io.Copy(w, bytes.NewReader(b))
 	return int(n64), er
 }
 
 func (a *Asset) WriteAt(b []byte, off int64) (n int, err error) {
+	// TODO: WriteAt cannot ID with MultiWRiter
 	return a.f.WriteAt(b, off)
 }
 

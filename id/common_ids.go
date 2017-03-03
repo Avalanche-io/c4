@@ -4,11 +4,11 @@ import (
 	"strings"
 )
 
-// Id of nil (i.e. '')
 var (
+	// Id of nil (i.e. "")
 	NIL_ID *ID
 )
 
 func init() {
-	NIL_ID, _ = Identify(strings.NewReader(``))
+	NIL_ID = Identify(strings.NewReader(""))
 }

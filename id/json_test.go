@@ -1,8 +1,6 @@
 package id_test
 
 import (
-	// "bytes"
-
 	"encoding/json"
 	"math/big"
 	"testing"

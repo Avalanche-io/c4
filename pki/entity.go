@@ -47,7 +47,7 @@ type Signature struct {
 }
 
 func NewSignature(key *PrivateKey, id *c4.ID) (*Signature, error) {
-	r, s, err := ecdsa.Sign(rand.Reader, key.Ecdsa(), id.RawBytes())
+	r, s, err := ecdsa.Sign(rand.Reader, key.Ecdsa(), id.Digest())
 	if err != nil {
 		return nil, err
 	}
@@ -69,5 +69,5 @@ func (s *Signature) ID() *c4.ID {
 
 func (s *Signature) Varify(e Entity) bool {
 	key := e.Public().Ecdsa()
-	return ecdsa.Verify(key, s.asset.RawBytes(), s.r, s.s)
+	return ecdsa.Verify(key, s.asset.Digest(), s.r, s.s)
 }

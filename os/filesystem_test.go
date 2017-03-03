@@ -19,7 +19,6 @@ import (
 
 	c4id "github.com/Avalanche-io/c4/id"
 	c4os "github.com/Avalanche-io/c4/os"
-	// "github.com/Avalanche-io/c4dev"
 	"github.com/cheekybits/is"
 )
 
@@ -57,8 +56,7 @@ func TestFSWalk(t *testing.T) {
 		f, err := os.Create(file_path)
 		is.NoErr(err)
 		f.Write([]byte("foo"))
-		id, err := c4id.Identify(bytes.NewReader([]byte("foo")))
-		is.NoErr(err)
+		id := c4id.Identify(bytes.NewReader([]byte("foo")))
 		is.Equal(id.String(), "c45xZeXwMSpqXjpDumcHMA6mhoAmGHkUo7r9WmN2UgSEQzj9KjgseaQdkEJ11fGb5S1WEENcV3q8RFWwEeVpC7Fjk2")
 		f.Close()
 	}

@@ -14,8 +14,7 @@ import (
 func TestIdentify(t *testing.T) {
 	is := is.New(t)
 
-	id, err := c4.Identify(iotest.DataErrReader(strings.NewReader("foo")))
-	is.NoErr(err)
+	id := c4.Identify(iotest.DataErrReader(strings.NewReader("foo")))
 	is.Equal(id.String(), "c45xZeXwMSpqXjpDumcHMA6mhoAmGHkUo7r9WmN2UgSEQzj9KjgseaQdkEJ11fGb5S1WEENcV3q8RFWwEeVpC7Fjk2")
 }
 
@@ -32,8 +31,6 @@ func (e errorReader) Read(p []byte) (int, error) {
 func TestIOFailure(t *testing.T) {
 	is := is.New(t)
 
-	id, err := c4.Identify(errorReader(true))
-	is.Err(err)
+	id := c4.Identify(errorReader(true))
 	is.Nil(id)
-	is.Equal(err.Error(), "errorReader triggered error.")
 }

@@ -18,8 +18,7 @@ func TestBasicBloom(t *testing.T) {
 	keys := []string{"one", "two", pfx + "one", pfx + "two"}
 	ids := make([]*c4id.ID, len(keys))
 	for i, k := range keys {
-		id, err := c4id.Identify(strings.NewReader(k))
-		is.NoErr(err)
+		id := c4id.Identify(strings.NewReader(k))
 		ids[i] = id
 	}
 	err := b.Add(ids...)
@@ -27,8 +26,7 @@ func TestBasicBloom(t *testing.T) {
 	for _, id := range ids {
 		is.True(b.Test(id))
 	}
-	badID, err := c4id.Identify(strings.NewReader("not in filter"))
-	is.NoErr(err)
+	badID := c4id.Identify(strings.NewReader("not in filter"))
 	is.False(b.Test(badID))
 }
 
@@ -78,7 +76,7 @@ func TestPeformanceBloom(t *testing.T) {
 	writeInt32(328172, &data)
 	is.Equal(readInt32(data), 328172)
 	var id *c4id.ID
-	e := c4id.NewIDEncoder()
+	e := c4id.NewEncoder()
 	for i := 0; i < positives; i++ {
 		e.Write(intbytes(i).Bytes())
 		id = e.ID()
@@ -110,13 +108,11 @@ func TestPeformanceBloom(t *testing.T) {
 func TestErrors(t *testing.T) {
 	is := is.New(t)
 	b := c4ar.NewBloom().Capacity(10).Rate(0.15) //float64(1.0)
-	id, err := c4id.Identify(strings.NewReader("foo"))
-	is.NoErr(err)
+	id := c4id.Identify(strings.NewReader("foo"))
 	is.False(b.Test(id))
 	b.Add(id)
 	is.Equal(b.String(), "*c4.Bloom=&{False Positives:0.150000, Cap:10, Bits:64, Hashes:5, Ids:1, Bitfiled:2322168557933568}")
-	id, err = c4id.Identify(strings.NewReader("bar"))
-	is.NoErr(err)
+	id = c4id.Identify(strings.NewReader("bar"))
 	b.Add(id)
 	is.Equal(b.String(), "*c4.Bloom=&{False Positives:0.150000, Cap:10, Bits:64, Hashes:5, Ids:2, Bitfiled:11364552186991872}")
 }

@@ -3,7 +3,6 @@ package id_test
 import (
 	// "bytes"
 
-	"bytes"
 	"fmt"
 	"io"
 	"math/big"
@@ -14,11 +13,11 @@ import (
 	"github.com/cheekybits/is"
 )
 
-var _ io.Writer = (*c4.IDEncoder)(nil)
+var _ io.Writer = (*c4.Encoder)(nil)
 var _ fmt.Stringer = (*c4.ID)(nil)
 
 func encode(src io.Reader) *c4.ID {
-	e := c4.NewIDEncoder()
+	e := c4.NewEncoder()
 	_, err := io.Copy(e, src)
 	if err != nil {
 		panic(err)
@@ -36,8 +35,7 @@ func TestAllFFFF(t *testing.T) {
 	bignum = bignum.SetBytes(b)
 	id := c4.ID(*bignum)
 	is.Equal(id.String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
-
-	id2, err := c4.ParseID(`c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
+	id2, err := c4.Parse(`c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
 	is.NoErr(err)
 	bignum2 := big.Int(*id2)
 	b = (&bignum2).Bytes()
@@ -57,7 +55,7 @@ func TestAll0000(t *testing.T) {
 	id := c4.ID(*bignum)
 	is.Equal(id.String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
 
-	id2, err := c4.ParseID(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
+	id2, err := c4.Parse(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
 	is.NoErr(err)
 	bignum2 := big.Int(*id2)
 	b = (&bignum2).Bytes()
@@ -88,7 +86,7 @@ func TestAppendOrder(t *testing.T) {
 		id := c4.ID(*bignum)
 		is.Equal(id.String(), expectedIDs[k])
 
-		id2, err := c4.ParseID(expectedIDs[k])
+		id2, err := c4.Parse(expectedIDs[k])
 		is.NoErr(err)
 		bignum2 := big.Int(*id2)
 		b = (&bignum2).Bytes()
@@ -132,12 +130,12 @@ func TestParseBytesID(t *testing.T) {
 			Exp: "",
 		},
 	} {
-		id, err := c4.ParseBytesID([]byte(test.In))
+		id, err := c4.Parse(test.In)
 		if len(test.Err) != 0 {
 			is.Err(err)
 			is.Equal(err.Error(), test.Err)
 		} else {
-			expectedID, err := c4.Identify(strings.NewReader(test.Exp))
+			expectedID := c4.Identify(strings.NewReader(test.Exp))
 			is.NoErr(err)
 			is.Equal(expectedID.Cmp(id), 0)
 		}
@@ -201,30 +199,25 @@ func TestCompareIDs(t *testing.T) {
 func TestBytesToID(t *testing.T) {
 	is := is.New(t)
 
-	b := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58}
-	id := c4.BytesToID(b)
+	d := c4.Digest([]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58})
+	id := d.ID()
 	is.Equal(id.String(), "c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111121")
 }
 
-func TestSum(t *testing.T) {
-	is := is.New(t)
+// func TestSum(t *testing.T) {
+// 	is := is.New(t)
 
-	id1, err := c4.Identify(strings.NewReader("foo"))
-	is.NoErr(err)
-	id2, err := c4.Identify(strings.NewReader("bar"))
-	is.NoErr(err)
+// 	id1 := c4.Identify(strings.NewReader("foo"))
+// 	id2 := c4.Identify(strings.NewReader("bar"))
 
-	is.True(id2.Less(id1))
+// 	is.True(id2.Less(id1))
 
-	bts := append(id2.RawBytes(), id1.RawBytes()...)
-	expectedSum, err := c4.Identify(bytes.NewReader(bts))
-	is.NoErr(err)
+// 	bts := append(id2.Digest(), id1.Digest()...)
+// 	expectedSum := c4.Identify(bts)
 
-	testSum, err := id1.Sum(id2)
-	is.NoErr(err)
-
-	is.Equal(expectedSum, testSum)
-}
+// 	testSum := id1.Digest().Sum(id2.Digest())
+// 	is.Equal(expectedSum, testSum)
+// }
 
 func TestNILID(t *testing.T) {
 	is := is.New(t)

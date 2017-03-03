@@ -51,8 +51,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	id := asset.ID()
 	is.NotNil(id)
 
-	fooId, err := c4id.Identify(strings.NewReader("foo"))
-	is.NoErr(err)
+	fooId := c4id.Identify(strings.NewReader("foo"))
 	is.Equal(fooId, id)
 	err = st.Close()
 	is.NoErr(err)

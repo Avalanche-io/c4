@@ -34,7 +34,7 @@ func (d *DB) getIDFromBucket(key []byte, bucket string) *c4.ID {
 		b := tx.Bucket([]byte(bucket))
 		idbytes := b.Get(key)
 		if len(idbytes) == 64 {
-			id = c4.BytesToID(idbytes)
+			id = c4.NewDigest(idbytes).ID()
 		}
 		return nil
 	})
@@ -45,7 +45,7 @@ func (d *DB) setIDForBucket(key []byte, id *c4.ID, bucket string) error {
 	db := (*bolt.DB)(d)
 	return db.Batch(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
-		return b.Put(key, id.RawBytes())
+		return b.Put(key, id.Digest())
 		return nil
 	})
 }
@@ -79,8 +79,8 @@ func (d *DB) ForEach(f func(key []byte, asset *c4.ID, attributes *c4.ID) error) 
 			if len(attribute_value) != 64 {
 				return nil
 			}
-			asset_id := c4.BytesToID(asset_value)
-			attribute_id := c4.BytesToID(attribute_value)
+			asset_id := c4.NewDigest(asset_value).ID()
+			attribute_id := c4.NewDigest(attribute_value).ID()
 			return f(key, asset_id, attribute_id)
 		})
 	})

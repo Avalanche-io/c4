@@ -5,11 +5,11 @@ import (
 )
 
 // Generate an id from an io.Reader
-func Identify(src io.Reader) (*ID, error) {
-	e := NewIDEncoder()
+func Identify(src io.Reader) *ID {
+	e := NewEncoder()
 	_, err := io.Copy(e, src)
-	if err != nil {
-		return nil, err
+	if err != nil && err != io.EOF {
+		return nil
 	}
-	return e.ID(), nil
+	return e.ID()
 }

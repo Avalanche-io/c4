@@ -31,7 +31,7 @@ func TestEncoding(t *testing.T) {
 
 func TestIDEncoder(t *testing.T) {
 	is := is.New(t)
-	e := c4.NewIDEncoder()
+	e := c4.NewEncoder()
 	is.OK(e)
 	_, err := io.Copy(e, strings.NewReader(`This is a pretend asset file, for testing asset id generation.
 `))
@@ -46,11 +46,11 @@ func TestIDEncoder(t *testing.T) {
 
 func TestIDEncoderReset(t *testing.T) {
 	is := is.New(t)
-	e := c4.NewIDEncoder()
+	e := c4.NewEncoder()
 	is.OK(e)
 	for i := 0; i < 10; i++ {
 		s := strconv.Itoa(i)
-		e2 := c4.NewIDEncoder()
+		e2 := c4.NewEncoder()
 		_, err := io.Copy(e, strings.NewReader(s))
 		is.NoErr(err)
 		_, err2 := io.Copy(e2, strings.NewReader(s))

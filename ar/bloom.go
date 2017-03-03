@@ -102,7 +102,7 @@ func (b *Bloom) Add(ids ...*c4.ID) error {
 		b.Initialize()
 	}
 	for _, id := range ids {
-		raw := id.RawBytes()
+		raw := id.Digest()
 		i := 0
 		for i < b.k {
 			num := binary.BigEndian.Uint32(raw[i*4:i*4+4]) % uint32(b.m)
@@ -119,7 +119,7 @@ func (b *Bloom) Test(id *c4.ID) bool {
 		return false
 	}
 
-	raw := id.RawBytes()
+	raw := id.Digest()
 	i := 0
 	for i < b.k {
 		num := binary.BigEndian.Uint32(raw[i*4:i*4+4]) % uint32(b.m)

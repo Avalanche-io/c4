@@ -2,71 +2,65 @@ package id
 
 import "sort"
 
-type IDSlice []*ID
-
-func (s IDSlice) Len() int           { return len(s) }
-func (s IDSlice) Less(i, j int) bool { return s[i].Cmp(s[j]) < 0 }
-func (s IDSlice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// Sort is a convenience method.
-func (s IDSlice) Sort() {
-	sort.Sort(s)
-}
+type Slice []*ID
 
 // Append id to slice.
-func (s *IDSlice) Push(id *ID) {
-	*s = append(*s, id)
+func (s *Slice) Insert(id *ID) {
+	if id == nil {
+		return
+	}
+	i := s.Index(id)
+
+	// id is nil or already in the slice.
+	if i < len(*s) && (*s)[i].Cmp(id) == 0 {
+		return
+	}
+	(*s) = append(*s, nil)
+
+	copy((*s)[i+1:], (*s)[i:])
+	(*s)[i] = id
 }
 
 //String returns the slice of c4ids concatenated together without spaces or newlines.
-func (s *IDSlice) String() string {
+func (s *Slice) String() string {
 	result := ""
-	for _, bigID := range *s {
-		result += ((*ID)(bigID)).String()
+	for _, id := range *s {
+		result += id.String()
 	}
 	return result
 }
 
 // SearchIDs searches for x in a sorted slice of *ID and returns the index
 // as specified by sort.Search. The slice must be sorted in ascending order.
-func SearchIDs(a IDSlice, x *ID) int {
-	return sort.Search(len(a), func(i int) bool { return a[i].Cmp(x) >= 0 })
+func (s Slice) Index(id *ID) int {
+	if id == nil {
+		return -1
+	}
+	return sort.Search(len(s), func(i int) bool { return s[i] != nil && s[i].Cmp(id) >= 0 })
+}
+
+func oddIndex(l int) int {
+	if l%2 == 1 {
+		return l - 1
+	}
+	return -1
 }
 
 // ID of a sorted slice of IDs
-func (s IDSlice) ID() (*ID, error) {
-	s.Sort()
-	var previous_idset IDSlice
-	idset := s
-	round := 0
-	for {
-		previous_idset = idset
-		idset = idset[:0]
-		var left *ID
-		for _, right := range previous_idset {
-			if left == nil {
-				left = right
-				continue
-			}
-			label, err := left.Sum(right)
-			if err != nil {
-				return nil, err
-			}
-			idset.Push(label)
-			left = nil
+func (s Slice) ID() *ID {
+	// s is implicitly sorted, during inserts. We cast it to a regular slice
+	// here since all subsequent rounds must not be sorted.
+	digests := make(DigestSlice, 0, len(s))
+	for _, id := range s {
+		if id == nil {
+			panic("how did that happen?")
 		}
-		round += 1
-
-		if left != nil {
-			idset.Push(left)
-			left = nil
-		}
-
-		if idset.Len() == 1 {
-			break
-		}
-
+		digests = append(digests, id.Digest())
 	}
+	if len(s) > 0 && len(s) != len(digests) {
+		panic("bad length")
+	}
+	d := digests.Digest()
 
-	return idset[0], nil
+	return d.ID()
 }

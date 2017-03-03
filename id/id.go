@@ -3,12 +3,10 @@ package id
 
 import (
 	"bytes"
-	"io"
 	"math/big"
 )
 
 const (
-	// charset = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
 	charset = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 	base    = 58
 )
@@ -29,33 +27,46 @@ func init() {
 	}
 }
 
-// ID represents a C4 Asset ID.
+// ID represents a C4 ID.
 type ID big.Int
 
-// Sum returns the ID of two IDs in sorted order.
-func (i *ID) Sum(j *ID) (*ID, error) {
-	var ids [2]*ID
-	ids[0] = i
-	ids[1] = j
-	l := 0
-	r := 1
-
-	if ids[r].Cmp(ids[l]) < 0 {
-		r = 0
-		l = 1
-	}
-	e := NewIDEncoder()
-	_, err := io.Copy(e, bytes.NewReader(append(ids[l].RawBytes(), ids[r].RawBytes()...)))
-	return e.ID(), err
+// Parse parses a C4 ID string into an ID.
+func Parse(src string) (*ID, error) {
+	return parseBytesID([]byte(src))
 }
 
-// ParseID parses a C4 ID string into an ID.
-func ParseID(src string) (*ID, error) {
-	return ParseBytesID([]byte(src))
+// String returns the standard string representation of a C4 id.
+func (id *ID) String() (s string) {
+	return string(id.bytes())
+}
+
+// Digest returns the C4 Digest of the ID.
+func (id *ID) Digest() Digest {
+	return NewDigest((*big.Int)(id).Bytes())
+}
+
+/*
+ * Cmp compares to c4ids.
+ * There are 3 possible return values.
+ * -1 : Argument id is less than calling id.
+ * 0: Argument id and calling id are identical.
+ * +1: Argument id is greater than calling id.
+ * Comparison is done on the actual numerical value of the ids.
+ * Not the string representation.
+ */
+func (l *ID) Cmp(r *ID) int {
+	if r == nil {
+		return -1
+	}
+	bigL := (*big.Int)(l)
+	bigR := (*big.Int)(r)
+	return bigL.Cmp(bigR)
 }
 
 // ParseBytesID parses a C4 ID as []byte into an ID.
-func ParseBytesID(src []byte) (*ID, error) {
+// This method is no longer exported to avoid confusion, reduce the API
+// surface area, and to conform with standards. Use Parse() instead.
+func parseBytesID(src []byte) (*ID, error) {
 	if len(src) != 90 {
 		return nil, errBadLength(len(src))
 	}
@@ -73,31 +84,9 @@ func ParseBytesID(src []byte) (*ID, error) {
 	return &id, nil
 }
 
-// String returns the standard string representation of a C4 id.
-func (id *ID) String() (s string) {
-	return string(id.Bytes())
-}
-
-/*
- * Cmp compares to c4ids.
- * There are 3 possible return values.
- * -1 : Argument id is less than calling id.
- * 0: Argument id and calling id are identical.
- * +1: Argument id is greater than calling id.
- * Comparison is done on the actual numerical value of the ids.
- * Not the string representation.
- */
-func (x *ID) Cmp(y *ID) int {
-	if y == nil {
-		return -1
-	}
-	bigX := big.Int(*x)
-	bigY := big.Int(*y)
-	return bigX.Cmp(&bigY)
-}
-
-// Bytes encodes the written bytes to C4 ID format.
-func (id *ID) Bytes() []byte {
+// This method is no longer exported to avoid confusion, reduce the API
+// surface area, and to conform with standards. Use String() instead.
+func (id *ID) bytes() []byte {
 	var bigNum big.Int
 	bigID := big.Int(*id)
 	bigNum.Set(&bigID)

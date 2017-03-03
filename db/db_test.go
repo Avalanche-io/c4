@@ -41,10 +41,9 @@ func TestDBSetGet(t *testing.T) {
 	is, db, Teardown := Setup(t)
 	defer Teardown()
 
-	in_id, err := c4id.Identify(bytes.NewReader([]byte("bar")))
-	is.NoErr(err)
+	in_id := c4id.Identify(bytes.NewReader([]byte("bar")))
 	is.NotNil(in_id)
-	err = db.SetAssetID([]byte("foo"), in_id)
+	err := db.SetAssetID([]byte("foo"), in_id)
 	is.NoErr(err)
 	out_id := db.GetAssetID([]byte("foo"))
 	is.NoErr(err)
@@ -72,15 +71,12 @@ func TestDBForEach(t *testing.T) {
 		asset_value := []byte(fmt.Sprintf("%d", rand.Int()))
 		attribute_value := []byte(fmt.Sprintf("%d", rand.Int()))
 		m[string(key)] = [][]byte{asset_value, attribute_value}
-		id, err := c4id.Identify(bytes.NewReader(asset_value))
-		is.NoErr(err)
+		id := c4id.Identify(bytes.NewReader(asset_value))
 		is.NotNil(id)
-		err = db.SetAssetID(key, id)
+		err := db.SetAssetID(key, id)
 
-		id, err = c4id.Identify(bytes.NewReader(attribute_value))
-		is.NoErr(err)
+		id = c4id.Identify(bytes.NewReader(attribute_value))
 		is.NotNil(id)
-		is.NoErr(err)
 		err = db.SetAttributesID(key, id)
 		is.NoErr(err)
 	}
@@ -89,8 +85,7 @@ func TestDBForEach(t *testing.T) {
 		expected := m[string(key)]
 		values := []*c4id.ID{asset_id, attribute_id}
 		for i, v := range values {
-			id, err := c4id.Identify(bytes.NewReader(expected[i]))
-			is.NoErr(err)
+			id := c4id.Identify(bytes.NewReader(expected[i]))
 			is.NotNil(id)
 			is.Equal(id, v)
 		}
