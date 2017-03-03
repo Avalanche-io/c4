@@ -91,7 +91,7 @@ func OldCharsetIDToNew(id *c4.ID) *c4.ID {
 	for i := 2; i < 90; i++ {
 		newid = newid + string(oldnewlut[id_str[i]])
 	}
-	idout, _ := c4.ParseID(newid)
+	idout, _ := c4.Parse(newid)
 	return idout
 }
 
@@ -105,6 +105,6 @@ func NewCharsetIDToOld(id *c4.ID) *c4.ID {
 	for i := 2; i < 90; i++ {
 		oldid = oldid + string(newoldlut[id_str[i]])
 	}
-	idout, _ := c4.ParseID(oldid)
+	idout, _ := c4.Parse(oldid)
 	return idout
 }
