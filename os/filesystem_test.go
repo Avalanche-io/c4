@@ -22,23 +22,6 @@ import (
 	"github.com/cheekybits/is"
 )
 
-// Create temp folder and return function to delete it.
-func SetupTestFolder(t *testing.T, test_name string) (is.I, string, func()) {
-	is := is.New(t)
-	prefix := fmt.Sprintf("c4_%s_tests", test_name)
-	dir, err := ioutil.TempDir("/tmp", prefix)
-	is.NoErr(err)
-	return is, dir, func() {
-		os.RemoveAll(dir)
-		// fmt.Printf("os.RemoveAll(%s)\n", dir)
-	}
-}
-
-// TestFSWalk tests walking folder trees.
-// Philosophically we want C4 to return as much data as it can as soon as it can.
-// C4 must do a depth first traversal to compute IDs for folders.
-// As it traverses down it should report name and metadata, and id files it encounters.
-// once all the files of a folder are identified the folder should be identified.
 func TestFSWalk(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "filesystem")
 	defer done()
@@ -261,4 +244,13 @@ func makePrintTree(fs vfs.Filesystem, is is.I) func(int, string, os.FileInfo) {
 		fmt.Printf("%s%s %d\n", padding, info.Name(), info.Size())
 	}
 	return printTree
+}
+
+// Create temp folder and return function to delete it.
+func SetupTestFolder(t *testing.T, test_name string) (is.I, string, func()) {
+	is := is.New(t)
+	prefix := fmt.Sprintf("c4_%s_tests", test_name)
+	dir, err := ioutil.TempDir("/tmp", prefix)
+	is.NoErr(err)
+	return is, dir, func() { os.RemoveAll(dir) }
 }

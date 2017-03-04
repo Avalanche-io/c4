@@ -1,10 +1,6 @@
 package store_test
 
 import (
-	// "errors"
-
-	// "github.com/Avalanche-io/c4/events"
-
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -24,16 +20,12 @@ func SetupTestFolder(t *testing.T, test_name string) (is.I, string, func()) {
 	prefix := fmt.Sprintf("c4_%s_tests", test_name)
 	dir, err := ioutil.TempDir("/tmp", prefix)
 	is.NoErr(err)
-	return is, dir, func() {
-		os.RemoveAll(dir)
-		// fmt.Printf("os.RemoveAll(%s)\n", dir)
-	}
+	return is, dir, func() { os.RemoveAll(dir) }
 }
 
 func TestStoreSaveLoad(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
-	// defer done()
-	_ = done
+	defer done()
 
 	st, err := c4store.Open(dir + "/asset_storage")
 	is.NoErr(err)
