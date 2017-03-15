@@ -9,8 +9,10 @@ import (
 
 type DB bolt.DB
 
-func Open(path string, mode os.FileMode, options *bolt.Options) (*DB, error) {
-	bdb, err := bolt.Open(path, mode, options)
+type Options bolt.Options
+
+func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
+	bdb, err := bolt.Open(path, mode, (*bolt.Options)(options))
 	if err != nil {
 		return nil, err
 	}

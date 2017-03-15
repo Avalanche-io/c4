@@ -6,6 +6,7 @@ type mkdirError string
 type dirError string
 type noIdError string
 
+var ErrNotFound error = errors.New("not found")
 var ErrDirUnderflow error = errors.New("string of length 0 in directory list")
 
 func (e mkdirError) Error() string {

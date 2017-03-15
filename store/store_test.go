@@ -26,8 +26,8 @@ func SetupTestFolder(t *testing.T, test_name string) (is.I, string, func()) {
 func TestStoreSaveLoad(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
 	defer done()
-
-	st, err := c4store.Open(dir + "/asset_storage")
+	path := filepath.Join(dir, "storage")
+	st, err := c4store.Open(path)
 	is.NoErr(err)
 	is.NotNil(st)
 
@@ -48,7 +48,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	err = st.Close()
 	is.NoErr(err)
 
-	st2, err := c4store.Open(dir + "/asset_storage")
+	st2, err := c4store.Open(path)
 	is.NoErr(err)
 	is.NotNil(st)
 
@@ -58,7 +58,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	is.NotNil(asset2.ID())
 	st2.Close()
 
-	path_to_assetfile := filepath.Join(dir, "/asset_storage/c4/5x/Ze/Xw/MS/pq/Xj/pD/", id.String())
+	path_to_assetfile := filepath.Join(dir, "storage/c4/5x/Ze/Xw/MS/pq/Xj/pD/", id.String())
 
 	info, err := os.Stat(path_to_assetfile)
 	is.NoErr(err)
@@ -74,9 +74,9 @@ func TestStoreDirs(t *testing.T) {
 	is.NoErr(err)
 	is.NotNil(st)
 
-	err = st.Mkdir("/dir1")
+	err = st.Mkdir("/dir1/")
 	is.NoErr(err)
-	err = st.MkdirAll("/dir2/foo/bar/baz")
+	err = st.MkdirAll("/dir2/foo/bar/baz/")
 	is.NoErr(err)
 	asset, err := st.Create("/dir2/foo/bar/foo.txt")
 	is.NoErr(err)
@@ -194,5 +194,4 @@ func TestErrors(t *testing.T) {
 	st, err = c4store.Open(unwriteableDbfolder)
 	is.Err(err)
 	is.Nil(st)
-
 }

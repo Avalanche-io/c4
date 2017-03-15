@@ -1,15 +1,20 @@
 package pki_test
 
 import (
+	"bytes"
+	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/asn1"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/cheekybits/is"
 
+	c4 "github.com/Avalanche-io/c4/id"
 	c4k "github.com/Avalanche-io/c4/pki"
 )
 
@@ -30,14 +35,16 @@ func TestCreateC4dCert(t *testing.T) {
 	certPool.AppendCertsFromPEM(rootEntity.Cert().PEM()) //rootCertPEM)
 
 	// Create Domain Entity
-	serverEntity, err := c4k.NewDomain("c4.example.com")
+	serverEntity, err := c4k.NewDomain()
+	serverEntity.AddDomains("c4.example.com")
 	is.NoErr(err)
 	// Generate private public key pairs for Domain
 	err = serverEntity.GenerateKeys()
 	is.NoErr(err)
 
 	// Create Client Entity
-	clientEntity, err := c4k.NewDomain("localhost")
+	clientEntity, err := c4k.NewDomain()
+	clientEntity.AddDomains("localhost")
 	is.NoErr(err)
 	err = clientEntity.GenerateKeys()
 	is.NoErr(err)
@@ -97,3 +104,46 @@ func TestCreateC4dCert(t *testing.T) {
 	}
 	is.Equal(reply, message)
 }
+
+func TestCertSigningRequest(t *testing.T) {
+	is := is.New(t)
+	_ = is
+
+	// Create Domain Entity
+	serverEntity, err := c4k.NewDomain()
+	serverEntity.AddDomains("c4.example.com")
+	is.NoErr(err)
+	// Generate private public key pairs for Domain
+	err = serverEntity.GenerateKeys()
+	is.NoErr(err)
+
+	csr, err := serverEntity.CSR("foo", "Foo corp.", "U.S.")
+	is.NoErr(err)
+	is.NotNil(csr)
+
+	// verify signature
+	is.True(csr.Varify(serverEntity))
+
+	// manually verify signature
+	cr := csr.CR()
+	id := c4.Identify(bytes.NewReader(cr.RawTBSCertificateRequest))
+	ecdsaSig := new(struct{ R, S *big.Int })
+	_, err = asn1.Unmarshal(cr.Signature, ecdsaSig)
+	is.NoErr(err)
+	is.True(ecdsa.Verify((*ecdsa.PublicKey)(serverEntity.Public()), id.Digest(), ecdsaSig.R, ecdsaSig.S))
+
+	// test parsing
+	csr2, err := c4k.ParseCertificateRequest(csr.DER())
+	is.NoErr(err)
+	is.True(csr2.Varify(serverEntity))
+
+	// manually verify parsed request signature
+	cr2 := csr2.CR()
+	id2 := c4.Identify(bytes.NewReader(cr.RawTBSCertificateRequest))
+	ecdsaSig2 := new(struct{ R, S *big.Int })
+	_, err = asn1.Unmarshal(cr2.Signature, ecdsaSig2)
+	is.NoErr(err)
+	is.True(ecdsa.Verify((*ecdsa.PublicKey)(serverEntity.Public()), id2.Digest(), ecdsaSig2.R, ecdsaSig2.S))
+}
+
+// func TestSave(t *testing.T) {

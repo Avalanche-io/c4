@@ -109,7 +109,8 @@ func endorse(e Entity, target Entity) (Cert, error) {
 }
 
 func CreateCA(name string) (*Domain, error) {
-	e, err := NewDomain(name)
+	e, err := NewDomain()
+	e.AddDomains(name)
 	if err != nil {
 		return nil, err
 	}
@@ -136,14 +137,13 @@ func CreateCA(name string) (*Domain, error) {
 	tmpl.IsCA = true
 	tmpl.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature
 	tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
-	// tmpl.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
-	tmpl.DNSNames = e.Names
+	tmpl.DNSNames = e.Domains
 
 	priKey := (*ecdsa.PrivateKey)(e.Private())
 	if priKey == nil {
 		panic("private key unexpectedly nil")
 	}
-	pubKey := (*ecdsa.PublicKey)(e.Public())
+	pubKey := (*ecdsa.PublicKey)(e.PublicKey)
 	if pubKey == nil {
 		panic("public key unexpectedly nil")
 	}
@@ -156,7 +156,7 @@ func CreateCA(name string) (*Domain, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.cert = (*rootCert)(cert)
+	e.C = (*rootCert)(cert)
 
 	return e, nil
 }

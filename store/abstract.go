@@ -14,7 +14,7 @@ type storage Store
 type nil_storage struct{}
 
 func (s *storage) move(path string, id *c4.ID) error {
-	return (*Store)(s).movetoid(path, id)
+	return movetoid(s.path, path, id)
 }
 
 func (s *storage) set(key []byte, id *c4.ID) error {

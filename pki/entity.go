@@ -18,18 +18,16 @@ type Entity interface {
 	Name() string
 	// Keys
 	GenerateKeys() error
-	Public() *PublicKey
 	Private() *PrivateKey
-	SetPublic(*PublicKey)
+	Public() *PublicKey
 	// Signatures
 	Sign(id *c4.ID) (*Signature, error)
-	Verify(sig *Signature) bool
 	// TLS
 	TLScert(t TLScertType) (tls.Certificate, error)
 	// Certificates
 	Endorse(e Entity) (Cert, error)
-	SetCert(c Cert)
 	Cert() Cert
+	SetCert(Cert)
 }
 
 // Signature stores the signing information for a particular ID, and Entity.
@@ -67,7 +65,10 @@ func (s *Signature) ID() *c4.ID {
 	return s.id
 }
 
-func (s *Signature) Varify(e Entity) bool {
-	key := e.Public().Ecdsa()
-	return ecdsa.Verify(key, s.asset.Digest(), s.r, s.s)
+func (s *Signature) R() *big.Int {
+	return s.r
+}
+
+func (s *Signature) S() *big.Int {
+	return s.s
 }

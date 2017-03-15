@@ -83,6 +83,32 @@ func Merge(cs ...<-chan Event) <-chan Event {
 	return merged_out
 }
 
+func MergeErrors(cs ...ErrorChan) ErrorChan {
+	var wg sync.WaitGroup
+	merged_out := make(ErrorChan)
+
+	// Start an output goroutine for each input channel in cs.  output
+	// copies values from c to merged_out until c is closed, then calls wg.Done.
+	output := func(c ErrorChan) {
+		for n := range c {
+			merged_out <- n
+		}
+		wg.Done()
+	}
+	wg.Add(len(cs))
+	for _, c := range cs {
+		go output(c)
+	}
+
+	// Start a goroutine to close merged_out once all the output goroutines are
+	// done.  This must start after the wg.Add call.
+	go func() {
+		wg.Wait()
+		close(merged_out)
+	}()
+	return merged_out
+}
+
 // from: https://gist.github.com/icholy/5449954
 type Acc interface{}
 

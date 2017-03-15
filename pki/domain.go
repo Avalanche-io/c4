@@ -1,7 +1,16 @@
 package pki
 
 import (
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"fmt"
+	"math/big"
+	"net"
 	"strings"
 
 	c4 "github.com/Avalanche-io/c4/id"
@@ -10,17 +19,25 @@ import (
 // A Domain is hierarchical Entity that represents one or more organizational
 // domains.
 type Domain struct {
-	Names []string
-	pri   *PrivateKey
-	pub   *PublicKey
-	cert  Cert
+	Domains   []string
+	IPs       []net.IP
+	pri       *PrivateKey
+	PublicKey *PublicKey
+	C         Cert
 }
 
-func NewDomain(domainNames ...string) (*Domain, error) {
-	d := Domain{
-		Names: domainNames,
-	}
+func NewDomain() (*Domain, error) {
+	d := Domain{}
 	return &d, nil
+}
+
+func (e *Domain) AddDomains(names ...string) {
+	e.Domains = names
+}
+
+func (e *Domain) AddIPs(ips ...net.IP) {
+
+	e.IPs = ips
 }
 
 func (e *Domain) ID() *c4.ID {
@@ -28,7 +45,7 @@ func (e *Domain) ID() *c4.ID {
 }
 
 func (e *Domain) Name() string {
-	return strings.Join(e.Names, ",")
+	return strings.Join(e.Domains, ",")
 }
 
 func (e *Domain) GenerateKeys() error {
@@ -37,78 +54,115 @@ func (e *Domain) GenerateKeys() error {
 		return err
 	}
 	e.pri = (*PrivateKey)(pri)
-	e.pub = (*PublicKey)(pub)
+	e.PublicKey = (*PublicKey)(pub)
 	return nil
-}
-
-func (e *Domain) Public() *PublicKey {
-	return e.pub
 }
 
 func (e *Domain) Private() *PrivateKey {
 	return e.pri
 }
 
-func (e *Domain) SetPublic(key *PublicKey) {
-	e.pub = key
+func (e *Domain) Public() *PublicKey {
+	return e.PublicKey
+}
+
+func (e *Domain) SetCert(cert Cert) {
+	e.C = cert
+}
+
+func (e *Domain) Cert() Cert {
+	return e.C
 }
 
 func (e *Domain) Sign(id *c4.ID) (*Signature, error) {
 	return NewSignature(e.pri, id)
 }
 
-func (e *Domain) Verify(sig *Signature) bool {
-	return sig.Varify(e)
-}
-
 func (e *Domain) TLScert(t TLScertType) (tls.Certificate, error) {
-	return tls.X509KeyPair(e.Cert().PEM(), e.Private().PEM())
+	return tls.X509KeyPair(e.C.PEM(), e.Private().PEM())
 }
 
 func (e *Domain) Endorse(target Entity) (Cert, error) {
 	return endorse(e, target)
 }
 
-func (e *Domain) SetCert(c Cert) {
-	e.cert = c
+type CertificateSigningRequest struct {
+	der []byte
+	cr  *x509.CertificateRequest
 }
 
-func (e *Domain) Cert() Cert {
-	return e.cert
+func ParseCertificateRequest(der []byte) (*CertificateSigningRequest, error) {
+	req, err := x509.ParseCertificateRequest(der)
+	if err != nil {
+		return nil, err
+	}
+	return &CertificateSigningRequest{der, req}, nil
 }
 
-// func (e *Domain) MakeRootCert() (Cert, error) {
-// 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-// 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-// 	if err != nil {
-// 		return nil, errors.New("failed to generate serial number: " + err.Error())
-// 	}
-// 	now := c4time.Now()
-// 	tmpl := x509.Certificate{
-// 		SerialNumber:          (*big.Int)(serialNumber),
-// 		Subject:               pkix.Name{Organization: []string{"C4 Root"}},
-// 		SignatureAlgorithm:    x509.ECDSAWithSHA512,
-// 		NotBefore:             now.AsTime(),
-// 		NotAfter:              now.AsTime().Add(time.Hour * 24 * 30), // 1 month.
-// 		BasicConstraintsValid: true,
-// 	}
-// 	// describe what the certificate will be used for
-// 	tmpl.IsCA = true
-// 	tmpl.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature
-// 	tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
-// 	// tmpl.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
-// 	// tmpl.DNSNames = e.Domains
+func (e *Domain) CSR(organizational_unit, organization, country string) (*CertificateSigningRequest, error) {
+	if len(e.Domains) == 0 && len(e.IPs) == 0 {
+		return nil, ErrNoValidCn{}
+	}
 
-// 	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, e.Public(), e.Private())
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	// parse the resulting certificate so we can use it again
-// 	cert, err := x509.ParseCertificate(certDER)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	e.cert = (*standardCert)(cert)
+	var cn string
+	if len(e.IPs) > 0 {
+		cn = e.IPs[0].String()
+	}
 
-// 	return e.cert, nil
-// }
+	if len(e.Domains) > 0 {
+		cn = e.Domains[0]
+	}
+
+	name := pkix.Name{
+		CommonName:         cn,
+		Country:            []string{country},
+		Organization:       []string{organization},
+		OrganizationalUnit: []string{organizational_unit},
+		// Locality:           nil,
+		// Province:           nil,
+		// StreetAddress:      nil,
+		// PostalCode:         nil,
+		// SerialNumber:       "",
+	}
+	tmpl := &x509.CertificateRequest{
+		Subject:     name,
+		IPAddresses: e.IPs,
+		DNSNames:    e.Domains,
+	}
+	// rawSubj := name.ToRDNSequence()
+
+	req, err := x509.CreateCertificateRequest(rand.Reader, tmpl, (*ecdsa.PrivateKey)(e.pri))
+	if err != nil {
+		fmt.Printf("here:\n\r%v, %v\n", tmpl, e.pri)
+		return nil, err
+	}
+
+	cr, err := x509.ParseCertificateRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	csr := &CertificateSigningRequest{der: req, cr: cr}
+	return csr, nil
+}
+
+func (c *CertificateSigningRequest) Varify(e Entity) bool {
+	id := c4.Identify(bytes.NewReader(c.cr.RawTBSCertificateRequest))
+	ecdsaSig := new(struct{ R, S *big.Int })
+	_, err := asn1.Unmarshal(c.cr.Signature, ecdsaSig)
+	if err != nil {
+		return false
+	}
+	return ecdsa.Verify((*ecdsa.PublicKey)(e.Public()), id.Digest(), ecdsaSig.R, ecdsaSig.S)
+}
+
+func (c *CertificateSigningRequest) ID() *c4.ID {
+	return c4.Identify(bytes.NewReader(c.cr.RawTBSCertificateRequest))
+}
+
+func (c *CertificateSigningRequest) DER() []byte {
+	return c.der
+}
+
+func (c *CertificateSigningRequest) CR() *x509.CertificateRequest {
+	return c.cr
+}

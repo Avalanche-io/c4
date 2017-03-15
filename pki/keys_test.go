@@ -7,25 +7,24 @@ import (
 	"github.com/cheekybits/is"
 
 	c4id "github.com/Avalanche-io/c4/id"
-	c4pki "github.com/Avalanche-io/c4/pki"
+	"github.com/Avalanche-io/c4/pki"
 )
 
 func TestKeys(t *testing.T) {
 	is := is.New(t)
-	// ent, err := c4pki.NewEntity("john.doe@example.com", c4pki.EMail)
-	ent, err := c4pki.NewUser("john.doe@example.com", c4pki.EMail)
+	ent, err := pki.NewUser("john.doe@example.com", pki.EMail)
 	is.NoErr(err)
 	is.NotNil(ent)
 	err = ent.GenerateKeys()
 	is.NoErr(err)
 
-	puk := ent.Public()
-	is.NotNil(puk)
+	pub := ent.Public()
+	is.NotNil(pub)
 
-	prk := ent.Private()
-	is.NotNil(prk)
+	pri := ent.Private()
+	is.NotNil(pri)
 
-	t.Logf("private key pem: \n%s\n", prk.PEM())
+	t.Logf("private key pem: \n%s\n", pri.PEM())
 
 	doc := []byte("foo")
 	id := c4id.Identify(bytes.NewReader(doc))
@@ -35,18 +34,13 @@ func TestKeys(t *testing.T) {
 	is.NoErr(err)
 	is.NotNil(sig)
 
-	ent2, err := c4pki.NewUser("john.doe@example.com", c4pki.EMail)
-	pubKey := ent.Public()
-	ent2.SetPublic(pubKey)
-	t.Logf("public key pem: \n%s\n", pubKey.PEM())
+	is.True(pub.Varify(sig))
 
-	is.True(ent2.Verify(sig))
-
-	ent3, err := c4pki.NewUser("jane.doe@example.com", c4pki.EMail)
+	ent3, err := pki.NewUser("jane.doe@example.com", pki.EMail)
 	is.NoErr(err)
 	is.NotNil(ent)
 	err = ent3.GenerateKeys()
 	is.NoErr(err)
-
-	is.False(ent3.Verify(sig))
+	pub = ent3.Public()
+	is.False(pub.Varify(sig))
 }

@@ -19,6 +19,7 @@ func TestAssetSaveLoad(t *testing.T) {
 	f.WriteString("foo\n")
 	f.Close()
 
-	asset := store.NewAsset(path)
+	asset, err := store.NewFileAsset(path, nil, os.O_RDWR, nil)
+	is.NoErr(err)
 	is.NotNil(asset)
 }

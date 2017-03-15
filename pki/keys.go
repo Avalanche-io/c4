@@ -38,6 +38,11 @@ func (k *PublicKey) Ecdsa() *ecdsa.PublicKey {
 	return (*ecdsa.PublicKey)(k)
 }
 
+func (k *PublicKey) Varify(s *Signature) bool {
+	key := (*ecdsa.PublicKey)(k)
+	return ecdsa.Verify(key, s.asset.Digest(), s.r, s.s)
+}
+
 func (k *PrivateKey) ID() *c4.ID {
 	return nil
 }
