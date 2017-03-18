@@ -117,7 +117,8 @@ func TestCertSigningRequest(t *testing.T) {
 	err = serverEntity.GenerateKeys()
 	is.NoErr(err)
 
-	csr, err := serverEntity.CSR("foo", "Foo corp.", "U.S.")
+	// csr, err := serverEntity.CSR("foo", "Foo corp.", "U.S.")
+	csr, err := serverEntity.CSR()
 	is.NoErr(err)
 	is.NotNil(csr)
 

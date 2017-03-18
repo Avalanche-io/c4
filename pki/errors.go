@@ -11,17 +11,23 @@ func (e ErrNoValidCn) Error() string {
 type ErrNewUser int
 
 func (e ErrNewUser) Error() string {
-	return fmt.Sprintf("expected non empty string in argument %d", e)
+	return fmt.Sprintf("new user invalid argument %d", e)
 }
 
-type ErrPrivateKeyPassword string
+type ErrPrivateKeyPassphrase string
 
-func (e ErrPrivateKeyPassword) Error() string {
-	return "private key password " + string(e)
+func (e ErrPrivateKeyPassphrase) Error() string {
+	return "private key passphrase " + string(e)
 }
 
-type ErrBadPassword struct{}
+type ErrBadPassphrase struct{}
 
-func (e ErrBadPassword) Error() string {
-	return "incorrect password"
+func (e ErrBadPassphrase) Error() string {
+	return "incorrect passphrase"
+}
+
+type ErrBadCommonName struct{}
+
+func (e ErrBadCommonName) Error() string {
+	return "invalid common name for certificate"
 }

@@ -25,9 +25,9 @@ type Entity interface {
 	// TLS
 	TLScert(t TLScertType) (tls.Certificate, error)
 	// Certificates
-	Endorse(e Entity) (Cert, error)
-	Cert() Cert
-	SetCert(Cert)
+	Endorse(e Entity) (*Cert, error)
+	Cert() *Cert
+	SetCert(*Cert)
 }
 
 // Signature stores the signing information for a particular ID, and Entity.

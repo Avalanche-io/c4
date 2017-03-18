@@ -14,27 +14,27 @@ import (
 	c4time "github.com/Avalanche-io/c4/time"
 )
 
-type Cert interface {
-	X509() *x509.Certificate
-	PEM() []byte
-	Verify(string) ([][]*x509.Certificate, error)
-}
+type Cert x509.Certificate
+
+// X509() *x509.Certificate
+// PEM() []byte
+// Verify(string) ([][]*x509.Certificate, error)
 
 // An entity is a person identified by email or phone number, or a computer
 // identified by an IP or MAC address.
-type standardCert x509.Certificate
-type rootCert x509.Certificate
+// type standardCert
+// type rootCert x509.Certificate
 
-func (c *standardCert) X509() *x509.Certificate {
+func (c *Cert) X509() *x509.Certificate {
 	return (*x509.Certificate)(c)
 }
 
-func (c *standardCert) PEM() []byte {
+func (c *Cert) PEM() []byte {
 	b := pem.Block{Type: "CERTIFICATE", Bytes: c.Raw}
 	return pem.EncodeToMemory(&b)
 }
 
-func (c *standardCert) Verify(name string) ([][]*x509.Certificate, error) {
+func (c *Cert) Verify(name string) ([][]*x509.Certificate, error) {
 	cert := (*x509.Certificate)(c)
 	roots := x509.NewCertPool()
 	roots.AddCert(cert)
@@ -45,25 +45,25 @@ func (c *standardCert) Verify(name string) ([][]*x509.Certificate, error) {
 	return cert.Verify(opts)
 }
 
-func (c *rootCert) X509() *x509.Certificate {
-	return (*x509.Certificate)(c)
-}
+// func (c *rootCert) X509() *x509.Certificate {
+// 	return (*x509.Certificate)(c)
+// }
 
-func (c *rootCert) PEM() []byte {
-	b := pem.Block{Type: "CERTIFICATE", Bytes: c.Raw}
-	return pem.EncodeToMemory(&b)
-}
+// func (c *rootCert) PEM() []byte {
+// 	b := pem.Block{Type: "CERTIFICATE", Bytes: c.Raw}
+// 	return pem.EncodeToMemory(&b)
+// }
 
-func (c *rootCert) Verify(name string) ([][]*x509.Certificate, error) {
-	cert := (*x509.Certificate)(c)
-	roots := x509.NewCertPool()
-	roots.AddCert(cert)
-	opts := x509.VerifyOptions{
-		DNSName: name,
-		Roots:   roots,
-	}
-	return cert.Verify(opts)
-}
+// func (c *rootCert) Verify(name string) ([][]*x509.Certificate, error) {
+// 	cert := (*x509.Certificate)(c)
+// 	roots := x509.NewCertPool()
+// 	roots.AddCert(cert)
+// 	opts := x509.VerifyOptions{
+// 		DNSName: name,
+// 		Roots:   roots,
+// 	}
+// 	return cert.Verify(opts)
+// }
 
 // From RFC 5280, PKIX Certificate and CRL Profile, May 2008:
 // (P 24)
@@ -73,7 +73,7 @@ func (c *rootCert) Verify(name string) ([][]*x509.Certificate, error) {
 // be an empty sequence and the subjectAltName extension MUST be critical.
 
 // endorse implements x509 certificate signing.
-func endorse(e Entity, target Entity) (Cert, error) {
+func endorse(e Entity, target Entity) (*Cert, error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
@@ -103,9 +103,9 @@ func endorse(e Entity, target Entity) (Cert, error) {
 	if err != nil {
 		return nil, err
 	}
-	target.SetCert((*standardCert)(cert))
+	target.SetCert((*Cert)(cert))
 
-	return (*standardCert)(cert), nil
+	return (*Cert)(cert), nil
 }
 
 func CreateCA(name string) (*Domain, error) {
@@ -143,7 +143,7 @@ func CreateCA(name string) (*Domain, error) {
 	if priKey == nil {
 		panic("private key unexpectedly nil")
 	}
-	pubKey := (*ecdsa.PublicKey)(e.PublicKey)
+	pubKey := (*ecdsa.PublicKey)(e.Public())
 	if pubKey == nil {
 		panic("public key unexpectedly nil")
 	}
@@ -156,7 +156,7 @@ func CreateCA(name string) (*Domain, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.C = (*rootCert)(cert)
+	e.Certificate = (*Cert)(cert)
 
 	return e, nil
 }

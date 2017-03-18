@@ -5,22 +5,46 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
-	"golang.org/x/crypto/bcrypt"
+	"sort"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
-// User is an Entity that represents a a human user.
+const UserKeyUsage x509.KeyUsage = x509.KeyUsageDigitalSignature |
+	x509.KeyUsageContentCommitment |
+	x509.KeyUsageKeyEncipherment |
+	x509.KeyUsageDataEncipherment |
+	x509.KeyUsageKeyAgreement |
+	x509.KeyUsageCertSign |
+	x509.KeyUsageCRLSign
+
+// var UserExtUsage []x509.ExtKeyUsage = []x509.ExtKeyUsage{
+// 	x509.ExtKeyUsageCodeSigning,
+// 	x509.ExtKeyUsageEmailProtection,
+// 	x509.ExtKeyUsageClientAuth,
+// }
+
+var UserExtUsage []x509.ExtKeyUsage = []x509.ExtKeyUsage{
+	x509.ExtKeyUsageAny,
+	// x509.ExtKeyUsageCodeSigning,
+	// x509.ExtKeyUsageEmailProtection,
+	// x509.ExtKeyUsageClientAuth,
+}
+
+// User is an Entity that represents a human user.
 type User struct {
-	Identities          []*Identifier `json:"identities"`
-	ClearPrivateKey     *PrivateKey   `json:"-"`
-	EncryptedPrivateKey *pem.Block    `json:"encrypted_private_key"`
-	Certificate         Cert          `json:"certificate"`
-	ClearPassphrase     []byte        `json:"-"`
-	EncryptedPassphrase []byte        `json:"encrypted_passphrase"`
-	Salt                []byte        `json"salt"`
+	Identities          []Identifier `json:"identities"`
+	ClearPrivateKey     *PrivateKey  `json:"-"`
+	EncryptedPrivateKey *pem.Block   `json:"encrypted_private_key"`
+	Certificate         *Cert        `json:"certificate"`
+	ClearPassphrase     []byte       `json:"-"`
+	EncryptedPassphrase []byte       `json:"encrypted_passphrase"`
+	Salt                []byte       `json"salt"`
 }
 
 // An Identifier is a email, phone number, ip address, or MAC address used
@@ -40,22 +64,28 @@ const (
 )
 
 func NewUser(identifiers ...interface{}) (*User, error) {
-	idents := []*Identifier{}
-	for i, v := range identifiers {
-		ident := Identifier{}
-		if i%2 == 0 {
-			ident.Name = expectString(v)
-			if ident.Name == "" {
-				return nil, ErrNewUser(i)
-			}
-			continue
-		}
-		num := expectUint(v)
-		if num == -1 {
+	idents := []Identifier{}
+	var name string
+	var t uint
+
+	for i := 0; i < len(identifiers)-1; i++ {
+		switch val := identifiers[i].(type) {
+		case string:
+			name = val
+		default:
 			return nil, ErrNewUser(i)
 		}
-		ident.Type = uint(num)
-		idents = append(idents, &ident)
+		i++
+		switch val := identifiers[i].(type) {
+		case uint:
+			t = val
+		default:
+			return nil, ErrNewUser(i)
+		}
+		idents = append(idents, Identifier{name, t})
+	}
+	if len(idents) < 1 {
+		return nil, ErrNewUser(0)
 	}
 	b := make([]byte, 64)
 	_, err := rand.Read(b)
@@ -82,7 +112,7 @@ func (u *User) check_passphrase() error {
 	err := bcrypt.CompareHashAndPassword(u.EncryptedPassphrase, u.ClearPassphrase)
 	if err != nil {
 		if err == bcrypt.ErrMismatchedHashAndPassword {
-			err = ErrBadPassword{}
+			err = ErrBadPassphrase{}
 		}
 	}
 	return err
@@ -164,6 +194,7 @@ func (e *User) Name() string {
 	for _, v := range e.Identities {
 		out = append(out, v.Name)
 	}
+	sort.Strings(out)
 	return strings.Join(out, ",")
 }
 
@@ -191,11 +222,11 @@ func (e *User) Sign(id *c4.ID) (*Signature, error) {
 	return NewSignature(e.ClearPrivateKey, id)
 }
 
-func (e *User) SetCert(cert Cert) {
+func (e *User) SetCert(cert *Cert) {
 	e.Certificate = cert
 }
 
-func (e *User) Cert() Cert {
+func (e *User) Cert() *Cert {
 	return e.Certificate
 }
 
@@ -203,22 +234,87 @@ func (e *User) TLScert(t TLScertType) (tls.Certificate, error) {
 	return tls.X509KeyPair(e.Certificate.PEM(), e.Private().PEM())
 }
 
-func (e *User) Endorse(target Entity) (Cert, error) {
+func (e *User) Endorse(target Entity) (*Cert, error) {
 	return endorse(e, target)
 }
 
-func expectString(v interface{}) string {
-	switch val := v.(type) {
-	case string:
-		return val
+func (e *User) CSR() (*CertificateSigningRequest, error) {
+	cn := e.Name()
+	if len(cn) == 0 {
+		return nil, ErrBadCommonName{}
 	}
-	return ""
+
+	// pkix.AttributeTypeAndValue{
+	//    Type:,  //asn1.ObjectIdentifier
+	//    Value:, //interface{}
+	// }
+	name := pkix.Name{
+		CommonName: cn,
+		// Names: []pkix.AttributeTypeAndValue{}
+		// Country:            nil,
+		// Organization:       nil,
+		// OrganizationalUnit: nil,
+		// Locality:           nil,
+		// Province:           nil,
+		// StreetAddress:      nil,
+		// PostalCode:         nil,
+		// SerialNumber:       "",
+	}
+	var email []string
+	var phone []string
+
+	for _, ident := range e.Identities {
+		switch ident.Type {
+		case EMail:
+			email = append(email, ident.Name)
+		case PhoneNumber:
+			phone = append(phone, ident.Name)
+		}
+	}
+
+	// ExtKeyUsageClientAuth
+	// ExtKeyUsageCodeSigning
+	// ExtKeyUsageEmailProtection
+
+	// KeyUsageDigitalSignature
+	// KeyUsageContentCommitment
+	// KeyUsageKeyEncipherment
+	// KeyUsageDataEncipherment
+	// KeyUsageKeyAgreement
+	// KeyUsageCertSign
+	// KeyUsageCRLSign
+
+	tmpl := &x509.CertificateRequest{
+		Subject:        name,
+		EmailAddresses: email,
+	}
+	// rawSubj := name.ToRDNSequence()
+
+	req, err := x509.CreateCertificateRequest(rand.Reader, tmpl, (*ecdsa.PrivateKey)(e.ClearPrivateKey))
+	if err != nil {
+		return nil, err
+	}
+
+	cr, err := x509.ParseCertificateRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	csr := &CertificateSigningRequest{der: req, cr: cr}
+	return csr, nil
 }
 
-func expectUint(v interface{}) int {
-	switch num := v.(type) {
-	case uint:
-		return int(num)
-	}
-	return -1
-}
+// func expectString(v interface{}) string {
+// 	switch val := v.(type) {
+// 	case string:
+// 		return val
+// 	}
+// 	return ""
+// }
+
+// func expectUint(v interface{}) int {
+// 	switch num := v.(type) {
+// 	case uint:
+// 		return int(num)
+// 	}
+// 	return -1
+// }
