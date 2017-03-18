@@ -28,6 +28,12 @@ func (e ErrBadPassphrase) Error() string {
 
 type ErrBadCommonName struct{}
 
-func (e ErrBadCommonName) Error() string {
+func (ErrBadCommonName) Error() string {
 	return "invalid common name for certificate"
+}
+
+type ErrChangeNilPassphrase struct{}
+
+func (ErrChangeNilPassphrase) Error() string {
+	return "cannot change empty passphrase"
 }

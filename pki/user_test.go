@@ -154,3 +154,64 @@ func TestUserCSR(t *testing.T) {
 	err = json.Unmarshal(data, &user2)
 	is.NoErr(err)
 }
+
+func TestUserChangePassphrase(t *testing.T) {
+	is := is.New(t)
+	user, err := pki.NewUser("john.doe@example.com", pki.EMail)
+	is.NoErr(err)
+	is.NotNil(user)
+	is.NoErr(user.GenerateKeys())
+	is.NotNil(user.Private())
+	oldpw := "some passphrase"
+	// set original passphrase
+	err = user.Passphrase(oldpw)
+	is.NoErr(err)
+
+	newpw := "new passphrase"
+	err = user.ChangePassphrase(oldpw, newpw)
+	is.NoErr(err)
+
+	// Save
+	data, err := json.Marshal(user)
+	is.NoErr(err)
+
+	// Load
+	var user2 pki.User
+	is.NoErr(json.Unmarshal(data, &user2))
+
+	is.Nil(user2.Private())
+	is.NoErr(user2.Passphrase(newpw))
+	is.NotNil(user2.Private())
+}
+
+func TestUserLogout(t *testing.T) {
+	is := is.New(t)
+	user, err := pki.NewUser("john.doe@example.com", pki.EMail)
+	is.NoErr(err)
+	is.NotNil(user)
+	is.NoErr(user.GenerateKeys())
+	is.NotNil(user.Private())
+	oldpw := "some passphrase"
+
+	err = user.Passphrase(oldpw)
+	is.NoErr(err)
+
+	is.NotNil(user.EncryptedPrivateKey)
+	is.NotNil(user.ClearPrivateKey)
+	is.NotNil(user.EncryptedPassphrase)
+	is.NotNil(user.ClearPassphrase)
+
+	user.Logout()
+	is.NoErr(err)
+	is.NotNil(user.EncryptedPrivateKey)
+	is.Nil(user.ClearPrivateKey)
+	is.NotNil(user.EncryptedPassphrase)
+	is.Nil(user.ClearPassphrase)
+
+	err = user.Passphrase(oldpw)
+
+	is.NotNil(user.EncryptedPrivateKey)
+	is.NotNil(user.ClearPrivateKey)
+	is.NotNil(user.EncryptedPassphrase)
+	is.NotNil(user.ClearPassphrase)
+}

@@ -38,53 +38,23 @@ type Domain struct {
 	ClearPassphrase     []byte      `json:"-"`
 	EncryptedPassphrase []byte      `json:"encrypted_passphrase"`
 	Salt                []byte      `json"salt"`
-
-	// pri       *PrivateKey
-	// PublicKey *PublicKey
-	// C         Cert
 }
 
-// User is an Entity that represents a human user.
-// type User struct {
-// 	Identities          []Identifier `json:"identities"`
-// 	ClearPrivateKey     *PrivateKey  `json:"-"`
-// 	EncryptedPrivateKey *pem.Block   `json:"encrypted_private_key"`
-// 	Certificate         Cert         `json:"certificate"`
-// 	ClearPassphrase     []byte       `json:"-"`
-// 	EncryptedPassphrase []byte       `json:"encrypted_passphrase"`
-// 	Salt                []byte       `json"salt"`
-// }
-
+// NewDomain creates a domain entity.
 func NewDomain() (*Domain, error) {
 	d := Domain{}
 	return &d, nil
 }
 
+// AddDomains adds domain names to a list of domain names this
+// domain represents.
 func (e *Domain) AddDomains(names ...string) {
 	e.Domains = names
 }
 
+// AddIPs add ip addresses to the list of IPs this domain represents.
 func (e *Domain) AddIPs(ips ...net.IP) {
 	e.IPs = ips
-}
-
-func (e *Domain) set_passphrase() error {
-	cipertext, err := bcrypt.GenerateFromPassword(e.ClearPassphrase, 12)
-	if err != nil {
-		return err
-	}
-	e.EncryptedPassphrase = cipertext
-	return nil
-}
-
-func (e *Domain) check_passphrase() error {
-	err := bcrypt.CompareHashAndPassword(e.EncryptedPassphrase, e.ClearPassphrase)
-	if err != nil {
-		if err == bcrypt.ErrMismatchedHashAndPassword {
-			err = ErrBadPassphrase{}
-		}
-	}
-	return err
 }
 
 // Passphrase checks a passphrase, and will set the encrypted
@@ -112,56 +82,17 @@ func (e *Domain) Passphrase(passphrase string) (err error) {
 	return nil
 }
 
-func (e *Domain) decrypt_privatekey() {
-	key := append(e.Salt, e.ClearPassphrase...)
-	data, err := x509.DecryptPEMBlock(e.EncryptedPrivateKey, key)
-	if err != nil {
-		return
-	}
-	k, err := x509.ParseECPrivateKey(data)
-	if err != nil {
-		return
-	}
-	e.ClearPrivateKey = (*PrivateKey)(k)
-}
-
-func (e *Domain) encrypt_privatekey() {
-	key := append(e.Salt, e.ClearPassphrase...)
-	kb, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
-	if err != nil {
-		return
-	}
-	blk, err := x509.EncryptPEMBlock(rand.Reader, "EC PRIVATE KEY", kb, key, x509.PEMCipherAES256)
-	if err != nil {
-		return
-	}
-	e.EncryptedPrivateKey = blk
-}
-
-func (e *Domain) manage_keys() {
-	if e.ClearPrivateKey == nil && e.EncryptedPrivateKey == nil {
-		return
-	}
-	if e.ClearPrivateKey != nil && e.EncryptedPrivateKey != nil {
-		return
-	}
-
-	if e.ClearPrivateKey != nil {
-		e.encrypt_privatekey()
-		return
-	}
-
-	e.decrypt_privatekey()
-}
-
+// ID is not yet implemented, but will return the unique identifier for the domain.
 func (e *Domain) ID() *c4.ID {
 	return nil
 }
 
+// Name returns a comma separated list of domain names for this domain.
 func (e *Domain) Name() string {
 	return strings.Join(e.Domains, ",")
 }
 
+// GenerateKeys generates a new private/public key pair.
 func (e *Domain) GenerateKeys() error {
 	pri, _, err := generateKeys()
 	if err != nil {
@@ -171,10 +102,13 @@ func (e *Domain) GenerateKeys() error {
 	return nil
 }
 
+// Private returns the unencrypted private key for the domain if accessible,
+// and returns nil otherwise.
 func (e *Domain) Private() *PrivateKey {
 	return e.ClearPrivateKey
 }
 
+// Public returns the public key for the domain.
 func (e *Domain) Public() *PublicKey {
 	if e.ClearPrivateKey != nil {
 		return e.ClearPrivateKey.Public()
@@ -182,26 +116,34 @@ func (e *Domain) Public() *PublicKey {
 	return nil
 }
 
+// SetCert replaces the domains cert with the one provided. This is only needed
+// when receiving a singed certificate from a remote certificate authority.
 func (e *Domain) SetCert(cert *Cert) {
 	e.Certificate = cert
 }
 
+// Cert returns the domains certificate.
 func (e *Domain) Cert() *Cert {
 	return e.Certificate
 }
 
+// Sign returns a signature of id for this domain.
 func (e *Domain) Sign(id *c4.ID) (*Signature, error) {
 	return NewSignature(e.ClearPrivateKey, id)
 }
 
+// TLScert returns tls formatted certificates for easy use with TLS connections.
 func (e *Domain) TLScert(t TLScertType) (tls.Certificate, error) {
 	return tls.X509KeyPair(e.Certificate.PEM(), e.Private().PEM())
 }
 
+// Endorse creates a certificate for target signed by the domain.
 func (e *Domain) Endorse(target Entity) (*Cert, error) {
 	return endorse(e, target)
 }
 
+// CSR generates a certificate signing request for the domain sutable for submission
+// to a remote certificate authority for validation and signature.
 func (e *Domain) CSR() (*CertificateSigningRequest, error) {
 	if len(e.Domains) == 0 && len(e.IPs) == 0 {
 		return nil, ErrNoValidCn{}
@@ -248,6 +190,8 @@ func (e *Domain) CSR() (*CertificateSigningRequest, error) {
 	return csr, nil
 }
 
+// Approve creates a signed certificate form the certificate signing request provided.
+// Currently certificates are hard coded to be valued for only one week at a time.
 func (e *Domain) Approve(csr *CertificateSigningRequest) (*Cert, error) {
 	csr.Varify(e)
 	req := csr.CR()
@@ -305,4 +249,65 @@ func (e *Domain) Approve(csr *CertificateSigningRequest) (*Cert, error) {
 
 	return (*Cert)(cert), nil
 
+}
+
+func (e *Domain) set_passphrase() error {
+	cipertext, err := bcrypt.GenerateFromPassword(e.ClearPassphrase, 12)
+	if err != nil {
+		return err
+	}
+	e.EncryptedPassphrase = cipertext
+	return nil
+}
+
+func (e *Domain) check_passphrase() error {
+	err := bcrypt.CompareHashAndPassword(e.EncryptedPassphrase, e.ClearPassphrase)
+	if err != nil {
+		if err == bcrypt.ErrMismatchedHashAndPassword {
+			err = ErrBadPassphrase{}
+		}
+	}
+	return err
+}
+
+func (e *Domain) decrypt_privatekey() {
+	key := append(e.Salt, e.ClearPassphrase...)
+	data, err := x509.DecryptPEMBlock(e.EncryptedPrivateKey, key)
+	if err != nil {
+		return
+	}
+	k, err := x509.ParseECPrivateKey(data)
+	if err != nil {
+		return
+	}
+	e.ClearPrivateKey = (*PrivateKey)(k)
+}
+
+func (e *Domain) encrypt_privatekey() {
+	key := append(e.Salt, e.ClearPassphrase...)
+	kb, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
+	if err != nil {
+		return
+	}
+	blk, err := x509.EncryptPEMBlock(rand.Reader, "EC PRIVATE KEY", kb, key, x509.PEMCipherAES256)
+	if err != nil {
+		return
+	}
+	e.EncryptedPrivateKey = blk
+}
+
+func (e *Domain) manage_keys() {
+	if e.ClearPrivateKey == nil && e.EncryptedPrivateKey == nil {
+		return
+	}
+	if e.ClearPrivateKey != nil && e.EncryptedPrivateKey != nil {
+		return
+	}
+
+	if e.ClearPrivateKey != nil {
+		e.encrypt_privatekey()
+		return
+	}
+
+	e.decrypt_privatekey()
 }
