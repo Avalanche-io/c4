@@ -107,7 +107,7 @@ func NewDirAsset(path string, st abstract_storage_interface, mode int, f *os.Fil
 	}, nil
 }
 
-func NewFileAsset(path string, st abstract_storage_interface, mode int, f *os.File) (Asset, error) {
+func NewFileAsset(path string, st abstract_storage_interface, mode int, f *os.File, id *c4.ID) (Asset, error) {
 	_, filename := assetpath.Split(path)
 	return &file_asset{
 		name: filename,
@@ -116,6 +116,7 @@ func NewFileAsset(path string, st abstract_storage_interface, mode int, f *os.Fi
 		f:    f,
 		st:   st,
 		en:   c4.NewEncoder(),
+		id:   id,
 	}, nil
 }
 

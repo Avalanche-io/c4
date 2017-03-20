@@ -50,12 +50,20 @@ func (s *Store) Create(path string) (Asset, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewFileAsset(path, (*storage)(s), os.O_RDWR, temp_file)
+	return NewFileAsset(path, (*storage)(s), os.O_RDWR, temp_file, nil)
+}
+
+func (s *Store) Writer(path string) (c4.WriteCloseIdentifier, error) {
+	return s.Create(path)
+}
+
+func (s *Store) Reader(path string) (c4.ReadCloseIdentifier, error) {
+	return s.Open(path)
 }
 
 //Open opens the named asset for reading.
 func (s *Store) Open(name string) (a Asset, err error) {
-	id := s.db.GetAssetID([]byte(name))
+	id := s.db.Get([]byte(name))
 	if id == nil {
 		return nil, os.ErrNotExist
 	}
@@ -77,7 +85,7 @@ func (s *Store) Open(name string) (a Asset, err error) {
 	if slash.IsDir(name) {
 		return NewDirAsset(name, (*storage)(s), os.O_RDONLY, file)
 	}
-	return NewFileAsset(name, (*storage)(s), os.O_RDONLY, file)
+	return NewFileAsset(name, (*storage)(s), os.O_RDONLY, file, id)
 }
 
 // Mkdir creates an empty directory entry for the given path if it does not already
@@ -93,7 +101,7 @@ func (s *Store) Mkdir(path string) error {
 	if s.Exists(path) {
 		return os.ErrExist
 	}
-	err := s.db.SetAssetID([]byte(path), c4.NIL_ID)
+	err := s.db.Set([]byte(path), c4.NIL_ID)
 	if err != nil {
 		return err
 	}
@@ -122,7 +130,7 @@ func (s *Store) MkdirAll(path string) error {
 
 // AssetID returns the c4 id of file at the given path
 func (s *Store) AssetID(name string) *c4.ID {
-	return s.db.GetAssetID([]byte(name))
+	return s.db.Get([]byte(name))
 }
 
 // Close closes the database, and any other cleanup as needed.
@@ -133,12 +141,16 @@ func (s *Store) Close() error {
 // Exists tests if the path exists in the database, and if the identified file
 // exists in the storage.
 func (s *Store) Exists(path string) bool {
-	id := s.db.GetAssetID([]byte(path))
+	id := s.db.Get([]byte(path))
 	if id == nil {
 		return false
 	}
 	e := exists(s.path, id)
 	return e
+}
+
+func (s *Store) IDexists(id *c4.ID) bool {
+	return s.db.IDexists(id)
 }
 
 // Add returns a copy of the Asset bound to the storage, or the unmodified Asset if it

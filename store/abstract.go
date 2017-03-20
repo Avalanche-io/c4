@@ -18,7 +18,7 @@ func (s *storage) move(path string, id *c4.ID) error {
 }
 
 func (s *storage) set(key []byte, id *c4.ID) error {
-	return (*Store)(s).db.SetAssetID(key, id)
+	return (*Store)(s).db.Set(key, id)
 }
 
 func (s *storage) updateDirectory(key []byte) error {

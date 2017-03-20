@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -70,7 +71,7 @@ func TestStoreDirs(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
 	defer done()
 	_ = done
-	st, err := c4store.Open(dir + "/asset_storage")
+	st, err := c4store.Open(dir + "/store")
 	is.NoErr(err)
 	is.NotNil(st)
 
@@ -194,4 +195,47 @@ func TestErrors(t *testing.T) {
 	st, err = c4store.Open(unwriteableDbfolder)
 	is.Err(err)
 	is.Nil(st)
+}
+
+func TestWriter(t *testing.T) {
+	is, dir, done := SetupTestFolder(t, "store")
+	defer done()
+
+	st, err := c4store.Open(dir + "/store")
+	is.NoErr(err)
+	is.NotNil(st)
+	w, err := st.Writer("/foo")
+	is.NoErr(err)
+	_, err = io.Copy(w, bytes.NewReader([]byte("bar")))
+	w.Close()
+	bar_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	is.Equal(w.ID().String(), bar_id.String())
+	asset, err := st.Open("/foo")
+	is.NoErr(err)
+	defer asset.Close()
+	is.Equal(asset.ID().String(), bar_id.String())
+}
+
+func TestReaderWriter(t *testing.T) {
+	is, dir, done := SetupTestFolder(t, "store")
+	defer done()
+
+	st, err := c4store.Open(dir + "/store")
+	is.NoErr(err)
+	is.NotNil(st)
+	w, err := st.Writer("/foo")
+	is.NoErr(err)
+	_, err = io.Copy(w, bytes.NewReader([]byte("bar")))
+	w.Close()
+	bar_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	is.Equal(w.ID().String(), bar_id.String())
+	w.Close()
+	r, err := st.Reader("/foo")
+	is.NoErr(err)
+	defer r.Close()
+	data, err := ioutil.ReadAll(r)
+	is.NoErr(err)
+	is.True(string(data) == "bar")
+	is.Equal(r.ID().String(), bar_id.String())
+	r.Close()
 }
