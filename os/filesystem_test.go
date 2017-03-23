@@ -23,7 +23,7 @@ import (
 )
 
 func TestFSWalk(t *testing.T) {
-	is, dir, done := SetupTestFolder(t, "filesystem")
+	is, dir, done := setup(t, "os")
 	defer done()
 	paths := [][]string{
 		strings.Split("one/two/three", "/"),
@@ -105,9 +105,9 @@ func TestFSWalk(t *testing.T) {
 // testing
 func TestDirID(t *testing.T) {
 	is := is.New(t)
-	deeper, _ := makeRamTree(is)
+	tree, _ := makeFsTree(is)
 	fs := memfs.Create()
-	item_count := deeper(fs, 8, 20, 0, "/", 0)
+	item_count := tree(fs, 8, 20, 0, "/", 0)
 	c4fs := c4os.NewFileSystem(fs, []byte("/"))
 	cnt := 0
 	err := c4fs.Walk(nil, func(key []byte, attrs c4os.Attributes) error {
@@ -125,7 +125,7 @@ func TestDirID(t *testing.T) {
 	// }
 	_ = data
 	// fmt.Printf("%s\n", data)
-	// fmt.Printf("deeper: item_count: %d, Total files: %d, Total folders: %d, Total MAX Depth: %d, MAX Path: %d\n", item_count, *count.t_files, *count.t_folders, *count.t_max_depth, *count.t_max_path)
+	// fmt.Printf("tree: item_count: %d, Total files: %d, Total folders: %d, Total MAX Depth: %d, MAX Path: %d\n", item_count, *count.t_files, *count.t_folders, *count.t_max_depth, *count.t_max_path)
 }
 
 type treebuilder func(fs vfs.Filesystem, max_depth, max_total_items, depth uint32, path string, item_count uint32) uint32
@@ -151,7 +151,7 @@ func get20kwords() []string {
 }
 
 // Utility for building random paths of files and folders in memory
-func makeRamTree(is is.I) (treebuilder, *counts) {
+func makeFsTree(is is.I) (treebuilder, *counts) {
 	// disallowed := []byte{'/', '\\', '?', '%', '*', ':', '|', '"', '\'', '>', '<', '\000'}
 	// _ = disallowed
 	words := get20kwords()
@@ -166,12 +166,12 @@ func makeRamTree(is is.I) (treebuilder, *counts) {
 
 	// make n, m files and folders
 	// walk into some folders and repeat until max depth
-	var deeper treebuilder
+	var tree treebuilder
 	file_data := make([]byte, max_data)
 	item_count := uint32(0)
 	var t_files, t_folders, t_max_depth, t_max_path uint32
 	count := &counts{&item_count, &t_files, &t_folders, &t_max_depth, &t_max_path}
-	deeper = func(fs vfs.Filesystem, max_depth, max_total_items, depth uint32, path string, item_count uint32) uint32 {
+	tree = func(fs vfs.Filesystem, max_depth, max_total_items, depth uint32, path string, item_count uint32) uint32 {
 		if item_count >= max_total_items {
 			return item_count
 		}
@@ -207,7 +207,7 @@ func makeRamTree(is is.I) (treebuilder, *counts) {
 				t_folders++
 				err := vfs.MkdirAll(fs, this_path, 0700)
 				is.NoErr(err)
-				item_count = deeper(fs, max_depth, max_total_items, depth+1, this_path, item_count)
+				item_count = tree(fs, max_depth, max_total_items, depth+1, this_path, item_count)
 				if item_count >= max_total_items {
 					return item_count
 				}
@@ -225,7 +225,7 @@ func makeRamTree(is is.I) (treebuilder, *counts) {
 		}
 		return item_count
 	}
-	return deeper, count
+	return tree, count
 }
 
 func makePrintTree(fs vfs.Filesystem, is is.I) func(int, string, os.FileInfo) {
@@ -247,7 +247,7 @@ func makePrintTree(fs vfs.Filesystem, is is.I) func(int, string, os.FileInfo) {
 }
 
 // Create temp folder and return function to delete it.
-func SetupTestFolder(t *testing.T, test_name string) (is.I, string, func()) {
+func setup(t *testing.T, test_name string) (is.I, string, func()) {
 	is := is.New(t)
 	prefix := fmt.Sprintf("c4_%s_tests", test_name)
 	dir, err := ioutil.TempDir("/tmp", prefix)
