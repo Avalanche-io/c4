@@ -71,7 +71,7 @@ func TestStoreDirs(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
 	defer done()
 	_ = done
-	st, err := c4store.Open(dir + "/store")
+	st, err := c4store.Open(dir + "/c4_test")
 	is.NoErr(err)
 	is.NotNil(st)
 
@@ -201,7 +201,7 @@ func TestWriter(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
 	defer done()
 
-	st, err := c4store.Open(dir + "/store")
+	st, err := c4store.Open(dir + "/c4_test")
 	is.NoErr(err)
 	is.NotNil(st)
 	w, err := st.Writer("/foo")
@@ -220,7 +220,7 @@ func TestReaderWriter(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
 	defer done()
 
-	st, err := c4store.Open(dir + "/store")
+	st, err := c4store.Open(dir + "/c4_test")
 	is.NoErr(err)
 	is.NotNil(st)
 	w, err := st.Writer("/foo")
@@ -238,4 +238,35 @@ func TestReaderWriter(t *testing.T) {
 	is.True(string(data) == "bar")
 	is.Equal(r.ID().String(), bar_id.String())
 	r.Close()
+}
+
+func TestAttributesSaveLoad(t *testing.T) {
+	is, dir, done := SetupTestFolder(t, "store")
+	defer done()
+
+	st, err := c4store.Open(dir + "/c4_test")
+	is.NoErr(err)
+	is.NotNil(st)
+
+	filename := "/foo.txt"
+	asset, err := st.Create(filename)
+	is.NoErr(err)
+	is.NotNil(asset)
+
+	_, err = asset.Write([]byte("foo"))
+	is.NoErr(err)
+	err = asset.Close()
+	is.NoErr(err)
+
+	attrs := make(map[string]interface{})
+	attrs["name"] = "foo.txt"
+	attrs["size"] = 3
+	err = st.SetAttributes(filename, attrs)
+	is.NoErr(err)
+	attrs2 := make(map[string]interface{})
+	err = st.GetAttributes(filename, &attrs2)
+	is.NoErr(err)
+	for k, v := range attrs {
+		is.Equal(attrs2[k], v)
+	}
 }

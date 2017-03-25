@@ -1,6 +1,8 @@
 package store
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -164,6 +166,58 @@ func (s *Store) Add(asset Asset) Asset {
 	}
 
 	return CopyAsset(asset, (*storage)(s))
+}
+
+func (s *Store) SetAttributes(key string, attrs map[string]interface{}) error {
+	// convert to json
+	data, err := json.Marshal(attrs)
+	if err != nil {
+		return err
+	}
+
+	// identify
+	id := c4.Identify(bytes.NewReader(data))
+
+	// Check if the id already exists.
+	if exists(s.path, id) {
+		s.db.SetAttributes([]byte(key), id)
+		return nil
+	}
+	dir := pathtoasset(s.path, id)
+	makepaths(dir)
+	file_name := filepath.Join(dir, id.String())
+
+	f, err := os.Create(file_name)
+	if err != nil {
+		return err
+	}
+	n, err := io.Copy(f, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	_ = n
+	f.Close()
+	s.db.SetAttributes([]byte(key), id)
+	return nil
+}
+
+func (s *Store) GetAttributes(key string, attrs *map[string]interface{}) error {
+	id := s.db.GetAttributes([]byte(key))
+	if id == nil {
+		return ErrNotFound
+	}
+	file_name := filepath.Join(pathtoasset(s.path, id), id.String())
+	f, err := os.Open(file_name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	j := json.NewDecoder(f)
+	err = j.Decode(attrs)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // update_directory adds the file name in path to it's parent directory list and saves
