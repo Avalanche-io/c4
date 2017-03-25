@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -191,9 +192,18 @@ func (p *item) perfString(path string, id_length int) string {
 	return fmt.Sprintf("%s: %d,\t%s,\t%s,\t%s/s: %s %s \n", pCount, p.Depth, pTime, pSize, pRate, id_str[:id_length], name)
 }
 
-func Walk(path string, f func(path string, info FileInfo, err error) error) error {
+type Options struct {
+	Sorting Sorting
+}
+
+var DefaultOptions Options = Options{Unsorted}
+
+func Walk(path string, opts *Options, f func(path string, info FileInfo, err error) error) error {
 	if Worker == nil {
 		Worker = make(chan *job)
+	}
+	if opts == nil {
+		opts = &DefaultOptions
 	}
 
 	go func() {
@@ -216,7 +226,7 @@ func Walk(path string, f func(path string, info FileInfo, err error) error) erro
 	}()
 
 	stop := make(chan struct{})
-	ch := walk(0, path, stop)
+	ch := walk(0, path, opts, stop)
 
 	for info := range ch {
 		err := f(info.path, info, info.err)
@@ -229,9 +239,10 @@ func Walk(path string, f func(path string, info FileInfo, err error) error) erro
 	return nil
 }
 
-func walk(depth int, path string, stop chan struct{}) chan *item {
+func walk(depth int, path string, opts *Options, stop chan struct{}) chan *item {
 	out := make(chan *item)
 	go func() {
+
 		defer func() {
 			close(out)
 		}()
@@ -251,11 +262,31 @@ func walk(depth int, path string, stop chan struct{}) chan *item {
 
 		f.Close()
 
+		list := randFileInfoList(infos)
+		sort.Sort(list)
+
 		children := make(chan *item)
 		dirs := make(chan string)
 		// If the folder isn't empty, then loop over the items
 		go func() {
 			defer close(dirs)
+
+			// This feels way too heavy handed. Due for improvement.
+			var list Sortable
+			switch opts.Sorting {
+			case NaturalSort:
+				list = naturalFileInfoList(infos)
+			case LexSort:
+				list = lexFileInfoList(infos)
+			case ValueSort:
+				list = valueFileInfoList(infos)
+			case Unsorted:
+				fallthrough
+			default:
+				list = nilSort(infos)
+			}
+			sort.Sort(list)
+
 			for _, info := range infos {
 				newpath := filepath.Join(path, info.Name())
 				// if file is a directory add it to the directory list to handle later
@@ -279,7 +310,7 @@ func walk(depth int, path string, stop chan struct{}) chan *item {
 		go func() {
 			defer close(children)
 			for childpath := range dirs {
-				for child := range walk(depth+1, childpath, stop) {
+				for child := range walk(depth+1, childpath, opts, stop) {
 					select {
 					case children <- child:
 					case <-stop:
