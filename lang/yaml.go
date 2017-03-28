@@ -1,7 +1,7 @@
 package lang
 
 import (
-	"fmt"
+	// "fmt"
 	"io"
 
 	"gopkg.in/yaml.v2"
@@ -27,7 +27,7 @@ func YamlLoad(f io.Reader) (Graph, error) {
 	data = data[:total]
 	var t Graph
 	err := yaml.Unmarshal([]byte(data), &t)
-	fmt.Printf("yaml\n%s\n", string(data))
-	fmt.Printf("yaml object\n%v\n", t)
+	// fmt.Printf("yaml\n%s\n", string(data))
+	// fmt.Printf("yaml object\n%v\n", t)
 	return t, err
 }

@@ -259,14 +259,17 @@ func TestAttributesSaveLoad(t *testing.T) {
 	is.NoErr(err)
 
 	attrs := make(map[string]interface{})
-	attrs["name"] = "foo.txt"
-	attrs["size"] = 3
+	attrs["some file"] = "foo.txt" // a.String("foo.txt")
+	attrs["some value"] = 3        //a.IntAttribute(3)
 	err = st.SetAttributes(filename, attrs)
 	is.NoErr(err)
-	attrs2 := make(map[string]interface{})
-	err = st.GetAttributes(filename, &attrs2)
+	attrs2 := make(map[string]interface{}) //make(a.Attributes)
+	err = st.GetAttributes(filename, attrs2)
 	is.NoErr(err)
+	cnt := 0
 	for k, v := range attrs {
+		cnt++
 		is.Equal(attrs2[k], v)
 	}
+	is.Equal(cnt, 2)
 }

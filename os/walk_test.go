@@ -27,7 +27,7 @@ func TestWalk(t *testing.T) {
 }
 
 func TestCopy(t *testing.T) {
-	is, dir, _ := setup(t, "os")
+	is, dir, done := setup(t, "os")
 	defer done()
 	const A, B = 0, 1
 	paths := make([]string, 2)

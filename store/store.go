@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/json"
+	// "fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -174,7 +175,6 @@ func (s *Store) SetAttributes(key string, attrs map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-
 	// identify
 	id := c4.Identify(bytes.NewReader(data))
 
@@ -201,7 +201,7 @@ func (s *Store) SetAttributes(key string, attrs map[string]interface{}) error {
 	return nil
 }
 
-func (s *Store) GetAttributes(key string, attrs *map[string]interface{}) error {
+func (s *Store) GetAttributes(key string, attrs map[string]interface{}) error {
 	id := s.db.GetAttributes([]byte(key))
 	if id == nil {
 		return ErrNotFound
@@ -213,7 +213,7 @@ func (s *Store) GetAttributes(key string, attrs *map[string]interface{}) error {
 	}
 	defer f.Close()
 	j := json.NewDecoder(f)
-	err = j.Decode(attrs)
+	err = j.Decode(&attrs)
 	if err != nil {
 		return err
 	}
