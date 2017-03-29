@@ -48,25 +48,54 @@ func Open(path string) (*Store, error) {
 }
 
 // Create creates a new writable asset.
-func (s *Store) Create(path string) (Asset, error) {
+func (s *Store) Create(path string, ids ...*c4.ID) (Asset, error) {
+	var id *c4.ID
+	if len(ids) == 1 {
+		id = ids[0]
+	}
+
 	temp_file, err := tmp(s.path)
 	if err != nil {
 		return nil, err
 	}
-	return NewFileAsset(path, (*storage)(s), os.O_RDWR, temp_file, nil)
+	return NewFileAsset(path, (*storage)(s), os.O_RDWR, temp_file, id)
 }
 
-func (s *Store) Writer(path string) (c4.WriteCloseIdentifier, error) {
-	return s.Create(path)
+func (s *Store) Writer(path string, ids ...*c4.ID) (c4.WriteCloseIdentifier, error) {
+	return s.Create(path, ids...)
 }
 
-func (s *Store) Reader(path string) (c4.ReadCloseIdentifier, error) {
-	return s.Open(path)
+func (s *Store) Reader(path string, ids ...*c4.ID) (c4.ReadCloseIdentifier, error) {
+	return s.Open(path, ids...)
+}
+
+func (s *Store) Copy(src, dest string) error {
+	id := s.db.Get([]byte(src))
+	if id == nil {
+		return ErrNotFound
+	}
+	return s.db.Set([]byte(dest), id)
+}
+
+func (s *Store) Move(src, dest string) error {
+	err := s.Copy(src, dest)
+	if err != nil {
+		return err
+	}
+	s.db.Unset([]byte(src))
+	return nil
 }
 
 //Open opens the named asset for reading.
-func (s *Store) Open(name string) (a Asset, err error) {
-	id := s.db.Get([]byte(name))
+func (s *Store) Open(name string, ids ...*c4.ID) (a Asset, err error) {
+	var id *c4.ID
+	if len(ids) == 1 {
+		id = ids[0]
+	}
+	if len(name) > 0 {
+		id = s.db.Get([]byte(name))
+	}
+
 	if id == nil {
 		return nil, os.ErrNotExist
 	}

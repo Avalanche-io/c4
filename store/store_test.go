@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	c4id "github.com/Avalanche-io/c4/id"
+	c4 "github.com/Avalanche-io/c4/id"
 	c4store "github.com/Avalanche-io/c4/store"
 	"github.com/cheekybits/is"
 )
@@ -44,7 +44,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	id := asset.ID()
 	is.NotNil(id)
 
-	fooId := c4id.Identify(strings.NewReader("foo"))
+	fooId := c4.Identify(strings.NewReader("foo"))
 	is.Equal(fooId, id)
 	err = st.Close()
 	is.NoErr(err)
@@ -166,7 +166,7 @@ func TestErrors(t *testing.T) {
 	unwriteableFilepath := filepath.Join(dir, "unwriteableFile")
 	unwriteableFolderpath := filepath.Join(dir, "unwriteableFolder")
 	unwriteableDbfolder := filepath.Join(dir, "unwriteableDbfolder")
-	unwriteableDbpath := filepath.Join(unwriteableDbfolder, "c4id.db")
+	unwriteableDbpath := filepath.Join(unwriteableDbfolder, "c4.db")
 	os.Mkdir(unwriteableFolderpath, 0000)
 	os.Mkdir(unwriteableDbfolder, 0777)
 	f, err := os.Create(unwriteableFilepath)
@@ -192,7 +192,7 @@ func TestErrors(t *testing.T) {
 	is.Err(err)
 	is.Nil(st)
 
-	st, err = c4store.Open(unwriteableDbfolder)
+	st, err = c4store.Open(unwriteableDbpath)
 	is.Err(err)
 	is.Nil(st)
 }
@@ -208,7 +208,7 @@ func TestWriter(t *testing.T) {
 	is.NoErr(err)
 	_, err = io.Copy(w, bytes.NewReader([]byte("bar")))
 	w.Close()
-	bar_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	bar_id := c4.Identify(bytes.NewReader([]byte("bar")))
 	is.Equal(w.ID().String(), bar_id.String())
 	asset, err := st.Open("/foo")
 	is.NoErr(err)
@@ -227,7 +227,7 @@ func TestReaderWriter(t *testing.T) {
 	is.NoErr(err)
 	_, err = io.Copy(w, bytes.NewReader([]byte("bar")))
 	w.Close()
-	bar_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	bar_id := c4.Identify(bytes.NewReader([]byte("bar")))
 	is.Equal(w.ID().String(), bar_id.String())
 	w.Close()
 	r, err := st.Reader("/foo")
@@ -272,4 +272,73 @@ func TestAttributesSaveLoad(t *testing.T) {
 		is.Equal(attrs2[k], v)
 	}
 	is.Equal(cnt, 2)
+}
+
+func TestIdReaderWriter(t *testing.T) {
+	is, dir, done := SetupTestFolder(t, "store")
+	defer done()
+
+	st, err := c4store.Open(dir + "/c4_test")
+	is.NoErr(err)
+	is.NotNil(st)
+
+	bar_id := c4.Identify(strings.NewReader("bar"))
+	w, err := st.Writer("/foo", bar_id)
+	is.NoErr(err)
+	_, err = io.Copy(w, strings.NewReader("bar"))
+	is.NoErr(err)
+	err = w.Close()
+	is.NoErr(err)
+
+	r, err := st.Reader("", bar_id)
+	is.NoErr(err)
+	defer r.Close()
+	data, err := ioutil.ReadAll(r)
+	is.NoErr(err)
+	is.True(string(data) == "bar")
+}
+
+func TestCopyRenameKye(t *testing.T) {
+	is, dir, done := SetupTestFolder(t, "store")
+	defer done()
+
+	st, err := c4store.Open(dir + "/c4_test")
+	is.NoErr(err)
+	is.NotNil(st)
+	w, err := st.Writer("/foo")
+	is.NoErr(err)
+	_, err = io.Copy(w, strings.NewReader("bar"))
+	is.NoErr(err)
+	err = w.Close()
+	is.NoErr(err)
+
+	// copy
+	err = st.Copy("/foo", "/bar")
+	is.NoErr(err)
+
+	r, err := st.Reader("/foo")
+	is.NoErr(err)
+	data, err := ioutil.ReadAll(r)
+	is.NoErr(err)
+	r.Close()
+	is.True(string(data) == "bar")
+
+	r, err = st.Reader("/bar")
+	is.NoErr(err)
+	data, err = ioutil.ReadAll(r)
+	is.NoErr(err)
+	r.Close()
+	is.True(string(data) == "bar")
+
+	// move
+	err = st.Move("/bar", "/bat")
+	is.NoErr(err)
+
+	is.False(st.Exists("/bar"))
+	r, err = st.Reader("/bat")
+	is.NoErr(err)
+	data, err = ioutil.ReadAll(r)
+	is.NoErr(err)
+	r.Close()
+	is.True(string(data) == "bar")
 }

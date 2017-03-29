@@ -108,6 +108,10 @@ func NewDirAsset(path string, st abstract_storage_interface, mode int, f *os.Fil
 }
 
 func NewFileAsset(path string, st abstract_storage_interface, mode int, f *os.File, id *c4.ID) (Asset, error) {
+	var e *c4.Encoder
+	if id == nil {
+		e = c4.NewEncoder()
+	}
 	_, filename := assetpath.Split(path)
 	return &file_asset{
 		name: filename,
@@ -115,7 +119,7 @@ func NewFileAsset(path string, st abstract_storage_interface, mode int, f *os.Fi
 		mode: mode,
 		f:    f,
 		st:   st,
-		en:   c4.NewEncoder(),
+		en:   e,
 		id:   id,
 	}, nil
 }
@@ -193,12 +197,14 @@ func (a *file_asset) commit() error {
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("commit: %s\n", a.key)
-	id := a.en.ID()
+	id := a.id
+	if a.en != nil {
+		id = a.en.ID()
+	}
+
 	if id == nil {
 		return noIdError(string(a.key))
 	}
-	// fmt.Printf("commit: id: %s\n", id)
 
 	// Compute ID
 	a.id = id
@@ -291,7 +297,11 @@ func (a *file_asset) Readdirnames(n int) (names []string, err error) {
 // Write writes len(b) bytes to the Asset. It returns the number of bytes written and an
 // error, if any. Write returns a non-nil error when n != len(b).
 func (a *file_asset) Write(b []byte) (n int, err error) {
-	w := io.MultiWriter(a.en, a.f)
+	var w io.Writer
+	w = a.f
+	if a.en != nil {
+		w = io.MultiWriter(a.en, a.f)
+	}
 	n64, er := io.Copy(w, bytes.NewReader(b))
 	return int(n64), er
 }
