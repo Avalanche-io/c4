@@ -16,7 +16,6 @@ script:
   - go test -coverprofile=time.coverprofile ./time
   - go test -coverprofile=util.coverprofile ./util
   - go test -coverprofile=events.coverprofile ./events
-  - go test -coverprofile=pki.coverprofile ./pki
   - go test -coverprofile=dep.coverprofile ./dep
   - go test -coverprofile=c4id.coverprofile ./cmd/c4id
   - $HOME/gopath/bin/gover
