@@ -5,7 +5,6 @@
 [![GoDoc](https://godoc.org/github.com/Avalanche-io/c4?status.svg)](https://godoc.org/github.com/avalanche-io/c4)
 [![Stories in Ready](https://badge.waffle.io/Avalanche-io/c4.png?label=ready&title=Ready)](https://waffle.io/Avalanche-io/c4)
 [![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
-[![Coverage Status](https://coveralls.io/repos/github/Avalanche-io/c4/badge.svg?branch=master)](https://coveralls.io/github/Avalanche-io/c4?branch=master)
 
 
 ### The C4 framework
