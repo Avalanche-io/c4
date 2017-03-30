@@ -7,7 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 
-	c4 "github.com/Avalanche-io/c4/id"
+	c4 "github.com/avalanche-io/c4/id"
 )
 
 // Public and Private Key interfaces define the most useful basic

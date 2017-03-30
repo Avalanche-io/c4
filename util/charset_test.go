@@ -3,8 +3,8 @@ package util_test
 import (
 	"testing"
 
-	c4id "github.com/Avalanche-io/c4/id"
-	c4util "github.com/Avalanche-io/c4/util"
+	c4id "github.com/avalanche-io/c4/id"
+	c4util "github.com/avalanche-io/c4/util"
 	"github.com/cheekybits/is"
 )
 

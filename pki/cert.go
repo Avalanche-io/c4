@@ -11,7 +11,7 @@ import (
 	"net"
 	"time"
 
-	c4time "github.com/Avalanche-io/c4/time"
+	c4time "github.com/avalanche-io/c4/time"
 )
 
 type Cert x509.Certificate

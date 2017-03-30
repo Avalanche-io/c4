@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	c4 "github.com/Avalanche-io/c4/id"
-	c4time "github.com/Avalanche-io/c4/time"
+	c4 "github.com/avalanche-io/c4/id"
+	c4time "github.com/avalanche-io/c4/time"
 )
 
 // The dot type is a temporary stand in for attributes.  It conforms to the os.FileInfo

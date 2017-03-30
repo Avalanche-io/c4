@@ -7,7 +7,7 @@ import (
 
 	"github.com/cheekybits/is"
 
-	c4 "github.com/Avalanche-io/c4/time"
+	c4 "github.com/avalanche-io/c4/time"
 )
 
 const testtime = "Fri Aug 29 2:14:00 EDT 1997"

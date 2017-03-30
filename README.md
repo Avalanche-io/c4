@@ -2,10 +2,10 @@
 # C4 - The Cinema Content Creation Cloud
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![GoDoc](https://godoc.org/github.com/Avalanche-io/c4?status.svg)](https://godoc.org/github.com/Avalanche-io/c4)
-[![Stories in Ready](https://badge.waffle.io/Avalanche-io/c4.png?label=ready&title=Ready)](https://waffle.io/Avalanche-io/c4)
-[![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
-[![Coverage Status](https://coveralls.io/repos/github/Avalanche-io/c4/badge.svg?branch=master)](https://coveralls.io/github/Avalanche-io/c4?branch=master)
+[![GoDoc](https://godoc.org/github.com/avalanche-io/c4?status.svg)](https://godoc.org/github.com/avalanche-io/c4)
+[![Stories in Ready](https://badge.waffle.io/avalanche-io/c4.png?label=ready&title=Ready)](https://waffle.io/avalanche-io/c4)
+[![Build Status](https://travis-ci.org/avalanche-io/c4.svg?branch=master)](https://travis-ci.org/avalanche-io/c4)
+[![Coverage Status](https://coveralls.io/repos/github/avalanche-io/c4/badge.svg?branch=master)](https://coveralls.io/github/avalanche-io/c4?branch=master)
 
 
 ### The C4 framework
@@ -78,7 +78,7 @@ Here are some options for regular expressions with varying precision.
 
 ### Releases 
 
-Current release: [v0.6.0](https://github.com/Avalanche-io/c4/tree/v0.6.0)
+Current release: [v0.6.0](https://github.com/avalanche-io/c4/tree/v0.6.0)
 
 Check the `release` branch for the latest release, or tags to find a specific release.  The `master` branch holds current development.
 

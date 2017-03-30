@@ -10,7 +10,7 @@ import (
 // Digest represents a 64 byte "C4 Digest", which is the SHA-512 hash. Amongst other
 // things Digest enforces padding to insure alignment with the original  64 byte hash.
 //
-// A digest is simply a slice of bytes and can be use wherever the raw shaw hash
+// A digest is simply a slice of bytes and can be use wherever the raw SHA hash
 // might be needed.
 type Digest []byte
 

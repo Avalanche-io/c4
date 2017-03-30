@@ -6,8 +6,8 @@ import (
 
 	"github.com/cheekybits/is"
 
-	c4id "github.com/Avalanche-io/c4/id"
-	"github.com/Avalanche-io/c4/pki"
+	c4id "github.com/avalanche-io/c4/id"
+	"github.com/avalanche-io/c4/pki"
 )
 
 func TestKeys(t *testing.T) {
@@ -23,8 +23,6 @@ func TestKeys(t *testing.T) {
 
 	pri := ent.Private()
 	is.NotNil(pri)
-
-	t.Logf("private key pem: \n%s\n", pri.PEM())
 
 	doc := []byte("foo")
 	id := c4id.Identify(bytes.NewReader(doc))

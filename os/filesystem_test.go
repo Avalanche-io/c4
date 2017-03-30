@@ -13,8 +13,8 @@ import (
 
 	"testing"
 
-	c4id "github.com/Avalanche-io/c4/id"
-	c4os "github.com/Avalanche-io/c4/os"
+	c4id "github.com/avalanche-io/c4/id"
+	c4os "github.com/avalanche-io/c4/os"
 	"github.com/cheekybits/is"
 )
 

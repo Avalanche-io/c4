@@ -9,7 +9,7 @@ import (
 
 	assetpath "path"
 
-	c4 "github.com/Avalanche-io/c4/id"
+	c4 "github.com/avalanche-io/c4/id"
 )
 
 // Asset is the equivalent of an os.File, with added features for identification.

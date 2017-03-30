@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	c4 "github.com/Avalanche-io/c4/id"
+	c4 "github.com/avalanche-io/c4/id"
 )
 
 // User is an Entity that represents a human user.

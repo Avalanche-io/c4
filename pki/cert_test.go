@@ -14,137 +14,156 @@ import (
 
 	"github.com/cheekybits/is"
 
-	c4 "github.com/Avalanche-io/c4/id"
-	c4k "github.com/Avalanche-io/c4/pki"
+	c4 "github.com/avalanche-io/c4/id"
+	"github.com/avalanche-io/c4/pki"
 )
 
+// New and improved with sub-tests.
+// TODO: Update other tests in the same stile.
 func TestCreateC4dCert(t *testing.T) {
-	is := is.New(t)
-	_ = is
+	var err error
+	var rootEntity pki.Entity
+	var clientEntity, serverEntity *pki.Domain
 	message := []byte("Hello, C4!")
-	hello := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(message)
+
+	t.Run("Create Certificate Authority", func(t *testing.T) {
+		tis := is.New(t)
+		rootEntity, err = pki.CreateCA("c4.studio.com")
+		tis.NoErr(err)
+		tis.NotNil(rootEntity)
 	})
-	// Create a Certificate Authority
-	rootEntity, err := c4k.CreateCA("c4.studio.com")
-	is.NoErr(err)
-	is.NotNil(rootEntity)
 
-	// Create a pool of trusted certs which include the root CA
-	certPool := x509.NewCertPool()
-	certPool.AppendCertsFromPEM(rootEntity.Cert().PEM()) //rootCertPEM)
+	t.Run("Create Domain Entity", func(t *testing.T) {
+		tis := is.New(t)
+		serverEntity, err = pki.NewDomain()
+		serverEntity.AddDomains("c4.example.com")
+		tis.NoErr(err)
+		// Generate private public key pairs for Domain
+		err = serverEntity.GenerateKeys()
+		tis.NoErr(err)
+	})
 
-	// Create Domain Entity
-	serverEntity, err := c4k.NewDomain()
-	serverEntity.AddDomains("c4.example.com")
-	is.NoErr(err)
-	// Generate private public key pairs for Domain
-	err = serverEntity.GenerateKeys()
-	is.NoErr(err)
+	t.Run("Create Client Entity", func(t *testing.T) {
+		tis := is.New(t)
+		// Create Client Entity
+		clientEntity, err = pki.NewDomain()
+		clientEntity.AddDomains("localhost")
+		tis.NoErr(err)
+		err = clientEntity.GenerateKeys()
+		tis.NoErr(err)
+	})
 
-	// Create Client Entity
-	clientEntity, err := c4k.NewDomain()
-	clientEntity.AddDomains("localhost")
-	is.NoErr(err)
-	err = clientEntity.GenerateKeys()
-	is.NoErr(err)
+	var serverCert, clientCert *pki.Cert
 
-	// Have root endorse the server.
-	serverCert, err := rootEntity.Endorse(serverEntity)
-	is.NoErr(err)
-	is.NotNil(serverCert)
+	t.Run("Endorse Certificate Chain", func(t *testing.T) {
+		tis := is.New(t)
+		// Have root endorse the server.
+		serverCert, err = rootEntity.Endorse(serverEntity)
+		tis.NoErr(err)
+		tis.NotNil(serverCert)
 
-	// Have root endorse the client.
-	clientCert, err := rootEntity.Endorse(clientEntity)
-	is.NoErr(err)
-	is.NotNil(clientCert)
+		// Have root endorse the client.
+		clientCert, err = rootEntity.Endorse(clientEntity)
+		tis.NoErr(err)
+		tis.NotNil(clientCert)
+	})
 
-	// Produce TLS credentials for server.
-	servTLSCert, err := serverEntity.TLScert(c4k.TLS_CLISRV)
-	is.NoErr(err)
+	t.Run("Http Client Server Authentication", func(t *testing.T) {
+		tis := is.New(t)
 
-	// Produce TLS credentials for client.
-	clientTLSCert, err := clientEntity.TLScert(c4k.TLS_CLIONLY)
-	is.NoErr(err)
+		// Create a pool of trusted certs which include the root CA
+		certPool := x509.NewCertPool()
+		certPool.AppendCertsFromPEM(rootEntity.Cert().PEM())
 
-	// Create a server with client validation using the server TLS credentials.
-	s := httptest.NewUnstartedServer(hello)
-	s.TLS = &tls.Config{
-		Certificates: []tls.Certificate{servTLSCert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    certPool,
-	}
+		// Produce TLS credentials for server.
+		servTLSCert, err := serverEntity.TLScert(pki.TLS_CLISRV)
+		tis.NoErr(err)
 
-	// Create a client with
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs:      certPool,
-				Certificates: []tls.Certificate{clientTLSCert},
+		// Produce TLS credentials for client.
+		clientTLSCert, err := clientEntity.TLScert(pki.TLS_CLIONLY)
+		tis.NoErr(err)
+
+		hello := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write(message)
+		})
+
+		// Create a server with client validation using the server TLS credentials.
+		s := httptest.NewUnstartedServer(hello)
+		s.TLS = &tls.Config{
+			Certificates: []tls.Certificate{servTLSCert},
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			ClientCAs:    certPool,
+		}
+
+		// Create a client with
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs:      certPool,
+					Certificates: []tls.Certificate{clientTLSCert},
+				},
 			},
-		},
-	}
+		}
 
-	// Start the server
-	s.StartTLS()
+		// Start the server
+		s.StartTLS()
 
-	// Have client make Get request
-	resp, err := client.Get(s.URL)
-	is.NoErr(err)
+		// Have client make Get request
+		resp, err := client.Get(s.URL)
+		tis.NoErr(err)
 
-	// Close server
-	s.Close()
-
-	// Read and check response
-	reply := make([]byte, resp.ContentLength)
-	body := resp.Body
-	_, err = body.Read(reply)
-	if err != nil {
-		is.Equal(err, io.EOF)
-	}
-	is.Equal(reply, message)
+		// Close server
+		s.Close()
+		// Read and check response
+		reply := make([]byte, resp.ContentLength)
+		body := resp.Body
+		_, err = body.Read(reply)
+		if err != nil {
+			tis.Equal(err, io.EOF)
+		}
+		tis.Equal(reply, message)
+	})
 }
 
 func TestCertSigningRequest(t *testing.T) {
-	is := is.New(t)
-	_ = is
+	tis := is.New(t)
 
 	// Create Domain Entity
-	serverEntity, err := c4k.NewDomain()
+	serverEntity, err := pki.NewDomain()
 	serverEntity.AddDomains("c4.example.com")
-	is.NoErr(err)
+	tis.NoErr(err)
 	// Generate private public key pairs for Domain
 	err = serverEntity.GenerateKeys()
-	is.NoErr(err)
+	tis.NoErr(err)
 
 	// csr, err := serverEntity.CSR("foo", "Foo corp.", "U.S.")
 	csr, err := serverEntity.CSR()
-	is.NoErr(err)
-	is.NotNil(csr)
+	tis.NoErr(err)
+	tis.NotNil(csr)
 
 	// verify signature
-	is.True(csr.Varify(serverEntity))
+	tis.True(csr.Varify(serverEntity))
 
 	// manually verify signature
 	cr := csr.CR()
 	id := c4.Identify(bytes.NewReader(cr.RawTBSCertificateRequest))
 	ecdsaSig := new(struct{ R, S *big.Int })
 	_, err = asn1.Unmarshal(cr.Signature, ecdsaSig)
-	is.NoErr(err)
-	is.True(ecdsa.Verify((*ecdsa.PublicKey)(serverEntity.Public()), id.Digest(), ecdsaSig.R, ecdsaSig.S))
+	tis.NoErr(err)
+	tis.True(ecdsa.Verify((*ecdsa.PublicKey)(serverEntity.Public()), id.Digest(), ecdsaSig.R, ecdsaSig.S))
 
 	// test parsing
-	csr2, err := c4k.ParseCertificateRequest(csr.DER())
-	is.NoErr(err)
-	is.True(csr2.Varify(serverEntity))
+	csr2, err := pki.ParseCertificateRequest(csr.DER())
+	tis.NoErr(err)
+	tis.True(csr2.Varify(serverEntity))
 
 	// manually verify parsed request signature
 	cr2 := csr2.CR()
 	id2 := c4.Identify(bytes.NewReader(cr.RawTBSCertificateRequest))
 	ecdsaSig2 := new(struct{ R, S *big.Int })
 	_, err = asn1.Unmarshal(cr2.Signature, ecdsaSig2)
-	is.NoErr(err)
-	is.True(ecdsa.Verify((*ecdsa.PublicKey)(serverEntity.Public()), id2.Digest(), ecdsaSig2.R, ecdsaSig2.S))
+	tis.NoErr(err)
+	tis.True(ecdsa.Verify((*ecdsa.PublicKey)(serverEntity.Public()), id2.Digest(), ecdsaSig2.R, ecdsaSig2.S))
 }
 
 // func TestSave(t *testing.T) {
