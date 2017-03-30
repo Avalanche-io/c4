@@ -10,7 +10,7 @@ import (
 
 	"github.com/cheekybits/is"
 
-	"github.com/Avalanche-io/c4/events"
+	"github.com/avalanche-io/c4/events"
 )
 
 type test_event string
