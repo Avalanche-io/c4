@@ -10,8 +10,8 @@ import (
 
 	"github.com/blang/vfs"
 
-	c4 "github.com/Avalanche-io/c4/id"
-	c4os "github.com/Avalanche-io/c4/os"
+	c4 "github.com/avalanche-io/c4/id"
+	c4os "github.com/avalanche-io/c4/os"
 	flag "github.com/ogier/pflag"
 )
 

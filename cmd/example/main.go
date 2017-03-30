@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	c4 "github.com/Avalanche-io/c4/id"
+	c4 "github.com/avalanche-io/c4/id"
 )
 
 func main() {
