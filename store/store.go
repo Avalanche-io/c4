@@ -33,7 +33,7 @@ func Open(path string) (*Store, error) {
 	}
 
 	// Open a C4 Database
-	db_path := filepath.Join(path, "c4id.db")
+	db_path := filepath.Join(path, "c4.db")
 	db, err := c4db.Open(db_path, 0600, nil)
 	if err != nil {
 		return nil, err

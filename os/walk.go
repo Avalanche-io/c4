@@ -227,6 +227,7 @@ func Walk(path string, opts *Options, f func(path string, info FileInfo, err err
 				job.done <- &dg
 				close(job.done)
 				finish(job)
+				continue
 			}
 			e := c4.NewEncoder()
 			f, _ := os.Open(*job.path)
@@ -255,6 +256,10 @@ func Walk(path string, opts *Options, f func(path string, info FileInfo, err err
 
 func walk(depth int, path string, opts *Options, stop chan struct{}) chan *item {
 	out := make(chan *item)
+	if strings.Index(path, ".c4") >= 0 {
+		close(out)
+		return out
+	}
 	go func() {
 
 		defer func() {
