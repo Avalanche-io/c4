@@ -74,13 +74,15 @@ func CreateAthorty(name pkix.Name, domains []string, ips []net.IP, sn ...SerialN
 	}
 
 	// Build and return domain structure.
-	return &Domain{
+	entity := Domain{
 		name:            name.CommonName,
 		Domains:         domains,
 		IPs:             ips,
 		ClearPrivateKey: (*PrivateKey)(pri),
 		Certificate:     (*Cert)(cert),
-	}, nil
+	}
+	entity.encrypt_privatekey()
+	return &entity, nil
 
 }
 

@@ -54,6 +54,9 @@ func (c *CertificateSigningRequest) Varify(e Entity) bool {
 	if err != nil {
 		return false
 	}
+	if e.Public() == nil {
+		return false
+	}
 	return ecdsa.Verify((*ecdsa.PublicKey)(e.Public()), id.Digest(), ecdsaSig.R, ecdsaSig.S)
 }
 

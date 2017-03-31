@@ -31,7 +31,8 @@ func TestDomainSaveLoad(t *testing.T) {
 
 	// Load
 	var ca2 pki.Domain
-	is.NoErr(json.Unmarshal(data, &ca2))
+	err = json.Unmarshal(data, &ca2)
+	is.NoErr(err)
 
 	// Does not save the PrivateKey, or Passphrase in the clear
 	is.NotNil(ca2.EncryptedPrivateKey)
@@ -49,5 +50,8 @@ func TestDomainSaveLoad(t *testing.T) {
 	is.Err(err)
 	is.Equal(err.Error(), "incorrect passphrase")
 
-	is.Nil(ca3.Private())
+	csr, err := ca2.CSR()
+	is.NoErr(err)
+	_, err = ca.Approve(csr)
+	is.NoErr(err)
 }

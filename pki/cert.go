@@ -93,8 +93,12 @@ func endorse(e Entity, target Entity) (*Cert, error) {
 	tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
 	tmpl.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
 
+	pri := (*ecdsa.PrivateKey)(e.Private())
+	if pri == nil {
+		panic("fuck off and die")
+	}
 	// create a certificate which wraps the targets public key, sign it with the root private key
-	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, e.Cert().X509(), (*ecdsa.PublicKey)(target.Public()), (*ecdsa.PrivateKey)(e.Private()))
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, e.Cert().X509(), (*ecdsa.PublicKey)(target.Public()), pri)
 	if err != nil {
 		return nil, err
 	}

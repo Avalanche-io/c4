@@ -6,6 +6,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
+	// "fmt"
+	// "encoding/json"
 	"encoding/pem"
 	"math/big"
 	"net"
@@ -29,15 +32,16 @@ var DomainExtUsage []x509.ExtKeyUsage = []x509.ExtKeyUsage{
 // A Domain is hierarchical Entity that represents one or more organizational
 // domains.
 type Domain struct {
-	name                string
-	Domains             []string    `json:"domains"`
-	IPs                 []net.IP    `json:"ips"`
-	ClearPrivateKey     *PrivateKey `json:"-"`
-	EncryptedPrivateKey *pem.Block  `json:"encrypted_private_key"`
-	Certificate         *Cert       `json:"certificate"`
-	ClearPassphrase     []byte      `json:"-"`
-	EncryptedPassphrase []byte      `json:"encrypted_passphrase"`
-	Salt                []byte      `json"salt"`
+	name            string
+	Domains         []string    `json:"domains"`
+	IPs             []net.IP    `json:"ips"`
+	ClearPrivateKey *PrivateKey `json:"-"`
+	// EncryptedPrivateKey *pem.Block  `json:"encrypted_private_key"`
+	EncryptedPrivateKey []byte `json:"encrypted_private_key"`
+	Certificate         *Cert  `json:"certificate"`
+	ClearPassphrase     []byte `json:"-"`
+	EncryptedPassphrase []byte `json:"encrypted_passphrase"`
+	Salt                []byte `json"salt"`
 }
 
 // NewDomain creates a domain entity.
@@ -99,6 +103,11 @@ func (e *Domain) GenerateKeys() error {
 		return err
 	}
 	e.ClearPrivateKey = (*PrivateKey)(pri)
+	data, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
+	if err != nil {
+		return err
+	}
+	e.EncryptedPrivateKey = data
 	return nil
 }
 
@@ -141,6 +150,13 @@ func (e *Domain) TLScert(t TLScertType) (tls.Certificate, error) {
 func (e *Domain) Endorse(target Entity) (*Cert, error) {
 	return endorse(e, target)
 }
+
+// func (e *Domain) MarshalJSON() ([]byte, error) {
+// 	if e.EncryptedPassphrase != nil && len(e.EncryptedPassphrase) >= 0 {
+// 		e.ClearPrivateKey = nil
+// 	}
+// 	return json.Marshal(e)
+// }
 
 // CSR generates a certificate signing request for the domain sutable for submission
 // to a remote certificate authority for validation and signature.
@@ -231,7 +247,7 @@ func (e *Domain) Approve(csr *CertificateSigningRequest) (*Cert, error) {
 		Subject:               req.Subject,
 		SignatureAlgorithm:    x509.ECDSAWithSHA512,
 		NotBefore:             now.AsTime(),
-		NotAfter:              now.AsTime().Add(time.Hour * 24 * 7), // 1 week
+		NotAfter:              now.AsTime().Add(time.Hour * 24 * 30), // 1 week
 		BasicConstraintsValid: true,
 		KeyUsage:              usage,
 		ExtKeyUsage:           ext,
@@ -243,9 +259,12 @@ func (e *Domain) Approve(csr *CertificateSigningRequest) (*Cert, error) {
 	} else {
 		tmpl.EmailAddresses = req.EmailAddresses
 	}
-
+	pri := (*ecdsa.PrivateKey)(e.ClearPrivateKey)
+	if pri == nil {
+		return nil, errors.New("invalid signing entity")
+	}
 	// create the signed cert for the public key provided
-	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, e.Cert().X509(), req.PublicKey, (*ecdsa.PrivateKey)(e.Private()))
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, e.Cert().X509(), req.PublicKey, pri)
 	if err != nil {
 		return nil, err
 	}
@@ -280,29 +299,38 @@ func (e *Domain) check_passphrase() error {
 }
 
 func (e *Domain) decrypt_privatekey() {
-	key := append(e.Salt, e.ClearPassphrase...)
-	data, err := x509.DecryptPEMBlock(e.EncryptedPrivateKey, key)
+	blk, _ := pem.Decode(e.EncryptedPrivateKey)
+	data := blk.Bytes
+	if x509.IsEncryptedPEMBlock(blk) {
+		key := append(e.Salt, e.ClearPassphrase...)
+		var err error
+		data, err = x509.DecryptPEMBlock(blk, key)
+		if err != nil {
+			return
+		}
+	}
+	pri, err := x509.ParseECPrivateKey(data)
 	if err != nil {
 		return
 	}
-	k, err := x509.ParseECPrivateKey(data)
-	if err != nil {
-		return
-	}
-	e.ClearPrivateKey = (*PrivateKey)(k)
+	e.ClearPrivateKey = (*PrivateKey)(pri)
 }
 
 func (e *Domain) encrypt_privatekey() {
-	key := append(e.Salt, e.ClearPassphrase...)
-	kb, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
+	data, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
 	if err != nil {
 		return
 	}
-	blk, err := x509.EncryptPEMBlock(rand.Reader, "EC PRIVATE KEY", kb, key, x509.PEMCipherAES256)
-	if err != nil {
-		return
+	blk := &pem.Block{Type: "PRIVATE KEY", Bytes: data}
+	if len(e.ClearPassphrase) > 0 {
+		key := append(e.Salt, e.ClearPassphrase...)
+		blk, err = x509.EncryptPEMBlock(rand.Reader, "ENCRYPTED PRIVATE KEY", data, key, x509.PEMCipherAES256)
+		if err != nil {
+			return
+		}
 	}
-	e.EncryptedPrivateKey = blk
+	data = pem.EncodeToMemory(blk)
+	e.EncryptedPrivateKey = data
 }
 
 func (e *Domain) manage_keys() {
