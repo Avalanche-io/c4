@@ -5,9 +5,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,21 +24,37 @@ import (
 // TODO: Update other tests in the same stile.
 func TestCreateC4dCert(t *testing.T) {
 	var err error
-	var rootEntity pki.Entity
+	var ca pki.Entity
 	var clientEntity, serverEntity *pki.Domain
 	message := []byte("Hello, C4!")
 
 	t.Run("Create Certificate Authority", func(t *testing.T) {
+		name := pkix.Name{
+			CommonName:         "c4.studios.example.com",
+			Organization:       []string{"C4 Studios"},
+			OrganizationalUnit: []string{"Feature Production"},
+			StreetAddress:      []string{"555 Hollywood Way, Suit C4"},
+			Locality:           []string{"Los Angeles"},
+			Province:           []string{"California"},
+			PostalCode:         []string{"91505"},
+			Country:            []string{"US"},
+		}
+
+		domains := []string{"*.studios.example.tv", "*.studios.example.io"}
+		ips := make([]net.IP, 4)
+		for i, _ := range ips {
+			// ips[i] = net.Parse(fmt.Sprintf("127.0.0.%d", i))
+			ips[i] = net.IP([]byte{127, 0, 0, byte(i)})
+		}
 		tis := is.New(t)
-		rootEntity, err = pki.CreateCA("c4.studio.com")
+		ca, err = pki.CreateAthorty(name, domains, ips)
 		tis.NoErr(err)
-		tis.NotNil(rootEntity)
+		tis.NotNil(ca)
 	})
 
 	t.Run("Create Domain Entity", func(t *testing.T) {
 		tis := is.New(t)
-		serverEntity, err = pki.NewDomain()
-		serverEntity.AddDomains("c4.example.com")
+		serverEntity, err = pki.NewDomain("c4.example.com")
 		tis.NoErr(err)
 		// Generate private public key pairs for Domain
 		err = serverEntity.GenerateKeys()
@@ -46,8 +64,7 @@ func TestCreateC4dCert(t *testing.T) {
 	t.Run("Create Client Entity", func(t *testing.T) {
 		tis := is.New(t)
 		// Create Client Entity
-		clientEntity, err = pki.NewDomain()
-		clientEntity.AddDomains("localhost")
+		clientEntity, err = pki.NewDomain("localhost")
 		tis.NoErr(err)
 		err = clientEntity.GenerateKeys()
 		tis.NoErr(err)
@@ -58,12 +75,12 @@ func TestCreateC4dCert(t *testing.T) {
 	t.Run("Endorse Certificate Chain", func(t *testing.T) {
 		tis := is.New(t)
 		// Have root endorse the server.
-		serverCert, err = rootEntity.Endorse(serverEntity)
+		serverCert, err = ca.Endorse(serverEntity)
 		tis.NoErr(err)
 		tis.NotNil(serverCert)
 
 		// Have root endorse the client.
-		clientCert, err = rootEntity.Endorse(clientEntity)
+		clientCert, err = ca.Endorse(clientEntity)
 		tis.NoErr(err)
 		tis.NotNil(clientCert)
 	})
@@ -73,7 +90,7 @@ func TestCreateC4dCert(t *testing.T) {
 
 		// Create a pool of trusted certs which include the root CA
 		certPool := x509.NewCertPool()
-		certPool.AppendCertsFromPEM(rootEntity.Cert().PEM())
+		certPool.AppendCertsFromPEM(ca.Cert().PEM())
 
 		// Produce TLS credentials for server.
 		servTLSCert, err := serverEntity.TLScert(pki.TLS_CLISRV)
@@ -129,8 +146,7 @@ func TestCertSigningRequest(t *testing.T) {
 	tis := is.New(t)
 
 	// Create Domain Entity
-	serverEntity, err := pki.NewDomain()
-	serverEntity.AddDomains("c4.example.com")
+	serverEntity, err := pki.NewDomain("c4.example.com")
 	tis.NoErr(err)
 	// Generate private public key pairs for Domain
 	err = serverEntity.GenerateKeys()
@@ -165,5 +181,3 @@ func TestCertSigningRequest(t *testing.T) {
 	tis.NoErr(err)
 	tis.True(ecdsa.Verify((*ecdsa.PublicKey)(serverEntity.Public()), id2.Digest(), ecdsaSig2.R, ecdsaSig2.S))
 }
-
-// func TestSave(t *testing.T) {

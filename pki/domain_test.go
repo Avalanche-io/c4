@@ -1,6 +1,7 @@
 package pki_test
 
 import (
+	"crypto/x509/pkix"
 	"encoding/json"
 	"testing"
 
@@ -13,7 +14,7 @@ func TestDomainSaveLoad(t *testing.T) {
 	is := is.New(t)
 
 	// Create a Certificate Authority
-	ca, err := pki.CreateCA("c4.studio.com")
+	ca, err := pki.CreateAthorty(pkix.Name{CommonName: "c4.studio.com"}, nil, nil)
 	is.NoErr(err)
 	is.NotNil(ca)
 

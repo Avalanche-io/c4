@@ -13,21 +13,30 @@ import (
 // key pair. Typically this will be a user or a computer, but could also
 // include companies, professional groups and other such entities.
 type Entity interface {
+
 	// Identification
 	ID() *c4.ID
 	Name() string
+
 	// Keys
 	GenerateKeys() error
 	Private() *PrivateKey
 	Public() *PublicKey
+
 	// Signatures
 	Sign(id *c4.ID) (*Signature, error)
+
 	// TLS
 	TLScert(t TLScertType) (tls.Certificate, error)
+
 	// Certificates
 	Endorse(e Entity) (*Cert, error)
 	Cert() *Cert
 	SetCert(*Cert)
+	Approve(csr *CertificateSigningRequest) (*Cert, error)
+
+	// Encryption
+	Passphrase(passphrase string) error
 }
 
 // Signature stores the signing information for a particular ID, and Entity.

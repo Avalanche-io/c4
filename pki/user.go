@@ -7,12 +7,15 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"math/big"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
 	c4 "github.com/avalanche-io/c4/id"
+	c4time "github.com/avalanche-io/c4/time"
 )
 
 // User is an Entity that represents a human user.
@@ -260,6 +263,65 @@ func (e *User) CSR() (*CertificateSigningRequest, error) {
 	}
 	csr := &CertificateSigningRequest{der: req, cr: cr}
 	return csr, nil
+}
+
+func (e *User) Approve(csr *CertificateSigningRequest) (*Cert, error) {
+	csr.Varify(e)
+	req := csr.CR()
+	err := req.CheckSignature()
+	if err != nil {
+		return nil, err
+	}
+
+	domain_type := true
+	usage := UserKeyUsage
+	ext := UserExtUsage
+	if len(req.EmailAddresses) > 0 {
+		domain_type = false
+		usage = UserKeyUsage
+		ext = UserExtUsage
+	}
+
+	now := c4time.Now()
+	b := make([]byte, 64)
+	_, err = rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+	var sn big.Int
+	sn.SetBytes(b)
+	tmpl := x509.Certificate{
+		SerialNumber:          &sn,
+		Subject:               req.Subject,
+		SignatureAlgorithm:    x509.ECDSAWithSHA512,
+		NotBefore:             now.AsTime(),
+		NotAfter:              now.AsTime().Add(time.Hour * 24 * 7), // 1 week
+		BasicConstraintsValid: true,
+		KeyUsage:              usage,
+		ExtKeyUsage:           ext,
+		PublicKey:             req.PublicKey,
+	}
+	if domain_type {
+		tmpl.DNSNames = req.DNSNames
+		tmpl.IPAddresses = req.IPAddresses
+	} else {
+		tmpl.EmailAddresses = req.EmailAddresses
+	}
+
+	// create the signed cert for the public key provided
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, e.Cert().X509(), req.PublicKey, (*ecdsa.PrivateKey)(e.Private()))
+	if err != nil {
+		return nil, err
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, err
+	}
+	// target.SetCert((*standardCert)(cert))
+
+	return (*Cert)(cert), nil
+
 }
 
 func (u *User) set_passphrase() error {

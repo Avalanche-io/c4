@@ -3,6 +3,7 @@ package pki_test
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"io"
 	"net"
@@ -55,12 +56,12 @@ func TestUserCSR(t *testing.T) {
 	is := is.New(t)
 
 	// Create a Certificate Authority
-	ca, err := pki.CreateCA("c4.studio.com")
+	ca, err := pki.CreateAthorty(pkix.Name{CommonName: "c4.studio.com"}, nil, nil)
 	is.NoErr(err)
 	is.NotNil(ca)
 
 	// Create Domain Entity
-	server, err := pki.NewDomain()
+	server, err := pki.NewDomain("test")
 	server.AddIPs(net.ParseIP("127.0.0.1"))
 	is.NoErr(err)
 	err = server.GenerateKeys()

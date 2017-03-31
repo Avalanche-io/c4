@@ -59,6 +59,7 @@ Under the C4 Public Key Infrastructure model there are no logins (other than a u
 
 C4 PKI allows access to be structured hierarchically. An organization like a studio can grant access to sub organizations like a post house, and directly to individuals.  Two or more sub organizations with access to the same production, as granted by a signed certificate from the studio, can share data and interact with each other over secure connections. Encrypted communication is still possible and security is maintained even when an Internet connection is not available because users are authenticated by signed certificate not by user name and password.
 
+---
 
 ##### Regular Expressions for C4 IDs
 Here are some options for regular expressions with varying precision.

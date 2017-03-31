@@ -9,7 +9,6 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -30,6 +29,7 @@ var DomainExtUsage []x509.ExtKeyUsage = []x509.ExtKeyUsage{
 // A Domain is hierarchical Entity that represents one or more organizational
 // domains.
 type Domain struct {
+	name                string
 	Domains             []string    `json:"domains"`
 	IPs                 []net.IP    `json:"ips"`
 	ClearPrivateKey     *PrivateKey `json:"-"`
@@ -41,8 +41,8 @@ type Domain struct {
 }
 
 // NewDomain creates a domain entity.
-func NewDomain() (*Domain, error) {
-	d := Domain{}
+func NewDomain(name string) (*Domain, error) {
+	d := Domain{name: name}
 	return &d, nil
 }
 
@@ -89,7 +89,7 @@ func (e *Domain) ID() *c4.ID {
 
 // Name returns a comma separated list of domain names for this domain.
 func (e *Domain) Name() string {
-	return strings.Join(e.Domains, ",")
+	return e.name
 }
 
 // GenerateKeys generates a new private/public key pair.
@@ -144,7 +144,16 @@ func (e *Domain) Endorse(target Entity) (*Cert, error) {
 
 // CSR generates a certificate signing request for the domain sutable for submission
 // to a remote certificate authority for validation and signature.
-func (e *Domain) CSR() (*CertificateSigningRequest, error) {
+func (e *Domain) CSR(names ...pkix.Name) (*CertificateSigningRequest, error) {
+	var name pkix.Name
+	if len(names) == 0 {
+		e.AddDomains(e.name)
+		name = pkix.Name{
+			CommonName: e.name,
+		}
+	} else {
+		name = names[0]
+	}
 	if len(e.Domains) == 0 && len(e.IPs) == 0 {
 		return nil, ErrNoValidCn{}
 	}
@@ -158,17 +167,17 @@ func (e *Domain) CSR() (*CertificateSigningRequest, error) {
 	// 	cn = e.Domains[0]
 	// }
 	//organizational_unit, organization, country string
-	name := pkix.Name{
-		CommonName: e.Name(),
-		// Country:            []string{country},
-		// Organization:       []string{organization},
-		// OrganizationalUnit: []string{organizational_unit},
-		// Locality:           nil,
-		// Province:           nil,
-		// StreetAddress:      nil,
-		// PostalCode:         nil,
-		// SerialNumber:       "",
-	}
+	// name := pkix.Name{
+	// CommonName: e.name,
+	// Country:            []string{country},
+	// Organization:       []string{organization},
+	// OrganizationalUnit: []string{organizational_unit},
+	// Locality:           nil,
+	// Province:           nil,
+	// StreetAddress:      nil,
+	// PostalCode:         nil,
+	// SerialNumber:       "",
+	// }
 	tmpl := &x509.CertificateRequest{
 		Subject:     name,
 		IPAddresses: e.IPs,
