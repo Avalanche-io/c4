@@ -103,17 +103,16 @@ func (e *Domain) GenerateKeys() error {
 		return err
 	}
 	e.ClearPrivateKey = (*PrivateKey)(pri)
-	data, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
-	if err != nil {
-		return err
-	}
-	e.EncryptedPrivateKey = data
+	e.encrypt_privatekey()
 	return nil
 }
 
 // Private returns the unencrypted private key for the domain if accessible,
 // and returns nil otherwise.
 func (e *Domain) Private() *PrivateKey {
+	if e.ClearPrivateKey == nil {
+		e.decrypt_privatekey()
+	}
 	return e.ClearPrivateKey
 }
 
