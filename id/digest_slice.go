@@ -103,9 +103,7 @@ func (s *DigestSlice) Write(p []byte) (int, error) {
 	if len(p)%64 != 0 {
 		return 0, errors.New("input must be divisible by 64")
 	}
-	count := 0
 	for i := 0; i < len(p); i += 64 {
-		count++
 		j := i + 64
 		d := Digest(p[i:j])
 		s.Insert(d)
