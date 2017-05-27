@@ -165,7 +165,6 @@ func TestDigestSum(t *testing.T) {
 }
 
 func TestDigestSlice(t *testing.T) {
-	is := is.New(t)
 	var digests c4.DigestSlice
 	e := c4.NewEncoder()
 	for _, s := range test_vectors {
@@ -173,15 +172,41 @@ func TestDigestSlice(t *testing.T) {
 		digests.Insert(e.Digest())
 		e.Reset()
 	}
-	is.Equal(len(digests), len(test_vectors))
-	sorted_test_vector_ids := make([]string, len(test_vector_ids[0]))
-	copy(sorted_test_vector_ids, test_vector_ids[0])
-	sort.Strings(sorted_test_vector_ids)
-	for i, id := range digests {
-		is.Equal(id.ID().String(), sorted_test_vector_ids[i])
-	}
-	c4id := digests.Digest().ID()
-	is.Equal(c4id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
+	t.Run("Order", func(t *testing.T) {
+		is := is.New(t)
+		is.Equal(len(digests), len(test_vectors))
+		sorted_test_vector_ids := make([]string, len(test_vector_ids[0]))
+		copy(sorted_test_vector_ids, test_vector_ids[0])
+		sort.Strings(sorted_test_vector_ids)
+		for i, digest := range digests {
+			is.Equal(digest.ID().String(), sorted_test_vector_ids[i])
+		}
+		c4id := digests.Digest().ID()
+		is.Equal(c4id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
+	})
+
+	t.Run("ReaderWriter", func(t *testing.T) {
+		is := is.New(t)
+		data := make([]byte, len(digests)*64)
+		for s, digest := range digests {
+			copy(data[s*64:], []byte(digest))
+		}
+		is.Equal(len(data), len(digests)*64)
+		test_data := make([]byte, len(digests)*64)
+		n, err := digests.Read(test_data)
+		is.NoErr(err)
+		is.Equal(n, len(data))
+		is.Equal(bytes.Compare(data, test_data), 0)
+
+		var digests2 c4.DigestSlice
+		n, err = digests2.Write(data)
+		is.NoErr(err)
+		is.Equal(n, len(data))
+		for i, digest := range digests2 {
+			is.True(digest.ID() == digests[i].ID())
+		}
+	})
+
 }
 
 func TestDigest(t *testing.T) {

@@ -7,10 +7,10 @@ import (
 	// flag "github.com/ogier/pflag"
 )
 
-const version_number = "1.0"
+const VERSION = "1.0"
 
 func versionString() string {
-	return `c4 version ` + version_number + ` (` + runtime.GOOS + `)`
+	return fmt.Sprintf("c4id - %s Version %s", runtime.GOOS, VERSION)
 }
 
 func errout(err error) {

@@ -2,6 +2,7 @@ package id
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -68,4 +69,33 @@ func print(s []Digest) {
 	for i, dig := range s {
 		fmt.Printf("%d: %s\n", i, Digest(dig).ID())
 	}
+}
+
+// Read implements the io.Reader interface to output the bytes of the
+// DigestSlice. Read returns an error if p is not large enough to hold the
+// entire DigestSlice (64 * it's length).
+// The output of Read is the most compact form of the DigestSlice and
+// cannot be compressed further.
+func (s DigestSlice) Read(p []byte) (int, error) {
+	if len(p) < len(s)*64 {
+		return 0, errors.New("buffer too small")
+	}
+	for i, digest := range s {
+		copy(p[i*64:], []byte(digest))
+	}
+	return len(s) * 64, nil
+}
+
+// Write implements the io.Writer interface to input the bytes of
+// a serialized DigestSlice. Write returns an error and does not write any
+// data if p is not a multiple of 64 in length.
+func (s DigestSlice) Write(p []byte) (int, error) {
+	if len(p)%64 != 0 {
+		return 0, errors.New("input must be divisible by 64")
+	}
+	for i := 0; i < len(p); i += 64 {
+		j := i + 8
+		s.Insert(Digest(p[i:j]))
+	}
+	return len(p), nil
 }

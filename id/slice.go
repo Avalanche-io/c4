@@ -30,7 +30,7 @@ func (s *Slice) String() string {
 	return result
 }
 
-// SearchIDs searches for x in a sorted slice of *ID and returns the index
+// SearchIDs searches for id in a sorted slice of *ID and returns the index
 // as specified by sort.Search. The slice must be sorted in ascending order.
 func (s Slice) Index(id *ID) int {
 	if id == nil {

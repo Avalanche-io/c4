@@ -3,20 +3,20 @@ package id
 import (
 	"bytes"
 	"crypto/sha512"
-	"errors"
+	"io"
 	"math/big"
 )
 
 // Digest represents a 64 byte "C4 Digest", which is the SHA-512 hash. Amongst other
-// things Digest enforces padding to insure alignment with the original  64 byte hash.
+// things Digest enforces padding to insure alignment with the original 64 byte hash.
 //
 // A digest is simply a slice of bytes and can be use wherever the raw SHA hash
 // might be needed.
 type Digest []byte
 
 // NewDigest creates a Digest and initializes it with the argument, enforcing
-// byte alignment by padding with 0 (zero). NewDigest will not create a Digest and will
-// return nil if the argument is larger then 64 bytes.
+// byte alignment by padding with 0 (zero) if needed. NewDigest will return nil
+// if the argument is larger then 64 bytes.
 func NewDigest(b []byte) Digest {
 	if len(b) > 64 {
 		return nil
@@ -31,8 +31,10 @@ func NewDigest(b []byte) Digest {
 	return Digest(out)
 }
 
-// Sum returns the digest of the reviver and argument combined. Insuring
-// proper sorting order.
+// Sum returns the digest of the receiver and argument combined. Insuring
+// proper order. C4 Digests of C4 Digests are always identified by concatenating
+// the bytes of the larger digest after the bytes of the lesser digest to form a
+// block of 128 bytes which are then IDed.
 func (l Digest) Sum(r Digest) Digest {
 	switch bytes.Compare(l, r) {
 	case 1:
@@ -54,12 +56,26 @@ func (d Digest) ID() *ID {
 	return (*ID)(i)
 }
 
-// Digest supports the io.Reader interface specifically for the purpose of
-// reading the 64 digest bytes without the need to create a new reader.
+// Read implements the io.Reader interface. It reads exactly 64 bytes into p.
+// Read only returns an error if p is less than 64 bytes, in which case it
+// returns io.EOF, without reading any bytes.
 func (d Digest) Read(p []byte) (n int, err error) {
 	if len(p) < 64 {
-		return 0, errors.New("argument to read must accommodate size of digest (64 bytes)")
+		return 0, io.EOF
 	}
 	copy(p, []byte(d))
+	return 64, nil
+}
+
+// Write implements the io.Writer interface. It writes exactly 64 bytes
+// replacing the value of the digest. The bytes must be a valid c4 Digest
+// (i.e. sha-512 hash), any other value and the behavior of Write is undefined.
+// Write only return an error if less than 64 bytes of input are available,
+// in which case it returns io.EOF, without writing any bytes.
+func (d Digest) Write(p []byte) (n int, err error) {
+	if len(p) < 64 {
+		return 0, io.EOF
+	}
+	copy([]byte(d), p)
 	return 64, nil
 }

@@ -2,25 +2,32 @@ package id
 
 import "io"
 
+// Identifiable is an interface that requires an ID() method that returns
+// the c4 ID of the of the object.
 type Identifiable interface {
 	ID() *ID
 }
 
-// WriteIdentifier is an interface that includes io.Writer and is Identifiable.
-// This is useful for creating interfaces that compute c4 IDs on the fly when
-// writing to an io.Writer.
-type WriteIdentifier interface {
+// Reader is an interface that matches io.Reader and adds Identifiable.
+type Reader interface {
+	io.Reader
+	Identifiable
+}
+
+// Writer is an interface that matches io.Writer and adds Identifiable.
+type Writer interface {
 	io.Writer
 	Identifiable
 }
 
-// WriteCloseIdentifier interface adds io.Closer to a WriteIdentifier.
-type WriteCloseIdentifier interface {
+// WriteCloser is an interface that matches io.WriteCloser and adds Identifiable.
+type WriteCloser interface {
 	io.WriteCloser
 	Identifiable
 }
 
-type ReadCloseIdentifier interface {
+// ReadCloser is an interface that matches io.ReadCloser and adds Identifiable.
+type ReadCloser interface {
 	io.ReadCloser
 	Identifiable
 }
