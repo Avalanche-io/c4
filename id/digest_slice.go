@@ -14,20 +14,21 @@ type DigestSlice []Digest
 
 // Insert adds a Digest to the slice in sorted order. Insert has no effect if the argument
 // is nil, or is already a member of the slice.
-func (s *DigestSlice) Insert(d Digest) {
+func (s *DigestSlice) Insert(d Digest) int {
 	if d == nil {
-		return
+		return -1
 	}
 	i := s.Index(d)
 
 	// d is already in the slice.
 	if i < len(*s) && bytes.Compare((*s)[i], d) == 0 {
-		return
+		return i
 	}
 	(*s) = append(*s, nil)
 
 	copy((*s)[i+1:], (*s)[i:])
 	(*s)[i] = d
+	return i
 }
 
 // Digest returns the Digest of the slice, or nil if the slice is empty.
