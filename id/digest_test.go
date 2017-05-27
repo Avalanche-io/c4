@@ -178,9 +178,10 @@ func TestDigestSlice(t *testing.T) {
 		sorted_test_vector_ids := make([]string, len(test_vector_ids[0]))
 		copy(sorted_test_vector_ids, test_vector_ids[0])
 		sort.Strings(sorted_test_vector_ids)
-		for i, digest := range digests {
-			is.Equal(digest.ID().String(), sorted_test_vector_ids[i])
+		for i, idstring := range sorted_test_vector_ids {
+			is.Equal(idstring, digests[i].ID().String())
 		}
+
 		c4id := digests.Digest().ID()
 		is.Equal(c4id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
 	})
@@ -202,8 +203,9 @@ func TestDigestSlice(t *testing.T) {
 		n, err = digests2.Write(data)
 		is.NoErr(err)
 		is.Equal(n, len(data))
-		for i, digest := range digests2 {
-			is.True(digest.ID() == digests[i].ID())
+		is.Equal(len(digests), len(digests2))
+		for i, digest := range digests {
+			is.Equal(digest.ID(), digests2[i].ID())
 		}
 	})
 

@@ -13,7 +13,12 @@ import (
 type DigestSlice []Digest
 
 // Insert adds a Digest to the slice in sorted order. Insert has no effect if the argument
-// is nil, or is already a member of the slice.
+// is nil, or is already a member of the slice. When successful Insert returns
+// the insertion index. If d is nil then Insert will return -1. If d is already
+// in the slice then Insert will return the index as a negative minus 1.
+//
+// For example if d is already item 5 of the slice Insert will return -6. A
+// return value of -1 means d was inserted at position 0 if d is not nil.
 func (s *DigestSlice) Insert(d Digest) int {
 	if d == nil {
 		return -1
@@ -22,7 +27,7 @@ func (s *DigestSlice) Insert(d Digest) int {
 
 	// d is already in the slice.
 	if i < len(*s) && bytes.Compare((*s)[i], d) == 0 {
-		return i
+		return -(i + 1)
 	}
 	(*s) = append(*s, nil)
 
@@ -39,9 +44,13 @@ func (s DigestSlice) Digest() Digest {
 	if len(s) == 0 {
 		return nil
 	}
-	// s is implicitly sorted, during inserts. We cast it to a regular slice
-	// here since all subsequent rounds must not be sorted.
-	list := []Digest(s)
+	// s is implicitly sorted, during inserts. However, subsequent rounds below
+	// must not be sorted.
+
+	// copy to avoid modifying the DigestSlice itself.
+	list := make([]Digest, len(s))
+	copy(list, s)
+
 	for len(list) > 1 {
 		odd := oddIndex(len(list))
 		prev := list
@@ -90,13 +99,16 @@ func (s DigestSlice) Read(p []byte) (int, error) {
 // Write implements the io.Writer interface to input the bytes of
 // a serialized DigestSlice. Write returns an error and does not write any
 // data if p is not a multiple of 64 in length.
-func (s DigestSlice) Write(p []byte) (int, error) {
+func (s *DigestSlice) Write(p []byte) (int, error) {
 	if len(p)%64 != 0 {
 		return 0, errors.New("input must be divisible by 64")
 	}
+	count := 0
 	for i := 0; i < len(p); i += 64 {
-		j := i + 8
-		s.Insert(Digest(p[i:j]))
+		count++
+		j := i + 64
+		d := Digest(p[i:j])
+		s.Insert(d)
 	}
 	return len(p), nil
 }
