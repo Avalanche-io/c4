@@ -61,11 +61,11 @@ func (s *Store) Create(path string, ids ...*c4.ID) (Asset, error) {
 	return NewFileAsset(path, (*storage)(s), os.O_RDWR, temp_file, id)
 }
 
-func (s *Store) Writer(path string, ids ...*c4.ID) (c4.WriteCloseIdentifier, error) {
+func (s *Store) Writer(path string, ids ...*c4.ID) (c4.WriteCloser, error) {
 	return s.Create(path, ids...)
 }
 
-func (s *Store) Reader(path string, ids ...*c4.ID) (c4.ReadCloseIdentifier, error) {
+func (s *Store) Reader(path string, ids ...*c4.ID) (c4.ReadCloser, error) {
 	return s.Open(path, ids...)
 }
 
