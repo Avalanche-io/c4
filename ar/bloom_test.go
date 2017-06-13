@@ -6,8 +6,8 @@ import (
 
 	"github.com/cheekybits/is"
 
-	c4ar "github.com/avalanche-io/c4/ar"
-	c4id "github.com/avalanche-io/c4/id"
+	c4ar "github.com/Avalanche-io/c4/ar"
+	c4id "github.com/Avalanche-io/c4/id"
 )
 
 func TestBasicBloom(t *testing.T) {

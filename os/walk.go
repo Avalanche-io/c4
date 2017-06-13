@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	c4 "github.com/avalanche-io/c4/id"
+	c4 "github.com/Avalanche-io/c4/id"
 )
 
 type ByteSize float64

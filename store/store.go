@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	assetpath "path/filepath"
 
-	c4db "github.com/avalanche-io/c4/db"
-	c4 "github.com/avalanche-io/c4/id"
-	slash "github.com/avalanche-io/path"
+	c4db "github.com/Avalanche-io/c4/db"
+	c4 "github.com/Avalanche-io/c4/id"
+	slash "github.com/Avalanche-io/path"
 )
 
 // Store represents a Asset storage location.

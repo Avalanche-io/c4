@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/avalanche-io/c4/db"
-	c4 "github.com/avalanche-io/c4/id"
+	"github.com/Avalanche-io/c4/db"
+	c4 "github.com/Avalanche-io/c4/id"
 )
 
 // makepaths makes directories on the real filesystem

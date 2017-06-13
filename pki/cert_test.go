@@ -16,8 +16,8 @@ import (
 
 	"github.com/cheekybits/is"
 
-	c4 "github.com/avalanche-io/c4/id"
-	"github.com/avalanche-io/c4/pki"
+	c4 "github.com/Avalanche-io/c4/id"
+	"github.com/Avalanche-io/c4/pki"
 )
 
 // New and improved with sub-tests.

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"os"
 
-	c4 "github.com/avalanche-io/c4/id"
+	c4 "github.com/Avalanche-io/c4/id"
 	"github.com/boltdb/bolt"
 )
 

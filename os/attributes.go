@@ -3,7 +3,7 @@ package os
 import (
 	"os"
 
-	c4 "github.com/avalanche-io/c4/id"
+	c4 "github.com/Avalanche-io/c4/id"
 )
 
 // Attributes is an interface to an abstract key/value type data store in which

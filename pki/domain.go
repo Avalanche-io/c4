@@ -16,8 +16,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	c4 "github.com/avalanche-io/c4/id"
-	c4time "github.com/avalanche-io/c4/time"
+	c4 "github.com/Avalanche-io/c4/id"
+	c4time "github.com/Avalanche-io/c4/time"
 )
 
 const DomainKeyUsage x509.KeyUsage = x509.KeyUsageDigitalSignature |

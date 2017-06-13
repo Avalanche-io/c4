@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
-	c4db "github.com/avalanche-io/c4/db"
-	c4id "github.com/avalanche-io/c4/id"
+	c4db "github.com/Avalanche-io/c4/db"
+	c4id "github.com/Avalanche-io/c4/id"
 	"github.com/cheekybits/is"
 )
 

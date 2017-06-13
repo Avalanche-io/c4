@@ -7,7 +7,7 @@ import (
 
 	"github.com/blang/vfs"
 
-	c4os "github.com/avalanche-io/c4/os"
+	c4os "github.com/Avalanche-io/c4/os"
 )
 
 func TestWalk(t *testing.T) {

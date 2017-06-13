@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"strings"
 
-	// "github.com/avalanche-io/c4/events"
-	c4id "github.com/avalanche-io/c4/id"
+	// "github.com/Avalanche-io/c4/events"
+	c4id "github.com/Avalanche-io/c4/id"
 
 	"github.com/blang/vfs"
 )

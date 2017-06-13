@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	store "github.com/avalanche-io/c4/store"
+	store "github.com/Avalanche-io/c4/store"
 )
 
 func TestAssetSaveLoad(t *testing.T) {

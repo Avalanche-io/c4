@@ -9,7 +9,7 @@ import (
 
 	"github.com/cheekybits/is"
 
-	"github.com/avalanche-io/c4/lang"
+	"github.com/Avalanche-io/c4/lang"
 	"vbom.ml/util/sortorder"
 )
 

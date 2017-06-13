@@ -12,7 +12,7 @@ import (
 
 	"github.com/cheekybits/is"
 
-	"github.com/avalanche-io/c4/store"
+	"github.com/Avalanche-io/c4/store"
 )
 
 // Create temp folder and return function to delete it.

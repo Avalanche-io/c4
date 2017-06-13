@@ -13,7 +13,7 @@ import (
 
 	"github.com/cheekybits/is"
 
-	"github.com/avalanche-io/c4/pki"
+	"github.com/Avalanche-io/c4/pki"
 )
 
 func TestUserSaveLoad(t *testing.T) {

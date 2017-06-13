@@ -6,7 +6,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/avalanche-io/c4/lang"
+	"github.com/Avalanche-io/c4/lang"
 )
 
 // Directory is a slice of strings that represents the list of names that are children

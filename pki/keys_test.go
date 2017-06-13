@@ -6,8 +6,8 @@ import (
 
 	"github.com/cheekybits/is"
 
-	c4id "github.com/avalanche-io/c4/id"
-	"github.com/avalanche-io/c4/pki"
+	c4id "github.com/Avalanche-io/c4/id"
+	"github.com/Avalanche-io/c4/pki"
 )
 
 func TestKeys(t *testing.T) {

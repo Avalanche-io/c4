@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/cheekybits/is"
-	// c4 "github.com/avalanche-io/c4/id"
-	lang "github.com/avalanche-io/c4/lang"
+	// c4 "github.com/Avalanche-io/c4/id"
+	lang "github.com/Avalanche-io/c4/lang"
 )
 
 var yaml1 string = `
