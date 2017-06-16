@@ -19,11 +19,13 @@ func makepaths(paths ...string) error {
 	return nil
 }
 
-// pathtoasset decomposes returns the directory path to an asset.
+// pathtoasset returns the directory path to an asset.
+// It creates a few sub directories to keep the top level directory from
+// getting to big.
 func pathtoasset(path string, id *c4.ID) string {
 	str := id.String()
 	newpath := path
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 2; i++ {
 		newpath = filepath.Join(newpath, str[i*2:i*2+2])
 	}
 	return newpath
