@@ -19,7 +19,6 @@ func TestNewTime(t *testing.T) {
 	is.NoErr(err)
 	testday, err := time.ParseInLocation(time.UnixDate, testtime, loc)
 	is.NoErr(err)
-	// ut 'universal time'
 	ut := c4.NewTime(testday)
 	is.Equal("1997-08-29T06:14:00Z", string(ut))
 }
@@ -79,4 +78,14 @@ func TestTimeJSON(t *testing.T) {
 	data, err := json.Marshal(ut)
 	is.NoErr(err)
 	is.Equal("\"1997-08-29T06:14:00Z\"", string(data))
+}
+
+func TestTimeAdd(t *testing.T) {
+	is := is.New(t)
+	loc, err := time.LoadLocation("US/Eastern")
+	is.NoErr(err)
+	testday, err := time.ParseInLocation(time.UnixDate, testtime, loc)
+	is.NoErr(err)
+	ut := c4.NewTime(testday)
+	is.Equal("1997-08-30T06:14:00Z", string(ut.Add(c4.Day)))
 }

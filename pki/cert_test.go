@@ -21,7 +21,7 @@ import (
 )
 
 // New and improved with sub-tests.
-// TODO: Update other tests in the same stile.
+// TODO: Update other tests in the same style.
 func TestCreateC4dCert(t *testing.T) {
 	var err error
 	var ca pki.Entity

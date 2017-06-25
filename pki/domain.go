@@ -22,7 +22,9 @@ import (
 
 const DomainKeyUsage x509.KeyUsage = x509.KeyUsageDigitalSignature |
 	x509.KeyUsageKeyEncipherment |
-	x509.KeyUsageDataEncipherment
+	x509.KeyUsageDataEncipherment |
+	x509.KeyUsageCertSign |
+	x509.KeyUsageCRLSign
 
 var DomainExtUsage []x509.ExtKeyUsage = []x509.ExtKeyUsage{
 	x509.ExtKeyUsageClientAuth,
@@ -41,7 +43,7 @@ type Domain struct {
 	Certificate         *Cert  `json:"certificate"`
 	ClearPassphrase     []byte `json:"-"`
 	EncryptedPassphrase []byte `json:"encrypted_passphrase"`
-	Salt                []byte `json"salt"`
+	Salt                []byte `json:"salt"`
 }
 
 // NewDomain creates a domain entity.
@@ -103,7 +105,7 @@ func (e *Domain) GenerateKeys() error {
 		return err
 	}
 	e.ClearPrivateKey = (*PrivateKey)(pri)
-	e.encrypt_privatekey()
+	e.encode_privatekey()
 	return nil
 }
 
@@ -169,6 +171,7 @@ func (e *Domain) CSR(names ...pkix.Name) (*CertificateSigningRequest, error) {
 	} else {
 		name = names[0]
 	}
+
 	if len(e.Domains) == 0 && len(e.IPs) == 0 {
 		return nil, ErrNoValidCn{}
 	}
@@ -315,12 +318,15 @@ func (e *Domain) decrypt_privatekey() {
 	e.ClearPrivateKey = (*PrivateKey)(pri)
 }
 
-func (e *Domain) encrypt_privatekey() {
+func (e *Domain) encode_privatekey() {
+	// Encode private key to pem block
 	data, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
 	if err != nil {
 		return
 	}
 	blk := &pem.Block{Type: "PRIVATE KEY", Bytes: data}
+
+	// If there is a passphrase available then we encrypt the key
 	if len(e.ClearPassphrase) > 0 {
 		key := append(e.Salt, e.ClearPassphrase...)
 		blk, err = x509.EncryptPEMBlock(rand.Reader, "ENCRYPTED PRIVATE KEY", data, key, x509.PEMCipherAES256)
@@ -328,6 +334,7 @@ func (e *Domain) encrypt_privatekey() {
 			return
 		}
 	}
+
 	data = pem.EncodeToMemory(blk)
 	e.EncryptedPrivateKey = data
 }
@@ -341,7 +348,7 @@ func (e *Domain) manage_keys() {
 	}
 
 	if e.ClearPrivateKey != nil {
-		e.encrypt_privatekey()
+		e.encode_privatekey()
 		return
 	}
 

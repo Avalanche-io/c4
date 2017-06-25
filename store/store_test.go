@@ -59,7 +59,7 @@ func TestStoreSaveLoad(t *testing.T) {
 	is.NotNil(asset2.ID())
 	st2.Close()
 
-	path_to_assetfile := filepath.Join(dir, "storage/c4/5x/Ze/Xw/MS/pq/Xj/pD/", id.String())
+	path_to_assetfile := filepath.Join(dir, "storage/c4/5x/", id.String())
 
 	info, err := os.Stat(path_to_assetfile)
 	is.NoErr(err)

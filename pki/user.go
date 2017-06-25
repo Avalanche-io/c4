@@ -18,15 +18,17 @@ import (
 	c4time "github.com/Avalanche-io/c4/time"
 )
 
-// User is an Entity that represents a human user.
+// The User type represents a human Entity.
 type User struct {
-	Identities          []Identifier `json:"identities"`
-	ClearPrivateKey     *PrivateKey  `json:"-"`
-	EncryptedPrivateKey *pem.Block   `json:"encrypted_private_key"`
-	Certificate         *Cert        `json:"certificate"`
-	ClearPassphrase     []byte       `json:"-"`
-	EncryptedPassphrase []byte       `json:"encrypted_passphrase"`
-	Salt                []byte       `json"salt"`
+	Identities      []Identifier `json:"identities"`
+	ClearPrivateKey *PrivateKey  `json:"-"`
+	// EncryptedPrivateKey *pem.Block  `json:"encrypted_private_key"`
+	EncryptedPrivateKey []byte `json:"encrypted_private_key"`
+
+	Certificate         *Cert  `json:"certificate"`
+	ClearPassphrase     []byte `json:"-"`
+	EncryptedPassphrase []byte `json:"encrypted_passphrase"`
+	Salt                []byte `json"salt"`
 }
 
 // An Identifier is a email, phone number, ip address, or MAC address used
@@ -352,7 +354,7 @@ func (u *User) manage_keys() {
 	}
 
 	if u.ClearPrivateKey != nil {
-		u.encrypt_privatekey()
+		u.encode_privatekey()
 		return
 	}
 
@@ -360,27 +362,53 @@ func (u *User) manage_keys() {
 }
 
 func (u *User) decrypt_privatekey() {
-	key := append(u.Salt, u.ClearPassphrase...)
-	data, err := x509.DecryptPEMBlock(u.EncryptedPrivateKey, key)
+	blk, _ := pem.Decode(u.EncryptedPrivateKey)
+	data := blk.Bytes
+	if x509.IsEncryptedPEMBlock(blk) {
+		key := append(u.Salt, u.ClearPassphrase...)
+		var err error
+		data, err = x509.DecryptPEMBlock(blk, key)
+		if err != nil {
+			return
+		}
+	}
+	pri, err := x509.ParseECPrivateKey(data)
 	if err != nil {
 		return
 	}
-	k, err := x509.ParseECPrivateKey(data)
-	if err != nil {
-		return
-	}
-	u.ClearPrivateKey = (*PrivateKey)(k)
+	u.ClearPrivateKey = (*PrivateKey)(pri)
 }
 
-func (u *User) encrypt_privatekey() {
-	key := append(u.Salt, u.ClearPassphrase...)
+// func (u *User) decrypt_privatekey() {
+// 	key := append(u.Salt, u.ClearPassphrase...)
+// 	data, err := x509.DecryptPEMBlock(u.EncryptedPrivateKey, key)
+// 	if err != nil {
+// 		return
+// 	}
+// 	k, err := x509.ParseECPrivateKey(data)
+// 	if err != nil {
+// 		return
+// 	}
+// 	u.ClearPrivateKey = (*PrivateKey)(k)
+// }
+
+func (u *User) encode_privatekey() {
+	// Encode private key to pem block
 	kb, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(u.ClearPrivateKey))
 	if err != nil {
 		return
 	}
-	blk, err := x509.EncryptPEMBlock(rand.Reader, "EC PRIVATE KEY", kb, key, x509.PEMCipherAES256)
-	if err != nil {
-		return
+	blk := &pem.Block{Type: "PRIVATE KEY", Bytes: kb}
+
+	// If there is a passphrase available then we encrypt the key
+	if len(u.ClearPassphrase) > 0 {
+		key := append(u.Salt, u.ClearPassphrase...)
+		blk, err = x509.EncryptPEMBlock(rand.Reader, "ENCRYPTED PRIVATE KEY", kb, key, x509.PEMCipherAES256)
+		if err != nil {
+			return
+		}
 	}
-	u.EncryptedPrivateKey = blk
+
+	data := pem.EncodeToMemory(blk)
+	u.EncryptedPrivateKey = data
 }

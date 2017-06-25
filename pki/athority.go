@@ -43,13 +43,16 @@ func CreateAthorty(name pkix.Name, domains []string, ips []net.IP, sn ...SerialN
 		// C4 always uses EC and SHA-512 will lead to future efficiencies
 		SignatureAlgorithm: x509.ECDSAWithSHA512,
 
-		// All CA and certs should be normalized to UDT (hence c4time)
-		// Expect certs to be used on devices that change time zones
+		// We expect certs to be used on devices that change time zones,
+		// so all CA and certs must use UDT (hence c4time)
 		NotBefore: now.AsTime(),
-		NotAfter:  now.AsTime().Add(time.Hour * 24 * 365),
+
+		// One year initial default
+		NotAfter: now.AsTime().Add(time.Hour * 24 * 365),
 
 		BasicConstraintsValid: true,
-		IsCA:        true,
+		IsCA: true,
+
 		KeyUsage:    AthortyKeyUsage,
 		DNSNames:    domains,
 		IPAddresses: ips,
@@ -81,7 +84,7 @@ func CreateAthorty(name pkix.Name, domains []string, ips []net.IP, sn ...SerialN
 		ClearPrivateKey: (*PrivateKey)(pri),
 		Certificate:     (*Cert)(cert),
 	}
-	entity.encrypt_privatekey()
+	entity.encode_privatekey()
 	return &entity, nil
 
 }

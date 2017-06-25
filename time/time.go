@@ -1,16 +1,16 @@
 package time
 
 import (
-	"fmt"
 	"math"
 	"time"
 )
 
+// Time is a universal time value. It is stored as a string to improve
+// viability and error checking, and enable unbounded range and precision.
 type Time string
 
 // New creates a new universal time value from a time.Time value.
 func NewTime(t time.Time) Time {
-	fmt.Printf("")
 	return Time(t.UTC().Format(time.RFC3339))
 }
 
@@ -27,7 +27,8 @@ func (t Time) Nil() bool {
 	return false
 }
 
-// AsTime() return the universal time value as a time.Time value.
+// AsTime() return the universal time value as a standard library time.Time
+// value.
 // If the universal time value is not valid (nil, or unparseable)
 // then a time.Time nil value is returned.
 func (t Time) AsTime() time.Time {
@@ -42,10 +43,10 @@ func (t Time) AsTime() time.Time {
 }
 
 // Age returns the time.Duration between the universal time value and
-// Age is called.
+// when Age is called.
 //
-// If universal time is not set, Age returns
-// time.Duration(math.MaxInt64) (i.e. the maximum possible duration).
+// If universal time is not set, Age returns the maximum possible duration
+// (i.e. time.Duration(math.MaxInt64)).
 func (t Time) Age() time.Duration {
 	if t.Nil() {
 		return time.Duration(math.MaxInt64)
@@ -53,3 +54,16 @@ func (t Time) Age() time.Duration {
 	tm := t.AsTime()
 	return time.Now().UTC().Sub(tm)
 }
+
+func (t Time) Add(d time.Duration) Time {
+	return Time(t.AsTime().Add(d).UTC().Format(time.RFC3339))
+}
+
+// Common durations, not supported buy the standard library due
+// local time variances that do not occur in universal time.
+const (
+	Day   time.Duration = time.Hour * 24
+	Week                = Day * 7
+	Month               = Day * 30
+	Year                = Day * 365
+)
