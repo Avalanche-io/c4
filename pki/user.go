@@ -222,7 +222,20 @@ func (e *User) TLScert(t TLScertType) (tls.Certificate, error) {
 
 // Endorse creates a certificate for target signed by this user.
 func (e *User) Endorse(target Entity) (*Cert, error) {
-	return endorse(e, target)
+	t_pub := (*ecdsa.PublicKey)(target.Public())
+	e_pri := (*ecdsa.PrivateKey)(e.Private())
+	certDER, err := x509.CreateCertificate(rand.Reader, target.Cert().X509(), e.Cert().X509(), t_pub, e_pri)
+	if err != nil {
+		return nil, err
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, err
+	}
+	target.SetCert((*Cert)(cert))
+
+	return (*Cert)(cert), nil
 }
 
 // CSR creates a certificate signing request for use by this user
