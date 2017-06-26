@@ -54,20 +54,53 @@ func TestCreateC4dCert(t *testing.T) {
 
 	t.Run("Create Domain Entity", func(t *testing.T) {
 		tis := is.New(t)
-		serverEntity, err = pki.NewDomain("c4.example.com")
-		tis.NoErr(err)
-		// Generate private public key pairs for Domain
-		err = serverEntity.GenerateKeys()
+
+		eb := pki.NewBuilder("c4.example.com")
+		go func() {
+			for message := range eb.Listen() {
+				t.Log(message)
+			}
+			for err := range eb.Errors() {
+				tis.NoErr(err)
+			}
+		}()
+		eb.Domains("c4.example.com")
+		eb.IPs("127.0.0.1")
+		eb.DistinquisedName(pkix.Name{CommonName: "c4.example.com"})
+		e := eb.Build()
+
+		serverEntity = e.(*pki.Domain)
+
+		tis.NotNil(serverEntity)
+		tis.NotNil(serverEntity.Cert())
 		tis.NoErr(err)
 	})
 
 	t.Run("Create Client Entity", func(t *testing.T) {
 		tis := is.New(t)
 		// Create Client Entity
-		clientEntity, err = pki.NewDomain("localhost")
+		eb := pki.NewBuilder("localhost")
+		go func() {
+			for message := range eb.Listen() {
+				t.Log(message)
+			}
+			for err := range eb.Errors() {
+				tis.NoErr(err)
+			}
+		}()
+		eb.Domains("localhost")
+		eb.IPs("127.0.0.1")
+		eb.DistinquisedName(pkix.Name{CommonName: "localhost"})
+		e := eb.Build()
+
+		// clientEntity, err = pki.NewDomain("localhost")
 		tis.NoErr(err)
-		err = clientEntity.GenerateKeys()
-		tis.NoErr(err)
+		clientEntity = e.(*pki.Domain)
+		tis.NotNil(clientEntity)
+		tis.NotNil(clientEntity.Cert())
+		// err = clientEntity.GenerateKeys()
+		// tis.NoErr(err)
+
 	})
 
 	var serverCert, clientCert *pki.Cert
@@ -75,6 +108,10 @@ func TestCreateC4dCert(t *testing.T) {
 	t.Run("Endorse Certificate Chain", func(t *testing.T) {
 		tis := is.New(t)
 		// Have root endorse the server.
+
+		tis.NotNil(ca)
+
+		tis.NotNil(ca.Cert())
 		serverCert, err = ca.Endorse(serverEntity)
 		tis.NoErr(err)
 		tis.NotNil(serverCert)

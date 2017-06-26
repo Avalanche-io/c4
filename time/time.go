@@ -59,6 +59,10 @@ func (t Time) Add(d time.Duration) Time {
 	return Time(t.AsTime().Add(d).UTC().Format(time.RFC3339))
 }
 
+func (t Time) Sub(ref Time) time.Duration {
+	return t.AsTime().Sub(ref.AsTime())
+}
+
 // Common durations, not supported buy the standard library due
 // local time variances that do not occur in universal time.
 const (

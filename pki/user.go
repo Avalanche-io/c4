@@ -23,12 +23,12 @@ type User struct {
 	Identities      []Identifier `json:"identities"`
 	ClearPrivateKey *PrivateKey  `json:"-"`
 	// EncryptedPrivateKey *pem.Block  `json:"encrypted_private_key"`
-	EncryptedPrivateKey []byte `json:"encrypted_private_key"`
-
-	Certificate         *Cert  `json:"certificate"`
-	ClearPassphrase     []byte `json:"-"`
-	EncryptedPassphrase []byte `json:"encrypted_passphrase"`
-	Salt                []byte `json"salt"`
+	EncryptedPrivateKey []byte     `json:"encrypted_private_key"`
+	PublicKey           *PublicKey `json:"public_key"`
+	Certificate         *Cert      `json:"certificate"`
+	ClearPassphrase     []byte     `json:"-"`
+	EncryptedPassphrase []byte     `json:"encrypted_passphrase"`
+	Salt                []byte     `json"salt"`
 }
 
 // An Identifier is a email, phone number, ip address, or MAC address used

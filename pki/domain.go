@@ -38,6 +38,7 @@ type Domain struct {
 	Domains         []string    `json:"domains"`
 	IPs             []net.IP    `json:"ips"`
 	ClearPrivateKey *PrivateKey `json:"-"`
+	PublicKey       *PublicKey  `json:"public_key"`
 	// EncryptedPrivateKey *pem.Block  `json:"encrypted_private_key"`
 	EncryptedPrivateKey []byte `json:"encrypted_private_key"`
 	Certificate         *Cert  `json:"certificate"`
@@ -105,6 +106,7 @@ func (e *Domain) GenerateKeys() error {
 		return err
 	}
 	e.ClearPrivateKey = (*PrivateKey)(pri)
+	e.PublicKey = e.ClearPrivateKey.Public()
 	e.encode_privatekey()
 	return nil
 }
@@ -120,6 +122,10 @@ func (e *Domain) Private() *PrivateKey {
 
 // Public returns the public key for the domain.
 func (e *Domain) Public() *PublicKey {
+	if e.PublicKey != nil {
+		return e.PublicKey
+	}
+
 	if e.ClearPrivateKey != nil {
 		return e.ClearPrivateKey.Public()
 	}
@@ -149,15 +155,21 @@ func (e *Domain) TLScert(t TLScertType) (tls.Certificate, error) {
 
 // Endorse creates a certificate for target signed by the domain.
 func (e *Domain) Endorse(target Entity) (*Cert, error) {
-	return endorse(e, target)
-}
+	t_pub := (*ecdsa.PublicKey)(target.Public())
+	e_pri := (*ecdsa.PrivateKey)(e.Private())
+	certDER, err := x509.CreateCertificate(rand.Reader, target.Cert().X509(), e.Cert().X509(), t_pub, e_pri)
+	if err != nil {
+		return nil, err
+	}
 
-// func (e *Domain) MarshalJSON() ([]byte, error) {
-// 	if e.EncryptedPassphrase != nil && len(e.EncryptedPassphrase) >= 0 {
-// 		e.ClearPrivateKey = nil
-// 	}
-// 	return json.Marshal(e)
-// }
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, err
+	}
+	target.SetCert((*Cert)(cert))
+
+	return (*Cert)(cert), nil
+}
 
 // CSR generates a certificate signing request for the domain sutable for submission
 // to a remote certificate authority for validation and signature.

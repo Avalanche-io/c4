@@ -5,6 +5,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 
 	c4 "github.com/Avalanche-io/c4/id"
@@ -17,6 +18,23 @@ type PublicKey ecdsa.PublicKey
 // Public and Private Key interfaces define the most useful basic
 // methods of cryptographic keys, for easier and safer interaction.
 type PrivateKey ecdsa.PrivateKey
+
+func (k *PublicKey) MarshalJSON() ([]byte, error) {
+	var ek ecdsa.PublicKey
+	ek = ecdsa.PublicKey(*k)
+	return json.Marshal(ek)
+}
+
+func (k *PublicKey) UnmarshalJSON(data []byte) error {
+	var ek ecdsa.PublicKey
+	ek.Curve = elliptic.P521()
+	err := json.Unmarshal(data, &ek)
+	if err != nil {
+		return err
+	}
+	*k = PublicKey(ek)
+	return nil
+}
 
 func (k *PublicKey) ID() *c4.ID {
 	return nil
