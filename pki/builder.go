@@ -160,13 +160,13 @@ func (b *Builder) Passphrase(passphrase string) {
 
 func (b *Builder) DistinquisedName(name pkix.Name) {
 	b.x509name = &name
-	b.messages <- "added distinquised name"
+	b.messages <- "Added distinquised name"
 }
 
 func (b *Builder) CommonName(name string) {
 	b.x509name = makename(b.x509name)
 	b.x509name.CommonName = name
-	b.messages <- "added CommonName name"
+	b.messages <- "Added CommonName name"
 }
 
 func (b *Builder) Organizations(names ...string) {
@@ -278,15 +278,24 @@ func (b *Builder) buildDomain() *Domain {
 		IPs:     b.ips,
 		Salt:    b.salt,
 	}
+	if len(b.passphrase) == 0 {
+		b.errors <- errors.New("Warning passphrase not set")
+	} else {
+		e.Passphrase(b.passphrase)
+	}
+	b.messages <- "Generating Keys"
 	e.GenerateKeys()
-	e.Passphrase(b.passphrase)
+
 	sn := b.sn
+	m := "Setting "
 	if sn == nil {
+		m += "New "
 		sn = defaultSNGenerator()
 	}
-
+	b.messages <- m + "SerialNumber"
 	key_usage := DomainKeyUsage
 	if b.ca {
+		b.messages <- "Creating cert with AthortyKeyUsage"
 		key_usage = AthortyKeyUsage
 	}
 
@@ -309,12 +318,14 @@ func (b *Builder) buildDomain() *Domain {
 	if err != nil {
 		b.errors <- err
 	}
+	b.messages <- "Certificate created."
 	// Extract certificate from the DER encoding
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		b.errors <- err
 	}
 	e.Certificate = (*Cert)(cert)
+
 	return &e
 }
 
@@ -329,11 +340,6 @@ func (b *Builder) buildUser() *User {
 		Salt:       b.salt,
 	}
 	e.GenerateKeys()
-	if len(b.passphrase) == 0 {
-		b.errors <- errors.New("passphrase not set")
-	} else {
-		e.Passphrase(b.passphrase)
-	}
 
 	sn := b.sn
 	if sn == nil {
@@ -370,6 +376,13 @@ func (b *Builder) buildUser() *User {
 		b.errors <- err
 	}
 	e.Certificate = (*Cert)(cert)
+	if len(b.passphrase) == 0 {
+		b.errors <- errors.New("passphrase not set")
+	} else {
+		b.messages <- "Setting phrase on entity."
+		e.Passphrase(b.passphrase)
+	}
+
 	return &e
 }
 

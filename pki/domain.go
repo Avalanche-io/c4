@@ -334,16 +334,16 @@ func (e *Domain) encode_privatekey() {
 	// Encode private key to pem block
 	data, err := x509.MarshalECPrivateKey((*ecdsa.PrivateKey)(e.ClearPrivateKey))
 	if err != nil {
-		return
+		panic(err)
 	}
-	blk := &pem.Block{Type: "PRIVATE KEY", Bytes: data}
+	blk := &pem.Block{Type: "EC PRIVATE KEY", Bytes: data}
 
 	// If there is a passphrase available then we encrypt the key
 	if len(e.ClearPassphrase) > 0 {
 		key := append(e.Salt, e.ClearPassphrase...)
-		blk, err = x509.EncryptPEMBlock(rand.Reader, "ENCRYPTED PRIVATE KEY", data, key, x509.PEMCipherAES256)
+		blk, err = x509.EncryptPEMBlock(rand.Reader, "EC PRIVATE KEY", data, key, x509.PEMCipherAES256)
 		if err != nil {
-			return
+			panic(err)
 		}
 	}
 
