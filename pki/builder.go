@@ -15,11 +15,11 @@ import (
 	c4time "github.com/Avalanche-io/c4/time"
 )
 
-const (
-	notype int = iota
-	domaintype
-	usertype
-)
+// const (
+// 	notype int = iota
+// 	domaintype
+// 	usertype
+// )
 
 // An Builder provides a simplified API for setting the options
 // needed to create a valid entity.
@@ -100,10 +100,10 @@ func (b *Builder) Domains(domains ...string) {
 		b.messages <- "Zero domains added."
 		return
 	}
-	if b.entityType == usertype {
-		b.errors <- errors.New("added domains to a user Entity")
-	}
-	b.entityType = domaintype
+	// if b.entityType == usertype {
+	// 	b.errors <- errors.New("added domains to a user Entity")
+	// }
+	// b.entityType = domaintype
 	b.domains = append(b.domains, domains...)
 	b.messages <- fmt.Sprintf("%d domains added.", len(domains))
 	return
@@ -114,10 +114,10 @@ func (b *Builder) IPs(ips ...string) {
 		b.messages <- "Zero ips added."
 		return
 	}
-	if b.entityType == usertype {
-		b.errors <- errors.New("added ip addresses to a user Entity")
-	}
-	b.entityType = domaintype
+	// if b.entityType == usertype {
+	// 	b.errors <- errors.New("added ip addresses to a user Entity")
+	// }
+	// b.entityType = domaintype
 	iplist := unique(ips)
 	for _, ip := range iplist {
 		netip := net.ParseIP(ip)
@@ -135,10 +135,10 @@ func (b *Builder) Emails(emails ...string) {
 		b.messages <- "Zero email addresses added."
 		return
 	}
-	if b.entityType == domaintype {
-		b.errors <- errors.New("cannot add emails to a domain Entity")
-	}
-	b.entityType = usertype
+	// if b.entityType == domaintype {
+	// 	b.errors <- errors.New("cannot add email to a domain Entity")
+	// }
+	// b.entityType = usertype
 	b.emails = append(b.emails, emails...)
 	b.messages <- fmt.Sprintf("%d email addresses added.", len(emails))
 	return
@@ -307,10 +307,11 @@ func (b *Builder) buildDomain() *Domain {
 		NotBefore:             b.start.AsTime(),
 		NotAfter:              b.end.AsTime(),
 		BasicConstraintsValid: b.ca,
-		IsCA:        b.ca,
-		KeyUsage:    key_usage,
-		DNSNames:    domains,
-		IPAddresses: b.ips,
+		IsCA:           b.ca,
+		KeyUsage:       key_usage,
+		DNSNames:       domains,
+		IPAddresses:    b.ips,
+		EmailAddresses: b.emails,
 	}
 
 	// Build and sign certificate
@@ -329,62 +330,62 @@ func (b *Builder) buildDomain() *Domain {
 	return &e
 }
 
-func (b *Builder) buildUser() *User {
-	emails := unique(b.emails)
-	var ids []Identifier
-	for _, email := range emails {
-		ids = append(ids, Identifier{email, EMail})
-	}
-	e := User{
-		Identities: ids,
-		Salt:       b.salt,
-	}
-	e.GenerateKeys()
+// func (b *Builder) buildUser() *User {
+// 	emails := unique(b.emails)
+// 	var ids []Identifier
+// 	for _, email := range emails {
+// 		ids = append(ids, Identifier{email, EMail})
+// 	}
+// 	e := User{
+// 		Identities: ids,
+// 		Salt:       b.salt,
+// 	}
+// 	e.GenerateKeys()
 
-	sn := b.sn
-	if sn == nil {
-		sn = defaultSNGenerator()
-	}
+// 	sn := b.sn
+// 	if sn == nil {
+// 		sn = defaultSNGenerator()
+// 	}
 
-	key_usage := DomainKeyUsage
-	if b.ca {
-		key_usage = AthortyKeyUsage
-	}
+// 	key_usage := DomainKeyUsage
+// 	if b.ca {
+// 		key_usage = AthortyKeyUsage
+// 	}
 
-	tmpl := x509.Certificate{
-		SignatureAlgorithm: x509.ECDSAWithSHA512,
+// 	tmpl := x509.Certificate{
+// 		SignatureAlgorithm: x509.ECDSAWithSHA512,
 
-		SerialNumber:          sn,
-		Subject:               *b.x509name,
-		NotBefore:             b.start.AsTime(),
-		NotAfter:              b.end.AsTime(),
-		BasicConstraintsValid: b.ca,
-		IsCA:        b.ca,
-		KeyUsage:    key_usage,
-		DNSNames:    b.domains,
-		IPAddresses: b.ips,
-	}
+// 		SerialNumber:          sn,
+// 		Subject:               *b.x509name,
+// 		NotBefore:             b.start.AsTime(),
+// 		NotAfter:              b.end.AsTime(),
+// 		BasicConstraintsValid: b.ca,
+// 		IsCA:        b.ca,
+// 		KeyUsage:    key_usage,
+// 		DNSNames:    b.domains,
+// 		IPAddresses: b.ips,
+// 	}
 
-	// Build and sign certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, (*ecdsa.PublicKey)(e.Public()), (*ecdsa.PrivateKey)(e.Private()))
-	if err != nil {
-		b.errors <- err
-	}
-	// Extract certificate from the DER encoding
-	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		b.errors <- err
-	}
-	e.Certificate = (*Cert)(cert)
-	if len(b.passphrase) == 0 {
-		b.errors <- errors.New("passphrase not set")
-	} else {
-		b.messages <- "Setting phrase on entity."
-		e.Passphrase(b.passphrase)
-	}
+// 	// Build and sign certificate
+// 	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, (*ecdsa.PublicKey)(e.Public()), (*ecdsa.PrivateKey)(e.Private()))
+// 	if err != nil {
+// 		b.errors <- err
+// 	}
+// 	// Extract certificate from the DER encoding
+// 	cert, err := x509.ParseCertificate(certDER)
+// 	if err != nil {
+// 		b.errors <- err
+// 	}
+// 	e.Certificate = (*Cert)(cert)
+// 	if len(b.passphrase) == 0 {
+// 		b.errors <- errors.New("passphrase not set")
+// 	} else {
+// 		b.messages <- "Setting phrase on entity."
+// 		e.Passphrase(b.passphrase)
+// 	}
 
-	return &e
-}
+// 	return &e
+// }
 
 func (b *Builder) Build() Entity {
 	defer func() {
@@ -393,20 +394,20 @@ func (b *Builder) Build() Entity {
 		close(b.messages)
 		b.messages = nil
 	}()
-	switch b.entityType {
-	case usertype:
-		e := b.buildUser()
-		if e != nil {
-			b.messages <- "Entity created."
-		}
-		return e
-	case domaintype:
-		e := b.buildDomain()
-		if e != nil {
-			b.messages <- "Entity created."
-		}
-		return e
+	// switch b.entityType {
+	// case usertype:
+	// 	e := b.buildUser()
+	// 	if e != nil {
+	// 		b.messages <- "Entity created."
+	// 	}
+	// 	return e
+	// case domaintype:
+	e := b.buildDomain()
+	if e != nil {
+		b.messages <- "Entity created."
 	}
+	return e
+	// }
 	b.errors <- errors.New("incomplete information to build entity, must have domain, ip or email")
 	return nil
 }

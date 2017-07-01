@@ -249,7 +249,7 @@ func (s *Store) GetAttributes(key string, attrs map[string]interface{}) error {
 	return nil
 }
 
-// update_directory adds the file name in path to it's parent directory list and saves
+// update_directory adds the file name in path to it's parent directory
 func (s *Store) update_directory(key []byte) error {
 	dir, name := assetpath.Split(string(key))
 	if slash.IsDir(string(key)) {

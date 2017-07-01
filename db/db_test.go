@@ -32,11 +32,6 @@ func Setup(t *testing.T) (is.I, *c4db.DB, func()) {
 	}
 }
 
-func TestDBOpenClose(t *testing.T) {
-	_, _, done := Setup(t)
-	defer done()
-}
-
 func TestDBSetGet(t *testing.T) {
 	is, db, done := Setup(t)
 	defer done()

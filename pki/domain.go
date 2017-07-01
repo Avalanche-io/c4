@@ -229,7 +229,7 @@ func (e *Domain) CSR(names ...pkix.Name) (*CertificateSigningRequest, error) {
 	return csr, nil
 }
 
-// Approve creates a signed certificate form the certificate signing request provided.
+// Approve creates a signed certificate from the certificate signing request provided.
 // Currently certificates are hard coded to be valued for only one week at a time.
 func (e *Domain) Approve(csr *CertificateSigningRequest) (*Cert, error) {
 	csr.Varify(e)
