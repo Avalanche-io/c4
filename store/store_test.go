@@ -95,7 +95,8 @@ func TestStoreDirs(t *testing.T) {
 	n, err = asset2.WriteString("bar")
 	is.NoErr(err)
 	is.Equal(n, 3)
-	n, err = asset2.WriteAt([]byte("bar"), 2) // "babar"
+	_, err = asset2.WriteAt([]byte("bar"), 2) // "babar"
+	is.NoErr(err)
 	err = asset2.Close()
 	is.NoErr(err)
 
