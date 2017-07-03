@@ -210,7 +210,7 @@ func TestUserLogout(t *testing.T) {
 	is.Nil(user.ClearPassphrase)
 
 	err = user.Passphrase(oldpw)
-
+	is.NoErr(err)
 	is.NotNil(user.EncryptedPrivateKey)
 	is.NotNil(user.ClearPrivateKey)
 	is.NotNil(user.EncryptedPassphrase)
