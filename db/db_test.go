@@ -69,7 +69,7 @@ func TestDBForEach(t *testing.T) {
 		id := c4id.Identify(bytes.NewReader(asset_value))
 		is.NotNil(id)
 		err := db.Set(key, id)
-
+		is.NoErr(err)
 		id = c4id.Identify(bytes.NewReader(attribute_value))
 		is.NotNil(id)
 		err = db.SetAttributes(key, id)
