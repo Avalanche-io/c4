@@ -208,6 +208,7 @@ func TestWriter(t *testing.T) {
 	w, err := st.Writer("/foo")
 	is.NoErr(err)
 	_, err = io.Copy(w, bytes.NewReader([]byte("bar")))
+	is.NoErr(err)
 	w.Close()
 	bar_id := c4.Identify(bytes.NewReader([]byte("bar")))
 	is.Equal(w.ID().String(), bar_id.String())
