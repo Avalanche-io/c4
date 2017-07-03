@@ -343,6 +343,9 @@ func (fs *FileSystem) descend(path string, info os.FileInfo, f AttributeFunc) (*
 
 	var ids c4id.Slice
 	dirs, err := fs.ReadDir(key)
+	if err != nil {
+		return nil, size, err
+	}
 	for _, child := range dirs {
 		p := filepath.Join(path, child.Name())
 		id, s, err := fs.descend(p, child, f)
