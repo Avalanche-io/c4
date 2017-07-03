@@ -67,6 +67,9 @@ func identify_files(file_list []string, depth int) error {
 			fmt.Printf("%s: %s\n", string(key), attrs.ID())
 			return nil
 		})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
