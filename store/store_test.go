@@ -95,7 +95,8 @@ func TestStoreDirs(t *testing.T) {
 	n, err = asset2.WriteString("bar")
 	is.NoErr(err)
 	is.Equal(n, 3)
-	n, err = asset2.WriteAt([]byte("bar"), 2) // "babar"
+	_, err = asset2.WriteAt([]byte("bar"), 2) // "babar"
+	is.NoErr(err)
 	err = asset2.Close()
 	is.NoErr(err)
 
@@ -207,6 +208,7 @@ func TestWriter(t *testing.T) {
 	w, err := st.Writer("/foo")
 	is.NoErr(err)
 	_, err = io.Copy(w, bytes.NewReader([]byte("bar")))
+	is.NoErr(err)
 	w.Close()
 	bar_id := c4.Identify(bytes.NewReader([]byte("bar")))
 	is.Equal(w.ID().String(), bar_id.String())
@@ -226,6 +228,7 @@ func TestReaderWriter(t *testing.T) {
 	w, err := st.Writer("/foo")
 	is.NoErr(err)
 	_, err = io.Copy(w, bytes.NewReader([]byte("bar")))
+	is.NoErr(err)
 	w.Close()
 	bar_id := c4.Identify(bytes.NewReader([]byte("bar")))
 	is.Equal(w.ID().String(), bar_id.String())
