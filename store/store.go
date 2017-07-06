@@ -108,7 +108,7 @@ func (s *Store) Open(name string, ids ...*c4.ID) (a Asset, err error) {
 
 	dir, filename := filepath.Split(name)
 	if len(filename) == 0 {
-		dir, filename = filepath.Split(dir)
+		dir, _ = filepath.Split(dir)
 		if len(dir) == 1 {
 			filename = "/"
 			dir = ""
