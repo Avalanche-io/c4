@@ -4,7 +4,7 @@ import "sort"
 
 type Slice []*ID
 
-// Append id to slice.
+// Insert adds an ID to the slice in sorted order.
 func (s *Slice) Insert(id *ID) {
 	if id == nil {
 		return
@@ -21,7 +21,7 @@ func (s *Slice) Insert(id *ID) {
 	(*s)[i] = id
 }
 
-//String returns the slice of c4ids concatenated together without spaces or newlines.
+// String returns the slice of IDs concatenated together without spaces or newlines.
 func (s *Slice) String() string {
 	result := ""
 	for _, id := range *s {
@@ -30,8 +30,8 @@ func (s *Slice) String() string {
 	return result
 }
 
-// SearchIDs searches for id in a sorted slice of *ID and returns the index
-// as specified by sort.Search. The slice must be sorted in ascending order.
+// Index returns the array index where the ID is, or would be inserted if
+// not in the slice already. The slice must be sorted in ascending order.
 func (s Slice) Index(id *ID) int {
 	if id == nil {
 		return -1
@@ -46,19 +46,21 @@ func oddIndex(l int) int {
 	return -1
 }
 
-// ID of a sorted slice of IDs
+// The ID method returns the ID of a sorted slice of IDs.
+// For performance the ID() method assumes the slice is already sorted, and
+// will return an incorrect ID() if that is not the case. If an error
+// is encountered nil is returned.
+// Possible errors are, the slice is empty, or the slice has nil entries
 func (s Slice) ID() *ID {
-	// s is implicitly sorted, during inserts. We cast it to a regular slice
-	// here since all subsequent rounds must not be sorted.
+	// s is implicitly sorted, during inserts, subsequent rounds must not be
+	// sorted.
+
 	digests := make(DigestSlice, 0, len(s))
 	for _, id := range s {
 		if id == nil {
-			panic("how did that happen?")
+			return nil
 		}
 		digests = append(digests, id.Digest())
-	}
-	if len(s) > 0 && len(s) != len(digests) {
-		panic("bad length")
 	}
 	d := digests.Digest()
 

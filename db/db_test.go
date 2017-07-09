@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"path/filepath"
+	"strings"
 
 	"os"
 	"testing"
@@ -32,23 +33,27 @@ func Setup(t *testing.T) (is.I, *c4db.DB, func()) {
 	}
 }
 
+func B(v string) []byte {
+	return []byte(v)
+}
+
 func TestDBSetGet(t *testing.T) {
 	is, db, done := Setup(t)
 	defer done()
 
-	in_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	in_id := c4id.Identify(strings.NewReader("bar"))
 	is.NotNil(in_id)
-	err := db.Set([]byte("foo"), in_id)
+	err := db.Set(B("foo"), in_id)
 	is.NoErr(err)
-	out_id := db.Get([]byte("foo"))
+	out_id := db.Get(B("foo"))
 	is.NoErr(err)
 	is.NotNil(out_id)
 
 	is.Equal(in_id.String(), out_id.String())
 
-	err = db.SetAttributes([]byte("foo"), in_id)
+	err = db.SetAttributes(B("foo"), in_id)
 	is.NoErr(err)
-	out_id = db.GetAttributes([]byte("foo"))
+	out_id = db.GetAttributes(B("foo"))
 	is.NoErr(err)
 	is.NotNil(out_id)
 
@@ -92,12 +97,12 @@ func TestUnset(t *testing.T) {
 	is, db, done := Setup(t)
 	defer done()
 
-	in_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	in_id := c4id.Identify(bytes.NewReader(B("bar")))
 	is.NotNil(in_id)
-	err := db.Set([]byte("foo"), in_id)
+	err := db.Set(B("foo"), in_id)
 	is.NoErr(err)
 	is.True(db.IDexists(in_id))
-	db.Unset([]byte("foo"))
+	db.Unset(B("foo"))
 	is.False(db.IDexists(in_id))
 }
 
@@ -105,9 +110,9 @@ func TestIDexists(t *testing.T) {
 	is, db, done := Setup(t)
 	defer done()
 
-	in_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	in_id := c4id.Identify(bytes.NewReader(B("bar")))
 	is.NotNil(in_id)
-	err := db.Set([]byte("foo"), in_id)
+	err := db.Set(B("foo"), in_id)
 	is.NoErr(err)
 	is.True(db.IDexists(in_id))
 }
@@ -116,7 +121,7 @@ func TestRefCounting(t *testing.T) {
 	is, db, done := Setup(t)
 	defer done()
 
-	in_id := c4id.Identify(bytes.NewReader([]byte("bar")))
+	in_id := c4id.Identify(bytes.NewReader(B("bar")))
 	is.NotNil(in_id)
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("foo%04d", i)
@@ -128,7 +133,7 @@ func TestRefCounting(t *testing.T) {
 		is.True(id.String() == in_id.String())
 		is.True(db.IDexists(in_id))
 	}
-	id := db.Unset([]byte("foo0999"))
+	id := db.Unset(B("foo0999"))
 	is.True(id.String() == in_id.String())
 	is.False(db.IDexists(in_id))
 }

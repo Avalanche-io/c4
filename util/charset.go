@@ -1,3 +1,21 @@
+// The c4/util package is only of use to a very small group who began using
+// C4 prior to standardization. Most people will not need to use this package
+// for anything.
+//
+// In late 2016 the C4 ID character set was changed.
+//
+// From: "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
+// To: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+//
+// The included characters are still the same, but the capital letters are
+// now placed before the lower case letters.
+//
+// This change was deemed necessary to avoid inconsistent sorting between
+// the Digest and String forms of C4 IDs which is counterintuitive and likely
+// to lead to coding errors as well as requiring additional computation to
+// handle correctly.
+//
+
 package util
 
 import (
@@ -28,7 +46,7 @@ func init() {
 	}
 }
 
-// Returns true if all digits are the same between two IDs.
+// Returns true if all digits match between two IDs.
 func sameNumbers(a *c4.ID, b *c4.ID) bool {
 	if a == nil || b == nil {
 		return false
@@ -47,6 +65,10 @@ func sameNumbers(a *c4.ID, b *c4.ID) bool {
 	return true
 }
 
+// CheckCharacterSet, given the same underlying C4 ID encoded in the old and new
+// character sets, will return the version that is correctly encoded.
+// A nil ID and an error are returned if either ID is invalid or the two ids
+// are not an encoding of the same ID.
 func CheckCharacterSet(a *c4.ID, b *c4.ID) (*c4.ID, error) {
 	if !sameNumbers(a, b) {
 		return nil, errors.New("not the same id")
@@ -81,6 +103,11 @@ func CheckCharacterSet(a *c4.ID, b *c4.ID) (*c4.ID, error) {
 	return b, nil
 }
 
+// OldCharsetIDToNew transforms IDs from the incorrect (old) character set to
+// the correct, and current one.
+//
+// Be careful!  This function cannot detect wither an ID uses the correct character set or
+// not so care must be taken not to apply this function to IDs that are correct.
 func OldCharsetIDToNew(id *c4.ID) *c4.ID {
 	if id == nil {
 		return nil
@@ -95,6 +122,9 @@ func OldCharsetIDToNew(id *c4.ID) *c4.ID {
 	return idout
 }
 
+// NewCharsetIDToOld transforms IDs from the correct, current character set
+// to the old character set. This is not very useful outside of testing, so
+// be sure you know what you're doing before using this function.
 func NewCharsetIDToOld(id *c4.ID) *c4.ID {
 	if id == nil {
 		return nil

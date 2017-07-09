@@ -16,7 +16,9 @@ type Digest []byte
 
 // NewDigest creates a Digest and initializes it with the argument, enforcing
 // byte alignment by padding with 0 (zero) if needed. NewDigest will return nil
-// if the argument is larger then 64 bytes.
+// if the argument is larger then 64 bytes. For performance NewDigest may
+// not copy the data to a new slice, so copies must be made explicitly when
+// needed.
 func NewDigest(b []byte) Digest {
 	if len(b) > 64 {
 		return nil
@@ -37,11 +39,14 @@ func NewDigest(b []byte) Digest {
 // block of 128 bytes which are then IDed.
 func (l Digest) Sum(r Digest) Digest {
 	switch bytes.Compare(l, r) {
-	case 1:
+	case -1:
+		// If the left side is larger then they are already in order, do nothing
+	case 1: // If the right side is larger swap them
 		l, r = r, l
-	case 0:
+	case 0: // If they are identical return no sum needed, so just return one.
 		return l
 	}
+
 	h := sha512.New()
 	h.Write([]byte(l))
 	h.Write([]byte(r))
@@ -49,11 +54,11 @@ func (l Digest) Sum(r Digest) Digest {
 }
 
 // ID returns the C4 ID representation of the digest by directly translating the byte
-// slice to the standard C4 ID string format (the bytes are not (re)hashed).
+// slice to the standard C4 ID format (the bytes are not (re)hashed).
 func (d Digest) ID() *ID {
-	i := new(big.Int)
-	i.SetBytes([]byte(d))
-	return (*ID)(i)
+	id := new(big.Int)
+	id.SetBytes([]byte(d))
+	return (*ID)(id)
 }
 
 // Read implements the io.Reader interface. It reads exactly 64 bytes into p.

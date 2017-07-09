@@ -116,6 +116,8 @@ func TestDigestSum(t *testing.T) {
 	var l, r c4.Digest
 	var key string
 	var id *c4.ID
+	lbytes, rbytes := make([]byte, 64), make([]byte, 64)
+
 	for i, dta := range test_data {
 
 		pair = append(pair, []byte(dta.Digest)...)
@@ -128,7 +130,7 @@ func TestDigestSum(t *testing.T) {
 			t.Logf("\tpair: %s\n", viewBytes(pair))
 
 			r = dta.Digest
-			// data := make([]byte, 128)
+			copy(rbytes, []byte(r))
 			var data []byte
 			switch bytes.Compare(r, l) {
 			case -1:
@@ -147,21 +149,27 @@ func TestDigestSum(t *testing.T) {
 			testsum1 := e.Digest()
 			sum := l.Sum(r)
 			e.Reset()
+
+			// Check Sum produces the expected ID
 			is.Equal(testsum1, sum)
+
+			// Check that Sum did not alter l, or r
+			is.Equal(bytes.Compare([]byte(r), rbytes), 0)
+			is.Equal(bytes.Compare([]byte(l), lbytes), 0)
 			t.Logf("\t   testsum1: %s\n\t   sum: %s\n", viewBytes(testsum1), viewBytes(sum))
 
-			// is.Equal(testsum1, sum)
 			testsum2 := c4.Digest(pair[:64]).Sum(pair[64:])
 			is.Equal(testsum2, sum)
 			pair = pair[:0]
 			continue
 		}
+
 		// left hand side
 		l = dta.Digest
+		copy(lbytes, []byte(l))
 		t.Logf("%d: \"%s\"\n %s  %s\n", i, key, id, viewBytes(dta.Digest))
 	}
 
-	// is.Equal(expectedSum, testSum.ID())
 }
 
 func TestDigestSlice(t *testing.T) {

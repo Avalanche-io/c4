@@ -45,7 +45,7 @@ func (id *ID) Digest() Digest {
 }
 
 /*
- * Cmp compares to c4ids.
+ * Cmp compares two IDs.
  * There are 3 possible return values.
  * -1 : Argument id is less than calling id.
  * 0: Argument id and calling id are identical.
