@@ -120,6 +120,10 @@ func (t *Tree) ID() *ID {
 	return Digest(t.rows[0]).ID()
 }
 
+func (t *Tree) Digest() Digest {
+	return Digest(t.rows[0])
+}
+
 // A node represents a specific ID triplet within a tree. Nodes have three
 // IDs: the Label, Left, and Right.
 type Node struct {

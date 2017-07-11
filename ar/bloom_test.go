@@ -32,7 +32,7 @@ func TestBasicBloom(t *testing.T) {
 
 // int to bytes
 func writeInt32(i uint32, b *[]byte) {
-	// equivalnt of return int32(binary.LittleEndian.Uint32(b))
+	// equivalent of return int32(binary.LittleEndian.Uint32(b))
 
 	(*b)[0] = byte(i)
 	(*b)[1] = byte(i >> 8)
@@ -42,7 +42,7 @@ func writeInt32(i uint32, b *[]byte) {
 }
 
 func readInt32(b []byte) uint32 {
-	// equivalnt of return int32(binary.LittleEndian.Uint32(b))
+	// equivalent of return int32(binary.LittleEndian.Uint32(b))
 	return uint32(uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24)
 }
 

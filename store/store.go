@@ -34,7 +34,7 @@ func Open(path string) (*Store, error) {
 
 	// Open a C4 Database
 	db_path := filepath.Join(path, "c4.db")
-	db, err := c4db.Open(db_path, 0600, nil)
+	db, err := c4db.Open(db_path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -70,11 +70,15 @@ func (s *Store) Reader(path string, ids ...*c4.ID) (c4.ReadCloser, error) {
 }
 
 func (s *Store) Copy(src, dest string) error {
-	id := s.db.Get([]byte(src))
-	if id == nil {
+	digest, err := s.db.KeyGet(src)
+	if err != nil {
+		return err
+	}
+	if digest == nil {
 		return ErrNotFound
 	}
-	return s.db.Set([]byte(dest), id)
+	_, err = s.db.KeySet(dest, digest)
+	return err
 }
 
 func (s *Store) Move(src, dest string) error {
@@ -82,8 +86,8 @@ func (s *Store) Move(src, dest string) error {
 	if err != nil {
 		return err
 	}
-	s.db.Unset([]byte(src))
-	return nil
+	_, err = s.db.KeyDelete(src)
+	return err
 }
 
 //Open opens the named asset for reading.
@@ -93,7 +97,11 @@ func (s *Store) Open(name string, ids ...*c4.ID) (a Asset, err error) {
 		id = ids[0]
 	}
 	if len(name) > 0 {
-		id = s.db.Get([]byte(name))
+		var digest c4.Digest
+		digest, err = s.db.KeyGet(name)
+		if digest != nil {
+			id = digest.ID()
+		}
 	}
 
 	if id == nil {
@@ -133,7 +141,7 @@ func (s *Store) Mkdir(path string) error {
 	if s.Exists(path) {
 		return os.ErrExist
 	}
-	err := s.db.Set([]byte(path), c4.NIL_ID)
+	_, err := s.db.KeySet(path, c4.NIL_ID.Digest())
 	if err != nil {
 		return err
 	}
@@ -162,7 +170,11 @@ func (s *Store) MkdirAll(path string) error {
 
 // AssetID returns the c4 id of file at the given path
 func (s *Store) AssetID(name string) *c4.ID {
-	return s.db.Get([]byte(name))
+	d, err := s.db.KeyGet(name)
+	if err != nil {
+		return nil
+	}
+	return d.ID()
 }
 
 // Close closes the database, and any other cleanup as needed.
@@ -173,16 +185,23 @@ func (s *Store) Close() error {
 // Exists tests if the path exists in the database, and if the identified file
 // exists in the storage.
 func (s *Store) Exists(path string) bool {
-	id := s.db.Get([]byte(path))
-	if id == nil {
+	digest, err := s.db.KeyGet(path)
+	if err != nil {
 		return false
 	}
-	e := exists(s.path, id)
+	if digest == nil {
+		return false
+	}
+	e := exists(s.path, digest.ID())
 	return e
 }
 
 func (s *Store) IDexists(id *c4.ID) bool {
-	return s.db.IDexists(id)
+	key := s.db.KeyFind(id.Digest())
+	if len(key) == 0 {
+		return false
+	}
+	return true
 }
 
 // Add returns a copy of the Asset bound to the storage, or the unmodified Asset if it
@@ -209,7 +228,12 @@ func (s *Store) SetAttributes(key string, attrs map[string]interface{}) error {
 
 	// Check if the id already exists.
 	if exists(s.path, id) {
-		s.db.SetAttributes([]byte(key), id)
+		asset_digest, err := s.db.KeyGet(key)
+		if err != nil {
+			return err
+		}
+		s.db.LinkSet("attributes", asset_digest, id.Digest())
+		// s.db.SetAttributes([]byte(key), id)
 		return nil
 	}
 	dir := pathtoasset(s.path, id)
@@ -226,12 +250,31 @@ func (s *Store) SetAttributes(key string, attrs map[string]interface{}) error {
 	}
 	_ = n
 	f.Close()
-	s.db.SetAttributes([]byte(key), id)
+	asset_digest, err := s.db.KeyGet(key)
+	if err != nil {
+		return err
+	}
+	s.db.LinkSet("attributes", asset_digest, id.Digest())
+
+	// s.db.SetAttributes([]byte(key), id)
 	return nil
 }
 
 func (s *Store) GetAttributes(key string, attrs map[string]interface{}) error {
-	id := s.db.GetAttributes([]byte(key))
+	asset_digest, err := s.db.KeyGet(key)
+	if err != nil {
+		return err
+	}
+	var id *c4.ID
+	for ent := range s.db.LinkGet("attributes", asset_digest) {
+		digest := ent.Target()
+		if digest != nil {
+			id = digest.ID()
+		}
+		ent.Close()
+	}
+
+	// id := s.db.GetAttributes([]byte(key))
 	if id == nil {
 		return ErrNotFound
 	}

@@ -51,15 +51,14 @@ func (b *Bloom) Initialize() {
 	m := -((float64(b.n) * ln(b.p)) / (math.Ln2 * math.Ln2))
 	// b.k = int(math.Ceil(m / float64(b.n) * math.Ln2))
 
-	// For the time being we extract up to 16 32 bit hashes from the c4 id
-	// hash_period := math.Pow(2, 32)
-	hash_period := float64(4294967296)
+	hash_period := float64(1 << 32)
 	if m > hash_period {
-		// We constraint the size of the bitfiled to the largest number the hash can represent
+		// We constrain the size of the bitfiled to the largest number the hash can
+		// represent
 		m = hash_period
 	} else {
-		// We insure the bitfiled is a power of 2 so the modulo of the hash is uniformly distributed
-		// between 0 and m
+		// We insure the bitfiled is a power of 2 so the modulo of the hash is
+		// uniformly distributed between 0 and m
 		bitsize := math.Log2(m)
 		if (bitsize - math.Floor(bitsize)) > 0 {
 			bitsize = math.Ceil(bitsize)
@@ -69,7 +68,7 @@ func (b *Bloom) Initialize() {
 	b.m = int(m)
 	// k: Number of hashes
 	b.k = int(math.Ceil(float64(b.m) / float64(b.n) * math.Ln2))
-	// Limited (for now) to the 16 32bit hashes included in a c4 id
+	// Limited (for now) to the 16 no-overlapping 32bit hashes included in a c4 id
 	if b.k > 16 {
 		b.k = 16
 	}
@@ -77,26 +76,33 @@ func (b *Bloom) Initialize() {
 	b.bits = (*Bitfield)(f)
 }
 
+// Capacity set the target capacity, and returns a pointer to
+// the same bloom filter for appending other options.
 func (b *Bloom) Capacity(n int) *Bloom {
 	b.n = n
 	b.bits = nil
 	return b
 }
 
+// Rate sets the target false positive rate, and returns a pointer to
+// the same bloom filter for appending other options.
 func (b *Bloom) Rate(p float64) *Bloom {
 	b.p = p
 	b.bits = nil
 	return b
 }
 
+// NewBloom creates a new BloomFilter, with default capacity and rate.
+// The defaults currently are:
+// capacity: 100000
+// rate: 0.0015
 func NewBloom() *Bloom {
-	// create bloom filter with 100k file capacity at 0.0015 false positive rate.
+	// create bloom filter with 100k capacity at 0.0015 false positive rate.
 	b := new(Bloom).Capacity(100000).Rate(0.0015)
-	// fmt.Printf("n: %d\tm: %d\tk: %d, bitmask: %f\n", n, b.Size, b.Hashes, math.Floor(math.Log2(float64(b.Size)))+1)
-	// b.Initialize()
 	return b
 }
 
+// Add adds any number of ids to the bloom filter.
 func (b *Bloom) Add(ids ...*c4.ID) error {
 	if b.bits == nil {
 		b.Initialize()
@@ -114,6 +120,8 @@ func (b *Bloom) Add(ids ...*c4.ID) error {
 	return nil
 }
 
+// Test returns true if id appears to be in the set. If test returns false
+//  the ID is definitely not in the set.
 func (b *Bloom) Test(id *c4.ID) bool {
 	if b.bits == nil || id == nil {
 		return false

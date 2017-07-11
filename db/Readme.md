@@ -1,77 +1,117 @@
-# This Readme contains my notes on improving the db module.
+# C4 DB
+c4/db is a go package implementing a C4 ID key/value database.  
 
-The goal of the db module is to provide a very simple database interface that associates
-logical information with C4 IDs, and possibly (but not necessarily) the opposite.  
+This package has been recently updated to improve the interface, functionality, and performance. 
 
-An additional value could be that the DB module directly supports the storage module to provide storage features that needn't obligate the user to handle C4 IDs directly.  But if the DB module does not allow for that (under best focused design for the core goals), then this additional value can be moved to a db solution specific to storage module.
+A database built on the C4 framework is at it's core very simple.  A key is associated with a C4 ID, and a reverse index provides the inverse mapping of a C4 ID to a list of keys that refer to it.
 
----
+Typically one finds the C4 ID of an asset and stores it's ID along with it's filepath or other 'assigned' id as the key. C4 IDs can also be associated together with an arbitrary string identifying the type of relationship.  So, the type and meaning of relationships is up to the user, but here's an example for saving a file's ID and the ID for some metadata about the file.
 
-# Goals
+```go
+package main
 
-The need of the DB module is to solve the problem of relating C4 IDs to meaning, and to relate C4 IDs together.
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    c4db "github.com/Avalanche-io/c4/db"
+    c4 "github.com/Avalanche-io/c4/id"
+    "io"
+    "os"
+    "path/filepath"
+)
 
-The very simplest feature would be a key->c4 database.
-Then a database that holds metadata, so c4->metadata.
-Database splitting so that the system is infinity scalable.
-Then versions so, perhaps a key to sequence of sequential 'versions'.
-    1 This could either be a simple list of version ordered IDs
-    2 Or a nested (binary tree) of ids for previous IDs + ID of diff = new version ID
+func assert(is_true bool) {
+    if !is_true {
+        panic("assertion not true")
+    }
+}
+func stopOnError(err error) {
+    if err != nil {
+        fmt.Errorf("error %s\n", err)
+        os.Exit(-1)
+    }
+}
 
-I don't think C4 should use #2 because it asserts a mechanism of modification, that may not be the actual mechanism, or the optimal way to 'compress' a set of 'versions'.  Consider for example 4 takes of a performance.  A generic 'diff' algorithm is unlikely to gain much in terms of compression due to the unlikelihood of 'matching data' to be conveniently aligned such that only the changes need to be retained. However, the problem remains that distributed systems my contain a list of versions that do not agree. One version missing from one tree other the other, or different missing items in each.
+func main() {
+    // Open or create a C4 database
+    db, err := c4db.Open("test.c4db", nil)
+    stopOnError(err)
+    defer db.Close()
 
-So looks like versions should be represented as a C4 tree.
+    // get the current working directory and set main.go as the input
+    expath, err := os.Executable()
+    stopOnError(err)
+    cwd := filepath.Dir(expath)
+    inputname := "main.go"
+    inputpath := filepath.Join(cwd, inputname)
 
-Metadata could be similarly represented as a list of different metadata items (added as they are discovered)
+    // open the input file
+    fin, err := os.Open(inputname)
+    stopOnError(err)
+    defer fin.Close()
 
-So now we include a c4tree db so that we can recognize and skip 'partial' trees.
+    // get os.FileInfo metadata about the file
+    info, err := fin.Stat()
+    stopOnError(err)
 
-On top of all of this we need to know when a c4id has been seen or used, so that we can remove it form the database for storage if needed for a least recently used. 
+    // marshal the metadata
+    info_data, err := json.Marshal(info)
+    stopOnError(err)
 
-May need to store universal time, bloom filters, usage count, access times, and other data in the db.
+    // Find the C4 ID of the file and of the metadata
+    main_id := c4.Identify(fin)
+    info_id := c4.Identify(bytes.NewReader(info_data))
 
-More generally this is simply a mapping of c4 to 'system' data (version, datetime, reference count, etc.)  This data seems to be mostly unidirectional (cumulative).
+    // Save the metadata in some file, and close.
+    outputpath := filepath.Join(cwd, "main.info")
+    fout, err := os.Create(outputpath)
+    stopOnError(err)
+    _, err = io.Copy(fout, bytes.NewReader(info_data))
+    stopOnError(err)
+    fout.Close()
 
-KV: Key -> C4
+    // save the main_id with it's path as the key
+    _, err = db.KeySet(inputpath, main_id.Digest())
+    stopOnError(err)
+    // save the info_id with it's path as the key
+    _, err = db.KeySet(outputpath, info_id.Digest())
+    stopOnError(err)
 
-ID Trees: C4 -> [2]C4 (every node in c4 id tree)
-Versions: C4 -> []C4
-Attributes: C4 -> []C4
+    // link the main_id to the info_id as 'metadata'
+    err = db.LinkSet("metadata", main_id.Digest(), info_id.Digest())
+    stopOnError(err)
 
-Temporary buckets (or db files)
+    // Get the main_id from the key:
+    main_id2, err := db.KeyGet(inputpath)
+    stopOnError(err)
+    _ = main_id2
 
-## Interface Notes
-When storing an *id.ID, it should store the root id of the tree, and also store the nodes of an ID tree as well.
+    // Get all keys and IDs under a key prefix:
+    count := 0
+    for en := range db.KeyGetAll(cwd) {
+        key := en.Key()
+        digest := en.Value()
+        fmt.Printf("Key: %q\n", key)
+        fmt.Printf("ID: %s\n", digest.ID())
+        en.Close()
+        count++
+    }
+    assert(count == 2)
 
-- Key->ID: 
-    + Core
-        * `Put(key, *id.ID) error`
-        * `Get(key) (*id.ID, bool)`
-        * `Delete(key) (*id.ID)`
-        * `List(prefix, stop) chan struct{Key, *id.ID}`
-    + Non essential:  
-        `Copy(key)`
-        `Move(key)`
+    // Find keys from IDs
+    keys := db.KeyFind(main_id.Digest())
+    assert(keys[0] == inputpath)
 
-ID->Metadata/Attributes ID
-ID -> []KEYs:
-ID to ID tree
+    // Find "metadata" links from the main_id
+    for en := range db.LinkGet("metadata", main_id.Digest()) {
+        source_digest := en.Source()
+        target_digest := en.Target()
+        fmt.Printf("main.go id: %s\n", source_digest.ID())
+        fmt.Printf("main.info id: %s\n", target_digest.ID())
+        en.Close()
+    }
 
-## Other Notes
-
-#### Basic File System operations.
-
-- create
-- open
-- read
-- write
-- sync
-- seek
-- close
-- unlink
-- rename
-
-
-
- 
+}
+```
 

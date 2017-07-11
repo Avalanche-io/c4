@@ -62,7 +62,8 @@ func makeroot(path string, db *db.DB) error {
 	}
 	temp_file.Close()
 	movetoid(path, temp_file.Name(), c4.NIL_ID)
-	return db.Set([]byte("/"), c4.NIL_ID)
+	_, err = db.KeySet("/", c4.NIL_ID.Digest())
+	return err
 }
 
 func tmp(path string) (*os.File, error) {
