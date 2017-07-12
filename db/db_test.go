@@ -105,13 +105,9 @@ func TestKeyApi(t *testing.T) {
 				key = path.Join(prefix, string(alphabet[rand.Int()%len(alphabet)]))
 			}
 
-			// Create some random bytes. 8 is arbitrary, size > 0 is all that matters.
-			data := make([]byte, 8)
-			rand.Read(data)
-
 			// Setting key, and value
 			k := path.Join(key, strconv.Itoa(rand.Int()))
-			v := c4.Identify(bytes.NewReader(data)).Digest()
+			v := randomDigest()
 			sorted_keys[i] = k
 			keys[k] = v
 		}
@@ -217,7 +213,7 @@ func TestKeyApi(t *testing.T) {
 
 		// Expecting fail since the key should now be set to id_bar, not id_foo
 		if db.KeyCAS(key, id_foo.Digest(), id_bat.Digest()) {
-			t.Errorf("compare and swap operation succeed on invalid compare")
+			t.Errorf("compare and swap operation succeeded on invalid compare")
 		}
 
 		// Test nil handling
@@ -492,7 +488,7 @@ func TestBatching(t *testing.T) {
 
 // utility to create a random c4.Digest
 func randomDigest() c4.Digest {
-	// Create some random bytes. 8 is arbitrary, size > 0 is all that matters.
+	// Create some random bytes.
 	var data [8]byte
 	rand.Read(data[:])
 	return c4.Identify(bytes.NewReader(data[:])).Digest()
