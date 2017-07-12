@@ -3,28 +3,28 @@ package db
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
-	// "os"
 
 	c4 "github.com/Avalanche-io/c4/id"
-	"github.com/Avalanche-io/counter"
 	"github.com/boltdb/bolt"
 )
 
+// DB stores
 type DB struct {
 	// Bolt database interface
-	db *bolt.DB
-
-	// Global atomic counter
-	c counter.Counter
+	db   *bolt.DB
+	opts *Options
 }
 
 var (
-	keyBucket   []byte = []byte("key")
-	indexBucket []byte = []byte("index")
-	linkBucket  []byte = []byte("link")
-	treeBucket  []byte = []byte("tree")
-	statsBucket []byte = []byte("stats")
+	keyBucket     []byte = []byte("key")
+	indexBucket   []byte = []byte("index")
+	linkBucket    []byte = []byte("link")
+	treeBucket    []byte = []byte("tree")
+	statsBucket   []byte = []byte("stats")
+	optionsBucket []byte = []byte("options")
 )
 
 var bucketList [][]byte = [][]byte{keyBucket, indexBucket, linkBucket, treeBucket, statsBucket}
@@ -32,10 +32,35 @@ var bucketList [][]byte = [][]byte{keyBucket, indexBucket, linkBucket, treeBucke
 // func init() {
 // 	bucketList := [][]byte{keyBucket, linkBucket}
 // }
+type TreeStrategyType int
+
+const (
+
+	// Unsets a TreeStrategy setting
+	TreeStrategyNone TreeStrategyType = iota
+
+	// Sets the tree storage strategy to always store the entire tree.
+	TreeStrategyCache
+
+	// Sets the tree storage strategy to always store only the id list, and
+	// compute the tree when restored.
+	TreeStrategyCompute
+
+	// Sets the tree storage strategy to automatically balance between the
+	// cashing strategy and computing strategy.
+	TreeStrategyBalance
+)
 
 type Options struct {
-	// Nothing here yet, but we keep it as an API place holder.
+	// Maximum size in bytes of a tree stored directly in the database.  Trees
+	// over this size will be written out to separate files.
+	TreeMaxSize int
 
+	// Sets the strategy to use for tree storage.
+	TreeStrategy TreeStrategyType
+
+	// Path to an alternative storage location.
+	ExternalStore string
 }
 
 // Entry is an interface for items returned from listing methods like
@@ -55,9 +80,23 @@ type Entry interface {
 // file permissions are set to 0700, when opening an existing database file
 // permissions are not modified.
 func Open(path string, options *Options) (db *DB, err error) {
-	db = new(DB)
 
-	db.db, err = bolt.Open(path, 0700, nil)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		err := os.Mkdir(path, 0700)
+		if err != nil {
+			return nil, err
+		}
+		if options != nil && options.ExternalStore == "" {
+			err := os.Mkdir(filepath.Join(path, "c4"), 0700)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+	}
+	db_path := filepath.Join(path, "db")
+	db = new(DB)
+	db.db, err = bolt.Open(db_path, 0700, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -83,32 +122,44 @@ func (db *DB) Close() error {
 }
 
 type Stats struct {
-	Trees     int
-	Keys      int
-	Links     int
-	TreesSize uint64
+	Keys       int
+	KeyIndexes int
+	Trees      int
+	Links      int
+	TreesSize  uint64
 }
 
 func (db *DB) Stats() *Stats {
 	var st Stats
 	err := db.db.View(func(t *bolt.Tx) error {
-		keyb := t.Bucket(keyBucket)
-		c := keyb.Cursor()
+		info := t.Bucket(keyBucket).Stats()
+		st.Keys = info.KeyN
+		info = t.Bucket(indexBucket).Stats()
+		st.KeyIndexes = info.KeyN
+		info = t.Bucket(linkBucket).Stats()
+		st.Links = info.KeyN
+		info = t.Bucket(treeBucket).Stats()
+		st.Trees = info.KeyN
+		if info.LeafInuse >= 96 {
+			st.TreesSize = uint64(info.LeafInuse - 96)
+		}
+		// keyb := t.Bucket(keyBucket)
+		// c := keyb.Cursor()
 
-		for k, _ := c.First(); k != nil; k, _ = c.Next() {
-			st.Keys++
-		}
-		linkb := t.Bucket(linkBucket)
-		c = linkb.Cursor()
-		for k, _ := c.First(); k != nil; k, _ = c.Next() {
-			st.Links++
-		}
-		treeb := t.Bucket(treeBucket)
-		c = treeb.Cursor()
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			st.Trees++
-			st.TreesSize += uint64(len(v))
-		}
+		// for k, _ := c.First(); k != nil; k, _ = c.Next() {
+		// 	st.Keys++
+		// }
+		// linkb := t.Bucket(linkBucket)
+		// c = linkb.Cursor()
+		// for k, _ := c.First(); k != nil; k, _ = c.Next() {
+		// 	st.Links++
+		// }
+		// treeb := t.Bucket(treeBucket)
+		// c = treeb.Cursor()
+		// for k, v := c.First(); k != nil; k, v = c.Next() {
+		// 	st.Trees++
+		// 	st.TreesSize += uint64(len(v))
+		// }
 		return nil
 	})
 	if err != nil {
@@ -592,4 +643,102 @@ func (db *DB) TreeDelete(tree c4.Digest) error {
 		b := t.Bucket(treeBucket)
 		return b.Delete(tree)
 	})
+}
+
+type Tx struct {
+	db       *bolt.DB
+	count    int
+	chanchan chan chan *entry
+	enCh     chan *entry
+	errCh    chan error
+}
+
+func (t *Tx) KeySet(key string, digest c4.Digest) {
+	en := entry_pool.Get().(*entry)
+	en.k = []byte(key)
+	en.v = digest
+	t.enCh <- en
+	t.count++
+	if t.count%10000 == 0 {
+		close(t.enCh)
+		t.enCh = make(chan *entry)
+		t.chanchan <- t.enCh
+	}
+}
+
+func (t *Tx) Err() error {
+	select {
+	case err := <-t.errCh:
+		return err
+	default:
+	}
+	return nil
+}
+
+func (t *Tx) close() {
+	close(t.enCh)
+	close(t.chanchan)
+	close(t.errCh)
+}
+
+func (t *Tx) start() {
+	t.chanchan = make(chan chan *entry)
+	t.enCh = make(chan *entry)
+	t.errCh = make(chan error, 1)
+	go func() {
+		for dbin := range t.chanchan {
+			t.db.Batch(func(tx *bolt.Tx) error {
+				b := tx.Bucket(keyBucket)
+				xb := tx.Bucket(indexBucket)
+				for en := range dbin {
+					data := b.Get(en.k)
+					err := b.Put(en.k, en.v)
+					if err != nil {
+						return err
+					}
+					xk := append(en.v, en.k...)
+					err = xb.Put(xk, []byte{byte(1)})
+					if err != nil {
+						return err
+					}
+					// If there was a value set on the key previously we must copy the bytes.
+					if data != nil {
+						// previous = make([]byte, 64)
+						// copy(previous, data)
+						data = append(data, en.k...)
+						err := xb.Delete(xk)
+						if err != nil {
+							return err
+						}
+					}
+					entry_pool.Put(en)
+
+					if err != nil {
+						select {
+						case t.errCh <- err:
+						default:
+						}
+					}
+				}
+				return nil
+			})
+		}
+	}()
+	t.chanchan <- t.enCh
+}
+
+func (db *DB) KeyBatch(f func(*Tx) bool) {
+
+	// To write to the db in batches of 10k items, we create a channel
+	// of channels, starting a new batch after each inner channel is closed.
+	t := new(Tx)
+	t.db = db.db
+	t.start()
+
+	defer t.close()
+
+	for f(t) {
+	}
+
+	return
 }

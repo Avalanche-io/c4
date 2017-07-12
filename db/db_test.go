@@ -46,8 +46,6 @@ func TestKeyApi(t *testing.T) {
 	}
 	defer done()
 
-	_ = db
-
 	t.Run("Key Set, Get, Find, Delete", func(t *testing.T) {
 		id := c4.Identify(strings.NewReader("foo"))
 		key := "test/key/path"
@@ -450,7 +448,7 @@ func TestTreeApi(t *testing.T) {
 		if st.Trees != 1 || st.TreesSize/64 != 202 {
 			t.Errorf("error tree has incorrect stats before delete")
 		}
-		t.Logf("Stats Trees:%d, Keys:%d, Links:%d, TreesSize:%d\n", st.Trees, st.Keys, st.Links, st.TreesSize)
+		t.Logf("Stats Trees:%d, Keys:%d, Indexes: %d, Links:%d, TreesSize:%d(%d)\n", st.Trees, st.Keys, st.KeyIndexes, st.Links, st.TreesSize, st.TreesSize/64)
 		err = db.TreeDelete(tree_digest)
 		if err != nil {
 			t.Errorf("failed to delete tree")
@@ -458,8 +456,37 @@ func TestTreeApi(t *testing.T) {
 		st = db.Stats()
 		if st.Trees != 0 || st.TreesSize != 0 {
 			t.Errorf("error tree has incorrect stats after delete")
+			t.Errorf("Stats Trees:%d, Keys:%d, Indexes: %d, Links:%d, TreesSize:%d(%d)\n", st.Trees, st.Keys, st.KeyIndexes, st.Links, st.TreesSize, st.TreesSize/64)
 		}
 	})
+
+}
+
+func TestBatching(t *testing.T) {
+	db_filename := "test.db"
+	c4db, done, err := mkdb(db_filename, t)
+	if err != nil {
+		t.Errorf("error opening db at %q: %q", db_filename, err)
+	}
+	defer done()
+
+	c4db.KeyBatch(func(tx *db.Tx) bool {
+		for i := 0; i < 100000; i++ {
+			tx.KeySet(strconv.Itoa(i), randomDigest())
+			if tx.Err() != nil {
+				t.Errorf("error during batch write")
+				return false
+			}
+		}
+		return false
+	})
+
+	st := c4db.Stats()
+	t.Logf("Stats Trees:%d, Keys:%d, Indexes: %d, Links:%d, TreesSize:%d(%d)\n", st.Trees, st.Keys, st.KeyIndexes, st.Links, st.TreesSize, st.TreesSize/64)
+	if st.Keys != 100000 {
+		t.Errorf("error tree has incorrect stats after delete")
+		t.Errorf("Stats Trees:%d, Keys:%d, Indexes: %d, Links:%d, TreesSize:%d(%d)\n", st.Trees, st.Keys, st.KeyIndexes, st.Links, st.TreesSize, st.TreesSize/64)
+	}
 
 }
 
@@ -470,11 +497,3 @@ func randomDigest() c4.Digest {
 	rand.Read(data[:])
 	return c4.Identify(bytes.NewReader(data[:])).Digest()
 }
-
-// New API
-//
-// db.Stats() *Stats...
-//
-// db.Batch(chan chan Entry, block_size int) (progress chan int, errors chan error)
-//
-//
