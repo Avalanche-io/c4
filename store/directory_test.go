@@ -10,22 +10,22 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/cheekybits/is"
-
 	"github.com/Avalanche-io/c4/store"
 )
 
 // Create temp folder and return function to delete it.
-func setup(t *testing.T, test_name string) (is.I, string, func()) {
-	is := is.New(t)
+func setup(t *testing.T, test_name string) (string, func()) {
+
 	prefix := fmt.Sprintf("c4_%s_tests", test_name)
-	dir, err := ioutil.TempDir("/tmp", prefix)
-	is.NoErr(err)
-	return is, dir, func() { os.RemoveAll(dir) }
+	dir, err := ioutil.TempDir("", prefix)
+	if err != nil {
+
+	}
+	return dir, func() { os.RemoveAll(dir) }
 }
 
 func TestDirectorySaveLoad(t *testing.T) {
-	is, dir, done := setup(t, "store")
+	dir, done := setup(t, "store")
 	defer done()
 	path := filepath.Join(dir, "test_director.dir")
 	format := "%04d"
@@ -39,36 +39,58 @@ func TestDirectorySaveLoad(t *testing.T) {
 
 	// Open file
 	f, err := os.Create(path)
-	is.NoErr(err)
+	if err != nil {
+		t.Fatalf("unable to create %q: %s", path, err)
+	}
 
 	// test io.Reader interface
 	n, err := io.Copy(f, d)
-	is.NoErr(err)
-	is.Equal(n, 49)
+	if err != nil {
+		t.Fatalf("unable to copy Directory: %s", err)
+	}
+	if n != 49 {
+		t.Errorf("incorrect result expecting %d got %d\n", 49, n)
+	}
+
 	// close file
 	err = f.Close()
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("Crror closing file: %s", err)
+	}
 
 	// Open
 	var d2 store.Directory
 	f2, err := os.Open(path)
-	is.NoErr(err)
+	if err != nil {
+		t.Fatalf("unable to create %q: %s", path, err)
+	}
+
 	n, err = io.Copy(&d2, f2)
-	is.NoErr(err)
-	is.Equal(n, 49)
+	if err != nil {
+		t.Fatalf("unable to copy Directory: %s", err)
+	}
+	if n != 49 {
+		t.Errorf("incorrect result expecting %d got %d\n", 49, n)
+	}
+
 	// close file
 	err = f2.Close()
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error closing file: %s", err)
+	}
 
-	is.Equal(len(d2), 10)
+	if len(d2) != 10 {
+		t.Errorf("incorrect result expecting %d got %d\n", 10, len(d2))
+	}
+
 	for i, name := range d2 {
-		is.Equal(name, fmt.Sprintf(format, i))
+		if name != fmt.Sprintf(format, i) {
+			t.Errorf("incorrect result at %d expecting got %d\n", fmt.Sprintf(format, i), name)
+		}
 	}
 }
 
 func TestDirectorySorting(t *testing.T) {
-	is := is.New(t)
-	_ = is
 	size := 22
 	format := "foo %d"
 	list := shuffle(format, size)
@@ -78,7 +100,9 @@ func TestDirectorySorting(t *testing.T) {
 		d.Insert(name)
 	}
 	for i, name := range d {
-		is.Equal(name, fmt.Sprintf(format, i))
+		if name != fmt.Sprintf(format, i) {
+			t.Errorf("incorrect result at %d expecting got %d\n", fmt.Sprintf(format, i), name)
+		}
 	}
 	var d2 store.Directory
 	for _, name := range list {
@@ -88,7 +112,9 @@ func TestDirectorySorting(t *testing.T) {
 	// the typical lexicographical order (i.e. the sequence of numbers are preserved).
 	sort.Sort(d2)
 	for i, name := range d2 {
-		is.Equal(name, fmt.Sprintf(format, i))
+		if name != fmt.Sprintf(format, i) {
+			t.Errorf("incorrect result at %d expecting got %d\n", fmt.Sprintf(format, i), name)
+		}
 	}
 }
 

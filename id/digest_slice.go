@@ -19,20 +19,22 @@ type DigestSlice []Digest
 //
 // For example if d is already item 5 of the slice Insert will return -6. A
 // return value of -1 means d was inserted at position 0 if d is not nil.
-func (s *DigestSlice) Insert(d Digest) int {
+func (ds *DigestSlice) Insert(d Digest) int {
+	s := *ds
 	if d == nil {
 		return -1
 	}
 	i := s.Index(d)
 
 	// d is already in the slice.
-	if i < len(*s) && bytes.Compare((*s)[i], d) == 0 {
+	if i < len(s) && bytes.Compare(s[i], d) == 0 {
 		return -(i + 1)
 	}
-	(*s) = append(*s, nil)
+	s = append(s, nil)
 
-	copy((*s)[i+1:], (*s)[i:])
-	(*s)[i] = d
+	copy(s[i+1:], s[i:])
+	s[i] = d
+	*ds = s
 	return i
 }
 
@@ -40,7 +42,8 @@ func (s *DigestSlice) Insert(d Digest) int {
 // The Digest is computed by identifying successive pairs of Digests from the slice
 // and iterating across each new list of digest repeating the process until only a
 // single ID remains which is the ID returned as the C4 ID of the items in the slice.
-func (s DigestSlice) Digest() Digest {
+func (ds *DigestSlice) Digest() Digest {
+	s := *ds
 	if len(s) == 0 {
 		return nil
 	}
@@ -71,7 +74,8 @@ func (s DigestSlice) Digest() Digest {
 
 // Index returns the location of x in the DigestSlice, or the index at which
 // x would be inserted into the slice if it is not in the set.
-func (s DigestSlice) Index(x Digest) int {
+func (ds *DigestSlice) Index(x Digest) int {
+	s := *ds
 	return sort.Search(len(s), func(i int) bool { return bytes.Compare(s[i], x) >= 0 })
 }
 
@@ -86,7 +90,8 @@ func print(s []Digest) {
 // entire DigestSlice (64 * it's length).
 // The output of Read is the most compact form of the DigestSlice and
 // cannot be compressed further.
-func (s DigestSlice) Read(p []byte) (int, error) {
+func (ds *DigestSlice) Read(p []byte) (int, error) {
+	s := *ds
 	if len(p) < len(s)*64 {
 		return 0, errors.New("buffer too small")
 	}

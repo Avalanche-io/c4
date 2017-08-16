@@ -89,6 +89,7 @@ func TestKeyApi(t *testing.T) {
 
 	var prefix string
 	t.Run("KeyGetAll", func(t *testing.T) {
+		rand.Seed(42)
 
 		// Create a map of random keys, and a sorted slice of those keys
 		keys := make(map[string]c4.Digest)
@@ -285,7 +286,7 @@ func TestLinkApi(t *testing.T) {
 
 	var delete_digest c4.Digest
 	t.Run("LinkGetAll", func(t *testing.T) {
-
+		rand.Seed(42)
 		// Create a slice of "source" digests
 		digests := make([]c4.Digest, 1000)
 		for i := range digests {
@@ -376,17 +377,19 @@ func TestLinkApi(t *testing.T) {
 		if err != nil {
 			t.Errorf("unable to delete all entries %s", err)
 		}
-		if n != 4 {
-			t.Errorf("unable to delete all entries, expected 4, got %d", n)
+		if n != 5 {
+			t.Errorf("unable to delete all entries, expected 5, got %d", n)
 		}
 
 		n, err = db.LinkDeleteAll()
 		if err != nil {
 			t.Errorf("unable to delete all entries, %q", err)
 		}
-		if n != 5973 {
+		if n != 5939 {
 			t.Errorf("unable to delete all entries, expected 5973, got %d", n)
 		}
+		st := db.Stats()
+		t.Logf("Stats Trees:%d, Keys:%d, Indexes: %d, Links:%d, TreesSize:%d(%d)\n", st.Trees, st.Keys, st.KeyIndexes, st.Links, st.TreesSize, st.TreesSize/64)
 
 		i := 0
 		for en := range db.LinkGetAll() {

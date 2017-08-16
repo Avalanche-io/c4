@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cheekybits/is"
-
 	c4 "github.com/Avalanche-io/c4/time"
 )
 
@@ -14,13 +12,20 @@ const testtime = "Fri Aug 29 2:14:00 EDT 1997"
 
 func TestNewTime(t *testing.T) {
 	// init
-	is := is.New(t)
 	loc, err := time.LoadLocation("US/Eastern")
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error error loading location: %s", err)
+	}
+
 	testday, err := time.ParseInLocation(time.UnixDate, testtime, loc)
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error parsing location: %s", err)
+	}
+
 	ut := c4.NewTime(testday)
-	is.Equal("1997-08-29T06:14:00Z", string(ut))
+	if "1997-08-29T06:14:00Z" != string(ut) {
+		t.Errorf("incorrect result got %q, expected %q", string(ut), "1997-08-29T06:14:00Z")
+	}
 }
 
 func equalTime(t1 time.Time, t2 time.Time) bool {
@@ -29,63 +34,102 @@ func equalTime(t1 time.Time, t2 time.Time) bool {
 
 func TestNow(t *testing.T) {
 	// init
-	is := is.New(t)
 	ut := c4.Now()
-	is.True(equalTime(ut.AsTime(), time.Now()))
+	if !equalTime(ut.AsTime(), time.Now()) {
+		t.Errorf("incorrect result, expected times to be equal")
+	}
 }
 
 func TestTimeNil(t *testing.T) {
 	// init
-	is := is.New(t)
 	var ut c4.Time
-	is.True(ut.Nil())
+	if !ut.Nil() {
+		t.Errorf("expected uninitialized time to be nil")
+	}
 }
 
 func TestTimeAsTime(t *testing.T) {
-	// init
-	is := is.New(t)
+
 	loc, err := time.LoadLocation("US/Eastern")
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error error loading location: %s", err)
+	}
+
 	testday, err := time.ParseInLocation(time.UnixDate, testtime, loc)
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error parsing location: %s", err)
+	}
+
 	ut := c4.NewTime(testday)
-	is.Equal(ut.AsTime(), testday.In(time.Local))
+	if ut.AsTime() != testday.In(time.Local) {
+		t.Errorf("incorrect result got %q, expected %q", ut.AsTime(), testday.In(time.Local))
+	}
 }
 
 func TestTimeAge(t *testing.T) {
-	// init
-	is := is.New(t)
+
 	loc, err := time.LoadLocation("US/Eastern")
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error error loading location: %s", err)
+	}
+
 	testday, err := time.ParseInLocation(time.UnixDate, testtime, loc)
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error parsing location: %s", err)
+	}
+
 	ut := c4.NewTime(testday)
 	dif := time.Now().Sub(testday)
 	// There will be slight difference in ut.Age call to time.Now, and
 	// the one in the test, perhaps 10 microseconds is reasonable margin.
 	// Or else use the equalTime function for much larger margin.
-	is.Equal(ut.Age()/(time.Millisecond), dif/(time.Millisecond))
+	age := ut.Age() / (time.Millisecond)
+	if age != dif/(time.Millisecond) {
+		t.Errorf("incorrect result got %q, expected %q", age, dif/(time.Millisecond))
+	}
 }
 
 func TestTimeJSON(t *testing.T) {
-	is := is.New(t)
+
 	loc, err := time.LoadLocation("US/Eastern")
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error error loading location: %s", err)
+	}
+
 	testday, err := time.ParseInLocation(time.UnixDate, testtime, loc)
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error parsing location: %s", err)
+	}
+
 	ut := c4.NewTime(testday)
-	is.Equal("1997-08-29T06:14:00Z", string(ut))
+	if "1997-08-29T06:14:00Z" != string(ut) {
+		t.Errorf("incorrect result got %q, expected %q", string(ut), "1997-08-29T06:14:00Z")
+	}
+
 	data, err := json.Marshal(ut)
-	is.NoErr(err)
-	is.Equal("\"1997-08-29T06:14:00Z\"", string(data))
+	if err != nil {
+		t.Errorf("error marshaling json: %s", err)
+	}
+
+	if "\"1997-08-29T06:14:00Z\"" != string(data) {
+		t.Errorf("incorrect result got %q, expected %q", string(data), "\"1997-08-29T06:14:00Z\"")
+	}
 }
 
 func TestTimeAdd(t *testing.T) {
-	is := is.New(t)
+
 	loc, err := time.LoadLocation("US/Eastern")
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error error loading location: %s", err)
+	}
+
 	testday, err := time.ParseInLocation(time.UnixDate, testtime, loc)
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("error parsing location: %s", err)
+	}
+
 	ut := c4.NewTime(testday)
-	is.Equal("1997-08-30T06:14:00Z", string(ut.Add(c4.Day)))
+	if "1997-08-30T06:14:00Z" != string(ut.Add(c4.Day)) {
+		t.Errorf("incorrect result got %q, expected %q", string(ut.Add(c4.Day)), "1997-08-30T06:14:00Z")
+	}
 }

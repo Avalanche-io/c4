@@ -1,24 +1,17 @@
 // Package store implements a c4 based file storage system.
 //
-// A key/value store is used to map file paths to C4 IDs.
-// In storage files are named by their C4 ID so the key can be mapped to the actual file
-// data. Store functions as a file system, and users need not interact with C4 IDs at all.
+// The `store` API presents a simple key/value interface that maps
+// keys to files. The API provides typical file access operations similar to
+// the `os` package `Open`, `Create`, etc. When a file is created or opened for
+// writing the data is written to a temporary location, and C4 identification
+// happens as data is written to the file.  When the file is closed the data
+// is moved into the storage location and named by it's C4 ID.
+// The C4 ID is then associated with the Key in the key/value database.
 //
-// Store implements a copy-on-write model, and implicitly de-duplicates data.
-//
-// All files are stored read only. When files are opened for writing they are opened
-// in a temporary path. On close these files are moved to the storage path and renamed to
-// their C4 ID if it does not already exist.
-//
-// Identification is done progressively whenever data is written to a file.
-//
-// When new paths are added an internally managed 'directory' file is automatically
-// updated to add or remove names.
-//
-// Store also stores the filesystem metadata of each file, and has the ability to store
-// any amount of additional metadata.
-//
-// Store does not implement linking since links have no meaning in a de-duplicated file
-// system.
+// The file data is stored only once per C4 ID which implicitly de-duplicates
+// the data. When files are deleted, they are not deleted immediately but
+// rather marked for deletion. Once space is needed `store` will reclaim space
+// by deleting the oldest files marked for deletion. A 'destroy' method is
+// provided for removing files immediately.
 //
 package store
