@@ -6,11 +6,9 @@ import (
 	"testing"
 
 	c4 "github.com/Avalanche-io/c4/id"
-	"github.com/cheekybits/is"
 )
 
 func TestMarshalJSON(t *testing.T) {
-	is := is.New(t)
 
 	type testType struct {
 		Name string `json:"name"`
@@ -36,13 +34,16 @@ func TestMarshalJSON(t *testing.T) {
 		},
 	} {
 		actual, err := json.Marshal(test.In)
-		is.NoErr(err)
-		is.Equal(string(actual), test.Exp)
+		if err != nil {
+			t.Errorf("unexpected error %q", err)
+		}
+		if string(actual) != test.Exp {
+			t.Errorf("results do not match got %q, expected %q", string(actual), test.Exp)
+		}
 	}
 }
 
 func TestUnarshalJSON(t *testing.T) {
-	is := is.New(t)
 
 	type testType struct {
 		Name string `json:"name"`
@@ -65,8 +66,16 @@ func TestUnarshalJSON(t *testing.T) {
 
 		testObject := testType{}
 		err := json.Unmarshal([]byte(test.In), &testObject)
-		is.NoErr(err)
+		if err != nil {
+			t.Errorf("unexpected error %q", err)
+		}
 
-		is.Equal(testObject, test.Exp)
+		if testObject.ID == nil {
+			if test.Exp.ID != nil {
+				t.Errorf("results do not match got %v, expected %v", testObject, test.Exp)
+			}
+		} else if testObject.Name != test.Exp.Name || testObject.ID.String() != test.Exp.ID.String() {
+			t.Errorf("results do not match got %v, expected %v", testObject, test.Exp)
+		}
 	}
 }
