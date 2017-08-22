@@ -6,12 +6,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/etcenter/c4/asset"
+	c4 "github.com/Avalanche-io/c4/id"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-func encode(src io.Reader) *asset.ID {
-	e := asset.NewIDEncoder()
+func encode(src io.Reader) *c4.ID {
+	e := c4.NewEncoder()
 	_, err := io.Copy(e, src)
 	if err != nil {
 		panic(err)
@@ -19,7 +19,7 @@ func encode(src io.Reader) *asset.ID {
 	return e.ID()
 }
 
-func fileID(path string) (id *asset.ID) {
+func fileID(path string) (id *c4.ID) {
 	f, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to identify %s. %v\n", path, err)
@@ -30,13 +30,13 @@ func fileID(path string) (id *asset.ID) {
 	return
 }
 
-func nullId() *asset.ID {
-	e := asset.NewIDEncoder()
+func nullId() *c4.ID {
+	e := c4.NewEncoder()
 	io.Copy(e, strings.NewReader(``))
 	return e.ID()
 }
 
-func printID(id *asset.ID) {
+func printID(id *c4.ID) {
 	if terminal.IsTerminal(int(os.Stdout.Fd())) {
 		fmt.Printf("%s\n", id.String())
 	} else {

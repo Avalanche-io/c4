@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/etcenter/c4/asset"
+	c4 "github.com/Avalanche-io/c4/id"
 )
 
 func newItem(path string) (item map[string]interface{}) {
@@ -30,7 +30,7 @@ func newItem(path string) (item map[string]interface{}) {
 	return item
 }
 
-func walkFilesystem(depth int, filename string, relative_path string) (id *asset.ID) {
+func walkFilesystem(depth int, filename string, relative_path string) (id *c4.ID) {
 	path, err := filepath.Abs(filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to find absolute path for %s. %s\n", filename, err)
@@ -52,8 +52,8 @@ func walkFilesystem(depth int, filename string, relative_path string) (id *asset
 			id = nullId()
 		} else {
 			item["link"] = newFilepath
-			var linkId asset.IDSlice
-			linkId.Push(walkFilesystem(depth-1, newFilepath, relative_path))
+			var linkId c4.Slice
+			linkId.Insert(walkFilesystem(depth-1, newFilepath, relative_path))
 			id = linkId.ID()
 		}
 	} else {
@@ -63,10 +63,10 @@ func walkFilesystem(depth int, filename string, relative_path string) (id *asset
 				fmt.Fprintf(os.Stderr, "Unable to read directory: %v\n", err)
 				os.Exit(1)
 			}
-			var childIDs asset.IDSlice
+			var childIDs c4.Slice
 			for _, file := range files {
 				path := filename + string(filepath.Separator) + file.Name()
-				childIDs.Push(walkFilesystem(depth-1, path, relative_path))
+				childIDs.Insert(walkFilesystem(depth-1, path, relative_path))
 			}
 			id = childIDs.ID()
 		} else {
