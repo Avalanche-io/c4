@@ -1,10 +1,10 @@
-// Package c4 contains Go implementations for core C4 concepts.
+// Package asset contains Go implementations C4 asset identification.
 //
 // Creating IDs
 //
 // To create a C4 ID, use the IDEncoder type as a hash writer.
 //
-//     e := c4.NewIDEncoder()
+//     e := asset.NewIDEncoder()
 //     io.Copy(e, src)
 //     id := e.ID()
 //
@@ -12,5 +12,5 @@
 //
 // To parse an ID from a string, use the ParseID function.
 //
-//     c4.ParseID(src)
-package c4
+//     asset.ParseID(src)
+package asset
