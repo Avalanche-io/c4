@@ -9,7 +9,7 @@
 
 C4 the Cinema Content Creation Cloud is an open source framework for content creation using remote resources.
 
-This repos holds the reference implementation of the C4 framework as a collection of go packages. Other languages can be fund under the Avalanch-io organization.
+This repos holds the reference implementation of the C4 framework and source for the command line tools.
 
 Command line tools are built from this repository, see releases for information about the latest builds.
 
@@ -46,11 +46,12 @@ See the [README.md](id/README.md) in the `id` package for more information.
 
 ### Releases 
 
-Current release:
+Current release: [v0.7.0](https://github.com/Avalanche-io/c4/tree/v0.7.0)
 
-Previous Releases
+#### Previous Releases:
 
-[v0.6.0](https://github.com/Avalanche-io/c4/tree/v0.6.0) **Warning this version uses an incorrect character set for C4 IDs**
+**Warning this version uses an incorrect character set for C4 IDs**
+[v0.6.0](https://github.com/Avalanche-io/c4/tree/v0.6.0) 
 
 ### Contributing
 
