@@ -8,12 +8,12 @@ import (
 // Type tree implements an ID tree as used for calculating IDs of non-contiguous
 // sets of data. The tree represents a type of merkle tree, the only differences
 // being that the starting list of IDs is in sorted order, and each node in the
-// tree is always hashed with lesser child ID first. This is done so that
+// tree is always hashed with the lesser child ID first. This is done so that
 // a given set of IDs always has the same root ID, and so that any pair of
-// ID is always IDed the same way.
+// IDs is always IDed the same way.
 
 // To avoid storing a given ID more than once an entire tree is stored as
-// slice of IDs in the same was as is typical for a balanced binary tree.
+// slice of IDs in the same way balanced binary trees are serialized.
 
 type Tree struct {
 	data []byte
@@ -39,7 +39,7 @@ func (t *Tree) IDcount() int {
 }
 
 func (t *Tree) NodeCount() int {
-	return len(t.data) / 64
+	return t.Length() - t.Count()
 }
 
 func (t *Tree) RowCount() int {
@@ -130,7 +130,7 @@ type Node struct {
 	// pointer to the tree that this node references
 	t *Tree
 	// the row and index of this node
-	row, i uint64
+	row, i int
 }
 
 // // A tree index maps Digests to the node within a tree for which the Digest
@@ -162,10 +162,25 @@ type Node struct {
 // 	return &idx
 // }
 
-func (t *Tree) Node(i uint64) Node {
+func (t *Tree) Node(index uint64) Node {
+	i := int(index)
+
+	var row int
+
+	// count := 0
+	for k, r := range t.rows {
+		row = k
+		l := len(r) / 64
+		if i < l {
+			break
+		}
+		i -= l
+	}
+
 	return Node{
-		t: t,
-		i: i,
+		t:   t,
+		row: row,
+		i:   i,
 	}
 }
 
@@ -189,7 +204,7 @@ func (n Node) Label() Digest {
 
 func (n Node) Left() Digest {
 	row := n.row + 1
-	if row >= uint64(len(n.t.rows)) {
+	if row >= len(n.t.rows) {
 		return nil
 	}
 	i := n.i * 2 * 64
@@ -198,9 +213,12 @@ func (n Node) Left() Digest {
 
 func (n Node) Right() Digest {
 	row := n.row + 1
-	if row >= uint64(len(n.t.rows)) {
+	if row >= len(n.t.rows) {
 		return nil
 	}
-	i := (n.i + 1) * 2 * 64
+	i := (n.i*2 + 1) * 64
+	if i >= len(n.t.rows[row]) {
+		return nil
+	}
 	return Digest(n.t.rows[row][i : i+64])
 }

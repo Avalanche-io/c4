@@ -229,8 +229,6 @@ func TestKeyApi(t *testing.T) {
 
 	})
 
-	// db.KeyClock(key) uint64
-
 }
 
 func TestLinkApi(t *testing.T) {
@@ -240,8 +238,6 @@ func TestLinkApi(t *testing.T) {
 		t.Errorf("error opening db at %q: %q", db_filename, err)
 	}
 	defer done()
-
-	_ = db
 
 	t.Run("Link Set, Get, Delete", func(t *testing.T) {
 		foo_id := c4.Identify(strings.NewReader("foo"))

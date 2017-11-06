@@ -3,10 +3,13 @@ package id_test
 import (
 	"bytes"
 	"encoding/binary"
-	// "fmt"
+	"math/rand"
+	"sort"
 	"testing"
+	"time"
 
 	c4 "github.com/Avalanche-io/c4/id"
+	"github.com/xtgo/set"
 )
 
 func TestTree(t *testing.T) {
@@ -22,7 +25,6 @@ func TestTree(t *testing.T) {
 		t.Fatalf("NewTree failed")
 	}
 	tree.Compute()
-	// fmt.Printf("tree id: %s\n", tree.Compute().ID())
 
 	for i, k := 0, len(test_vector_ids)-1; i < tree.RowCount(); i, k = i+1, k-1 {
 
@@ -66,7 +68,6 @@ func TestTree(t *testing.T) {
 func TestTreeEncoding(t *testing.T) {
 	for length := 3; length < 1024; length++ {
 
-		// build a list of IDs
 		var list c4.DigestSlice
 
 		// Create `length` IDs
@@ -114,4 +115,46 @@ func TestTreeEncoding(t *testing.T) {
 			t.Fatalf("tree os size %d failed to recompute ID correctly", length)
 		}
 	}
+}
+
+func TestNodes(t *testing.T) {
+	// build a list of IDs
+	var list c4.DigestSlice
+
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Randomized length
+	length := rnd.Intn(92372) + 2983
+	t.Log("length: ", length)
+	// Create `length` IDs
+	for i := 0; i < length; i++ {
+		var buf [8]byte
+		binary.PutVarint(buf[:], int64(i))
+		id := c4.Identify(bytes.NewReader(buf[:]))
+		if id == nil || id == c4.NIL_ID {
+			t.Fatalf("bad int conversion")
+		}
+		list = append(list, id.Digest())
+	}
+
+	sort.Sort(&list)
+	n := set.Uniq(&list)
+	list = list[:n]
+
+	tree := c4.NewTree(list)
+	for i := 0; i < tree.NodeCount(); i++ {
+		node := tree.Node(uint64(i))
+		label := node.Label()
+		left := node.Left()
+		right := node.Right()
+		_ = right
+		switch {
+		case label == nil:
+			t.Fatalf("Label() of node %d == nil", i)
+		case left == nil:
+			t.Fatalf("Left() of node %d == nil", i)
+
+		}
+	}
+
 }

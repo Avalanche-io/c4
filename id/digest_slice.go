@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+
+	"github.com/xtgo/set"
 )
 
 // A DigestSlice represents a sorted list of unique Digests, and can be used to
@@ -114,4 +116,30 @@ func (s *DigestSlice) Write(p []byte) (int, error) {
 		s.Insert(d)
 	}
 	return len(p), nil
+}
+
+func (s *DigestSlice) Append(d Digest) {
+	(*s) = append((*s), d)
+}
+
+func (a *DigestSlice) Copy(b *DigestSlice) {
+	for _, digest := range *b {
+		a.Append(digest)
+	}
+}
+
+// Sort interface
+
+func (s *DigestSlice) Len() int           { return len(*s) }
+func (s *DigestSlice) Swap(i, j int)      { (*s)[i], (*s)[j] = (*s)[j], (*s)[i] }
+func (s *DigestSlice) Less(i, j int) bool { return s.Comp(i, j) < 0 }
+
+func (s *DigestSlice) Comp(i, j int) int {
+	return bytes.Compare((*s)[i], (*s)[j])
+}
+
+func (s *DigestSlice) Sort() {
+	sort.Sort(s)
+	n := set.Uniq(s)
+	(*s) = (*s)[:n]
 }
