@@ -59,7 +59,7 @@ func TestIdentification(t *testing.T) {
 	for i, test := range test_vectors {
 		c4id := c4.Identify(bytes.NewReader([]byte(test)))
 		if c4id.String() != test_vector_ids[0][i] {
-			t.Error("IDs don't match, got %q expected %q", c4id.String(), test_vector_ids[0][i])
+			t.Errorf("IDs don't match, got %q expected %q", c4id.String(), test_vector_ids[0][i])
 		}
 
 	}
@@ -115,7 +115,7 @@ func TestDigestSum(t *testing.T) {
 		}
 
 		if id.String() != test_vector_ids[0][i] {
-			t.Error("IDs don't match, got %q expected %q", id.String(), test_vector_ids[0][i])
+			t.Errorf("IDs don't match, got %q expected %q", id.String(), test_vector_ids[0][i])
 		}
 
 		test_data = append(test_data, testDataType{s, id, test_vector_ids[0][i], dig})
@@ -164,7 +164,7 @@ func TestDigestSum(t *testing.T) {
 			// Check Sum produces the expected ID
 
 			if bytes.Compare(testsum1, sum) != 0 {
-				t.Error("Digests don't match, got %q expected %q", testsum1, sum)
+				t.Errorf("Digests don't match, got %q expected %q", testsum1, sum)
 			}
 			// Check that Sum did not alter l, or r
 			if bytes.Compare([]byte(r), rbytes) != 0 {
@@ -178,7 +178,7 @@ func TestDigestSum(t *testing.T) {
 			testsum2 := c4.Digest(pair[:64]).Sum(pair[64:])
 
 			if bytes.Compare(testsum2, sum) != 0 {
-				t.Error("IDs don't match, got %q expected %q", testsum2, sum)
+				t.Errorf("IDs don't match, got %q expected %q", testsum2, sum)
 			}
 
 			pair = pair[:0]
@@ -203,20 +203,20 @@ func TestDigestSlice(t *testing.T) {
 	}
 	t.Run("Order", func(t *testing.T) {
 		if len(digests) != len(test_vectors) {
-			t.Error("lengths do not match got %d, expected %d", len(digests), len(test_vectors))
+			t.Errorf("lengths do not match got %d, expected %d", len(digests), len(test_vectors))
 		}
 		sorted_test_vector_ids := make([]string, len(test_vector_ids[0]))
 		copy(sorted_test_vector_ids, test_vector_ids[0])
 		sort.Strings(sorted_test_vector_ids)
 		for i, idstring := range sorted_test_vector_ids {
 			if idstring != digests[i].ID().String() {
-				t.Error("IDs don't match, got %q expected %q", idstring, digests[i].ID().String())
+				t.Errorf("IDs don't match, got %q expected %q", idstring, digests[i].ID().String())
 			}
 		}
 
 		c4id := digests.Digest().ID()
 		if c4id.String() != "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq" {
-			t.Error("IDs don't match, got %q expected %q", c4id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
+			t.Errorf("IDs don't match, got %q expected %q", c4id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
 		}
 	})
 
@@ -226,7 +226,7 @@ func TestDigestSlice(t *testing.T) {
 			copy(data[s*64:], []byte(digest))
 		}
 		if len(data) != len(digests)*64 {
-			t.Error("lengths do not match got %d, expected %d", len(data), len(digests)*64)
+			t.Errorf("lengths do not match got %d, expected %d", len(data), len(digests)*64)
 		}
 		test_data := make([]byte, len(digests)*64)
 		n, err := digests.Read(test_data)
@@ -235,7 +235,7 @@ func TestDigestSlice(t *testing.T) {
 		}
 
 		if n != len(data) {
-			t.Error("lengths do not match got %d, expected %d", n, len(data))
+			t.Errorf("lengths do not match got %d, expected %d", n, len(data))
 		}
 		if bytes.Compare(data, test_data) != 0 {
 			t.Errorf("data doesn't match")
@@ -247,10 +247,10 @@ func TestDigestSlice(t *testing.T) {
 			t.Errorf("unexpected error %q", err)
 		}
 		if n != len(data) {
-			t.Error("lengths do not match got %d, expected %d", n, len(data))
+			t.Errorf("lengths do not match got %d, expected %d", n, len(data))
 		}
 		if len(digests) != len(digests2) {
-			t.Error("lengths do not match got %d, expected %d", len(digests), len(digests2))
+			t.Errorf("lengths do not match got %d, expected %d", len(digests), len(digests2))
 		}
 		for i, digest := range digests {
 			if digest.ID().String() != digests2[i].ID().String() {
@@ -269,7 +269,7 @@ func TestDigest(t *testing.T) {
 	id := c4.Digest(b).ID()
 
 	if id.String() != `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ` {
-		t.Error("IDs don't match, got %q expected %q", id.String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
+		t.Errorf("IDs don't match, got %q expected %q", id.String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
 	}
 
 	id2, err := c4.Parse(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111121`)

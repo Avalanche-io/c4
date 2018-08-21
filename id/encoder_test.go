@@ -73,7 +73,7 @@ func TestIDEncoderReset(t *testing.T) {
 		id1 := e.ID()
 		id2 := e2.ID()
 		if id1.String() != id2.String() {
-			t.Error("IDs don't match, got %q expected %q", id1.String(), id2.String())
+			t.Errorf("IDs don't match, got %q expected %q", id1.String(), id2.String())
 		}
 		e.Reset()
 	}
