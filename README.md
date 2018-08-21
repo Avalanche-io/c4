@@ -6,7 +6,7 @@
 [![Stories in Ready](https://badge.waffle.io/Avalanche-io/c4.png?label=ready&title=Ready)](https://waffle.io/Avalanche-io/c4)
 [![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
 
-_**Note:** The C4 ID package has recently moved from `github.com/Avalanche-io/c4/id` to `github.com/Avalanche-io/c4`, and the API has been cleaned up considerably to perform better and and be easier to use. While deprecated the previous C4 ID API will continue to work and remain unchanged at the current `c4/id` path to give users time to switch._
+_**Note:** The C4 ID package has recently moved from `github.com/Avalanche-io/c4/id` to `github.com/Avalanche-io/c4`, and the API has been cleaned up considerably to perform better and be easier to use. While deprecated the previous C4 ID API will continue to work and remain unchanged at the current `c4/id` path to give users time to switch._
 
 This is a Go package that implements the C4 ID system **SMPTE standard ST 2114:2017**. C4 IDs are universally unique and consistent identifiers that standardize the derivation and formatting of data identification so that all users independently agree on the identification of any block or set of blocks of data.
 
