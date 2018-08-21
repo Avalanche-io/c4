@@ -1,57 +1,68 @@
 
-# C4 - The Cinema Content Creation Cloud
+# C4 ID - Universally Unique and Consistent Identification
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![GoDoc](https://godoc.org/github.com/Avalanche-io/c4?status.svg)](https://godoc.org/github.com/avalanche-io/c4)
 [![Stories in Ready](https://badge.waffle.io/Avalanche-io/c4.png?label=ready&title=Ready)](https://waffle.io/Avalanche-io/c4)
 [![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
 
+_**Note:** The C4 ID package has recently moved from `github.com/Avalanche-io/c4/id` to `github.com/Avalanche-io/c4`, and the API has been cleaned up to considerably to perform better and and be easier to use. While deprecated the previous C4 ID API will continue to work and remain unchanged at the current `c4/id` path to give users time to switch._
 
-C4 the Cinema Content Creation Cloud is an open source framework for content creation using remote resources.
+This is a Go package that implements the C4 ID system **SMPTE standard ST 2114:2017**. C4 IDs are a universally unique and consistent identifiers standardize the derivation and formatting of data identification so that all users independently agree on the identification of any given block or set of blocks of data.
 
-This repos holds the reference implementation of the C4 framework and source for the command line tools.
+C4 IDs are 90 character long strings suitable for use in filenames, URLs, database fields, or anywhere else that a string identifier might normally be used. In ram C4 IDs are represented in a 64 byte "digest" format.
 
-Command line tools are built from this repository, see releases for information about the latest builds.
+The `id` package is a go implementation of the C4 ID standard.  It contains tools for generating and parsing C4 IDs, and C4 ID Tree structures.
 
----
-
-## C4 ID 
-The `id` package is a go implementation of the C4 ID standard.  It contains tools for generating and parsing C4 IDs, C4 Digests, and C4 ID Tree structures. 
-
-For documentation see the [godocs](https://godoc.org/github.com/Avalanche-io/c4/id).
-
-To import the package:
+### Example Usage
 
 ```go
-import "github.com/Avalanche-io/c4/id"
+package main
+
+import (
+  "fmt"
+  "strings"
+
+  "github.com/Avalanche-io/c4"
+)
+
+func main() {
+
+  // Generate a C4 ID for any contiguous block of data...
+  id := c4.Identify(strings.NewReader("alfa"))
+  fmt.Println(id)
+  // output: c43zYcLni5LF9rR4Lg4B8h3Jp8SBwjcnyyeh4bc6gTPHndKuKdjUWx1kJPYhZxYt3zV6tQXpDs2shPsPYjgG81wZM1
+
+  // Generate a C4 ID for any number of non-contiguous blocks...
+  var ids c4.IDs
+  var inputs = []string{"alfa", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india"}
+  for _, input := range inputs {
+    ids = append(ids, c4.Identify(strings.NewReader(input)))
+  }
+  fmt.Println(ids.ID())
+  // output: c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq
+}
 ```
-
-### C4 ID - Universally Unique and Consistent Identification
-
-- Videos:
-  - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU)
-  - [The Magic of C4](https://youtu.be/vzh0JzKhY4o)
-
-[C4 ID Whitepaper](http://www.cccc.io/downloads/C4ID%20ETC%20Whitepaper_u2.pdf)
-
-C4 ID, is a SMPTE standard for data identification that is a standardized encoding of a SHA512 hash, and a process for deriving a single C4 ID for any set of C4 IDs. 
-
-The C4 ID system provides an unambiguous, universally unique id for any file or block of data. Unlike other mechanisms of identification, file paths, URLs, UUID, GUID, etc., C4 IDs are not only universally unique, but also universally consistent. This means that users at different locations and times will independently agree on the C4 ID of any data. This allows for consistent and unambiguous identification of data between parties or isolated systems without prior agreement or communication of any kind.
-
-This 'agreement without communication' is the key to enabling interoperability for globally distributed workflows.
-
-See the [README.md](id/README.md) in the `id` package for more information.
 
 ---
 
-### Releases 
+### Releases
 
 Current release: [v0.7.0](https://github.com/Avalanche-io/c4/tree/v0.7.0)
 
 #### Previous Releases:
 
 **Warning this version uses an incorrect character set for C4 IDs**
-[v0.6.0](https://github.com/Avalanche-io/c4/tree/v0.6.0) 
+[v0.6.0](https://github.com/Avalanche-io/c4/tree/v0.6.0)
+
+
+### Links
+
+Videos:
+  - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU)
+  - [The Magic of C4](https://youtu.be/vzh0JzKhY4o)
+
+[C4 ID Whitepaper](http://www.cccc.io/downloads/C4ID%20ETC%20Whitepaper_u2.pdf)
 
 ### Contributing
 
@@ -65,7 +76,7 @@ Feature and bug branches should follow the github integrated naming convention. 
 > git checkout dev
 Switched to branch 'dev'
 Your branch is up-to-date with 'origin/dev'.
-> git checkout -b new/#99_some_github_issue 
+> git checkout -b new/#99_some_github_issue
 ...
 ```
 

@@ -261,10 +261,17 @@ func (d IDs) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 // Provides a computed C4 Tree for the slice of digests
 func (d IDs) Tree() Tree {
-	sort.Sort(d)
+	if !sort.IsSorted(d) {
+		sort.Sort(d)
+	}
 	n := set.Uniq(d)
 	d = d[:n]
 	t := NewTree(d)
 	t.compute()
 	return t
+}
+
+func (d IDs) ID() ID {
+	t := d.Tree()
+	return t.ID()
 }

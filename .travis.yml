@@ -1,14 +1,15 @@
 language: go
 
 go:
-  - 1.7
+  - 1.10.3
 before_install:
   - go get golang.org/x/tools/cmd/cover
   - go get github.com/axw/gocov/gocov
   - go get github.com/modocache/gover
   - go get github.com/mattn/goveralls
 script:
-  - go test -coverprofile=id.coverprofile ./id
+  - go test -coverprofile=id.coverprofile
+  - go test -coverprofile=oldid.coverprofile ./id
   - go test -coverprofile=db.coverprofile ./db
   - go test -coverprofile=util.coverprofile ./util
   - $HOME/gopath/bin/gover
