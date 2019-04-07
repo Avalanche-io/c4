@@ -132,7 +132,7 @@ func (id ID) IsNil() bool {
 func Parse(source string) (ID, error) {
 	var id ID
 	if len(source) == 0 {
-		return id, nil
+		return voidID, errBadLength(len(source))
 	}
 	src := []byte(source)
 	if len(src) != 90 {
