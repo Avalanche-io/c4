@@ -140,7 +140,7 @@ func TestKeyApi(t *testing.T) {
 			count++
 		}
 		if count != len(sorted_keys) {
-			t.Error("wrong number of keys returned %d of %d", count, len(sorted_keys))
+			t.Errorf("wrong number of keys returned %d of %d", count, len(sorted_keys))
 		}
 
 		// We pick an arbitrary key, and trim it to create a prefix

@@ -6,11 +6,10 @@ import (
 	"testing"
 
 	c4 "github.com/Avalanche-io/c4/id"
-	"github.com/cheekybits/is"
 )
 
 func TestSliceSort(t *testing.T) {
-	is := is.New(t)
+
 	var b, s []byte
 	for i := 0; i < 64; i++ {
 		b = append(b, 0xFF)
@@ -27,23 +26,30 @@ func TestSliceSort(t *testing.T) {
 
 	slice.Insert(bigID)
 	slice.Insert(smallID)
-	is.Equal(slice[0].String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
-	is.Equal(slice[1].String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
+
+	if slice[0].String() != `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111` {
+		t.Errorf("ids don't match got %s, expected %s", slice[0].String(), `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`)
+	}
+
+	if slice[1].String() != `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ` {
+		t.Errorf("ids don't match got %s, expected %s", slice[1].String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
+	}
 }
 
 func TestSliceString(t *testing.T) {
-	is := is.New(t)
 
 	var ids c4.Slice
 	id1 := c4.Identify(strings.NewReader("foo"))
 	id2 := c4.Identify(strings.NewReader("bar"))
 	ids.Insert(id1)
 	ids.Insert(id2)
-	is.Equal(ids.String(), id2.String()+id1.String())
+
+	if ids.String() != id2.String()+id1.String() {
+		t.Errorf("ids don't match got %s, expected %s", ids.String(), id2.String()+id1.String())
+	}
 }
 
-func TestSliceSearchIDs(t *testing.T) {
-	is := is.New(t)
+func TestSliceIndex(t *testing.T) {
 
 	var ids c4.Slice
 	id1 := c4.Identify(strings.NewReader("foo"))
@@ -53,7 +59,15 @@ func TestSliceSearchIDs(t *testing.T) {
 	ids.Insert(id1)
 	ids.Insert(id2)
 	ids.Insert(id3)
-	is.Equal(ids.Index(id1), 2)
-	is.Equal(ids.Index(id2), 1)
-	is.Equal(ids.Index(id3), 0)
+
+	if ids.Index(id1) != 2 {
+		t.Errorf("Incorrect Slice Index, got %d, expected %d", ids.Index(id1), 2)
+	}
+	if ids.Index(id2) != 1 {
+		t.Errorf("Incorrect Slice Index, got %d, expected %d", ids.Index(id2), 1)
+	}
+	if ids.Index(id3) != 0 {
+		t.Errorf("Incorrect Slice Index, got %d, expected %d", ids.Index(id3), 0)
+	}
+
 }

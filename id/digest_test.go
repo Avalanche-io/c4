@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	c4 "github.com/Avalanche-io/c4/id"
-	"github.com/cheekybits/is"
 
 	"bytes"
 )
@@ -56,10 +55,13 @@ var test_vector_ids = [][]string{
 }
 
 func TestIdentification(t *testing.T) {
-	is := is.New(t)
-	for i, t := range test_vectors {
-		c4id := c4.Identify(bytes.NewReader([]byte(t)))
-		is.Equal(c4id.String(), test_vector_ids[0][i])
+
+	for i, test := range test_vectors {
+		c4id := c4.Identify(bytes.NewReader([]byte(test)))
+		if c4id.String() != test_vector_ids[0][i] {
+			t.Errorf("IDs don't match, got %q expected %q", c4id.String(), test_vector_ids[0][i])
+		}
+
 	}
 }
 
@@ -91,7 +93,6 @@ func viewBytes(b []byte) string {
 }
 
 func TestDigestSum(t *testing.T) {
-	is := is.New(t)
 	type testDataType struct {
 		Value  string
 		Id     *c4.ID
@@ -104,9 +105,19 @@ func TestDigestSum(t *testing.T) {
 		e.Write([]byte(s))
 		dig := e.Digest()
 		id, err := c4.Parse(test_vector_ids[0][i])
-		is.NoErr(err)
-		is.Equal(id, dig.ID())
-		is.Equal(id.String(), test_vector_ids[0][i])
+
+		if err != nil {
+			t.Errorf("unexpected error %q", err)
+		}
+
+		if id.String() != dig.ID().String() {
+			t.Errorf("IDs don't match, got %q expected %q", id, dig.ID())
+		}
+
+		if id.String() != test_vector_ids[0][i] {
+			t.Errorf("IDs don't match, got %q expected %q", id.String(), test_vector_ids[0][i])
+		}
+
 		test_data = append(test_data, testDataType{s, id, test_vector_ids[0][i], dig})
 
 		e.Reset()
@@ -151,15 +162,25 @@ func TestDigestSum(t *testing.T) {
 			e.Reset()
 
 			// Check Sum produces the expected ID
-			is.Equal(testsum1, sum)
 
+			if bytes.Compare(testsum1, sum) != 0 {
+				t.Errorf("Digests don't match, got %q expected %q", testsum1, sum)
+			}
 			// Check that Sum did not alter l, or r
-			is.Equal(bytes.Compare([]byte(r), rbytes), 0)
-			is.Equal(bytes.Compare([]byte(l), lbytes), 0)
+			if bytes.Compare([]byte(r), rbytes) != 0 {
+				t.Error("Sum altered source r")
+			}
+			if bytes.Compare([]byte(l), lbytes) != 0 {
+				t.Error("Sum altered source l")
+			}
 			t.Logf("\t   testsum1: %s\n\t   sum: %s\n", viewBytes(testsum1), viewBytes(sum))
 
 			testsum2 := c4.Digest(pair[:64]).Sum(pair[64:])
-			is.Equal(testsum2, sum)
+
+			if bytes.Compare(testsum2, sum) != 0 {
+				t.Errorf("IDs don't match, got %q expected %q", testsum2, sum)
+			}
+
 			pair = pair[:0]
 			continue
 		}
@@ -181,59 +202,86 @@ func TestDigestSlice(t *testing.T) {
 		e.Reset()
 	}
 	t.Run("Order", func(t *testing.T) {
-		is := is.New(t)
-		is.Equal(len(digests), len(test_vectors))
+		if len(digests) != len(test_vectors) {
+			t.Errorf("lengths do not match got %d, expected %d", len(digests), len(test_vectors))
+		}
 		sorted_test_vector_ids := make([]string, len(test_vector_ids[0]))
 		copy(sorted_test_vector_ids, test_vector_ids[0])
 		sort.Strings(sorted_test_vector_ids)
 		for i, idstring := range sorted_test_vector_ids {
-			is.Equal(idstring, digests[i].ID().String())
+			if idstring != digests[i].ID().String() {
+				t.Errorf("IDs don't match, got %q expected %q", idstring, digests[i].ID().String())
+			}
 		}
 
 		c4id := digests.Digest().ID()
-		is.Equal(c4id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
+		if c4id.String() != "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq" {
+			t.Errorf("IDs don't match, got %q expected %q", c4id.String(), "c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq")
+		}
 	})
 
 	t.Run("ReaderWriter", func(t *testing.T) {
-		is := is.New(t)
 		data := make([]byte, len(digests)*64)
 		for s, digest := range digests {
 			copy(data[s*64:], []byte(digest))
 		}
-		is.Equal(len(data), len(digests)*64)
+		if len(data) != len(digests)*64 {
+			t.Errorf("lengths do not match got %d, expected %d", len(data), len(digests)*64)
+		}
 		test_data := make([]byte, len(digests)*64)
 		n, err := digests.Read(test_data)
-		is.NoErr(err)
-		is.Equal(n, len(data))
-		is.Equal(bytes.Compare(data, test_data), 0)
+		if err != nil {
+			t.Errorf("unexpected error %q", err)
+		}
+
+		if n != len(data) {
+			t.Errorf("lengths do not match got %d, expected %d", n, len(data))
+		}
+		if bytes.Compare(data, test_data) != 0 {
+			t.Errorf("data doesn't match")
+		}
 
 		var digests2 c4.DigestSlice
 		n, err = digests2.Write(data)
-		is.NoErr(err)
-		is.Equal(n, len(data))
-		is.Equal(len(digests), len(digests2))
+		if err != nil {
+			t.Errorf("unexpected error %q", err)
+		}
+		if n != len(data) {
+			t.Errorf("lengths do not match got %d, expected %d", n, len(data))
+		}
+		if len(digests) != len(digests2) {
+			t.Errorf("lengths do not match got %d, expected %d", len(digests), len(digests2))
+		}
 		for i, digest := range digests {
-			is.Equal(digest.ID(), digests2[i].ID())
+			if digest.ID().String() != digests2[i].ID().String() {
+				t.Errorf("IDs don't match, got %q expected %q", digest.ID(), digests2[i].ID())
+			}
 		}
 	})
 
 }
 
 func TestDigest(t *testing.T) {
-	is := is.New(t)
 	var b []byte
 	for i := 0; i < 64; i++ {
 		b = append(b, 0xFF)
 	}
 	id := c4.Digest(b).ID()
-	is.Equal(id.String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
+
+	if id.String() != `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ` {
+		t.Errorf("IDs don't match, got %q expected %q", id.String(), `c467rpwLCuS5DGA8KGZXKsVQ7dnPb9goRLoKfgGbLfQg9WoLUgNY77E2jT11fem3coV9nAkguBACzrU1iyZM4B8roQ`)
+	}
 
 	id2, err := c4.Parse(`c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111121`)
 	tb2 := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58}
-	is.NoErr(err)
+	if err != nil {
+		t.Errorf("unexpected error %q", err)
+	}
 	b2 := id2.Digest()
 	for i, bb := range b2 {
-		is.Equal(bb, tb2[i])
+		if bb != tb2[i] {
+			t.Errorf("error parsing")
+		}
 	}
 
 	for _, test := range []struct {
@@ -258,9 +306,13 @@ func TestDigest(t *testing.T) {
 		},
 	} {
 		id, err := c4.Parse(test.IdStr)
-		is.NoErr(err)
+		if err != nil {
+			t.Errorf("unexpected error %q", err)
+		}
 		for i, bb := range id.Digest() {
-			is.Equal(bb, test.Bytes[i])
+			if bb != test.Bytes[i] {
+				t.Errorf("error parsing")
+			}
 		}
 	}
 }
