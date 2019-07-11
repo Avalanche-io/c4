@@ -9,6 +9,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 // makepaths makes directories on the real filesystem
 func makepaths(paths ...string) error {
 	for _, path := range paths {

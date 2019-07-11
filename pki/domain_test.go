@@ -10,6 +10,8 @@ import (
 	"github.com/Avalanche-io/c4/pki"
 )
 
+// updated, delete me
+
 func TestDomainSaveLoad(t *testing.T) {
 	is := is.New(t)
 

@@ -20,6 +20,8 @@ import (
 	c4time "github.com/Avalanche-io/c4/time"
 )
 
+// updated, delete me
+
 const DomainKeyUsage x509.KeyUsage = x509.KeyUsageDigitalSignature |
 	x509.KeyUsageKeyEncipherment |
 	x509.KeyUsageDataEncipherment |

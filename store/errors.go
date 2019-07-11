@@ -2,6 +2,8 @@ package store
 
 import "errors"
 
+// updated, delete me
+
 type mkdirError string
 type dirError string
 type noIdError string

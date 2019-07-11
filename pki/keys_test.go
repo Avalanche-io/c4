@@ -10,6 +10,8 @@ import (
 	"github.com/Avalanche-io/c4/pki"
 )
 
+// updated, delete me
+
 func TestKeys(t *testing.T) {
 	is := is.New(t)
 	ent, err := pki.NewUser("john.doe@example.com", pki.EMail)

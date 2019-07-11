@@ -8,6 +8,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 // Signature stores the signing information for a particular ID, and Entity.
 type Signature struct {
 

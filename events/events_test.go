@@ -13,6 +13,8 @@ import (
 	"github.com/Avalanche-io/c4/events"
 )
 
+// updated, delete me
+
 type test_event string
 
 func (e test_event) Event() string {

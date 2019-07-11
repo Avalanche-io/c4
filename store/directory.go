@@ -9,6 +9,8 @@ import (
 	"github.com/Avalanche-io/c4/lang"
 )
 
+// updated, delete me
+
 // Directory is a slice of strings that represents the list of names that are children
 // of the directory.  It only provides the names, to get more information the names must
 // be composed into paths.

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+// updated, delete me
+
 type CompareFunc func(paths []string, info []FileInfo, err []error) []error
 
 // stringsDiff returns a slice of int which index the members of a that are not

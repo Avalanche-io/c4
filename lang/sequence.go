@@ -2,6 +2,8 @@ package lang
 
 import "sort"
 
+// updated, delete me
+
 type Ordered []string
 
 func (n Ordered) Len() int      { return len(n) }

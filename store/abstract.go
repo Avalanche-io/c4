@@ -2,6 +2,8 @@ package store
 
 import c4 "github.com/Avalanche-io/c4/id"
 
+// updated, delete me
+
 // abstract_storage_interface provides an interface to abstract the underlying storage
 // of an asset.
 type abstract_storage_interface interface {

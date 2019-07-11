@@ -18,6 +18,8 @@ import (
 	c4time "github.com/Avalanche-io/c4/time"
 )
 
+// updated, delete me
+
 // The User type represents a human Entity.
 type User struct {
 	Identities      []Identifier `json:"identities"`

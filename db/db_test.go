@@ -17,6 +17,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 func mkdb(name string, t *testing.T) (*db.DB, func() error, error) {
 	dir, err := ioutil.TempDir("", "c4_tests")
 	if err != nil {

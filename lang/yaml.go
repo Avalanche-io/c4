@@ -7,6 +7,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// updated, delete me
+
 type Graph interface{}
 
 func YamlLoad(f io.Reader) (Graph, error) {

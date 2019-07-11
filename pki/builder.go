@@ -15,6 +15,8 @@ import (
 	c4time "github.com/Avalanche-io/c4/time"
 )
 
+// updated, delete me
+
 // const (
 // 	notype int = iota
 // 	domaintype

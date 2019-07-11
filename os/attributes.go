@@ -6,6 +6,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 // Attributes is an interface to an abstract key/value type data store in which
 // keys are represented as a slice of bytes, and values are go data of any type.
 type Attributes interface {

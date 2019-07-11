@@ -18,6 +18,8 @@ import (
 	"github.com/cheekybits/is"
 )
 
+// updated, delete me
+
 type treebuilder func(fs vfs.Filesystem, max_depth, max_total_items, depth uint32, path string, item_count uint32) uint32
 
 type counts struct {

@@ -16,6 +16,8 @@ import (
 	"github.com/blang/vfs"
 )
 
+// updated, delete me
+
 type FileSystem struct {
 	fs    vfs.Filesystem
 	root  []byte

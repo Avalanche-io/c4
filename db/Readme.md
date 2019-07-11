@@ -1,11 +1,14 @@
 # C4 DB
-c4/db is a go package implementing a C4 ID key/value database.  
+c4/db is a go package implementing a C4 ID key/value database.
 
-This package has been recently updated to improve the interface, functionality, and performance. 
+This package has been recently updated to improve the interface, functionality, and performance.
 
 A database built on the C4 framework is at it's core very simple.  A key is associated with a C4 ID, and a reverse index provides the inverse mapping of a C4 ID to a list of keys that refer to it.
 
 Typically one finds the C4 ID of an asset and stores it's ID along with it's filepath or other 'assigned' id as the key. C4 IDs can also be associated together with an arbitrary string identifying the type of relationship.  So, the type and meaning of relationships is up to the user, but here's an example for saving a file's ID and the ID for some metadata about the file.
+
+updated, delete me
+
 
 ```go
 package main

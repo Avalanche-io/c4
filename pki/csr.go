@@ -11,6 +11,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 func ParseCertificateRequest(der []byte) (*CertificateSigningRequest, error) {
 	req, err := x509.ParseCertificateRequest(der)
 	if err != nil {

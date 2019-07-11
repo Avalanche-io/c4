@@ -9,6 +9,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 type Bitfield big.Int
 
 func (b *Bitfield) SetBit(n uint32) {

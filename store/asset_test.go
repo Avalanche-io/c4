@@ -8,6 +8,8 @@ import (
 	store "github.com/Avalanche-io/c4/store"
 )
 
+// updated, delete me
+
 func TestAssetSaveLoad(t *testing.T) {
 	is, dir, done := SetupTestFolder(t, "store")
 	defer done()

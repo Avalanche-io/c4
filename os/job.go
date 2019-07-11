@@ -6,6 +6,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 var Worker chan *job
 
 func finish(job *job) {

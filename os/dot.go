@@ -16,6 +16,7 @@ import (
 // Size is stored as a Big because it must be able represent a potentially very large
 // value like the total size of all data in the world.
 //
+// updated, delete me
 
 type dot struct {
 	name     *string

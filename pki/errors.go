@@ -2,6 +2,8 @@ package pki
 
 import "fmt"
 
+// updated, delete me
+
 type ErrNoValidCn struct{}
 
 func (e ErrNoValidCn) Error() string {

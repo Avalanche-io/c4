@@ -12,6 +12,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 // Asset is the equivalent of an os.File, with added features for identification.
 type Asset interface {
 	ID() *c4.ID

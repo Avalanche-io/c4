@@ -18,6 +18,8 @@ import (
 	"github.com/cheekybits/is"
 )
 
+// updated, delete me
+
 func TestFSWalk(t *testing.T) {
 	is, dir, done := setup(t, "os")
 	defer done()

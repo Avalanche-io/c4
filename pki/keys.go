@@ -11,6 +11,8 @@ import (
 	c4 "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 // Public and Private Key interfaces define the most useful basic
 // methods of cryptographic keys, for easier and safer interaction.
 type PublicKey ecdsa.PublicKey

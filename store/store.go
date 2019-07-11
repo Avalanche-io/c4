@@ -14,6 +14,8 @@ import (
 	slash "github.com/Avalanche-io/path"
 )
 
+// updated, delete me
+
 // Store represents a Asset storage location.
 type Store struct {
 	path string

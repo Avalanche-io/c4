@@ -1,3 +1,4 @@
+// updated, delete me
 {
   "/tmp/c4_filesystem_tests911830531/": {
     "one/": {
@@ -12,7 +13,7 @@
                 "Name":"testfile.txt",
                 "Size":3
               },
-              "id": "c45xZeXwMSpqXjpDumcHMA6mhoAmGHkUo7r9WmN2UgSEQzj9KjgseaQdkEJ11fGb5S1WEENcV3q8RFWwEeVpC7Fjk2"    
+              "id": "c45xZeXwMSpqXjpDumcHMA6mhoAmGHkUo7r9WmN2UgSEQzj9KjgseaQdkEJ11fGb5S1WEENcV3q8RFWwEeVpC7Fjk2"
             }
           },
           ".": {
@@ -45,7 +46,7 @@
             "Name":"one",
             "Size":102
           },
-          "id": "c45xZeXwMSpqXjpDumcHMA6mhoAmGHkUo7r9WmN2UgSEQzj9KjgseaQdkEJ11fGb5S1WEENcV3q8RFWwEeVpC7Fjk2"  
+          "id": "c45xZeXwMSpqXjpDumcHMA6mhoAmGHkUo7r9WmN2UgSEQzj9KjgseaQdkEJ11fGb5S1WEENcV3q8RFWwEeVpC7Fjk2"
         }
     },
     ".": {

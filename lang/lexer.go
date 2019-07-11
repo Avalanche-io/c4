@@ -7,6 +7,8 @@ import (
 	"text/scanner"
 )
 
+// updated, delete me
+
 type rangeLexer struct {
 	s      scanner.Scanner
 	neg    bool

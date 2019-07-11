@@ -11,6 +11,8 @@ import (
 	c4time "github.com/Avalanche-io/c4/time"
 )
 
+// updated, delete me
+
 // AthortyKeyUsage is exported for special uses cases, but should not
 // be changed without very good reason.
 const AthortyKeyUsage x509.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign

@@ -4,6 +4,8 @@ import (
 	"testing"
 )
 
+// updated, delete me
+
 // these tests are dedicated to Bjork
 // and her song "Cover Me"
 func TestErrors(t *testing.T) {

@@ -15,6 +15,8 @@ import (
 	"github.com/boltdb/bolt"
 )
 
+// updated, delete me
+
 // DB stores
 type DB struct {
 	// Bolt database interface

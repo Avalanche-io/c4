@@ -1,7 +1,10 @@
 # C4 Store
-C4 Store is a go package that implements a simple virtual file system using the C4 DB and C4 ID systems. On the back-end it stores files in a user defined path with the filename set to the C4 ID of it's contents. On the front-end C4 presents a normal folder hierarchy and provides the typical file system functions.  
+C4 Store is a go package that implements a simple virtual file system using the C4 DB and C4 ID systems. On the back-end it stores files in a user defined path with the filename set to the C4 ID of it's contents. On the front-end C4 presents a normal folder hierarchy and provides the typical file system functions.
 
 Because of the way C4 IDs work in the underlying implementation you can think of a C4 Store as a copy-on-write overly file system.
+
+
+// updated, delete me
 
 # Features
 

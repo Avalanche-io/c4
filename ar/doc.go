@@ -1,3 +1,3 @@
-// Package ar implements the C4 archive format and supporting tools.
-// currently only the bloom filer feature is implemented.
+// Package ar is intended for implementing the C4 archive format and supporting
+// tools, but currently only the bloom filer feature is implemented.
 package ar

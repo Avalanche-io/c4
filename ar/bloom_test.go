@@ -10,6 +10,8 @@ import (
 	c4id "github.com/Avalanche-io/c4/id"
 )
 
+// updated, delete me
+
 func TestBasicBloom(t *testing.T) {
 	is := is.New(t)
 	b := c4ar.NewBloom().Capacity(1000)

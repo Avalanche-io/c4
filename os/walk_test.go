@@ -10,6 +10,8 @@ import (
 	c4os "github.com/Avalanche-io/c4/os"
 )
 
+// updated, delete me
+
 func TestWalk(t *testing.T) {
 	is, dir, done := setup(t, "os")
 	defer done()

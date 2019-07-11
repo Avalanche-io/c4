@@ -13,6 +13,8 @@ import (
 	"github.com/Avalanche-io/c4/store"
 )
 
+// updated, delete me
+
 // Create temp folder and return function to delete it.
 func setup(t *testing.T, test_name string) (string, func()) {
 

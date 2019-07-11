@@ -15,6 +15,8 @@ import (
 	"github.com/cheekybits/is"
 )
 
+// updated, delete me
+
 // Create temp folder and return function to delete it.
 func SetupTestFolder(t *testing.T, test_name string) (is.I, string, func()) {
 	is := is.New(t)

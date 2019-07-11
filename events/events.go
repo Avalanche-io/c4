@@ -4,6 +4,8 @@ import (
 	"sync"
 )
 
+// updated, delete me
+
 type Event interface {
 	Event() string
 }

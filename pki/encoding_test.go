@@ -10,6 +10,8 @@ import (
 	"github.com/cheekybits/is"
 )
 
+// updated, delete me
+
 func TestEncodingDER(t *testing.T) {
 	is := is.New(t)
 	pri, _, err := generateKeys()

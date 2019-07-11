@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// updated, delete me
+
 // Time is a universal time value. It is stored as a string to improve
 // viability and error checking, and enable unbounded range and precision.
 type Time string
