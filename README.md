@@ -3,7 +3,6 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![GoDoc](https://godoc.org/github.com/Avalanche-io/c4?status.svg)](https://godoc.org/github.com/avalanche-io/c4)
-[![Stories in Ready](https://badge.waffle.io/Avalanche-io/c4.png?label=ready&title=Ready)](https://waffle.io/Avalanche-io/c4)
 [![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
 
 _**Note:** The C4 ID package has recently moved from `github.com/Avalanche-io/c4/id` to `github.com/Avalanche-io/c4`, and the API has been cleaned up considerably to perform better and be easier to use. While deprecated the previous C4 ID API will continue to work and remain unchanged at the current `c4/id` path to give users time to switch._
@@ -62,7 +61,7 @@ Videos:
   - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU)
   - [The Magic of C4](https://youtu.be/vzh0JzKhY4o)
 
-[C4 ID Whitepaper](http://www.cccc.io/downloads/C4ID%20ETC%20Whitepaper_u2.pdf)
+[C4 ID Whitepaper](http://www.cccc.io/c4id-whitepaper-u2.pdf)
 
 ### Contributing
 
