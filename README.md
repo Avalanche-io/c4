@@ -15,6 +15,28 @@ This is a Go package that implements the C4 ID system **SMPTE standard ST 2114:2
 
 C4 IDs are 90 character long strings suitable for use in filenames, URLs, database fields, or anywhere else that a string identifier might normally be used. In ram C4 IDs are represented in a 64 byte "digest" format.
 
+#### Features
+
+- A single c4 id can represent multiple files.
+- C4 ids are unique, random, and unforgeable.
+- C4 ids are identical for the same file in different locations or points in time.
+- A network connection is not required to generate c4 ids.
+- A c4 id can be used in filenames, URLs, json and xml.
+- C4 ids can be selected easily with double click (_a problem for many unique identifiers_).
+- Easily discover c4 ids in arbitrary text with a simple regex `c4[1-9A-HJ-NP-Za-km-z]{88}`
+- Naming files by their c4 id automatically deduplicates them.
+
+#### Comparison of Encodings
+
+Sha-512 id of "foo" inhex, base64 and c4 encodings:
+
+```yaml
+# encoding   length   id
+hex          135:   sha512-f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7
+base64        95:   sha512-9/u6bgY2+JDlb7vzKD5STG+jIErimDgtYkdB0NxmODJuKCxBvl5CVNiCB3LFUYosWowMf37aGVlKfrU5RT4e1w==
+c4            90:   c43inc2qGhSWQUMRvDMW6GAjJnRFY5sxq399wcUcWLTuPai84A2QWTfYu1gAW8f5FmZFGeYpLsSPyrSUh9Ao3J68Cc
+```
+
 ### Example Usage
 
 ```go
