@@ -28,13 +28,14 @@ C4 IDs are 90 character long strings suitable for use in filenames, URLs, databa
 
 #### Comparison of Encodings
 
-Sha-512 id of "foo" inhex, base64 and c4 encodings:
+C4 is the shortest self identifying SHA-512 encoding and is the only standardized encoding.
+To illistrate the following is the SHA-512 of "foo" in hex, base64 and c4 encodings:
 
 ```yaml
-# encoding   length   id
-hex          135:   sha512-f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7
-base64        95:   sha512-9/u6bgY2+JDlb7vzKD5STG+jIErimDgtYkdB0NxmODJuKCxBvl5CVNiCB3LFUYosWowMf37aGVlKfrU5RT4e1w==
-c4            90:   c43inc2qGhSWQUMRvDMW6GAjJnRFY5sxq399wcUcWLTuPai84A2QWTfYu1gAW8f5FmZFGeYpLsSPyrSUh9Ao3J68Cc
+# encoding     length   id
+  hex          135:     sha512-f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7
+  base64        95:     sha512-9/u6bgY2+JDlb7vzKD5STG+jIErimDgtYkdB0NxmODJuKCxBvl5CVNiCB3LFUYosWowMf37aGVlKfrU5RT4e1w==
+  c4            90:     c43inc2qGhSWQUMRvDMW6GAjJnRFY5sxq399wcUcWLTuPai84A2QWTfYu1gAW8f5FmZFGeYpLsSPyrSUh9Ao3J68Cc
 ```
 
 ### Example Usage
