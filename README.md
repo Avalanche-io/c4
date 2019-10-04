@@ -5,13 +5,13 @@
 [![GoDoc](https://godoc.org/github.com/Avalanche-io/c4?status.svg)](https://godoc.org/github.com/avalanche-io/c4)
 [![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
 
-_**Note:** The C4 ID package has recently moved from `github.com/Avalanche-io/c4/id` to `github.com/Avalanche-io/c4`, and the API has been cleaned up considerably to perform better and be easier to use. While deprecated the previous C4 ID API will continue to work and remain unchanged at the current `c4/id` path to give users time to switch._
+```go
+import "github.com/Avalanche-io/c4"
+```
 
 This is a Go package that implements the C4 ID system **SMPTE standard ST 2114:2017**. C4 IDs are universally unique and consistent identifiers that standardize the derivation and formatting of data identification so that all users independently agree on the identification of any block or set of blocks of data.
 
 C4 IDs are 90 character long strings suitable for use in filenames, URLs, database fields, or anywhere else that a string identifier might normally be used. In ram C4 IDs are represented in a 64 byte "digest" format.
-
-The `id` package is a go implementation of the C4 ID standard.  It contains tools for generating and parsing C4 IDs, and C4 ID Tree structures.
 
 ### Example Usage
 
@@ -51,9 +51,8 @@ Current release: [v0.7.0](https://github.com/Avalanche-io/c4/tree/v0.7.0)
 
 #### Previous Releases:
 
-**Warning this version uses an incorrect character set for C4 IDs**
-[v0.6.0](https://github.com/Avalanche-io/c4/tree/v0.6.0)
-
+Release v0.6.0 contained a different character set then the standard and
+therfore produces incorrect c4 ids.
 
 ### Links
 
