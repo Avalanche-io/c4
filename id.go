@@ -149,11 +149,15 @@ func Parse(source string) (ID, error) {
 		bigNum.Add(bigNum, big.NewInt(int64(b)))
 	}
 	data := bigNum.Bytes()
+	if len(data) > 64 {
+		data = data[:64]
+	}
 	shift := 64 - len(data)
 	for i := 0; i < shift; i++ {
 		data = append(data, 0)
 	}
-	if shift != 0 {
+
+	if shift > 0 {
 		copy(data[shift:], data)
 		for i := 0; i < shift; i++ {
 			data[i] = 0
