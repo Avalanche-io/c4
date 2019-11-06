@@ -58,7 +58,7 @@ func TestTree(t *testing.T) {
 			id := c4.Identify(bytes.NewReader([]byte{uint8(i)}))
 			digests[i] = id.Digest()
 		}
-		tree = c4.NewTree(digests)
+		_ = c4.NewTree(digests)
 	}
 
 }

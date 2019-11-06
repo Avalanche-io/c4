@@ -73,7 +73,7 @@ func TestTree(t *testing.T) {
 			id := Identify(bytes.NewReader([]byte{uint8(i)}))
 			digests[i] = id
 		}
-		tree = NewTree(digests)
+		_ = NewTree(digests)
 	}
 
 }
