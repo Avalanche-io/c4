@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,8 +63,6 @@ func TestAll0000(t *testing.T) {
 	for i := 0; i < 64; i++ {
 		b = append(b, 0x00)
 	}
-	bignum := big.NewInt(0)
-	bignum = bignum.SetBytes(b)
 	var id c4.ID
 	copy(id[:], b)
 	if id.String() != `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111` {

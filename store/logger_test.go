@@ -41,7 +41,7 @@ func TestLoggerStore(t *testing.T) {
 		t.Errorf("log output for Create does not match expected")
 	}
 	// Test Logger io.WriteCloser Write
-	n, err = w.Write([]byte(testdata))
+	_, err = w.Write([]byte(testdata))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestLoggerStore(t *testing.T) {
 		t.Errorf("log output for Read does not match expected")
 	}
 
-	n, err = f.Read(data2)
+	_, err = f.Read(data2)
 	if err != io.EOF {
 		t.Errorf("expected io.EOF, but got %v", err)
 	}
