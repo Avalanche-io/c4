@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
-	"github.com/Avalanche-io/keypath"
 	"github.com/xtgo/set"
 )
 
@@ -418,7 +417,7 @@ func (mm *M) Paths() []string {
 		paths[i] = k
 		i++
 	}
-	nlist := keypath.New(paths)
+	nlist := newNilList(paths)
 	return nlist.StringSlice()
 }
 
@@ -441,7 +440,8 @@ func (mm *M) Marshal() ([]byte, error) {
 		paths[i] = k
 		i++
 	}
-	nlist := keypath.New(paths)
+
+	nlist := newNilList(paths)
 	// fmt.Printf("len(nlist): %d\n", nlist.Len())
 	var buff bytes.Buffer
 
