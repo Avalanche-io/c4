@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	natural "github.com/Avalanche-io/c4/manifest/naturalsort"
-	"vbom.ml/util/sortorder"
 )
 
 // updated, delete me
@@ -197,7 +196,6 @@ func shuffle(format string, size int) []string {
 
 // BenchmarkSort-8                 	 3000000	       646 ns/op
 // BenchmarkNaturalSort-8         	 1000000	      1327 ns/op
-// BenchmarkVbomOrder-8            	 1000000	      1402 ns/op
 
 func BenchmarkSort(b *testing.B) {
 	b.StopTimer()
@@ -215,10 +213,3 @@ func BenchmarkNaturalSort(b *testing.B) {
 	sort.Sort(list)
 }
 
-func BenchmarkVbomOrder(b *testing.B) {
-	b.StopTimer()
-	list := sortorder.Natural(shuffle("name.%d.ext", b.N))
-	b.StartTimer()
-
-	sort.Sort(list)
-}
