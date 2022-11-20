@@ -72,12 +72,7 @@ func main() {
 
 ### Releases
 
-Current release: [v0.7.0](https://github.com/Avalanche-io/c4/tree/v0.7.0)
-
-#### Previous Releases:
-
-Release v0.6.0 contained a different character set than the standard and
-therfore produces incorrect c4 ids.
+Current release: [v0.8.0](https://github.com/Avalanche-io/c4/tree/v0.8.0)
 
 ### Links
 
