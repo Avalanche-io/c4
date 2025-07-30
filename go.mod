@@ -8,7 +8,7 @@ require (
 	github.com/absfs/memfs v0.0.0-20190429000831-6a320d582782
 	github.com/ogier/pflag v0.0.1
 	github.com/xtgo/set v1.0.0
-	go.etcd.io/bbolt v1.3.6
+	go.etcd.io/bbolt v1.4.2
 	golang.org/x/crypto v0.40.0
 )
 
