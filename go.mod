@@ -6,7 +6,6 @@ toolchain go1.24.5
 
 require (
 	github.com/absfs/memfs v0.0.0-20190429000831-6a320d582782
-	github.com/boltdb/bolt v1.3.1
 	github.com/ogier/pflag v0.0.1
 	github.com/xtgo/set v1.0.0
 	go.etcd.io/bbolt v1.3.6

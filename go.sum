@@ -8,8 +8,6 @@ github.com/absfs/memfs v0.0.0-20190429000831-6a320d582782 h1:ZMk6TTOF8nbtuKMQvjL
 github.com/absfs/memfs v0.0.0-20190429000831-6a320d582782/go.mod h1:ZF+JG90ujrBa3hNBmMihd6HEB8ALIL+u0D2qfKY5d9M=
 github.com/absfs/osfs v0.0.0-20210816191758-403afc5396f8 h1:DX00H7BAKot581+cWgL8ZnIMTMaLFwuO4qDmBYvGWRE=
 github.com/absfs/osfs v0.0.0-20210816191758-403afc5396f8/go.mod h1:IIzwVILCbb3j0VHjcAQ7Xwpdz1h57eUzZil7DCIel/c=
-github.com/boltdb/bolt v1.3.1 h1:JQmyP4ZBrce+ZQu0dY660FMfatumYDLun9hBCUVIkF4=
-github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/fatih/color v1.12.0 h1:mRhaKNwANqRgUBGKmnI5ZxEk7QXmjQeCcuYFMX2bfcc=
 github.com/fatih/color v1.12.0/go.mod h1:ELkj/draVOlAH/xkhN6mQ50Qd0MPOk5AAr3maGEBuJM=
 github.com/mattn/go-colorable v0.1.8 h1:c1ghPdyEDarC70ftn0y+A/Ee++9zz8ljHG1b13eJ0s8=

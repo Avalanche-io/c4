@@ -12,13 +12,13 @@ import (
 	"time"
 
 	c4 "github.com/Avalanche-io/c4/id"
-	"github.com/boltdb/bolt"
+	"go.etcd.io/bbolt"
 )
 
 // DB stores
 type DB struct {
 	// Bolt database interface
-	db *bolt.DB
+	db *bbolt.DB
 
 	// List of paths in which external files might be found
 	storage []string
@@ -74,7 +74,7 @@ type Entry interface {
 }
 
 type Tx struct {
-	db       *bolt.DB
+	db       *bbolt.DB
 	count    int
 	chanchan chan chan *entry
 	enCh     chan *entry
@@ -153,12 +153,12 @@ func Open(path string, options *Options) (db *DB, err error) {
 
 	db_path := filepath.Join(path, "db")
 	db = new(DB)
-	db.db, err = bolt.Open(db_path, 0700, nil)
+	db.db, err = bbolt.Open(db_path, 0700, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	err = db.db.Update(func(t *bolt.Tx) error {
+	err = db.db.Update(func(t *bbolt.Tx) error {
 		root, err := t.CreateBucketIfNotExists(c4Bucket)
 		if err != nil {
 			return err
@@ -214,7 +214,7 @@ func (db *DB) write_options() {
 	}
 
 	// TODO: might be better just to save this as a YAML file
-	db.db.Update(func(t *bolt.Tx) error {
+	db.db.Update(func(t *bbolt.Tx) error {
 		b := t.Bucket(c4Bucket).Bucket(optionsBucket)
 		return b.Put([]byte("global/options"), data)
 	})
@@ -222,7 +222,7 @@ func (db *DB) write_options() {
 
 func (db *DB) read_options() *Options {
 	var opts *Options
-	db.db.View(func(t *bolt.Tx) error {
+	db.db.View(func(t *bbolt.Tx) error {
 		b := t.Bucket(c4Bucket).Bucket(optionsBucket)
 
 		data := b.Get([]byte("global/options"))
@@ -250,7 +250,7 @@ type Stats struct {
 
 func (db *DB) Stats() *Stats {
 	var st Stats
-	err := db.db.View(func(t *bolt.Tx) error {
+	err := db.db.View(func(t *bbolt.Tx) error {
 		info := t.Bucket(c4Bucket).Bucket(keyBucket).Stats()
 		st.Keys = info.KeyN
 		info = t.Bucket(c4Bucket).Bucket(indexBucket).Stats()
@@ -292,7 +292,7 @@ func (db *DB) Stats() *Stats {
 // set the previous digest is returned otherwise nil is returned.
 func (db *DB) KeySet(key string, digest c4.Digest) (c4.Digest, error) {
 	var previous []byte
-	err := db.db.Update(func(t *bolt.Tx) error {
+	err := db.db.Update(func(t *bbolt.Tx) error {
 		k := []byte(key)
 		b := t.Bucket(c4Bucket).Bucket(keyBucket)
 		data := b.Get(k)
@@ -328,7 +328,7 @@ func (db *DB) KeySet(key string, digest c4.Digest) (c4.Digest, error) {
 
 func (db *DB) KeyFind(digest c4.Digest) []string {
 	var keys []string
-	db.db.View(func(t *bolt.Tx) error {
+	db.db.View(func(t *bbolt.Tx) error {
 		// Assume bucket exists and has keys
 		c := t.Bucket(c4Bucket).Bucket(indexBucket).Cursor()
 
@@ -342,7 +342,7 @@ func (db *DB) KeyFind(digest c4.Digest) []string {
 
 func (db *DB) KeyGet(key string) (c4.Digest, error) {
 	var value []byte
-	err := db.db.View(func(t *bolt.Tx) error {
+	err := db.db.View(func(t *bbolt.Tx) error {
 		data := t.Bucket(c4Bucket).Bucket(keyBucket).Get([]byte(key))
 		if data != nil {
 			value = make([]byte, 64)
@@ -358,7 +358,7 @@ func (db *DB) KeyGet(key string) (c4.Digest, error) {
 
 func (db *DB) KeyDelete(key string) (c4.Digest, error) {
 	var value []byte
-	err := db.db.Update(func(t *bolt.Tx) error {
+	err := db.db.Update(func(t *bbolt.Tx) error {
 		b := t.Bucket(c4Bucket).Bucket(keyBucket)
 		data := b.Get([]byte(key))
 		b.Delete([]byte(key))
@@ -449,7 +449,7 @@ func (db *DB) KeyGetAll(key_prefix ...string) <-chan Entry {
 			close(stop)
 		}()
 
-		db.db.View(func(t *bolt.Tx) error {
+		db.db.View(func(t *bbolt.Tx) error {
 			// Assume bucket exists and has keys
 			c := t.Bucket(c4Bucket).Bucket(keyBucket).Cursor()
 
@@ -485,7 +485,7 @@ func (db *DB) KeyGetAll(key_prefix ...string) <-chan Entry {
 // the key is updated with new_digest, KeyCAS returns `true`.
 func (db *DB) KeyCAS(key string, old_digest, new_digest c4.Digest) bool {
 	var replaced bool
-	db.db.Update(func(t *bolt.Tx) error {
+	db.db.Update(func(t *bbolt.Tx) error {
 		b := t.Bucket(c4Bucket).Bucket(keyBucket)
 		data := b.Get([]byte(key))
 
@@ -509,7 +509,7 @@ func (db *DB) KeyCAS(key string, old_digest, new_digest c4.Digest) bool {
 func (db *DB) KeyDeleteAll(key_prefixs ...string) (int, error) {
 	count := 0
 	if len(key_prefixs) == 0 {
-		db.db.Update(func(t *bolt.Tx) error {
+		db.db.Update(func(t *bbolt.Tx) error {
 			b := t.Bucket(c4Bucket).Bucket(keyBucket)
 			c := b.Cursor()
 
@@ -525,7 +525,7 @@ func (db *DB) KeyDeleteAll(key_prefixs ...string) (int, error) {
 
 	}
 	for _, key_prefix := range key_prefixs {
-		err := db.db.Update(func(t *bolt.Tx) error {
+		err := db.db.Update(func(t *bbolt.Tx) error {
 			// Assume bucket exists and has keys
 			b := t.Bucket(c4Bucket).Bucket(keyBucket)
 			c := b.Cursor()
@@ -562,7 +562,7 @@ func (db *DB) LinkSet(relationship string, source c4.Digest, targets ...c4.Diges
 	key := make([]byte, 128)
 	copy(key, source)
 
-	return db.db.Update(func(t *bolt.Tx) error {
+	return db.db.Update(func(t *bbolt.Tx) error {
 		b := t.Bucket(c4Bucket).Bucket(linkBucket)
 
 		for i := range targets {
@@ -585,7 +585,7 @@ func (db *DB) LinkGet(relationship string, source c4.Digest) <-chan Entry {
 			close(out)
 			close(stop)
 		}()
-		db.db.View(func(t *bolt.Tx) error {
+		db.db.View(func(t *bbolt.Tx) error {
 			c := t.Bucket(c4Bucket).Bucket(linkBucket).Cursor()
 
 			for k, v := c.Seek(source); k != nil && bytes.HasPrefix(k, source); k, v = c.Next() {
@@ -620,7 +620,7 @@ func (db *DB) LinkDelete(relationship string, source c4.Digest, targets ...c4.Di
 	copy(key, source)
 	for i := range targets {
 		copy(key[64:], targets[i])
-		err := db.db.Update(func(t *bolt.Tx) error {
+		err := db.db.Update(func(t *bbolt.Tx) error {
 			b := t.Bucket(c4Bucket).Bucket(linkBucket)
 			c := b.Cursor()
 			for k, v := c.Seek(key); k != nil && bytes.HasPrefix(k, source); k, v = c.Next() {
@@ -653,7 +653,7 @@ func (db *DB) LinkGetAll(sources ...c4.Digest) <-chan Entry {
 			close(stop)
 		}()
 		if len(sources) == 0 {
-			db.db.View(func(t *bolt.Tx) error {
+			db.db.View(func(t *bbolt.Tx) error {
 				c := t.Bucket(c4Bucket).Bucket(linkBucket).Cursor()
 
 				for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -673,7 +673,7 @@ func (db *DB) LinkGetAll(sources ...c4.Digest) <-chan Entry {
 			})
 		}
 		for _, source := range sources {
-			db.db.View(func(t *bolt.Tx) error {
+			db.db.View(func(t *bbolt.Tx) error {
 				c := t.Bucket(c4Bucket).Bucket(linkBucket).Cursor()
 
 				for k, v := c.Seek(source); k != nil && bytes.HasPrefix(k, source); k, v = c.Next() {
@@ -700,7 +700,7 @@ func (db *DB) LinkGetAll(sources ...c4.Digest) <-chan Entry {
 func (db *DB) LinkDeleteAll(sources ...c4.Digest) (int, error) {
 	count := 0
 	if len(sources) == 0 {
-		db.db.Update(func(t *bolt.Tx) error {
+		db.db.Update(func(t *bbolt.Tx) error {
 			b := t.Bucket(c4Bucket).Bucket(linkBucket)
 			c := b.Cursor()
 
@@ -716,7 +716,7 @@ func (db *DB) LinkDeleteAll(sources ...c4.Digest) (int, error) {
 
 	}
 	for _, source := range sources {
-		err := db.db.Update(func(t *bolt.Tx) error {
+		err := db.db.Update(func(t *bbolt.Tx) error {
 			// Assume bucket exists and has keys
 			b := t.Bucket(c4Bucket).Bucket(linkBucket)
 			c := b.Cursor()
@@ -746,7 +746,7 @@ func (db *DB) TreeSet(tree *c4.Tree) error {
 		return err
 	}
 	if db.treeMaxSize == 0 || len(data) <= db.treeMaxSize {
-		return db.db.Update(func(t *bolt.Tx) error {
+		return db.db.Update(func(t *bbolt.Tx) error {
 			b := t.Bucket(c4Bucket).Bucket(treeBucket)
 			return b.Put(data[:64], data)
 		})
@@ -758,7 +758,7 @@ func (db *DB) TreeSet(tree *c4.Tree) error {
 	// TODO: store the path to the file
 	_ = path
 
-	return db.db.Update(func(t *bolt.Tx) error {
+	return db.db.Update(func(t *bbolt.Tx) error {
 		pb := t.Bucket(c4Bucket).Bucket(pathBucket)
 		err := pb.Put(data[:64], []byte(path))
 		if err != nil {
@@ -772,7 +772,7 @@ func (db *DB) TreeSet(tree *c4.Tree) error {
 func (db *DB) TreeGet(tree_digest c4.Digest) (*c4.Tree, error) {
 	var tree *c4.Tree
 	var path string
-	err := db.db.View(func(t *bolt.Tx) error {
+	err := db.db.View(func(t *bbolt.Tx) error {
 		b := t.Bucket(c4Bucket).Bucket(treeBucket)
 		data := b.Get(tree_digest)
 		if data == nil {
@@ -802,7 +802,7 @@ func (db *DB) TreeGet(tree_digest c4.Digest) (*c4.Tree, error) {
 }
 
 func (db *DB) TreeDelete(tree c4.Digest) error {
-	return db.db.Update(func(t *bolt.Tx) error {
+	return db.db.Update(func(t *bbolt.Tx) error {
 		b := t.Bucket(c4Bucket).Bucket(treeBucket)
 		return b.Delete(tree)
 	})
@@ -820,7 +820,7 @@ func (db *DB) KeyBatch(f func(*Tx) bool) {
 
 	go func() {
 		for dbin := range t.chanchan {
-			t.db.Batch(func(tx *bolt.Tx) error {
+			t.db.Batch(func(tx *bbolt.Tx) error {
 				b := tx.Bucket(c4Bucket).Bucket(keyBucket)
 				xb := tx.Bucket(c4Bucket).Bucket(indexBucket)
 				for en := range dbin {
@@ -924,7 +924,7 @@ func write_file_data(paths []string, digest c4.Digest, data []byte) (string, err
 }
 
 // Update, View and Batch call the methods of the same name on the underlying
-// bolt database. See github.com/boltdb/bolt for more information.
+// bolt database. See go.etcd.io/bbolt for more information.
 //
 // Update executes a function within the context of a read-write managed transaction.
 // If no error is returned from the function then the transaction is committed.
@@ -933,23 +933,23 @@ func write_file_data(paths []string, digest c4.Digest, data []byte) (string, err
 // returned from the Update() method.
 //
 // Attempting to manually commit or rollback within the function will cause a panic.
-func (db *DB) Update(fn func(*bolt.Tx) error) error {
+func (db *DB) Update(fn func(*bbolt.Tx) error) error {
 	return db.db.Update(fn)
 }
 
 // Update, View and Batch call the methods of the same name on the underlying
-// bolt database. See github.com/boltdb/bolt for more information.
+// bolt database. See go.etcd.io/bbolt for more information.
 //
 // View executes a function within the context of a managed read-only transaction.
 // Any error that is returned from the function is returned from the View() method.
 //
 // Attempting to manually rollback within the function will cause a panic.
-func (db *DB) View(fn func(*bolt.Tx) error) error {
+func (db *DB) View(fn func(*bbolt.Tx) error) error {
 	return db.db.View(fn)
 }
 
 // Update, View and Batch call the methods of the same name on the underlying
-// bolt database. See github.com/boltdb/bolt for more information.
+// bolt database. See go.etcd.io/bbolt for more information.
 //
 // Batch calls fn as part of a batch. It behaves similar to Update,
 // except:
@@ -968,7 +968,7 @@ func (db *DB) View(fn func(*bolt.Tx) error) error {
 // and DB.MaxBatchDelay, respectively.
 //
 // Batch is only useful when there are multiple goroutines calling it.
-func (db *DB) Batch(fn func(*bolt.Tx) error) error {
+func (db *DB) Batch(fn func(*bbolt.Tx) error) error {
 	return db.db.Batch(fn)
 }
 
