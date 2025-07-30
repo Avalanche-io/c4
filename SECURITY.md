@@ -52,8 +52,10 @@ We take security vulnerabilities seriously. If you discover a security issue in 
 C4 is designed for content identification and may operate with elevated privileges when performing system-wide scans. Users should:
 
 - Only run C4 with elevated privileges when necessary
-- Be cautious when processing untrusted input files or directories
+- Be aware that C4 follows symbolic links by default, which could lead to scanning unintended locations or loops in untrusted directory structures
 - Keep dependencies up to date
+
+Note: C4 only reads and hashes file content using SHA-512. It does not execute or interpret file contents, making it safe to scan any file regardless of its content.
 
 ## Past Security Issues
 
