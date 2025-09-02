@@ -119,7 +119,7 @@ func (sbs *SimpleBundleScanner) writeChunk(reason string) error {
 		return fmt.Errorf("failed to write chunk: %w", err)
 	}
 	
-	fmt.Fprintf(os.Stderr, "✓ Wrote chunk %d (%d entries, reason: %s)\n", 
+	TimedPrintf("✓ Wrote chunk %d (%d entries, reason: %s)\n", 
 		sbs.chunksWritten+1, sbs.currentEntries, reason)
 	
 	sbs.chunksWritten++
@@ -134,7 +134,7 @@ func (sbs *SimpleBundleScanner) writeChunk(reason string) error {
 
 // ScanPath performs directory-aware scanning with proper chunking
 func (sbs *SimpleBundleScanner) ScanPath(scanPath string) error {
-	fmt.Fprintf(os.Stderr, "Phase 1: Counting directories...\n")
+	TimedPrintln("Phase 1: Counting directories...")
 	
 	// Phase 1: Count all directories
 	totalEntries, totalSize, err := sbs.countDirectory(scanPath)
@@ -142,8 +142,8 @@ func (sbs *SimpleBundleScanner) ScanPath(scanPath string) error {
 		return fmt.Errorf("failed to count directories: %w", err)
 	}
 	
-	fmt.Fprintf(os.Stderr, "Found %d entries, %d MB total\n", totalEntries, totalSize/(1024*1024))
-	fmt.Fprintf(os.Stderr, "Phase 2: Scanning with directory-aware chunking...\n")
+	TimedPrintf("Found %d entries, %d MB total\n", totalEntries, totalSize/(1024*1024))
+	TimedPrintln("Phase 2: Scanning with directory-aware chunking...")
 	
 	// Phase 2: Stream with intelligent chunking
 	return sbs.scanDirectory(scanPath, 0, nil)
@@ -232,7 +232,7 @@ func (sbs *SimpleBundleScanner) scanDirectory(path string, depth int, parentMani
 
 // scanLargeDirectory handles directories that need their own chunk(s)
 func (sbs *SimpleBundleScanner) scanLargeDirectory(path string, depth int) error {
-	fmt.Fprintf(os.Stderr, "Large directory %s (%d entries) gets separate chunk(s)\n", 
+	TimedPrintf("Large directory %s (%d entries) gets separate chunk(s)\n", 
 		filepath.Base(path), sbs.directoryCounts[path])
 	
 	// This directory gets its own chunk series

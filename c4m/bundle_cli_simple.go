@@ -59,8 +59,8 @@ func (sbc *SimpleBundleCLI) CreateBundle(scanPath string) error {
 	// Create scanner
 	scanner := NewSimpleBundleScanner(bundle, scan, sbc.config)
 	
-	fmt.Fprintf(os.Stderr, "# Bundle created: %s\n", bundle.Path)
-	fmt.Fprintf(os.Stderr, "# Starting scan...\n")
+	TimedPrintf("Bundle created: %s\n", bundle.Path)
+	TimedPrintln("Starting scan...")
 	
 	// Run scan
 	if err := scanner.ScanPath(absPath); err != nil {
@@ -74,11 +74,12 @@ func (sbc *SimpleBundleCLI) CreateBundle(scanPath string) error {
 	
 	// Report results
 	stats := scanner.GetStatistics()
-	fmt.Fprintf(os.Stderr, "\n✓ Scan complete\n")
-	fmt.Fprintf(os.Stderr, "✓ Chunks written: %d\n", stats["chunks_written"])
-	fmt.Fprintf(os.Stderr, "✓ Total entries: %d\n", stats["total_entries"])
-	fmt.Fprintf(os.Stderr, "✓ Avg entries per chunk: %d\n", stats["avg_entries"])
-	fmt.Fprintf(os.Stderr, "✓ Bundle saved to: %s\n", bundle.Path)
+	TimedPrintln("")
+	TimedPrintln("✓ Scan complete")
+	TimedPrintf("✓ Chunks written: %d\n", stats["chunks_written"])
+	TimedPrintf("✓ Total entries: %d\n", stats["total_entries"])
+	TimedPrintf("✓ Avg entries per chunk: %d\n", stats["avg_entries"])
+	TimedPrintf("✓ Bundle saved to: %s\n", bundle.Path)
 	
 	return nil
 }
