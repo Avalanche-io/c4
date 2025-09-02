@@ -116,10 +116,10 @@ func (cbs *CompartmentBundleScanner) estimateDirectorySize(dirPath string) (entr
 		}
 	}
 	
-	// Use 50% threshold to decide on separation
-	// This gives room for metadata and avoids edge cases
-	shouldSeparate = entryCount > cbs.config.MaxEntriesPerChunk/2 ||
-	                totalSize > cbs.config.MaxBytesPerChunk/2
+	// Use 90% threshold to decide on separation
+	// Only truly large directories should get their own chains
+	shouldSeparate = entryCount > (cbs.config.MaxEntriesPerChunk*9)/10 ||
+	                totalSize > (cbs.config.MaxBytesPerChunk*9)/10
 	
 	return entryCount, totalSize, shouldSeparate
 }
@@ -140,38 +140,39 @@ func (cbs *CompartmentBundleScanner) scanDirectoryCompartment(dirPath string, de
 
 // scanLargeDirectory creates a separate chain for a large directory
 func (cbs *CompartmentBundleScanner) scanLargeDirectory(dirPath string, depth int) (*DirScanResult, error) {
-	// Creating separate chain for large directory
-	
-	// Scan the directory flat (no separate chains for sub-subdirectories)
-	manifest, entryCount, totalSize, err := cbs.scanDirectoryFlatNoCompartment(dirPath, 0)
-	if err != nil {
-		return nil, err
-	}
-	
 	// Save current state
 	oldChunk := cbs.currentChunk
 	oldEntries := cbs.chunkEntries
 	oldBytes := cbs.chunkBytes
 	
-	// Set the manifest for this directory
-	cbs.currentChunk = manifest
-	cbs.chunkEntries = entryCount
-	cbs.chunkBytes = totalSize
+	// Reset for new chain
+	cbs.currentChunk = NewManifest()
+	cbs.chunkEntries = 0
+	cbs.chunkBytes = 0
 	
-	// Write chunk(s) for this directory
+	// Scan the directory with proper chunking
+	totalSize, err := cbs.scanLargeDirectoryWithChunking(dirPath, 0)
+	if err != nil {
+		// Restore state on error
+		cbs.currentChunk = oldChunk
+		cbs.chunkEntries = oldEntries
+		cbs.chunkBytes = oldBytes
+		return nil, err
+	}
+	
+	// Flush any remaining entries
 	var finalID *c4.ID
 	if cbs.chunkEntries > 0 {
-		if err := cbs.flushChunk(true); err != nil {
+		if err := cbs.flushChunkWithBase(true, true); err != nil {
 			return nil, err
 		}
-		// Get the final chunk ID
-		if len(cbs.scan.ProgressChunks) > 0 {
-			lastChunk := cbs.scan.ProgressChunks[len(cbs.scan.ProgressChunks)-1]
-			// The lastChunk is already a string ID, not content to hash
-			// Just parse it directly
-			if id, err := c4.Parse(lastChunk); err == nil {
-				finalID = &id
-			}
+	}
+	
+	// Get the final chunk ID
+	if len(cbs.scan.ProgressChunks) > 0 {
+		lastChunk := cbs.scan.ProgressChunks[len(cbs.scan.ProgressChunks)-1]
+		if id, err := c4.Parse(lastChunk); err == nil {
+			finalID = &id
 		}
 	}
 	
@@ -449,6 +450,155 @@ func (cbs *CompartmentBundleScanner) scanDirectoryFlatNoCompartment(dirPath stri
 	entryCount++
 	
 	return manifest, entryCount, dirSize, nil
+}
+
+// scanLargeDirectoryWithChunking scans a large directory and creates proper chunks with @base chains
+func (cbs *CompartmentBundleScanner) scanLargeDirectoryWithChunking(dirPath string, depth int) (int64, error) {
+	// Read directory
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read directory %s: %w", dirPath, err)
+	}
+	
+	// Get directory info
+	dirInfo, err := os.Stat(dirPath)
+	if err != nil {
+		return 0, err
+	}
+	
+	// Track total size
+	var totalDirSize int64
+	
+	// Create directory entry
+	dirEntry := &Entry{
+		Name:      filepath.Base(dirPath),
+		Mode:      dirInfo.Mode(),
+		Timestamp: dirInfo.ModTime(),
+		Depth:     depth,
+	}
+	
+	// Process all entries to calculate directory size
+	var allEntries []*Entry
+	var separateSubdirs []*Entry  // Subdirectories that will get their own chains
+	
+	for _, entry := range entries {
+		entryPath := filepath.Join(dirPath, entry.Name())
+		
+		if entry.IsDir() {
+			// Check if this subdirectory should get its own chain
+			_, _, needsSeparate := cbs.estimateDirectorySize(entryPath)
+			
+			if needsSeparate {
+				// Large subdirectory - create separate chain
+				subResult, err := cbs.scanLargeDirectory(entryPath, depth+1)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+					continue
+				}
+				
+				// Add reference entry
+				subInfo, _ := os.Stat(entryPath)
+				subEntry := &Entry{
+					Name:      entry.Name(),
+					Mode:      subInfo.Mode(),
+					Size:      subResult.TotalSize,
+					Timestamp: subInfo.ModTime(),
+					Depth:     depth + 1,
+				}
+				if subResult.FinalID != nil {
+					subEntry.C4ID = *subResult.FinalID
+				}
+				separateSubdirs = append(separateSubdirs, subEntry)
+				totalDirSize += subResult.TotalSize
+			} else {
+				// Small subdirectory - include inline
+				subManifest, _, subSize, err := cbs.scanDirectoryFlatNoCompartment(entryPath, depth+1)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+					continue
+				}
+				
+				// Add all entries from subdirectory (they already have correct depth)
+				allEntries = append(allEntries, subManifest.Entries...)
+				totalDirSize += subSize
+			}
+		} else {
+			// Process file
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			
+			fileEntry := &Entry{
+				Name:      entry.Name(),
+				Mode:      info.Mode(),
+				Size:      info.Size(),
+				Timestamp: info.ModTime(),
+				Depth:     depth + 1,
+			}
+			
+			// Compute C4 ID if regular file
+			if info.Mode().IsRegular() {
+				file, err := os.Open(entryPath)
+				if err == nil {
+					id := c4.Identify(file)
+					fileEntry.C4ID = id
+					file.Close()
+				}
+			}
+			
+			allEntries = append(allEntries, fileEntry)
+			totalDirSize += info.Size()
+		}
+	}
+	
+	// Set directory size
+	dirEntry.Size = totalDirSize
+	
+	// Add directory entry first
+	cbs.currentChunk.AddEntry(dirEntry)
+	cbs.chunkEntries++
+	
+	// Now process all entries, chunking as needed
+	hasWrittenFirstChunk := false
+	for _, entry := range allEntries {
+		// Check if we need to flush
+		willExceed := cbs.chunkEntries >= cbs.config.MaxEntriesPerChunk ||
+		             cbs.chunkBytes >= cbs.config.MaxBytesPerChunk
+		
+		if willExceed && cbs.chunkEntries > 0 {
+			// Flush with @base for continuation
+			if err := cbs.flushChunkWithBase(false, hasWrittenFirstChunk); err != nil {
+				return 0, err
+			}
+			hasWrittenFirstChunk = true
+		}
+		
+		// Add entry to current chunk
+		cbs.currentChunk.AddEntry(entry)
+		cbs.chunkEntries++
+		if entry.Size > 0 {
+			cbs.chunkBytes += entry.Size
+		}
+	}
+	
+	// Add references to large subdirectories at the end
+	// These are just references with C4 IDs, not the actual content
+	for _, subdir := range separateSubdirs {
+		// Check if we need to flush before adding reference
+		if cbs.chunkEntries >= cbs.config.MaxEntriesPerChunk {
+			if err := cbs.flushChunkWithBase(false, hasWrittenFirstChunk); err != nil {
+				return 0, err
+			}
+			hasWrittenFirstChunk = true
+		}
+		
+		// Add subdirectory reference
+		cbs.currentChunk.AddEntry(subdir)
+		cbs.chunkEntries++
+	}
+	
+	return totalDirSize, nil
 }
 
 // GetBundlePath returns the path to the created bundle
