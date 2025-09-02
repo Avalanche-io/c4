@@ -23,6 +23,7 @@ type BundleScan struct {
 	StartTime    time.Time
 	CompletedAt  *time.Time
 	Path         string
+	PathFileID   *c4.ID   // C4 ID of path.txt file
 	ProgressChunks []string
 	ChunkSizes   []int64  // Track size of each chunk
 	SnapshotID   *c4.ID
@@ -161,9 +162,11 @@ func (b *Bundle) NewScan(scanPath string) (*BundleScan, error) {
 
 	// Write path.txt
 	pathFile := b.getPathForScan(scan, "path.txt")
-	if _, err := b.writeFile(pathFile, []byte(scanPath)); err != nil {
+	pathID, err := b.writeFile(pathFile, []byte(scanPath))
+	if err != nil {
 		return nil, fmt.Errorf("failed to write path.txt: %w", err)
 	}
+	scan.PathFileID = pathID
 
 	return scan, nil
 }
@@ -207,35 +210,97 @@ func (b *Bundle) generateHeaderManifest() string {
 	var sb strings.Builder
 	sb.WriteString("@c4m 1.0\n")
 	
-	// Root directory entry with actual timestamp
+	// Calculate sizes bottom-up
+	var totalRootSize int64
+	
+	for _, scan := range b.Scans {
+		var scanDirSize int64
+		
+		// Add path.txt size
+		if scan.Path != "" {
+			pathSize := int64(len(scan.Path))
+			scanDirSize += pathSize
+		}
+		
+		// Add all chunk sizes
+		var progressDirSize int64
+		for i := range scan.ProgressChunks {
+			chunkSize := int64(1024) // Default
+			if i < len(scan.ChunkSizes) {
+				chunkSize = scan.ChunkSizes[i]
+			}
+			progressDirSize += chunkSize
+		}
+		scanDirSize += progressDirSize
+		
+		// Add snapshot size
+		if scan.SnapshotID != nil {
+			snapshotSize := scan.SnapshotSize
+			if snapshotSize == 0 {
+				snapshotSize = 100 // Fallback
+			}
+			scanDirSize += snapshotSize
+		}
+		
+		totalRootSize += scanDirSize
+	}
+	
+	// Root directory entry with calculated size
 	rootTime := time.Now().Format(time.RFC3339)
 	if len(b.Scans) > 0 && b.Scans[0].StartTime.Unix() > 0 {
 		rootTime = b.Scans[0].StartTime.Format(time.RFC3339)
 	}
-	sb.WriteString(fmt.Sprintf("d--------- %s 0 scans/\n", rootTime))
+	sb.WriteString(fmt.Sprintf("d--------- %s %d scans/\n", rootTime, totalRootSize))
 
 	for _, scan := range b.Scans {
+		// Calculate scan directory size
+		var scanDirSize int64
+		
+		// path.txt
+		pathSize := int64(len(scan.Path))
+		if scan.Path != "" {
+			scanDirSize += pathSize
+		}
+		
+		// Progress chunks
+		var progressDirSize int64
+		for i := range scan.ProgressChunks {
+			chunkSize := int64(1024) // Default
+			if i < len(scan.ChunkSizes) {
+				chunkSize = scan.ChunkSizes[i]
+			}
+			progressDirSize += chunkSize
+		}
+		scanDirSize += progressDirSize
+		
+		// Snapshot
+		if scan.SnapshotID != nil {
+			snapshotSize := scan.SnapshotSize
+			if snapshotSize == 0 {
+				snapshotSize = 100 // Fallback
+			}
+			scanDirSize += snapshotSize
+		}
+		
 		// Scan directory
 		scanTime := scan.StartTime.Format(time.RFC3339)
-		sb.WriteString(fmt.Sprintf("  d--------- %s 0 %d/\n", scanTime, scan.Number))
+		sb.WriteString(fmt.Sprintf("  d--------- %s %d %d/\n", scanTime, scanDirSize, scan.Number))
 		
 		// path.txt with actual size
-		if pathID := b.getFileID("path.txt", scan); pathID != nil {
-			pathSize := len(scan.Path)
+		if scan.PathFileID != nil {
 			sb.WriteString(fmt.Sprintf("    ---------- %s %d path.txt %s\n", 
-				scanTime, pathSize, pathID))
+				scanTime, pathSize, scan.PathFileID))
 		}
 		
 		// Progress chunks directory
 		if len(scan.ProgressChunks) > 0 {
-			sb.WriteString(fmt.Sprintf("    d--------- %s 0 progress/\n", scanTime))
+			sb.WriteString(fmt.Sprintf("    d--------- %s %d progress/\n", scanTime, progressDirSize))
 			for i, chunkID := range scan.ProgressChunks {
-				// Use actual chunk size if available, otherwise placeholder
-				chunkSize := int64(1024) // Default placeholder
+				chunkSize := int64(1024) // Default
 				if i < len(scan.ChunkSizes) {
 					chunkSize = scan.ChunkSizes[i]
 				}
-				chunkTime := scanTime // Could track individual chunk times
+				chunkTime := scanTime
 				sb.WriteString(fmt.Sprintf("      ---------- %s %d %d.c4m %s\n", 
 					chunkTime, chunkSize, i+1, chunkID))
 			}
@@ -243,13 +308,13 @@ func (b *Bundle) generateHeaderManifest() string {
 		
 		// Snapshot if complete
 		if scan.SnapshotID != nil {
-			completedTime := scanTime // Default to scan start time
+			completedTime := scanTime
 			if scan.CompletedAt != nil {
 				completedTime = scan.CompletedAt.Format(time.RFC3339)
 			}
 			snapshotSize := scan.SnapshotSize
 			if snapshotSize == 0 {
-				snapshotSize = 100 // Fallback placeholder
+				snapshotSize = 100 // Fallback
 			}
 			sb.WriteString(fmt.Sprintf("    ---------- %s %d snapshot.c4m %s\n", 
 				completedTime, snapshotSize, scan.SnapshotID))
