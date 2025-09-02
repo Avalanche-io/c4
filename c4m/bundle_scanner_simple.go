@@ -103,6 +103,13 @@ func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, generator *Generat
 	// Add to current chunk
 	sbs.addEntry(dirEntry)
 	
+	// Check if we should flush based on entry count
+	if sbs.shouldFlushByCount() {
+		if err := sbs.flushChunk(); err != nil {
+			return err
+		}
+	}
+	
 	// Process entries
 	for _, entry := range entries {
 		entryPath := filepath.Join(dirPath, entry.Name())
@@ -140,12 +147,12 @@ func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, generator *Generat
 			
 			// Add to current chunk
 			sbs.addEntry(fileEntry)
-		}
-		
-		// Check if we should flush
-		if sbs.shouldFlush() {
-			if err := sbs.flushChunk(); err != nil {
-				return err
+			
+			// Check if we should flush based on entry count or size
+			if sbs.shouldFlushByCount() || sbs.shouldFlushBySize() {
+				if err := sbs.flushChunk(); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -165,25 +172,23 @@ func (sbs *SimpleBundleScanner) addEntry(entry *Entry) {
 	}
 }
 
-// shouldFlush checks if current chunk should be written
-func (sbs *SimpleBundleScanner) shouldFlush() bool {
+// shouldFlushByCount checks if we've hit the entry limit
+func (sbs *SimpleBundleScanner) shouldFlushByCount() bool {
 	sbs.mu.Lock()
 	defer sbs.mu.Unlock()
-	
-	if sbs.chunkEntries >= sbs.config.MaxEntriesPerChunk {
-		return true
-	}
-	
-	if sbs.chunkBytes >= sbs.config.MaxBytesPerChunk {
-		return true
-	}
-	
-	if time.Since(sbs.lastChunkTime) >= sbs.config.MaxChunkInterval {
-		return true
-	}
-	
-	return false
+	return sbs.chunkEntries >= sbs.config.MaxEntriesPerChunk
 }
+
+// shouldFlushBySize checks if we've hit the size limit
+func (sbs *SimpleBundleScanner) shouldFlushBySize() bool {
+	sbs.mu.Lock()
+	defer sbs.mu.Unlock()
+	return sbs.chunkBytes >= sbs.config.MaxBytesPerChunk
+}
+
+// Note: Removed time-based flushing as it was causing excessive small chunks
+// Time-based flushing should only be used for long-running operations
+// where no new entries are being added, not during active scanning
 
 // flushChunk writes the current chunk to the bundle
 func (sbs *SimpleBundleScanner) flushChunk() error {
