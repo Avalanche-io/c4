@@ -246,11 +246,12 @@ func (b *Bundle) generateHeaderManifest() string {
 	}
 	
 	// Root directory entry with calculated size
+	// Permissions: drwxr-x--- (user: rwx, group: r-x, other: ---)
 	rootTime := time.Now().Format(time.RFC3339)
 	if len(b.Scans) > 0 && b.Scans[0].StartTime.Unix() > 0 {
 		rootTime = b.Scans[0].StartTime.Format(time.RFC3339)
 	}
-	sb.WriteString(fmt.Sprintf("d--------- %s %d scans/\n", rootTime, totalRootSize))
+	sb.WriteString(fmt.Sprintf("drwxr-x--- %s %d scans/\n", rootTime, totalRootSize))
 
 	for _, scan := range b.Scans {
 		// Calculate scan directory size
@@ -283,30 +284,35 @@ func (b *Bundle) generateHeaderManifest() string {
 		}
 		
 		// Scan directory
+		// Permissions: drwxr-x--- (user: rwx, group: r-x, other: ---)
 		scanTime := scan.StartTime.Format(time.RFC3339)
-		sb.WriteString(fmt.Sprintf("  d--------- %s %d %d/\n", scanTime, scanDirSize, scan.Number))
+		sb.WriteString(fmt.Sprintf("  drwxr-x--- %s %d %d/\n", scanTime, scanDirSize, scan.Number))
 		
 		// path.txt with actual size
+		// Permissions: -rw-r----- (user: rw-, group: r--, other: ---)
 		if scan.PathFileID != nil {
-			sb.WriteString(fmt.Sprintf("    ---------- %s %d path.txt %s\n", 
+			sb.WriteString(fmt.Sprintf("    -rw-r----- %s %d path.txt %s\n", 
 				scanTime, pathSize, scan.PathFileID))
 		}
 		
 		// Progress chunks directory
+		// Permissions: drwxr-x--- (user: rwx, group: r-x, other: ---)
 		if len(scan.ProgressChunks) > 0 {
-			sb.WriteString(fmt.Sprintf("    d--------- %s %d progress/\n", scanTime, progressDirSize))
+			sb.WriteString(fmt.Sprintf("    drwxr-x--- %s %d progress/\n", scanTime, progressDirSize))
 			for i, chunkID := range scan.ProgressChunks {
 				chunkSize := int64(1024) // Default
 				if i < len(scan.ChunkSizes) {
 					chunkSize = scan.ChunkSizes[i]
 				}
 				chunkTime := scanTime
-				sb.WriteString(fmt.Sprintf("      ---------- %s %d %d.c4m %s\n", 
+				// Permissions: -rw-r----- (user: rw-, group: r--, other: ---)
+				sb.WriteString(fmt.Sprintf("      -rw-r----- %s %d %d.c4m %s\n", 
 					chunkTime, chunkSize, i+1, chunkID))
 			}
 		}
 		
 		// Snapshot if complete
+		// Permissions: -rw-r----- (user: rw-, group: r--, other: ---)
 		if scan.SnapshotID != nil {
 			completedTime := scanTime
 			if scan.CompletedAt != nil {
@@ -316,7 +322,7 @@ func (b *Bundle) generateHeaderManifest() string {
 			if snapshotSize == 0 {
 				snapshotSize = 100 // Fallback
 			}
-			sb.WriteString(fmt.Sprintf("    ---------- %s %d snapshot.c4m %s\n", 
+			sb.WriteString(fmt.Sprintf("    -rw-r----- %s %d snapshot.c4m %s\n", 
 				completedTime, snapshotSize, scan.SnapshotID))
 		}
 	}
