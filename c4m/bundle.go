@@ -24,7 +24,9 @@ type BundleScan struct {
 	CompletedAt  *time.Time
 	Path         string
 	ProgressChunks []string
+	ChunkSizes   []int64  // Track size of each chunk
 	SnapshotID   *c4.ID
+	SnapshotSize int64
 }
 
 // BundleConfig configures bundle chunking behavior
@@ -204,35 +206,53 @@ func (b *Bundle) writeHeader() error {
 func (b *Bundle) generateHeaderManifest() string {
 	var sb strings.Builder
 	sb.WriteString("@c4m 1.0\n")
-	sb.WriteString("d--------- - - scans/\n")
+	
+	// Root directory entry with actual timestamp
+	rootTime := time.Now().Format(time.RFC3339)
+	if len(b.Scans) > 0 && b.Scans[0].StartTime.Unix() > 0 {
+		rootTime = b.Scans[0].StartTime.Format(time.RFC3339)
+	}
+	sb.WriteString(fmt.Sprintf("d--------- %s 0 scans/\n", rootTime))
 
 	for _, scan := range b.Scans {
 		// Scan directory
 		scanTime := scan.StartTime.Format(time.RFC3339)
-		sb.WriteString(fmt.Sprintf("  d--------- %s - %d/\n", scanTime, scan.Number))
+		sb.WriteString(fmt.Sprintf("  d--------- %s 0 %d/\n", scanTime, scan.Number))
 		
-		// path.txt
+		// path.txt with actual size
 		if pathID := b.getFileID("path.txt", scan); pathID != nil {
+			pathSize := len(scan.Path)
 			sb.WriteString(fmt.Sprintf("    ---------- %s %d path.txt %s\n", 
-				scanTime, len(scan.Path), pathID))
+				scanTime, pathSize, pathID))
 		}
 		
-		// Progress chunks
+		// Progress chunks directory
 		if len(scan.ProgressChunks) > 0 {
-			sb.WriteString(fmt.Sprintf("    d--------- %s - progress/\n", scanTime))
+			sb.WriteString(fmt.Sprintf("    d--------- %s 0 progress/\n", scanTime))
 			for i, chunkID := range scan.ProgressChunks {
-				sb.WriteString(fmt.Sprintf("      ---------- - - %d.c4m %s\n", i+1, chunkID))
+				// Use actual chunk size if available, otherwise placeholder
+				chunkSize := int64(1024) // Default placeholder
+				if i < len(scan.ChunkSizes) {
+					chunkSize = scan.ChunkSizes[i]
+				}
+				chunkTime := scanTime // Could track individual chunk times
+				sb.WriteString(fmt.Sprintf("      ---------- %s %d %d.c4m %s\n", 
+					chunkTime, chunkSize, i+1, chunkID))
 			}
 		}
 		
 		// Snapshot if complete
 		if scan.SnapshotID != nil {
-			completedTime := "-"
+			completedTime := scanTime // Default to scan start time
 			if scan.CompletedAt != nil {
 				completedTime = scan.CompletedAt.Format(time.RFC3339)
 			}
-			sb.WriteString(fmt.Sprintf("    ---------- %s - snapshot.c4m %s\n", 
-				completedTime, scan.SnapshotID))
+			snapshotSize := scan.SnapshotSize
+			if snapshotSize == 0 {
+				snapshotSize = 100 // Fallback placeholder
+			}
+			sb.WriteString(fmt.Sprintf("    ---------- %s %d snapshot.c4m %s\n", 
+				completedTime, snapshotSize, scan.SnapshotID))
 		}
 	}
 
@@ -307,22 +327,27 @@ func (b *Bundle) AddProgressChunk(scan *BundleScan, manifest *Manifest) error {
 	// Add manifest entries
 	content.WriteString(manifest.Canonical())
 	
+	// Track content size
+	chunkContent := []byte(content.String())
+	chunkSize := int64(len(chunkContent))
+	
 	// Write chunk to bundle
 	chunkID, err := b.writeFile(
 		fmt.Sprintf("scans/%d/progress/%d.c4m", scan.Number, len(scan.ProgressChunks)+1),
-		[]byte(content.String()),
+		chunkContent,
 	)
 	if err != nil {
 		return err
 	}
 	
 	scan.ProgressChunks = append(scan.ProgressChunks, chunkID.String())
+	scan.ChunkSizes = append(scan.ChunkSizes, chunkSize)
 	
 	// Update header
 	return b.writeHeader()
 }
 
-// CompleteS can marks a scan as complete with a snapshot
+// CompleteScan marks a scan as complete with a snapshot
 func (b *Bundle) CompleteScan(scan *BundleScan) error {
 	if len(scan.ProgressChunks) == 0 {
 		return fmt.Errorf("no progress chunks to snapshot")
@@ -331,10 +356,11 @@ func (b *Bundle) CompleteScan(scan *BundleScan) error {
 	// Create snapshot pointing to last chunk
 	lastChunkID := scan.ProgressChunks[len(scan.ProgressChunks)-1]
 	snapshot := fmt.Sprintf("@c4m 1.0\n@base %s\n", lastChunkID)
+	snapshotContent := []byte(snapshot)
 	
 	snapshotID, err := b.writeFile(
 		fmt.Sprintf("scans/%d/snapshot.c4m", scan.Number),
-		[]byte(snapshot),
+		snapshotContent,
 	)
 	if err != nil {
 		return err
@@ -343,6 +369,7 @@ func (b *Bundle) CompleteScan(scan *BundleScan) error {
 	now := time.Now()
 	scan.CompletedAt = &now
 	scan.SnapshotID = snapshotID
+	scan.SnapshotSize = int64(len(snapshotContent))
 	
 	return b.writeHeader()
 }
