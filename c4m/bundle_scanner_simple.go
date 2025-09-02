@@ -58,17 +58,16 @@ func NewSimpleBundleScanner(scanPath string, config *BundleConfig) (*SimpleBundl
 
 // Scan performs the filesystem scan and outputs to bundle
 func (sbs *SimpleBundleScanner) Scan() error {
-	// Use the standard generator for now
-	generator := NewGenerator()
-	
-	// Scan the filesystem recursively
-	if err := sbs.scanDirectory(sbs.rootPath, generator, 0); err != nil {
+	// Scan the filesystem recursively, accumulating entries
+	if err := sbs.scanDirectory(sbs.rootPath, 0); err != nil {
 		return err
 	}
 	
-	// Flush final chunk
-	if err := sbs.flushChunk(); err != nil {
-		return err
+	// Flush final chunk if any entries remain
+	if sbs.chunkEntries > 0 {
+		if err := sbs.flushChunk(); err != nil {
+			return err
+		}
 	}
 	
 	// Complete the scan
@@ -80,7 +79,7 @@ func (sbs *SimpleBundleScanner) Scan() error {
 }
 
 // scanDirectory recursively scans a directory and adds entries
-func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, generator *Generator, depth int) error {
+func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, depth int) error {
 	// Read directory
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -103,12 +102,7 @@ func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, generator *Generat
 	// Add to current chunk
 	sbs.addEntry(dirEntry)
 	
-	// Check if we should flush based on entry count
-	if sbs.shouldFlushByCount() {
-		if err := sbs.flushChunk(); err != nil {
-			return err
-		}
-	}
+	// Don't flush after directory entries - only after accumulating content
 	
 	// Process entries
 	for _, entry := range entries {
@@ -116,7 +110,7 @@ func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, generator *Generat
 		
 		if entry.IsDir() {
 			// Recurse into subdirectory
-			if err := sbs.scanDirectory(entryPath, generator, depth+1); err != nil {
+			if err := sbs.scanDirectory(entryPath, depth+1); err != nil {
 				// Log error but continue
 				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 			}
@@ -148,8 +142,13 @@ func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, generator *Generat
 			// Add to current chunk
 			sbs.addEntry(fileEntry)
 			
-			// Check if we should flush based on entry count or size
-			if sbs.shouldFlushByCount() || sbs.shouldFlushBySize() {
+			// Only check flush periodically to avoid overhead
+			sbs.mu.Lock()
+			shouldCheck := sbs.chunkEntries >= sbs.config.MaxEntriesPerChunk ||
+				           sbs.chunkBytes >= sbs.config.MaxBytesPerChunk
+			sbs.mu.Unlock()
+			
+			if shouldCheck {
 				if err := sbs.flushChunk(); err != nil {
 					return err
 				}
