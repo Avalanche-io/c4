@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -384,16 +385,19 @@ func (b *Bundle) writeFile(virtualPath string, content []byte) (*c4.ID, error) {
 	return &id, nil
 }
 
-// AddProgressChunk adds a new progress chunk to the current scan
-func (b *Bundle) AddProgressChunk(scan *BundleScan, manifest *Manifest) error {
-	// Generate chunk content with @base if not first chunk
+// AddProgressChunk adds a new progress chunk to the current scan with optional @base
+func (b *Bundle) AddProgressChunkWithBase(scan *BundleScan, manifest *Manifest, includeBase bool) error {
+	// Generate chunk content with @base if requested and not first chunk
 	var content strings.Builder
 	content.WriteString("@c4m 1.0\n")
 	
-	if len(scan.ProgressChunks) > 0 {
+	if includeBase && len(scan.ProgressChunks) > 0 {
 		lastChunkID := scan.ProgressChunks[len(scan.ProgressChunks)-1]
 		content.WriteString(fmt.Sprintf("@base %s\n", lastChunkID))
 	}
+	
+	// Sort entries properly: files before directories at same depth
+	sortManifestEntries(manifest)
 	
 	// Add manifest entries - use AllEntriesString for full hierarchy
 	content.WriteString(manifest.AllEntriesString())
@@ -416,6 +420,35 @@ func (b *Bundle) AddProgressChunk(scan *BundleScan, manifest *Manifest) error {
 	
 	// Update header
 	return b.writeHeader()
+}
+
+// AddProgressChunk adds a new progress chunk (for backward compatibility)
+func (b *Bundle) AddProgressChunk(scan *BundleScan, manifest *Manifest) error {
+	// Default behavior for simple scanner - always include base for continuation
+	return b.AddProgressChunkWithBase(scan, manifest, true)
+}
+
+// sortManifestEntries sorts entries with files before directories at same depth
+func sortManifestEntries(m *Manifest) {
+	sort.Slice(m.Entries, func(i, j int) bool {
+		e1, e2 := m.Entries[i], m.Entries[j]
+		
+		// First sort by depth
+		if e1.Depth != e2.Depth {
+			return e1.Depth < e2.Depth
+		}
+		
+		// At same depth, files come before directories
+		isDir1 := e1.Mode.IsDir()
+		isDir2 := e2.Mode.IsDir()
+		
+		if isDir1 != isDir2 {
+			return !isDir1 // files (false) before dirs (true)
+		}
+		
+		// Same type, use natural sort
+		return NaturalLess(e1.Name, e2.Name)
+	})
 }
 
 // CompleteScan marks a scan as complete with a snapshot

@@ -324,6 +324,11 @@ func (cbs *CompartmentBundleScanner) scanDirectoryFlat(dirPath string, depth int
 
 // flushChunk writes the current chunk to the bundle
 func (cbs *CompartmentBundleScanner) flushChunk(isFinal bool) error {
+	return cbs.flushChunkWithBase(isFinal, false)
+}
+
+// flushChunkWithBase writes the current chunk with optional @base reference
+func (cbs *CompartmentBundleScanner) flushChunkWithBase(isFinal bool, includeBase bool) error {
 	cbs.mu.Lock()
 	if cbs.chunkEntries == 0 {
 		cbs.mu.Unlock()
@@ -342,7 +347,7 @@ func (cbs *CompartmentBundleScanner) flushChunk(isFinal bool) error {
 	cbs.mu.Unlock()
 	
 	// Write chunk to bundle
-	if err := cbs.bundle.AddProgressChunk(cbs.scan, chunk); err != nil {
+	if err := cbs.bundle.AddProgressChunkWithBase(cbs.scan, chunk, includeBase); err != nil {
 		return fmt.Errorf("failed to write chunk %d: %w", chunkNum, err)
 	}
 	
@@ -353,7 +358,7 @@ func (cbs *CompartmentBundleScanner) flushChunk(isFinal bool) error {
 // continuationFlush handles flushing when continuing a flat directory scan
 func (cbs *CompartmentBundleScanner) continuationFlush() error {
 	// This creates a @base chain continuation
-	return cbs.flushChunk(false)
+	return cbs.flushChunkWithBase(false, true)
 }
 
 // scanDirectoryFlatNoCompartment scans a directory without creating sub-chains
