@@ -116,10 +116,9 @@ func (cbs *CompartmentBundleScanner) estimateDirectorySize(dirPath string) (entr
 		}
 	}
 	
-	// Use 90% threshold to decide on separation
-	// Only truly large directories should get their own chains
-	shouldSeparate = entryCount > (cbs.config.MaxEntriesPerChunk*9)/10 ||
-	                totalSize > (cbs.config.MaxBytesPerChunk*9)/10
+	// Decide on separation when directory exceeds chunk limits
+	shouldSeparate = entryCount > cbs.config.MaxEntriesPerChunk ||
+	                totalSize > cbs.config.MaxBytesPerChunk
 	
 	return entryCount, totalSize, shouldSeparate
 }
