@@ -68,8 +68,32 @@ func (m *Manifest) WritePretty(w io.Writer) (int64, error) {
 	return m.writeWithOptions(w, true, 2)
 }
 
+// SortEntries sorts all entries in the manifest to ensure correct C4M ordering:
+// files before directories at the same depth level
+func (m *Manifest) SortEntries() {
+	sort.Slice(m.Entries, func(i, j int) bool {
+		// First, sort by depth
+		if m.Entries[i].Depth != m.Entries[j].Depth {
+			return m.Entries[i].Depth < m.Entries[j].Depth
+		}
+		
+		// At same depth, files before directories
+		iIsDir := m.Entries[i].Mode.IsDir()
+		jIsDir := m.Entries[j].Mode.IsDir()
+		if iIsDir != jIsDir {
+			return !iIsDir // files first
+		}
+		
+		// Finally, sort by name
+		return NaturalLess(m.Entries[i].Name, m.Entries[j].Name)
+	})
+}
+
 // WritePrettyAdaptive writes the manifest with adaptive column support
 func (m *Manifest) WritePrettyAdaptive(w io.Writer, initialDelay time.Duration) (int64, error) {
+	// Ensure entries are properly sorted before output
+	m.SortEntries()
+	
 	// Use streaming writer for adaptive columns
 	sw := NewStreamingWriter(w, true, initialDelay)
 	defer sw.Close()
@@ -123,6 +147,9 @@ func (m *Manifest) WritePrettyAdaptive(w io.Writer, initialDelay time.Duration) 
 
 // writeWithOptions writes the manifest with formatting options
 func (m *Manifest) writeWithOptions(w io.Writer, prettyPrint bool, indentWidth int) (int64, error) {
+	// Ensure entries are properly sorted before output
+	m.SortEntries()
+	
 	var written int64
 	
 	// Calculate formatting parameters if pretty-printing
