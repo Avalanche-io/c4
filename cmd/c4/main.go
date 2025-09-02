@@ -38,6 +38,11 @@ var (
 	progressiveFlag bool
 	slowModeFlag bool  // Development flag for testing progress display
 	
+	// Bundle flags
+	bundleFlag   bool
+	resumeFlag   bool
+	devModeFlag  bool
+	
 	// Long-form aliases
 	helpFlag bool
 )
@@ -66,6 +71,11 @@ func init() {
 	flag.BoolVar(&progressiveFlag, "progressive", false, "Progressive scan with interrupt support (Ctrl+T for status on macOS)")
 	flag.BoolVar(&slowModeFlag, "slow", false, "Add artificial delays for testing progress display (dev mode)")
 	
+	// Bundle flags
+	flag.BoolVar(&bundleFlag, "bundle", false, "Create/use C4M bundle for unbounded scans")
+	flag.BoolVar(&resumeFlag, "resume", false, "Resume incomplete bundle scan")
+	flag.BoolVar(&devModeFlag, "dev", false, "Use development mode (small chunks)")
+	
 	// Help flag
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 }
@@ -87,6 +97,8 @@ Examples:
   c4 -mr .                          # Show full recursive C4M
   c4 -m --pretty .                  # Pretty-print manifest with aligned columns
   c4 --progressive .                # Progressive scan (Ctrl+C stop, Ctrl+T status on macOS)
+  c4 --bundle /path                 # Create bundle for unbounded scan
+  c4 --bundle --resume scan.c4m_bundle  # Resume incomplete bundle
   echo "data" | c4                  # C4 ID from piped input
   
   c4 diff old.c4m new.c4m           # Compare two manifests
@@ -171,6 +183,19 @@ func processStdin() {
 }
 
 func processFiles(paths []string) {
+	// Handle bundle mode specially
+	if bundleFlag {
+		if len(paths) != 1 {
+			fmt.Fprintf(os.Stderr, "Error: bundle mode requires exactly one path\n")
+			os.Exit(1)
+		}
+		if err := runBundleScan(paths[0]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	
 	for _, path := range paths {
 		if err := processPath(path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", path, err)
@@ -214,6 +239,26 @@ func processPath(path string) error {
 	} else {
 		return processFile(path, info)
 	}
+}
+
+func runBundleScan(path string) error {
+	// Configure bundle
+	var config *c4m.BundleConfig
+	if devModeFlag {
+		config = c4m.DevBundleConfig()
+		fmt.Fprintln(os.Stderr, "# Using development configuration (small chunks)")
+	} else {
+		config = c4m.DefaultBundleConfig()
+	}
+	
+	// Create CLI
+	cli := c4m.NewSimpleBundleCLI(config, verboseFlag)
+	
+	// Execute command
+	if resumeFlag {
+		return cli.ResumeBundle(path)
+	}
+	return cli.CreateBundle(path)
 }
 
 func runProgressiveScan(dirPath string) error {

@@ -95,6 +95,7 @@ type ProgressiveScanner struct {
 	outputMu        sync.Mutex
 	lastOutput      time.Time
 	minOutputDelay  time.Duration
+	outputHook      func(*Entry) // Hook for bundle mode
 }
 
 // ScanStatus represents the current scan progress
@@ -106,6 +107,7 @@ type ScanStatus struct {
 	RegularFiles    int64
 	ElapsedTime     time.Duration
 	StartTime       time.Time
+	ChunksWritten   int64 // For bundle mode
 }
 
 // NewProgressiveScanner creates a new progressive filesystem scanner
@@ -598,6 +600,11 @@ func (ps *ProgressiveScanner) addEntriesToManifest(manifest *Manifest, scanEntry
 	entry := ps.scanEntryToEntry(scanEntry, depth)
 	manifest.AddEntry(entry)
 	
+	// Send to hook if available (for bundle mode)
+	if ps.outputHook != nil {
+		ps.outputHook(entry)
+	}
+	
 	// Add children
 	scanEntry.mu.RLock()
 	children := make([]*ScanEntry, len(scanEntry.children))
@@ -613,6 +620,10 @@ func (ps *ProgressiveScanner) addEntriesToManifest(manifest *Manifest, scanEntry
 		} else {
 			childEntry := ps.scanEntryToEntry(child, depth+1)
 			manifest.AddEntry(childEntry)
+			// Send to hook if available (for bundle mode)
+			if ps.outputHook != nil {
+				ps.outputHook(childEntry)
+			}
 		}
 	}
 }
