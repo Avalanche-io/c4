@@ -247,6 +247,21 @@ func (m *Manifest) writeLayer(w io.Writer, layer *Layer) (int64, error) {
 	return written, nil
 }
 
+// AllEntriesString returns a string with all entries formatted hierarchically
+func (m *Manifest) AllEntriesString() string {
+	var buf bytes.Buffer
+	
+	// Write all entries with proper indentation
+	for _, entry := range m.Entries {
+		indent := strings.Repeat("  ", entry.Depth)
+		buf.WriteString(indent)
+		buf.WriteString(entry.Canonical())
+		buf.WriteString("\n")
+	}
+	
+	return buf.String()
+}
+
 // Canonical returns the canonical form for C4 ID computation
 func (m *Manifest) Canonical() string {
 	var buf bytes.Buffer

@@ -251,8 +251,8 @@ func runBundleScan(path string) error {
 		config = c4m.DefaultBundleConfig()
 	}
 	
-	// Create CLI
-	cli := c4m.NewSimpleBundleCLI(config, verboseFlag)
+	// Create compartmentalized CLI (new default)
+	cli := c4m.NewCompartmentBundleCLI(config, verboseFlag)
 	
 	// Execute command
 	if resumeFlag {

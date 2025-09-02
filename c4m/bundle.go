@@ -395,8 +395,8 @@ func (b *Bundle) AddProgressChunk(scan *BundleScan, manifest *Manifest) error {
 		content.WriteString(fmt.Sprintf("@base %s\n", lastChunkID))
 	}
 	
-	// Add manifest entries
-	content.WriteString(manifest.Canonical())
+	// Add manifest entries - use AllEntriesString for full hierarchy
+	content.WriteString(manifest.AllEntriesString())
 	
 	// Track content size
 	chunkContent := []byte(content.String())
