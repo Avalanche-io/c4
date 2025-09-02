@@ -289,14 +289,29 @@ func (b *Bundle) generateHeaderManifest() string {
 		scanTime := scan.StartTime.Format(time.RFC3339)
 		sb.WriteString(fmt.Sprintf("  drwxr-x--- %s %d %d/\n", scanTime, scanDirSize, scan.Number))
 		
-		// path.txt with actual size
+		// FILES FIRST: path.txt and snapshot.c4m
 		// Permissions: -rw-r----- (user: rw-, group: r--, other: ---)
 		if scan.PathFileID != nil {
 			sb.WriteString(fmt.Sprintf("    -rw-r----- %s %d path.txt %s\n", 
 				scanTime, pathSize, scan.PathFileID))
 		}
 		
-		// Progress chunks directory
+		// Snapshot if complete (files come before directories)
+		// Permissions: -rw-r----- (user: rw-, group: r--, other: ---)
+		if scan.SnapshotID != nil {
+			completedTime := scanTime
+			if scan.CompletedAt != nil {
+				completedTime = scan.CompletedAt.Format(time.RFC3339)
+			}
+			snapshotSize := scan.SnapshotSize
+			if snapshotSize == 0 {
+				snapshotSize = 100 // Fallback
+			}
+			sb.WriteString(fmt.Sprintf("    -rw-r----- %s %d snapshot.c4m %s\n", 
+				completedTime, snapshotSize, scan.SnapshotID))
+		}
+		
+		// DIRECTORIES SECOND: Progress chunks directory
 		// Permissions: drwxr-x--- (user: rwx, group: r-x, other: ---)
 		if len(scan.ProgressChunks) > 0 {
 			sb.WriteString(fmt.Sprintf("    drwxr-x--- %s %d progress/\n", scanTime, progressDirSize))
@@ -310,21 +325,6 @@ func (b *Bundle) generateHeaderManifest() string {
 				sb.WriteString(fmt.Sprintf("      -rw-r----- %s %d %d.c4m %s\n", 
 					chunkTime, chunkSize, i+1, chunkID))
 			}
-		}
-		
-		// Snapshot if complete
-		// Permissions: -rw-r----- (user: rw-, group: r--, other: ---)
-		if scan.SnapshotID != nil {
-			completedTime := scanTime
-			if scan.CompletedAt != nil {
-				completedTime = scan.CompletedAt.Format(time.RFC3339)
-			}
-			snapshotSize := scan.SnapshotSize
-			if snapshotSize == 0 {
-				snapshotSize = 100 // Fallback
-			}
-			sb.WriteString(fmt.Sprintf("    -rw-r----- %s %d snapshot.c4m %s\n", 
-				completedTime, snapshotSize, scan.SnapshotID))
 		}
 	}
 
