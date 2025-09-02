@@ -25,6 +25,7 @@ C4 IDs are 90 character long strings suitable for use in filenames, URLs, databa
 - C4 ids can be selected easily with double click (_a problem for many unique identifiers_).
 - Easily discover C4 ids in arbitrary text with a simple regex `c4[1-9A-HJ-NP-Za-km-z]{88}`
 - Naming files by their C4 id automatically deduplicates them.
+- **[C4M Manifest Format](./c4m)** - Human-readable format for filesystem manifests with C4 IDs.
 
 #### Comparison of Encodings
 

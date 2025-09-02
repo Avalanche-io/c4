@@ -2,9 +2,8 @@
 *.o
 *.a
 *.so
+c4
 cmd/c4/c4
-cmd/c4id/c4id
-cmd/example/example
 
 # testdata
 *.c4m
@@ -29,4 +28,6 @@ _testmain.go
 *.test
 *.prof
 *.coverprofile
+coverage.out
+*_coverage.out
 
