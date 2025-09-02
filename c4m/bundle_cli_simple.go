@@ -44,24 +44,41 @@ func (sbc *SimpleBundleCLI) CreateBundle(scanPath string) error {
 		fmt.Fprintf(os.Stderr, "#   Max chunk interval: %v\n", sbc.config.MaxChunkInterval)
 	}
 	
-	// Create scanner
-	scanner, err := NewSimpleBundleScanner(absPath, sbc.config)
+	// Create bundle
+	bundle, err := CreateBundle(absPath, sbc.config)
 	if err != nil {
-		return fmt.Errorf("failed to create scanner: %w", err)
+		return fmt.Errorf("failed to create bundle: %w", err)
 	}
 	
-	fmt.Fprintf(os.Stderr, "# Bundle created: %s\n", scanner.GetBundlePath())
+	// Start scan
+	scan, err := bundle.NewScan(absPath)
+	if err != nil {
+		return fmt.Errorf("failed to create scan: %w", err)
+	}
+	
+	// Create scanner
+	scanner := NewSimpleBundleScanner(bundle, scan, sbc.config)
+	
+	fmt.Fprintf(os.Stderr, "# Bundle created: %s\n", bundle.Path)
 	fmt.Fprintf(os.Stderr, "# Starting scan...\n")
 	
 	// Run scan
-	if err := scanner.Scan(); err != nil {
+	if err := scanner.ScanPath(absPath); err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 	
+	// Complete scan
+	if err := scanner.Complete(); err != nil {
+		return fmt.Errorf("failed to complete scan: %w", err)
+	}
+	
 	// Report results
+	stats := scanner.GetStatistics()
 	fmt.Fprintf(os.Stderr, "\n✓ Scan complete\n")
-	fmt.Fprintf(os.Stderr, "✓ Chunks written: %d\n", scanner.GetChunksWritten())
-	fmt.Fprintf(os.Stderr, "✓ Bundle saved to: %s\n", scanner.GetBundlePath())
+	fmt.Fprintf(os.Stderr, "✓ Chunks written: %d\n", stats["chunks_written"])
+	fmt.Fprintf(os.Stderr, "✓ Total entries: %d\n", stats["total_entries"])
+	fmt.Fprintf(os.Stderr, "✓ Avg entries per chunk: %d\n", stats["avg_entries"])
+	fmt.Fprintf(os.Stderr, "✓ Bundle saved to: %s\n", bundle.Path)
 	
 	return nil
 }

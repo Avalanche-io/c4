@@ -396,8 +396,8 @@ func (b *Bundle) AddProgressChunkWithBase(scan *BundleScan, manifest *Manifest, 
 		content.WriteString(fmt.Sprintf("@base %s\n", lastChunkID))
 	}
 	
-	// Sort entries properly: files before directories at same depth
-	sortManifestEntries(manifest)
+	// Don't sort - maintain hierarchical structure
+	// Entries should already be in correct order from scanning
 	
 	// Add manifest entries - use AllEntriesString for full hierarchy
 	content.WriteString(manifest.AllEntriesString())

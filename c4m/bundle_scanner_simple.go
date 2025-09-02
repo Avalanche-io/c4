@@ -4,225 +4,405 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
-	"time"
+	"strings"
 	
 	"github.com/Avalanche-io/c4"
 )
 
-// SimpleBundleScanner creates bundles by scanning filesystems
+// SimpleBundleScanner implements directory-aware chunking with count tracking
+// Based on the algorithm: track counts, flush complete directories when possible
 type SimpleBundleScanner struct {
-	bundle       *Bundle
-	scan         *BundleScan
-	config       *BundleConfig
-	rootPath     string
+	bundle  *Bundle
+	scan    *BundleScan
+	config  *BundleConfig
 	
-	// Current chunk state
-	currentChunk *Manifest
-	chunkEntries int
-	chunkBytes   int64
-	lastChunkTime time.Time
+	// Current accumulation
+	currentManifest *Manifest
+	currentSize     int64
+	currentEntries  int
 	
-	// Synchronization
-	mu           sync.Mutex
-	chunksWritten int
+	// Directory tracking (populated in phase 1)
+	directoryCounts map[string]int    // Path -> entry count (including subdirs)
+	directorySizes  map[string]int64  // Path -> total size
+	
+	// Statistics
+	chunksWritten  int
+	totalEntries   int
+	incompleteDir  string // Track if we're continuing an incomplete directory
 }
 
-// NewSimpleBundleScanner creates a scanner that outputs to a bundle
-func NewSimpleBundleScanner(scanPath string, config *BundleConfig) (*SimpleBundleScanner, error) {
+// NewSimpleBundleScanner creates a scanner with directory-aware chunking
+func NewSimpleBundleScanner(bundle *Bundle, scan *BundleScan, config *BundleConfig) *SimpleBundleScanner {
 	if config == nil {
 		config = DefaultBundleConfig()
 	}
 	
-	// Create bundle
-	bundle, err := CreateBundle(scanPath, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bundle: %w", err)
-	}
-	
-	// Start new scan
-	scan, err := bundle.NewScan(scanPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create scan: %w", err)
-	}
-	
 	return &SimpleBundleScanner{
-		bundle:        bundle,
-		scan:          scan,
-		config:        config,
-		rootPath:      scanPath,
-		currentChunk:  NewManifest(),
-		lastChunkTime: time.Now(),
-	}, nil
+		bundle:          bundle,
+		scan:            scan,
+		config:          config,
+		currentManifest: NewManifest(),
+		directoryCounts: make(map[string]int),
+		directorySizes:  make(map[string]int64),
+	}
 }
 
-// Scan performs the filesystem scan and outputs to bundle
-func (sbs *SimpleBundleScanner) Scan() error {
-	// Scan the filesystem recursively, accumulating entries
-	if err := sbs.scanDirectory(sbs.rootPath, 0); err != nil {
-		return err
+// Phase 1: Count all directories to make informed decisions
+func (sbs *SimpleBundleScanner) countDirectory(path string) (entries int, size int64, err error) {
+	entries = 1 // Count the directory itself
+	
+	dirEntries, err := os.ReadDir(path)
+	if err != nil {
+		return 0, 0, err
 	}
 	
-	// Flush final chunk if any entries remain
-	if sbs.chunkEntries > 0 {
-		if err := sbs.flushChunk(); err != nil {
-			return err
+	// Process files
+	for _, entry := range dirEntries {
+		if !entry.IsDir() {
+			entries++
+			if info, err := entry.Info(); err == nil {
+				size += info.Size()
+			}
 		}
 	}
 	
-	// Complete the scan
-	if err := sbs.bundle.CompleteScan(sbs.scan); err != nil {
-		return err
+	// Process subdirectories recursively
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			subPath := filepath.Join(path, entry.Name())
+			subEntries, subSize, err := sbs.countDirectory(subPath)
+			if err != nil {
+				// Skip directories we can't read
+				continue
+			}
+			entries += subEntries
+			size += subSize
+		}
 	}
+	
+	// Store the counts
+	sbs.directoryCounts[path] = entries
+	sbs.directorySizes[path] = size
+	
+	return entries, size, nil
+}
+
+// shouldSeparateDirectory decides if a directory should be its own chunk
+func (sbs *SimpleBundleScanner) shouldSeparateDirectory(path string) bool {
+	count := sbs.directoryCounts[path]
+	
+	// If directory has more than 70% of chunk capacity, separate it
+	threshold := int(float64(sbs.config.MaxEntriesPerChunk) * 0.7)
+	return count > threshold
+}
+
+// canFitDirectory checks if directory can fit in current chunk
+func (sbs *SimpleBundleScanner) canFitDirectory(path string) bool {
+	count := sbs.directoryCounts[path]
+	projectedEntries := sbs.currentEntries + count
+	
+	// Allow up to 125% overage for finding good boundaries
+	maxWithOverage := int(float64(sbs.config.MaxEntriesPerChunk) * 1.25)
+	return projectedEntries <= maxWithOverage
+}
+
+// writeChunk writes the current manifest as a chunk
+func (sbs *SimpleBundleScanner) writeChunk(reason string) error {
+	if len(sbs.currentManifest.Entries) == 0 {
+		return nil
+	}
+	
+	// Determine if we need @base (continuing an incomplete directory)
+	includeBase := sbs.chunksWritten > 0 && sbs.incompleteDir != ""
+	
+	if err := sbs.bundle.AddProgressChunkWithBase(sbs.scan, sbs.currentManifest, includeBase); err != nil {
+		return fmt.Errorf("failed to write chunk: %w", err)
+	}
+	
+	fmt.Fprintf(os.Stderr, "✓ Wrote chunk %d (%d entries, reason: %s)\n", 
+		sbs.chunksWritten+1, sbs.currentEntries, reason)
+	
+	sbs.chunksWritten++
+	
+	// Reset for next chunk
+	sbs.currentManifest = NewManifest()
+	sbs.currentEntries = 0
+	sbs.currentSize = 0
 	
 	return nil
 }
 
-// scanDirectory recursively scans a directory and adds entries
-func (sbs *SimpleBundleScanner) scanDirectory(dirPath string, depth int) error {
-	// Read directory
-	entries, err := os.ReadDir(dirPath)
+// ScanPath performs directory-aware scanning with proper chunking
+func (sbs *SimpleBundleScanner) ScanPath(scanPath string) error {
+	fmt.Fprintf(os.Stderr, "Phase 1: Counting directories...\n")
+	
+	// Phase 1: Count all directories
+	totalEntries, totalSize, err := sbs.countDirectory(scanPath)
 	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %w", dirPath, err)
+		return fmt.Errorf("failed to count directories: %w", err)
 	}
 	
-	// Create directory entry
-	dirInfo, err := os.Stat(dirPath)
+	fmt.Fprintf(os.Stderr, "Found %d entries, %d MB total\n", totalEntries, totalSize/(1024*1024))
+	fmt.Fprintf(os.Stderr, "Phase 2: Scanning with directory-aware chunking...\n")
+	
+	// Phase 2: Stream with intelligent chunking
+	return sbs.scanDirectory(scanPath, 0, nil)
+}
+
+// scanDirectory recursively scans with directory-aware chunking
+func (sbs *SimpleBundleScanner) scanDirectory(path string, depth int, parentManifest *Manifest) error {
+	// Check if this directory should be separated
+	if depth > 0 && sbs.shouldSeparateDirectory(path) {
+		// Only write current chunk if it has meaningful content
+		// (more than just a parent directory entry)
+		if sbs.currentEntries > 10 { // Avoid tiny chunks
+			if err := sbs.writeChunk("before large directory"); err != nil {
+				return err
+			}
+			sbs.incompleteDir = ""
+		}
+		
+		// Scan this large directory as its own chunk(s)
+		return sbs.scanLargeDirectory(path, depth)
+	}
+	
+	// Check if this directory fits in current chunk
+	if !sbs.canFitDirectory(path) {
+		// Write current chunk
+		if err := sbs.writeChunk("chunk full"); err != nil {
+			return err
+		}
+		// Mark that we're starting fresh (no incomplete directory)
+		sbs.incompleteDir = ""
+	}
+	
+	// Add directory entry
+	dirInfo, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
 	
 	dirEntry := &Entry{
-		Name:      filepath.Base(dirPath),
 		Mode:      dirInfo.Mode(),
 		Timestamp: dirInfo.ModTime(),
+		Size:      sbs.directorySizes[path],
+		Name:      filepath.Base(path),
 		Depth:     depth,
 	}
 	
-	// Add to current chunk
-	sbs.addEntry(dirEntry)
+	sbs.currentManifest.Entries = append(sbs.currentManifest.Entries, dirEntry)
+	sbs.currentEntries++
+	sbs.totalEntries++
 	
-	// Don't flush after directory entries - only after accumulating content
+	// Read directory contents
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
 	
-	// Process entries
+	// Process files first (maintaining sort order)
 	for _, entry := range entries {
-		entryPath := filepath.Join(dirPath, entry.Name())
-		
-		if entry.IsDir() {
-			// Recurse into subdirectory
-			if err := sbs.scanDirectory(entryPath, depth+1); err != nil {
-				// Log error but continue
-				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-			}
-		} else {
-			// Process file
-			info, err := entry.Info()
-			if err != nil {
+		if !entry.IsDir() {
+			fullPath := filepath.Join(path, entry.Name())
+			if err := sbs.scanFile(fullPath, depth+1); err != nil {
+				// Skip files we can't read
 				continue
-			}
-			
-			fileEntry := &Entry{
-				Name:      entry.Name(),
-				Mode:      info.Mode(),
-				Size:      info.Size(),
-				Timestamp: info.ModTime(),
-				Depth:     depth + 1,
-			}
-			
-			// Compute C4 ID if regular file
-			if info.Mode().IsRegular() {
-				file, err := os.Open(entryPath)
-				if err == nil {
-					id := c4.Identify(file)
-					fileEntry.C4ID = id
-					file.Close()
-				}
-			}
-			
-			// Add to current chunk
-			sbs.addEntry(fileEntry)
-			
-			// Only check flush periodically to avoid overhead
-			sbs.mu.Lock()
-			shouldCheck := sbs.chunkEntries >= sbs.config.MaxEntriesPerChunk ||
-				           sbs.chunkBytes >= sbs.config.MaxBytesPerChunk
-			sbs.mu.Unlock()
-			
-			if shouldCheck {
-				if err := sbs.flushChunk(); err != nil {
-					return err
-				}
 			}
 		}
 	}
 	
+	// Process subdirectories
+	for _, entry := range entries {
+		if entry.IsDir() {
+			fullPath := filepath.Join(path, entry.Name())
+			if err := sbs.scanDirectory(fullPath, depth+1, sbs.currentManifest); err != nil {
+				// Skip directories we can't process
+				continue
+			}
+		}
+	}
+	
+	// Calculate directory C4 ID from its contents
+	if sbs.directoryCounts[path] > 1 {
+		dirEntry.C4ID = sbs.calculateDirectoryID(path, dirEntry, sbs.currentManifest)
+	}
+	
 	return nil
 }
 
-// addEntry adds an entry to the current chunk
-func (sbs *SimpleBundleScanner) addEntry(entry *Entry) {
-	sbs.mu.Lock()
-	defer sbs.mu.Unlock()
+// scanLargeDirectory handles directories that need their own chunk(s)
+func (sbs *SimpleBundleScanner) scanLargeDirectory(path string, depth int) error {
+	fmt.Fprintf(os.Stderr, "Large directory %s (%d entries) gets separate chunk(s)\n", 
+		filepath.Base(path), sbs.directoryCounts[path])
 	
-	sbs.currentChunk.AddEntry(entry)
-	sbs.chunkEntries++
-	if entry.Size > 0 {
-		sbs.chunkBytes += entry.Size
-	}
-}
-
-// shouldFlushByCount checks if we've hit the entry limit
-func (sbs *SimpleBundleScanner) shouldFlushByCount() bool {
-	sbs.mu.Lock()
-	defer sbs.mu.Unlock()
-	return sbs.chunkEntries >= sbs.config.MaxEntriesPerChunk
-}
-
-// shouldFlushBySize checks if we've hit the size limit
-func (sbs *SimpleBundleScanner) shouldFlushBySize() bool {
-	sbs.mu.Lock()
-	defer sbs.mu.Unlock()
-	return sbs.chunkBytes >= sbs.config.MaxBytesPerChunk
-}
-
-// Note: Removed time-based flushing as it was causing excessive small chunks
-// Time-based flushing should only be used for long-running operations
-// where no new entries are being added, not during active scanning
-
-// flushChunk writes the current chunk to the bundle
-func (sbs *SimpleBundleScanner) flushChunk() error {
-	sbs.mu.Lock()
-	if sbs.chunkEntries == 0 {
-		sbs.mu.Unlock()
-		return nil
+	// This directory gets its own chunk series
+	// Track that we might need @base for continuation
+	sbs.incompleteDir = path
+	
+	// Create fresh manifest for this directory
+	sbs.currentManifest = NewManifest()
+	sbs.currentEntries = 0
+	sbs.currentSize = 0
+	
+	// Add directory entry
+	dirInfo, err := os.Stat(path)
+	if err != nil {
+		return err
 	}
 	
-	chunk := sbs.currentChunk
-	sbs.currentChunk = NewManifest()
-	sbs.chunkEntries = 0
-	sbs.chunkBytes = 0
-	sbs.lastChunkTime = time.Now()
-	sbs.chunksWritten++
-	chunkNum := sbs.chunksWritten
-	sbs.mu.Unlock()
-	
-	// Write chunk to bundle
-	if err := sbs.bundle.AddProgressChunk(sbs.scan, chunk); err != nil {
-		return fmt.Errorf("failed to write chunk %d: %w", chunkNum, err)
+	dirEntry := &Entry{
+		Mode:      dirInfo.Mode(),
+		Timestamp: dirInfo.ModTime(),
+		Size:      sbs.directorySizes[path],
+		Name:      filepath.Base(path),
+		Depth:     depth,
 	}
 	
-	fmt.Fprintf(os.Stderr, "✓ Wrote chunk %d\n", chunkNum)
+	sbs.currentManifest.Entries = append(sbs.currentManifest.Entries, dirEntry)
+	sbs.currentEntries++
+	sbs.totalEntries++
+	
+	// Read entries
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	
+	// Process files, checking for chunk boundaries
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			// Check if we need to chunk
+			if sbs.currentEntries >= sbs.config.MaxEntriesPerChunk {
+				if err := sbs.writeChunk("large dir continuation"); err != nil {
+					return err
+				}
+				// Continue with same incomplete directory
+			}
+			
+			fullPath := filepath.Join(path, entry.Name())
+			if err := sbs.scanFile(fullPath, depth+1); err != nil {
+				continue
+			}
+		}
+	}
+	
+	// Process subdirectories
+	for _, entry := range entries {
+		if entry.IsDir() {
+			fullPath := filepath.Join(path, entry.Name())
+			// Subdirectories might trigger their own separations
+			if err := sbs.scanDirectory(fullPath, depth+1, sbs.currentManifest); err != nil {
+				continue
+			}
+		}
+	}
+	
+	// Calculate directory ID
+	if sbs.directoryCounts[path] > 1 {
+		dirEntry.C4ID = sbs.calculateDirectoryID(path, dirEntry, sbs.currentManifest)
+	}
+	
+	// Write final chunk for this directory
+	if err := sbs.writeChunk("large dir complete"); err != nil {
+		return err
+	}
+	sbs.incompleteDir = ""
+	
 	return nil
 }
 
-// GetBundlePath returns the path to the created bundle
-func (sbs *SimpleBundleScanner) GetBundlePath() string {
-	return sbs.bundle.Path
+// scanFile adds a file entry
+func (sbs *SimpleBundleScanner) scanFile(path string, depth int) error {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	
+	entry := &Entry{
+		Mode:      fileInfo.Mode(),
+		Timestamp: fileInfo.ModTime(),
+		Size:      fileInfo.Size(),
+		Name:      fileInfo.Name(),
+		Depth:     depth,
+	}
+	
+	// Calculate C4 ID for regular files
+	if fileInfo.Mode().IsRegular() {
+		file, err := os.Open(path)
+		if err == nil {
+			defer file.Close()
+			entry.C4ID = c4.Identify(file)
+		}
+	}
+	
+	sbs.currentManifest.Entries = append(sbs.currentManifest.Entries, entry)
+	sbs.currentEntries++
+	sbs.currentSize += fileInfo.Size()
+	sbs.totalEntries++
+	
+	return nil
 }
 
-// GetChunksWritten returns the number of chunks written
-func (sbs *SimpleBundleScanner) GetChunksWritten() int {
-	sbs.mu.Lock()
-	defer sbs.mu.Unlock()
-	return sbs.chunksWritten
+// calculateDirectoryID computes C4 ID for a directory from its contents
+func (sbs *SimpleBundleScanner) calculateDirectoryID(path string, dirEntry *Entry, manifest *Manifest) c4.ID {
+	// Build a sub-manifest for this directory
+	var content strings.Builder
+	content.WriteString("@c4m 1.0\n")
+	
+	// Find all entries that belong to this directory
+	startDepth := dirEntry.Depth
+	started := false
+	
+	for _, entry := range manifest.Entries {
+		// Skip until we find our directory
+		if !started {
+			if entry == dirEntry {
+				started = true
+			}
+			continue
+		}
+		
+		// Stop when we reach an entry at same or shallower depth
+		if entry.Depth <= startDepth {
+			break
+		}
+		
+		// Include entries that are direct children
+		if entry.Depth == startDepth+1 {
+			relativeEntry := *entry
+			relativeEntry.Depth = 0
+			content.WriteString(relativeEntry.Canonical())
+			content.WriteString("\n")
+		}
+	}
+	
+	return c4.Identify(strings.NewReader(content.String()))
+}
+
+// Complete finishes the scan
+func (sbs *SimpleBundleScanner) Complete() error {
+	// Write any remaining entries
+	if sbs.currentEntries > 0 {
+		if err := sbs.writeChunk("final"); err != nil {
+			return err
+		}
+	}
+	
+	// Mark scan as complete
+	return sbs.bundle.CompleteScan(sbs.scan)
+}
+
+// GetStatistics returns scan statistics
+func (sbs *SimpleBundleScanner) GetStatistics() map[string]interface{} {
+	avgEntries := 0
+	if sbs.chunksWritten > 0 {
+		avgEntries = sbs.totalEntries / sbs.chunksWritten
+	}
+	
+	return map[string]interface{}{
+		"total_entries":   sbs.totalEntries,
+		"chunks_written":  sbs.chunksWritten,
+		"avg_entries":     avgEntries,
+		"directory_count": len(sbs.directoryCounts),
+	}
 }

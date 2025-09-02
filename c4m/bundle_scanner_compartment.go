@@ -231,82 +231,96 @@ func (cbs *CompartmentBundleScanner) scanDirectoryFlat(dirPath string, depth int
 	// Track subdirectory sizes for proper directory size calculation
 	var dirSize int64
 	
-	// Process entries
+	// Separate files and directories for proper ordering
+	var fileEntries []os.DirEntry
+	var dirEntries []os.DirEntry
 	for _, entry := range entries {
+		if entry.IsDir() {
+			dirEntries = append(dirEntries, entry)
+		} else {
+			fileEntries = append(fileEntries, entry)
+		}
+	}
+	
+	// Process files first
+	for _, entry := range fileEntries {
 		entryPath := filepath.Join(dirPath, entry.Name())
 		
-		if entry.IsDir() {
-			// Check if subdirectory should be separate
-			_, _, subNeedsSeparate := cbs.estimateDirectorySize(entryPath)
-			
-			if subNeedsSeparate {
-				// Large subdirectory - create separate chain
-				subResult, err := cbs.scanLargeDirectory(entryPath, depth+1)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-					continue
-				}
-				
-				// Add reference entry
-				subInfo, _ := os.Stat(entryPath)
-				subEntry := &Entry{
-					Name:      entry.Name(),
-					Mode:      subInfo.Mode(),
-					Size:      subResult.TotalSize,
-					Timestamp: subInfo.ModTime(),
-					Depth:     depth + 1,
-				}
-				// Only add C4ID if we have one
-				if subResult.FinalID != nil {
-					subEntry.C4ID = *subResult.FinalID
-				}
-				manifest.AddEntry(subEntry)
-				entryCount++
-				dirSize += subResult.TotalSize
-			} else {
-				// Small subdirectory - recurse inline
-				subManifest, subCount, subSize, err := cbs.scanDirectoryFlat(entryPath, depth+1)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-					continue
-				}
-				
-				// Merge subdirectory entries into our manifest
-				for _, subEntry := range subManifest.Entries {
-					manifest.AddEntry(subEntry)
-				}
-				entryCount += subCount
-				dirSize += subSize
+		// Process file
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		
+		fileEntry := &Entry{
+			Name:      entry.Name(),
+			Mode:      info.Mode(),
+			Size:      info.Size(),
+			Timestamp: info.ModTime(),
+			Depth:     depth + 1,
+		}
+		
+		// Compute C4 ID if regular file
+		if info.Mode().IsRegular() {
+			file, err := os.Open(entryPath)
+			if err == nil {
+				id := c4.Identify(file)
+				fileEntry.C4ID = id
+				file.Close()
 			}
-		} else {
-			// Process file
-			info, err := entry.Info()
+		}
+		
+		manifest.AddEntry(fileEntry)
+		entryCount++
+		totalBytes += info.Size()
+		dirSize += info.Size()
+	}
+	
+	// Now process directories
+	for _, entry := range dirEntries {
+		entryPath := filepath.Join(dirPath, entry.Name())
+		
+		// Check if subdirectory should be separate
+		_, _, subNeedsSeparate := cbs.estimateDirectorySize(entryPath)
+		
+		if subNeedsSeparate {
+			// Large subdirectory - create separate chain
+			subResult, err := cbs.scanLargeDirectory(entryPath, depth+1)
 			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 				continue
 			}
 			
-			fileEntry := &Entry{
+			// Add reference entry
+			subInfo, _ := os.Stat(entryPath)
+			subEntry := &Entry{
 				Name:      entry.Name(),
-				Mode:      info.Mode(),
-				Size:      info.Size(),
-				Timestamp: info.ModTime(),
+				Mode:      subInfo.Mode(),
+				Size:      subResult.TotalSize,
+				Timestamp: subInfo.ModTime(),
 				Depth:     depth + 1,
 			}
-			
-			// Compute C4 ID if regular file
-			if info.Mode().IsRegular() {
-				file, err := os.Open(entryPath)
-				if err == nil {
-					id := c4.Identify(file)
-					fileEntry.C4ID = id
-					file.Close()
-				}
+			// Only add C4ID if we have one
+			if subResult.FinalID != nil {
+				subEntry.C4ID = *subResult.FinalID
+			}
+			manifest.AddEntry(subEntry)
+			entryCount++
+			dirSize += subResult.TotalSize
+		} else {
+			// Small subdirectory - recurse inline
+			subManifest, subCount, subSize, err := cbs.scanDirectoryFlat(entryPath, depth+1)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+				continue
 			}
 			
-			manifest.AddEntry(fileEntry)
-			entryCount++
-			totalBytes += info.Size()
-			dirSize += info.Size()
+			// Add all entries from subdirectory (including the dir entry itself)
+			for _, subEntry := range subManifest.Entries {
+				manifest.AddEntry(subEntry)
+			}
+			entryCount += subCount
+			dirSize += subSize
 		}
 	}
 	
@@ -389,8 +403,19 @@ func (cbs *CompartmentBundleScanner) scanDirectoryFlatNoCompartment(dirPath stri
 	// Track subdirectory sizes for proper directory size calculation
 	var dirSize int64
 	
-	// Process entries
+	// Separate files and directories for proper ordering
+	var fileEntries []os.DirEntry
+	var dirEntries []os.DirEntry
 	for _, entry := range entries {
+		if entry.IsDir() {
+			dirEntries = append(dirEntries, entry)
+		} else {
+			fileEntries = append(fileEntries, entry)
+		}
+	}
+	
+	// Process files first
+	for _, entry := range fileEntries {
 		entryPath := filepath.Join(dirPath, entry.Name())
 		
 		if entry.IsDir() {
