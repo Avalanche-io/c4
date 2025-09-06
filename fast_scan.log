@@ -1,0 +1,14 @@
+Creating bundle at: /Users/joshua/ws/active_fast.c4m_bundle
+Scanning: /Users/joshua/ws/active
+FAST MODE: Skipping C4 ID computation for structural testing
+[00:00:00] Phase 1: Counting directories...
+[00:00:19] Found 910142 total entries
+[00:00:19] Phase 2: Scanning with proper ordering...
+[00:00:22] Phase 3: Chunking entries...
+[00:00:22] Wrote chunk 1 (100000 entries)
+[00:00:22] Wrote chunk 2 (53543 entries)
+[00:00:22] 
+Scan complete: 153543 entries in 2 chunks
+Fast scan completed successfully!
+Total entries: 153543
+Chunks written: 2

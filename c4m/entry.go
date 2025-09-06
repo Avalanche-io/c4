@@ -199,7 +199,16 @@ func formatSize(size int64, displayFormat bool) string {
 
 // formatName adds quotes if the name contains special characters
 func formatName(name string) string {
-	// Check if quoting is needed
+	// For directories (ending with /), never use quotes
+	// The trailing slash makes the boundary unambiguous
+	if strings.HasSuffix(name, "/") {
+		// Still escape backslashes and newlines for safety
+		escaped := strings.ReplaceAll(name, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+		return escaped
+	}
+	
+	// For files, check if quoting is needed
 	needsQuotes := false
 	for _, c := range name {
 		if c == ' ' || c == '"' || c == '\\' || c == '\n' {

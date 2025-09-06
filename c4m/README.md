@@ -183,6 +183,90 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 - Workflow examples
 - Documentation improvements
 
+## Package Contents
+
+### Core Components
+
+- **`manifest.go`** - Core manifest data structure and operations. Implements the C4M format with version handling, entry management, and canonical form generation for C4 ID computation.
+
+- **`entry.go`** - Individual filesystem entry representation. Handles file/directory metadata including permissions, timestamps, sizes, names, symlink targets, and C4 IDs.
+
+- **`parser.go`** - Robust C4M format parser. Handles all @-directives, multiple timestamp formats, quoted filenames, escape sequences, and null values.
+
+### Bundle System
+
+- **`bundle.go`** - Content-addressed storage container for large filesystem scans. Manages chunked manifests, scan sessions, progress tracking, and atomic file operations.
+
+- **`bundle_scanner.go`** - Wraps ProgressiveScanner for bundle output. Coordinates multi-stage scanning with chunk generation.
+
+- **`bundle_scanner_simple.go`** - Directory-aware chunking implementation with entry counting and predictive chunk sizing.
+
+- **`bundle_scanner_v2.go`** - Current production scanner with three-phase architecture (count, scan, chunk). Handles collapsed directories as separate scan contexts.
+
+- **`bundle_scanner_compartment.go`** - Experimental compartmentalized scanning for isolated directory processing.
+
+### CLI Components
+
+- **`bundle_cli.go`** - Command-line interface for bundle operations including creation, resumption, and validation.
+
+- **`bundle_cli_simple.go`** - Simplified CLI wrapper using ScannerV2 for bundle creation.
+
+- **`bundle_cli_compartment.go`** - CLI for compartmentalized bundle scanning operations.
+
+- **`progressive_cli.go`** - CLI for progressive scanning with real-time output and signal handling.
+
+### Scanning Infrastructure
+
+- **`progressive_scanner.go`** - Multi-stage concurrent scanner with three phases: structure discovery, metadata collection, and C4 ID computation. Includes signal handling and progress reporting.
+
+- **`scanner_darwin.go`** - macOS-specific optimizations using Darwin system calls.
+
+- **`scanner_linux.go`** - Linux-specific optimizations for efficient filesystem traversal.
+
+- **`scanner_generic.go`** - Fallback implementation for other platforms.
+
+- **`generator.go`** - Traditional filesystem-to-manifest generator with configurable options for C4 ID computation, symlink following, and sequence detection.
+
+### Streaming Components
+
+- **`streaming_writer.go`** - Progressive manifest output with buffering and flush control.
+
+- **`column_adapter.go`** - Adaptive column positioning for optimal C4 ID alignment in output.
+
+### Utilities
+
+- **`naturalsort.go`** - Natural sorting implementation for mixed alphanumeric filenames (file2 before file10).
+
+- **`sequence.go`** - Media file sequence detection and compression. Handles patterns like `frame[0001-0100].png`.
+
+- **`operations.go`** - Manifest comparison and set operations: diff, union, intersect, subtract.
+
+- **`hierarchy.go`** - Tree structure utilities for hierarchical manifest representation.
+
+- **`manifest_sort.go`** - Sorting utilities for manifest entries maintaining C4M format rules.
+
+- **`timing.go`** - Performance timing utilities for debugging and optimization.
+
+### Platform Support
+
+- **`signal_darwin.go`** - macOS signal handling (SIGINFO/Ctrl+T for progress).
+
+- **`signal_other.go`** - Signal handling for non-Darwin platforms.
+
+### Documentation
+
+- **`doc.go`** - Package documentation and API overview.
+
+### Test Files
+
+The package includes comprehensive test coverage:
+- `*_test.go` files for unit tests
+- `example_scanner_test.go` for usage examples
+- `parser_roundtrip_test.go` for format validation
+- `adaptive_integration_test.go` for end-to-end testing
+- `manifest_pretty_test.go` for output formatting tests
+- `null_values_test.go` for incomplete data handling
+
 ## License
 
 Same as the C4 project - see [LICENSE](../LICENSE).

@@ -1,0 +1,12 @@
+[00:00:00] Bundle created: c4_20250902-184318.c4m_bundle
+[00:00:00] Starting scan...
+[00:00:00] Phase 1: Counting directories...
+[00:00:00] Found 658 entries, 83 MB total
+[00:00:00] Phase 2: Scanning with directory-aware chunking...
+[00:00:00] ✓ Wrote chunk 1 (658 entries, reason: final)
+[00:00:00] 
+[00:00:00] ✓ Scan complete
+[00:00:00] ✓ Chunks written: 1
+[00:00:00] ✓ Total entries: 658
+[00:00:00] ✓ Avg entries per chunk: 658
+[00:00:00] ✓ Bundle saved to: c4_20250902-184318.c4m_bundle

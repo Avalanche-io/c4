@@ -56,8 +56,8 @@ func (sbc *SimpleBundleCLI) CreateBundle(scanPath string) error {
 		return fmt.Errorf("failed to create scan: %w", err)
 	}
 	
-	// Create scanner
-	scanner := NewSimpleBundleScanner(bundle, scan, sbc.config)
+	// Create scanner - use V2 for correct ordering
+	scanner := NewScannerV2(bundle, scan, sbc.config)
 	
 	TimedPrintf("Bundle created: %s\n", bundle.Path)
 	TimedPrintln("Starting scan...")

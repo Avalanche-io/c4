@@ -29,6 +29,7 @@ type BundleScan struct {
 	ChunkSizes   []int64  // Track size of each chunk
 	SnapshotID   *c4.ID
 	SnapshotSize int64
+	LastChunkID  c4.ID    // C4 ID of the most recently written chunk
 }
 
 // BundleConfig configures bundle chunking behavior
@@ -387,6 +388,11 @@ func (b *Bundle) writeFile(virtualPath string, content []byte) (*c4.ID, error) {
 
 // AddProgressChunk adds a new progress chunk to the current scan with optional @base
 func (b *Bundle) AddProgressChunkWithBase(scan *BundleScan, manifest *Manifest, includeBase bool) error {
+	// Don't write empty chunks
+	if len(manifest.Entries) == 0 {
+		return nil
+	}
+	
 	// Generate chunk content with @base if requested and not first chunk
 	var content strings.Builder
 	content.WriteString("@c4m 1.0\n")
@@ -396,8 +402,8 @@ func (b *Bundle) AddProgressChunkWithBase(scan *BundleScan, manifest *Manifest, 
 		content.WriteString(fmt.Sprintf("@base %s\n", lastChunkID))
 	}
 	
-	// Don't sort - maintain hierarchical structure
-	// Entries should already be in correct order from scanning
+	// Sort siblings while preserving hierarchical structure
+	manifest.SortSiblingsHierarchically()
 	
 	// Add manifest entries - use AllEntriesString for full hierarchy
 	content.WriteString(manifest.AllEntriesString())
@@ -417,6 +423,7 @@ func (b *Bundle) AddProgressChunkWithBase(scan *BundleScan, manifest *Manifest, 
 	
 	scan.ProgressChunks = append(scan.ProgressChunks, chunkID.String())
 	scan.ChunkSizes = append(scan.ChunkSizes, chunkSize)
+	scan.LastChunkID = *chunkID
 	
 	// Update header
 	return b.writeHeader()
