@@ -89,61 +89,6 @@ func (m *Manifest) SortEntries() {
 	})
 }
 
-// WritePrettyAdaptive writes the manifest with adaptive column support
-func (m *Manifest) WritePrettyAdaptive(w io.Writer, initialDelay time.Duration) (int64, error) {
-	// Ensure entries are properly sorted before output
-	m.SortEntries()
-	
-	// Use streaming writer for adaptive columns
-	sw := NewStreamingWriter(w, true, initialDelay)
-	defer sw.Close()
-	
-	var written int64
-	
-	// Write header
-	if err := sw.WriteHeader(m.Version); err != nil {
-		return written, err
-	}
-	written += int64(len("@c4m ") + len(m.Version) + 1)
-	
-	// Write metadata if present
-	if !m.Data.IsNil() {
-		n, err := fmt.Fprintf(w, "@data %s\n", m.Data)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	// Write base if present  
-	if !m.Base.IsNil() {
-		n, err := fmt.Fprintf(w, "@base %s\n", m.Base)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	// Write entries using streaming writer
-	for _, entry := range m.Entries {
-		if err := sw.WriteEntry(entry); err != nil {
-			return written, err
-		}
-		// Approximate bytes written
-		written += int64(len(entry.String()) + 1)
-	}
-	
-	// Write layers
-	for _, layer := range m.Layers {
-		n2, err := m.writeLayer(w, layer)
-		written += n2
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	return written, nil
-}
 
 // writeWithOptions writes the manifest with formatting options
 func (m *Manifest) writeWithOptions(w io.Writer, prettyPrint bool, indentWidth int) (int64, error) {
