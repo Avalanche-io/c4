@@ -197,21 +197,16 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 
 - **`bundle.go`** - Content-addressed storage container for large filesystem scans. Manages chunked manifests, scan sessions, progress tracking, and atomic file operations.
 
-- **`bundle_scanner.go`** - Wraps ProgressiveScanner for bundle output. Coordinates multi-stage scanning with chunk generation.
 
-- **`bundle_scanner_simple.go`** - Directory-aware chunking implementation with entry counting and predictive chunk sizing.
 
 - **`bundle_scanner_v2.go`** - Current production scanner with three-phase architecture (count, scan, chunk). Handles collapsed directories as separate scan contexts.
 
-- **`bundle_scanner_compartment.go`** - Experimental compartmentalized scanning for isolated directory processing.
 
 ### CLI Components
 
-- **`bundle_cli.go`** - Command-line interface for bundle operations including creation, resumption, and validation.
 
 - **`bundle_cli_simple.go`** - Simplified CLI wrapper using ScannerV2 for bundle creation.
 
-- **`bundle_cli_compartment.go`** - CLI for compartmentalized bundle scanning operations.
 
 - **`progressive_cli.go`** - CLI for progressive scanning with real-time output and signal handling.
 
@@ -229,9 +224,6 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 
 ### Streaming Components
 
-- **`streaming_writer.go`** - Progressive manifest output with buffering and flush control.
-
-- **`column_adapter.go`** - Adaptive column positioning for optimal C4 ID alignment in output.
 
 ### Utilities
 
@@ -241,7 +233,6 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 
 - **`operations.go`** - Manifest comparison and set operations: diff, union, intersect, subtract.
 
-- **`hierarchy.go`** - Tree structure utilities for hierarchical manifest representation.
 
 - **`manifest_sort.go`** - Sorting utilities for manifest entries maintaining C4M format rules.
 

@@ -55,12 +55,12 @@
 ## Testing Commands
 
 ```bash
-# Fast mode test (no file C4 IDs)
-./c4-test-fast --bundle /tmp/test.c4m_bundle /path/to/scan
+# Create bundle with C4 IDs
+c4 --bundle /path/to/scan
 
-# Validate bundle
-./c4-validate /tmp/test.c4m_bundle
+# Fast mode (no C4 IDs)
+c4 --bundle --no-ids /path/to/scan
 
-# Regular mode with full C4 IDs
-./c4-test --bundle /tmp/test.c4m_bundle /path/to/scan
+# Resume incomplete bundle
+c4 --bundle --resume /path/to/bundle
 ```
