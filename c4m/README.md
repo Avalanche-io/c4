@@ -185,21 +185,77 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 
 ## Package Contents
 
+### Complexity Analysis
+
+The c4m package contains approximately 7,500 lines of Go code (excluding tests). The areas of highest complexity are:
+
+#### High Complexity Components (>500 lines)
+
+1. **`progressive_scanner.go` (700 lines, 18 functions)** - The most complex component, implementing concurrent three-phase scanning with:
+   - Parallel directory traversal using worker pools
+   - Three-stage pipeline: structure discovery → metadata collection → C4 ID computation
+   - Signal handling for progress reporting (Ctrl+T on macOS)
+   - Complex synchronization with channels and wait groups
+   - Platform-specific optimizations
+
+2. **`generator.go` (543 lines, 19 functions)** - Traditional recursive manifest generator with:
+   - Configurable C4 ID computation strategies
+   - Media sequence detection and compression
+   - Symlink handling with cycle detection
+   - Multiple output formats (canonical, ergonomic, recursive)
+
+3. **`parser.go` (540 lines, 12 functions)** - Comprehensive C4M format parser handling:
+   - Multiple timestamp formats and timezone parsing
+   - Escape sequence processing in quoted strings
+   - Null value representation (-)
+   - All @-directives (version, base, data, layer)
+   - Error recovery and line tracking
+
+4. **`manifest.go` (500 lines)** - Core data structure with:
+   - Multiple serialization formats
+   - Entry sorting algorithms
+   - Canonical form generation for C4 ID computation
+   - Layer management for incremental updates
+
+5. **`bundle.go` (485 lines, 16 functions)** - Bundle storage system managing:
+   - Atomic file operations with temporary files
+   - Scan session lifecycle
+   - Chunk management with @base linking
+   - Progress tracking and resumption
+
+6. **`bundle_scanner_v2.go` (486 lines, 11 functions)** - Production scanner with:
+   - Three-phase architecture (count → scan → chunk)
+   - Collapsed directory handling (>70K entries)
+   - Depth tracking and natural sorting
+   - Independent scan contexts for large directories
+
+#### Medium Complexity Components (200-500 lines)
+
+- **`progressive_cli.go` (417 lines)** - CLI orchestration with progress display
+- **`operations.go` (234 lines)** - Set operations on manifests
+- **`entry.go` (237 lines)** - Entry formatting and serialization
+- **`sequence.go` (204 lines)** - Media sequence detection algorithms
+
+#### Lower Complexity Utilities (<200 lines)
+
+- **`naturalsort.go` (154 lines)** - Natural sorting algorithm
+- **`manifest_sort.go` (115 lines)** - Hierarchical sibling sorting
+- **`timing.go` (45 lines)** - Simple timing helpers
+- **Platform-specific files** - Signal handling and system call optimizations
+
 ### Core Components
 
-- **`manifest.go`** - Core manifest data structure and operations. Implements the C4M format with version handling, entry management, and canonical form generation for C4 ID computation.
+- **`manifest.go`** *(500 lines, high complexity)* - Core manifest data structure and operations. Implements the C4M format with version handling, entry management, and canonical form generation for C4 ID computation. Contains multiple serialization strategies and sorting algorithms.
 
-- **`entry.go`** - Individual filesystem entry representation. Handles file/directory metadata including permissions, timestamps, sizes, names, symlink targets, and C4 IDs.
+- **`entry.go`** *(237 lines, medium complexity)* - Individual filesystem entry representation. Handles file/directory metadata including permissions, timestamps, sizes, names, symlink targets, and C4 IDs. Includes formatting logic for different output modes.
 
-- **`parser.go`** - Robust C4M format parser. Handles all @-directives, multiple timestamp formats, quoted filenames, escape sequences, and null values.
+- **`parser.go`** *(540 lines, high complexity)* - Robust C4M format parser. Handles all @-directives, multiple timestamp formats, quoted filenames, escape sequences, and null values. One of the most complex components due to format flexibility requirements.
 
 ### Bundle System
 
-- **`bundle.go`** - Content-addressed storage container for large filesystem scans. Manages chunked manifests, scan sessions, progress tracking, and atomic file operations.
+- **`bundle.go`** *(485 lines, high complexity)* - Content-addressed storage container for large filesystem scans. Manages chunked manifests, scan sessions, progress tracking, and atomic file operations. Complex due to concurrent access patterns and atomic operations.
 
-
-
-- **`bundle_scanner_v2.go`** - Current production scanner with three-phase architecture (count, scan, chunk). Handles collapsed directories as separate scan contexts.
+- **`bundle_scanner_v2.go`** *(486 lines, high complexity)* - Current production scanner with three-phase architecture (count, scan, chunk). Handles collapsed directories as separate scan contexts. Critical component with intricate depth tracking and chunking logic.
 
 
 ### CLI Components
@@ -208,35 +264,34 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 - **`bundle_cli_simple.go`** - Simplified CLI wrapper using ScannerV2 for bundle creation.
 
 
-- **`progressive_cli.go`** - CLI for progressive scanning with real-time output and signal handling.
+- **`progressive_cli.go`** *(417 lines, medium complexity)* - CLI for progressive scanning with real-time output and signal handling. Manages output coordination and user interaction.
 
 ### Scanning Infrastructure
 
-- **`progressive_scanner.go`** - Multi-stage concurrent scanner with three phases: structure discovery, metadata collection, and C4 ID computation. Includes signal handling and progress reporting.
+- **`progressive_scanner.go`** *(700 lines, highest complexity)* - Multi-stage concurrent scanner with three phases: structure discovery, metadata collection, and C4 ID computation. Most complex component due to concurrent worker pools, channel orchestration, and signal handling.
 
-- **`scanner_darwin.go`** - macOS-specific optimizations using Darwin system calls.
+- **`scanner_darwin.go`** *(low complexity)* - macOS-specific optimizations using Darwin system calls.
 
-- **`scanner_linux.go`** - Linux-specific optimizations for efficient filesystem traversal.
+- **`scanner_linux.go`** *(low complexity)* - Linux-specific optimizations for efficient filesystem traversal.
 
-- **`scanner_generic.go`** - Fallback implementation for other platforms.
+- **`scanner_generic.go`** *(low complexity)* - Fallback implementation for other platforms.
 
-- **`generator.go`** - Traditional filesystem-to-manifest generator with configurable options for C4 ID computation, symlink following, and sequence detection.
+- **`generator.go`** *(543 lines, high complexity)* - Traditional filesystem-to-manifest generator with configurable options for C4 ID computation, symlink following, and sequence detection. Complex due to recursive traversal and multiple configuration options.
 
 ### Streaming Components
 
 
 ### Utilities
 
-- **`naturalsort.go`** - Natural sorting implementation for mixed alphanumeric filenames (file2 before file10).
+- **`naturalsort.go`** *(154 lines, low complexity)* - Natural sorting implementation for mixed alphanumeric filenames (file2 before file10).
 
-- **`sequence.go`** - Media file sequence detection and compression. Handles patterns like `frame[0001-0100].png`.
+- **`sequence.go`** *(204 lines, medium complexity)* - Media file sequence detection and compression. Handles patterns like `frame[0001-0100].png`. Contains pattern matching algorithms.
 
-- **`operations.go`** - Manifest comparison and set operations: diff, union, intersect, subtract.
+- **`operations.go`** *(234 lines, medium complexity)* - Manifest comparison and set operations: diff, union, intersect, subtract. Implements efficient set algorithms.
 
+- **`manifest_sort.go`** *(115 lines, low complexity)* - Sorting utilities for manifest entries maintaining C4M format rules.
 
-- **`manifest_sort.go`** - Sorting utilities for manifest entries maintaining C4M format rules.
-
-- **`timing.go`** - Performance timing utilities for debugging and optimization.
+- **`timing.go`** *(45 lines, minimal complexity)* - Performance timing utilities for debugging and optimization.
 
 ### Platform Support
 
@@ -251,12 +306,12 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 ### Test Files
 
 The package includes comprehensive test coverage:
-- `*_test.go` files for unit tests
-- `example_scanner_test.go` for usage examples
-- `parser_roundtrip_test.go` for format validation
-- `adaptive_integration_test.go` for end-to-end testing
-- `manifest_pretty_test.go` for output formatting tests
-- `null_values_test.go` for incomplete data handling
+- **Test files** (>3,800 lines total):
+  - `generator_test.go` (947 lines) - Comprehensive generator testing
+  - `parser_test.go` (632 lines) - Parser edge cases and error handling
+  - `operations_test.go` (597 lines) - Set operation testing
+  - `manifest_test.go` (574 lines) - Core manifest functionality
+  - Additional specialized tests for sorting, sequences, and null values
 
 ## License
 
