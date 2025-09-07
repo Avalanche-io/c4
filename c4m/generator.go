@@ -313,7 +313,7 @@ func (g *Generator) groupSequences(manifest *Manifest) {
 	
 	// Process each depth level
 	for depth, entries := range depthGroups {
-		grouped := groupFileSequences(entries)
+		grouped := g.groupFileSequences(entries)
 		
 		// Replace original entries with grouped ones
 		// First, remove all entries at this depth
@@ -337,7 +337,7 @@ func (g *Generator) groupSequences(manifest *Manifest) {
 }
 
 // groupFileSequences groups a list of entries into sequences
-func groupFileSequences(entries []*Entry) []*Entry {
+func (g *Generator) groupFileSequences(entries []*Entry) []*Entry {
 	if len(entries) < 2 {
 		return entries
 	}
@@ -376,7 +376,7 @@ func groupFileSequences(entries []*Entry) []*Entry {
 		
 		// Add to sequence group
 		if sg, exists := sequenceMap[groupKey]; exists {
-			sg.addFrame(num, entry)
+			sg.addEntry(num, entry)
 			// Check if symlink targets are uniform
 			if entry.IsSymlink() && sg.targetPattern != "" {
 				if targetPattern != sg.targetPattern {
@@ -387,7 +387,7 @@ func groupFileSequences(entries []*Entry) []*Entry {
 			sg := newSequenceGroup(pattern, entry.Depth)
 			sg.isSymlink = entry.IsSymlink()
 			sg.targetPattern = targetPattern
-			sg.addFrame(num, entry)
+			sg.addEntry(num, entry)
 			sequenceMap[groupKey] = sg
 		}
 	}
@@ -431,7 +431,7 @@ func newSequenceGroup(pattern string, depth int) *sequenceGroup {
 	}
 }
 
-func (sg *sequenceGroup) addFrame(num int, entry *Entry) {
+func (sg *sequenceGroup) addEntry(num int, entry *Entry) {
 	sg.entries[num] = entry
 	if num < sg.minNum {
 		sg.minNum = num
