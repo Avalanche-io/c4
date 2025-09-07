@@ -14,6 +14,11 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
+func init() {
+	// Set environment variable to prevent os.Exit during tests
+	os.Setenv("GO_TEST", "1")
+}
+
 func TestProgressiveScanner(t *testing.T) {
 	t.Run("basic three-stage scan", func(t *testing.T) {
 		// Create test directory structure

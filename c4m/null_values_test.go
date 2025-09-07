@@ -214,6 +214,8 @@ func TestNullValueRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
+	
+	t.Logf("Written manifest:\n%s", buf.String())
 
 	// Parse back
 	parsed, err := GenerateFromReader(strings.NewReader(buf.String()))
@@ -226,8 +228,18 @@ func TestNullValueRoundTrip(t *testing.T) {
 		t.Fatalf("Entry count mismatch: got %d, want %d", len(parsed.Entries), len(manifest.Entries))
 	}
 
-	// Check null value entry
-	nullEntry := parsed.Entries[0]
+	// Find the null value entry (test.txt)
+	var nullEntry *Entry
+	for _, e := range parsed.Entries {
+		if e.Name == "test.txt" {
+			nullEntry = e
+			break
+		}
+	}
+	if nullEntry == nil {
+		t.Fatal("Could not find test.txt in parsed entries")
+	}
+	
 	if nullEntry.Mode != 0 {
 		t.Errorf("Null mode not preserved: got %v", nullEntry.Mode)
 	}

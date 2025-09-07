@@ -186,8 +186,10 @@ func (ps *ProgressiveScanner) signalHandler() {
 				fmt.Fprintf(os.Stderr, "\n# Interrupted - outputting partial results\n")
 				ps.OutputCurrentState(os.Stdout) // Output synchronously before stopping
 				ps.cancel()
-				// Exit the process immediately after canceling
-				os.Exit(0)
+				// Exit the process immediately after canceling (but not during tests)
+				if os.Getenv("GO_TEST") != "1" {
+					os.Exit(0)
+				}
 			}
 			
 		case <-ps.done:
