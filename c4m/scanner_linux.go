@@ -51,28 +51,39 @@ func (ps *ProgressiveScanner) scanDirectoryFast(dirPath string) error {
 			
 			fullPath := filepath.Join(dirPath, name)
 			
-			// Create scan entry
-			entry := &ScanEntry{
-				Path:   fullPath,
-				Name:   name,
-				Depth:  parent.Depth + 1,
-				Stage:  StageStructure,
-				parent: parent,
+			// Get file info to create metadata
+			var info os.FileInfo
+			var err error
+			
+			// Try to determine type from dirent
+			var needsStat bool
+			switch typ {
+			case syscall.DT_DIR, syscall.DT_REG, syscall.DT_LNK:
+				// We can create basic info from dirent type
+				needsStat = true
+			default:
+				needsStat = true
 			}
 			
-			// Determine if directory from dirent type
-			switch typ {
-			case syscall.DT_DIR:
-				entry.IsDir = true
-			case syscall.DT_REG:
-				entry.IsDir = false
-			case syscall.DT_LNK:
-				entry.IsDir = false
-			default:
-				// Fall back to lstat for unknown types
-				if info, err := os.Lstat(fullPath); err == nil {
-					entry.IsDir = info.IsDir()
+			if needsStat {
+				info, err = os.Lstat(fullPath)
+				if err != nil {
+					return // Skip this entry
 				}
+			}
+			
+			// Create metadata and scan entry
+			parentDepth := 0
+			if parent.FileMetadata != nil {
+				parentDepth = parent.FileMetadata.Depth()
+			}
+			md := NewFileMetadata(fullPath, info, parentDepth+1)
+			
+			entry := &ScanEntry{
+				FileMetadata: md,
+				Path:        fullPath,
+				Stage:       StageStructure,
+				parent:      parent,
 			}
 			
 			// Store entry
@@ -92,7 +103,7 @@ func (ps *ProgressiveScanner) scanDirectoryFast(dirPath string) error {
 			}
 			
 			// If directory, queue for recursion
-			if entry.IsDir {
+			if entry.FileMetadata.IsDir() {
 				select {
 				case ps.structureChan <- fullPath:
 				case <-ps.ctx.Done():

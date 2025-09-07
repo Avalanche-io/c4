@@ -293,12 +293,18 @@ func TestScanEntryConversion(t *testing.T) {
 		scanner := NewProgressiveScanner("/tmp")
 		
 		// Create scan entry with only structure info
+		md := &BasicFileMetadata{
+			path:  "/tmp/test.txt",
+			name:  "test.txt",
+			depth: 0,
+			isDir: false,
+			mode:  0,
+			size:  0,
+		}
 		se := &ScanEntry{
-			Path:  "/tmp/test.txt",
-			Name:  "test.txt",
-			Depth: 0,
-			IsDir: false,
-			Stage: StageStructure,
+			FileMetadata: md,
+			Path:        "/tmp/test.txt",
+			Stage:       StageStructure,
 		}
 		
 		entry := scanner.scanEntryToEntry(se, 0)
@@ -323,16 +329,20 @@ func TestScanEntryConversion(t *testing.T) {
 		now := time.Now().UTC()
 		testC4 := c4.Identify(strings.NewReader("test"))
 		
+		md := &BasicFileMetadata{
+			path:    "/tmp/test.txt",
+			name:    "test.txt",
+			depth:   0,
+			isDir:   false,
+			mode:    0644,
+			size:    100,
+			modTime: now,
+			c4id:    testC4,
+		}
 		se := &ScanEntry{
-			Path:      "/tmp/test.txt",
-			Name:      "test.txt",
-			Depth:     0,
-			IsDir:     false,
-			Stage:     StageC4ID,
-			Mode:      0644,
-			Size:      100,
-			Timestamp: now,
-			C4ID:      testC4,
+			FileMetadata: md,
+			Path:        "/tmp/test.txt",
+			Stage:       StageC4ID,
 		}
 		
 		entry := scanner.scanEntryToEntry(se, 0)

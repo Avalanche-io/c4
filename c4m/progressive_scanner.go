@@ -29,20 +29,12 @@ const (
 
 // ScanEntry represents a filesystem entry with progressive detail
 type ScanEntry struct {
+	// Embed FileMetadata for standard file properties
+	FileMetadata
+	
+	// Additional scan-specific fields
 	Path      string
-	Name      string
-	Depth     int
-	IsDir     bool
 	Stage     ScanStage    // Current scan stage completed
-	
-	// Stage 2: Metadata
-	Mode      os.FileMode
-	Size      int64
-	Timestamp time.Time
-	Target    string       // For symlinks
-	
-	// Stage 3: Content
-	C4ID      c4.ID
 	
 	// Internal
 	parent    *ScanEntry
@@ -156,12 +148,15 @@ func (ps *ProgressiveScanner) Start() error {
 	go ps.signalHandler()
 	
 	// Initialize root entry
+	rootInfo, err := os.Lstat(ps.rootPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat root path: %w", err)
+	}
+	rootMD := NewFileMetadata(ps.rootPath, rootInfo, 0)
 	ps.rootEntry = &ScanEntry{
-		Path:  ps.rootPath,
-		Name:  filepath.Base(ps.rootPath),
-		Depth: 0,
-		IsDir: true,
-		Stage: StageStructure,
+		FileMetadata: rootMD,
+		Path:        ps.rootPath,
+		Stage:       StageStructure,
 	}
 	ps.entries.Store(ps.rootPath, ps.rootEntry)
 	
@@ -297,22 +292,25 @@ func (ps *ProgressiveScanner) scanDirectory(dirPath string) {
 		
 		fullPath := filepath.Join(dirPath, name)
 		
-		// Create scan entry with minimal info
-		entry := &ScanEntry{
-			Path:   fullPath,
-			Name:   name,
-			Depth:  parent.Depth + 1,
-			Stage:  StageStructure,
-			parent: parent,
-		}
-		
-		// Use lstat to determine if directory (fast, no following symlinks)
+		// Get file info to create metadata
 		info, err := os.Lstat(fullPath)
 		if err != nil {
 			continue
 		}
 		
-		entry.IsDir = info.IsDir()
+		// Create metadata and scan entry
+		parentDepth := 0
+		if parent.FileMetadata != nil {
+			parentDepth = parent.FileMetadata.Depth()
+		}
+		md := NewFileMetadata(fullPath, info, parentDepth+1)
+		
+		entry := &ScanEntry{
+			FileMetadata: md,
+			Path:        fullPath,
+			Stage:       StageStructure,
+			parent:      parent,
+		}
 		
 		// Store entry
 		ps.entries.Store(fullPath, entry)
@@ -338,7 +336,7 @@ func (ps *ProgressiveScanner) scanDirectory(dirPath string) {
 		}
 		
 		// If directory, queue for recursion
-		if entry.IsDir {
+		if entry.FileMetadata.IsDir() {
 			atomic.AddInt32(&ps.structurePending, 1)
 			select {
 			case ps.structureChan <- fullPath:
@@ -459,25 +457,19 @@ func (ps *ProgressiveScanner) metadataWorker() {
 	}
 }
 
-// collectMetadata gathers full metadata for an entry
+// collectMetadata marks the metadata as collected
+// (metadata is already gathered when FileMetadata is created)
 func (ps *ProgressiveScanner) collectMetadata(entry *ScanEntry) {
-	info, err := os.Lstat(entry.Path)
-	if err != nil {
-		return
-	}
-	
-	entry.mu.Lock()
-	entry.Mode = info.Mode()
-	entry.Size = info.Size()
-	entry.Timestamp = info.ModTime().UTC()
-	
-	// Handle symlinks
-	if info.Mode()&os.ModeSymlink != 0 {
-		if target, err := os.Readlink(entry.Path); err == nil {
-			entry.Target = target
+	// Handle symlinks - update target if needed
+	if entry.FileMetadata.Mode()&os.ModeSymlink != 0 {
+		if bmd, ok := entry.FileMetadata.(*BasicFileMetadata); ok {
+			if target, err := os.Readlink(entry.Path); err == nil {
+				bmd.SetTarget(target)
+			}
 		}
 	}
 	
+	entry.mu.Lock()
 	entry.Stage = StageMetadata
 	entry.mu.Unlock()
 	
@@ -489,7 +481,7 @@ func (ps *ProgressiveScanner) collectMetadata(entry *ScanEntry) {
 	}
 	
 	// Queue regular files for C4 computation
-	if info.Mode().IsRegular() {
+	if entry.FileMetadata.Mode().IsRegular() {
 		atomic.AddInt64(&ps.regularFiles, 1)
 		atomic.AddInt32(&ps.c4Pending, 1)
 		select {
@@ -535,8 +527,10 @@ func (ps *ProgressiveScanner) computeC4ID(entry *ScanEntry) {
 	
 	id := c4.Identify(file)
 	
+	// Set the C4 ID in FileMetadata
+	entry.FileMetadata.SetID(id)
+	
 	entry.mu.Lock()
-	entry.C4ID = id
 	entry.Stage = StageC4ID
 	entry.mu.Unlock()
 	
@@ -580,7 +574,7 @@ func (ps *ProgressiveScanner) OutputCurrentState(w io.Writer) error {
 		sortScanEntries(children)
 		
 		for _, child := range children {
-			if child.IsDir {
+			if child.FileMetadata.IsDir() {
 				ps.addEntriesToManifest(manifest, child, 0)
 			} else {
 				childEntry := ps.scanEntryToEntry(child, 0)
@@ -615,7 +609,7 @@ func (ps *ProgressiveScanner) addEntriesToManifest(manifest *Manifest, scanEntry
 	sortScanEntries(children)
 	
 	for _, child := range children {
-		if child.IsDir {
+		if child.FileMetadata.IsDir() {
 			ps.addEntriesToManifest(manifest, child, depth+1)
 		} else {
 			childEntry := ps.scanEntryToEntry(child, depth+1)
@@ -633,29 +627,18 @@ func (ps *ProgressiveScanner) scanEntryToEntry(se *ScanEntry, depth int) *Entry 
 	se.mu.RLock()
 	defer se.mu.RUnlock()
 	
+	// Convert FileMetadata to Entry
+	entry := MetadataToEntry(se.FileMetadata)
+	entry.Depth = depth // Override depth with the passed value
+	
 	// For root directory at depth 0, use basename of path
-	name := se.Name
-	if depth == 0 && name == "" {
-		name = filepath.Base(se.Path)
+	if depth == 0 && entry.Name == "" {
+		entry.Name = filepath.Base(se.Path)
 	}
 	
-	entry := &Entry{
-		Name:  name,
-		Depth: depth,
-	}
-	
-	// Add directory suffix
-	if se.IsDir {
-		entry.Name += "/"
-	}
-	
-	// Add metadata if available
-	if se.Stage >= StageMetadata {
-		entry.Mode = se.Mode
-		entry.Size = se.Size
-		entry.Timestamp = se.Timestamp
-		entry.Target = se.Target
-	} else {
+	// MetadataToEntry already adds directory suffix
+	// but check if we need to handle incomplete scans
+	if se.Stage < StageMetadata {
 		// Use zero values for incomplete scan
 		entry.Mode = 0
 		entry.Size = -1
@@ -664,7 +647,7 @@ func (ps *ProgressiveScanner) scanEntryToEntry(se *ScanEntry, depth int) *Entry 
 	
 	// Add C4 ID if available
 	if se.Stage >= StageC4ID {
-		entry.C4ID = se.C4ID
+		entry.C4ID = se.FileMetadata.ID()
 	}
 	
 	return entry
@@ -691,10 +674,12 @@ func sortScanEntries(entries []*ScanEntry) {
 	sort.Slice(entries, func(i, j int) bool {
 		a, b := entries[i], entries[j]
 		// Files before directories
-		if a.IsDir != b.IsDir {
-			return !a.IsDir // files first
+		aIsDir := a.FileMetadata.IsDir()
+		bIsDir := b.FileMetadata.IsDir()
+		if aIsDir != bIsDir {
+			return !aIsDir // files first
 		}
-		return NaturalLess(a.Name, b.Name)
+		return NaturalLess(a.FileMetadata.Name(), b.FileMetadata.Name())
 	})
 }
 
