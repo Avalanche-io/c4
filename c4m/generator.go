@@ -173,24 +173,26 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 					info = targetInfo
 				}
 			} else {
-				// Create symlink entry
-				fileEntry, err := g.generateEntry(fullPath, info, childDepth)
-				if err != nil {
-					return err
-				}
-				fileEntry.Name = name
+				// Create symlink metadata
+				md := g.generateMetadata(fullPath, info, childDepth)
 				
-				// Get symlink target
-				target, err := os.Readlink(fullPath)
-				if err == nil {
-					fileEntry.Target = target
-					
-					// Compute C4 ID of symlink target if enabled
-					if g.computeC4IDs {
-						fileEntry.C4ID = g.computeSymlinkTargetC4ID(fullPath, target)
+				// Set symlink target
+				if bmd, ok := md.(*BasicFileMetadata); ok {
+					target, err := os.Readlink(fullPath)
+					if err == nil {
+						bmd.SetTarget(target)
+						
+						// Compute C4 ID of symlink target if enabled
+						if g.computeC4IDs {
+							id := g.computeSymlinkTargetC4ID(fullPath, target)
+							bmd.SetID(id)
+						}
 					}
 				}
 				
+				// Convert to entry and add
+				fileEntry := MetadataToEntry(md)
+				fileEntry.Name = name
 				manifest.AddEntry(fileEntry)
 				continue
 			}
@@ -218,26 +220,32 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 
 // generateEntry creates an entry from file info
 func (g *Generator) generateEntry(path string, info os.FileInfo, depth int) (*Entry, error) {
-	entry := &Entry{
-		Mode:      info.Mode(),
-		Timestamp: info.ModTime().UTC(),
-		Size:      info.Size(),
-		Name:      info.Name(),
-		Depth:     depth,
+	// Create metadata first
+	md := g.generateMetadata(path, info, depth)
+	
+	// Convert to Entry
+	entry := MetadataToEntry(md)
+	// MetadataToEntry adds trailing slash for directories, but we handle that elsewhere
+	if entry.IsDir() && strings.HasSuffix(entry.Name, "/") {
+		entry.Name = entry.Name[:len(entry.Name)-1]
 	}
+	
+	return entry, nil
+}
+
+// generateMetadata creates metadata from file info
+func (g *Generator) generateMetadata(path string, info os.FileInfo, depth int) FileMetadata {
+	md := NewFileMetadata(path, info, depth)
 	
 	// Compute C4 ID if enabled and it's a regular file
 	if g.computeC4IDs && info.Mode().IsRegular() {
 		id, err := g.computeFileC4ID(path)
-		if err != nil {
-			// Don't fail on C4 ID computation error, just skip it
-			// This allows generating manifests for files we can't read
-		} else {
-			entry.C4ID = id
+		if err == nil {
+			md.SetID(id)
 		}
 	}
 	
-	return entry, nil
+	return md
 }
 
 // computeFileC4ID computes the C4 ID for a file
