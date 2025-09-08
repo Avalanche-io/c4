@@ -249,9 +249,10 @@ func (b *Bundle) generateHeaderManifest() string {
 	
 	// Root directory entry with calculated size
 	// Permissions: drwxr-x--- (user: rwx, group: r-x, other: ---)
-	rootTime := time.Now().Format(time.RFC3339)
+	// Use canonical C4M timestamp format (UTC with Z)
+	rootTime := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	if len(b.Scans) > 0 && b.Scans[0].StartTime.Unix() > 0 {
-		rootTime = b.Scans[0].StartTime.Format(time.RFC3339)
+		rootTime = b.Scans[0].StartTime.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	sb.WriteString(fmt.Sprintf("drwxr-x--- %s %d scans/\n", rootTime, totalRootSize))
 
@@ -287,7 +288,8 @@ func (b *Bundle) generateHeaderManifest() string {
 		
 		// Scan directory
 		// Permissions: drwxr-x--- (user: rwx, group: r-x, other: ---)
-		scanTime := scan.StartTime.Format(time.RFC3339)
+		// Use canonical C4M timestamp format (UTC with Z)
+		scanTime := scan.StartTime.UTC().Format("2006-01-02T15:04:05Z")
 		sb.WriteString(fmt.Sprintf("  drwxr-x--- %s %d %d/\n", scanTime, scanDirSize, scan.Number))
 		
 		// FILES FIRST: path.txt and snapshot.c4m
@@ -302,7 +304,7 @@ func (b *Bundle) generateHeaderManifest() string {
 		if scan.SnapshotID != nil {
 			completedTime := scanTime
 			if scan.CompletedAt != nil {
-				completedTime = scan.CompletedAt.Format(time.RFC3339)
+				completedTime = scan.CompletedAt.UTC().Format("2006-01-02T15:04:05Z")
 			}
 			snapshotSize := scan.SnapshotSize
 			if snapshotSize == 0 {
@@ -402,8 +404,8 @@ func (b *Bundle) AddProgressChunkWithBase(scan *BundleScan, manifest *Manifest, 
 		content.WriteString(fmt.Sprintf("@base %s\n", lastChunkID))
 	}
 	
-	// Sort siblings while preserving hierarchical structure
-	manifest.SortSiblingsHierarchically()
+	// Sort entries: files before directories at same depth
+	manifest.SortEntries()
 	
 	// Add manifest entries - use AllEntriesString for full hierarchy
 	content.WriteString(manifest.AllEntriesString())

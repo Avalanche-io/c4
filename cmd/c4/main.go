@@ -89,6 +89,7 @@ Usage:
   c4 union <inputs...>              # Combine manifests
   c4 intersect <inputs...>          # Find common elements
   c4 subtract <from> <remove>       # Set subtraction
+  c4 validate <file|bundle>         # Validate C4M manifest or bundle
 
 Examples:
   c4 file.txt                       # C4 ID of file
@@ -125,6 +126,9 @@ func main() {
 			return
 		case "subtract":
 			runSubtract(os.Args[2:])
+			return
+		case "validate":
+			runValidate(os.Args[2:])
 			return
 		}
 	}
@@ -594,4 +598,64 @@ func getSource(path string) c4m.Source {
 			c4m.WithSymlinks(followFlag),
 		),
 	}
+}
+
+func runValidate(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintf(os.Stderr, "Error: validate requires exactly one argument\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 validate <file.c4m | bundle_dir>\n")
+		os.Exit(1)
+	}
+	
+	path := args[0]
+	strict := true // Always strict validation
+	
+	// Create validator
+	validator := c4m.NewValidator(strict)
+	
+	// Check if it's a bundle directory
+	info, err := os.Stat(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot access %s: %v\n", path, err)
+		os.Exit(1)
+	}
+	
+	var validationErr error
+	if info.IsDir() {
+		// Validate as bundle
+		fmt.Printf("Validating bundle: %s\n", path)
+		validationErr = validator.ValidateBundle(path)
+	} else {
+		// Validate as manifest file
+		fmt.Printf("Validating manifest: %s\n", path)
+		file, err := os.Open(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: cannot open file: %v\n", err)
+			os.Exit(1)
+		}
+		defer file.Close()
+		validationErr = validator.ValidateManifest(file)
+	}
+	
+	// Report results
+	errors := validator.GetErrors()
+	warnings := validator.GetWarnings()
+	
+	if len(warnings) > 0 {
+		fmt.Printf("\nWarnings (%d):\n", len(warnings))
+		for _, w := range warnings {
+			fmt.Printf("  %s\n", w.Error())
+		}
+	}
+	
+	if validationErr != nil {
+		fmt.Printf("\nErrors (%d):\n", len(errors))
+		for _, e := range errors {
+			fmt.Printf("  %s\n", e.Error())
+		}
+		fmt.Printf("\n✗ Validation failed\n")
+		os.Exit(1)
+	}
+	
+	fmt.Printf("\n✓ Validation passed\n")
 }
