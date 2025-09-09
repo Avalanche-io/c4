@@ -32,6 +32,25 @@ func (e ValidationError) Error() string {
 	return e.Message
 }
 
+// ValidationStats tracks statistics about the validated content
+type ValidationStats struct {
+	TotalEntries    int64
+	Files           int64
+	Directories     int64
+	Symlinks        int64
+	SpecialFiles    int64 // block/char devices, pipes, sockets
+	TotalSize       int64
+	OldestTime      time.Time
+	NewestTime      time.Time
+	NullTimes       int64 // Entries with null timestamps
+	NullSizes       int64 // Entries with null sizes
+	Layers          int64 // Number of @layer directives
+	Chunks          int64 // Number of referenced chunks
+	MaxDepth        int   // Maximum directory depth
+	ChunkedManifests int64 // Number of .c4m chunks found
+	CollapsedDirs   []string // Names of collapsed directories
+}
+
 // Validator validates C4M manifests and bundles
 type Validator struct {
 	Strict       bool // Enforce all rules strictly
@@ -44,6 +63,7 @@ type Validator struct {
 	depthStack   []string // Track parent directories
 	seenDirAtDepth map[int]bool // Track if we've seen a directory at each depth
 	inLayer      bool // Whether we're in a @layer section
+	stats        ValidationStats
 }
 
 // NewValidator creates a new validator
@@ -65,6 +85,7 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.lastDepth = -1
 	v.depthStack = []string{}
 	v.seenDirAtDepth = make(map[int]bool)
+	v.stats = ValidationStats{}
 	
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB max line
@@ -86,8 +107,14 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 		v.lineNum++
 		line := scanner.Text()
 		
-		// Skip empty lines and directives for now
-		if line == "" || strings.HasPrefix(line, "@") {
+		// Skip empty lines
+		if line == "" {
+			continue
+		}
+		
+		// Handle directives
+		if strings.HasPrefix(line, "@") {
+			v.handleDirective(line)
 			continue
 		}
 		
@@ -108,6 +135,11 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 
 // ValidateBundle validates a C4M bundle directory
 func (v *Validator) ValidateBundle(bundlePath string) error {
+	// Reset statistics for bundle validation
+	v.errors = nil
+	v.warnings = nil
+	v.stats = ValidationStats{}
+	
 	// Check if bundle directory exists
 	info, err := os.Stat(bundlePath)
 	if err != nil {
@@ -140,16 +172,143 @@ func (v *Validator) ValidateBundle(bundlePath string) error {
 		return v.getResult()
 	}
 	
-	// Validate the header manifest as C4M
-	manifestReader := strings.NewReader(string(manifestData))
-	if err := v.ValidateManifest(manifestReader); err != nil {
+	// Parse header manifest to find all chunks
+	chunkIDs := v.extractChunkIDs(string(manifestData))
+	
+	// Create an aggregated stats tracker
+	aggregatedStats := ValidationStats{}
+	
+	// Validate header manifest
+	headerReader := strings.NewReader(string(manifestData))
+	if err := v.ValidateManifest(headerReader); err != nil {
 		v.addError(0, 0, "header", "invalid header manifest format", false)
 	}
+	// Add header stats to aggregated
+	aggregatedStats = v.addStats(aggregatedStats, v.stats)
 	
-	// TODO: Parse header manifest to find and validate individual chunks
-	// For now, just validate that it's a valid C4M file
+	// Validate each chunk
+	aggregatedStats.ChunkedManifests = int64(len(chunkIDs))
+	for i, chunkID := range chunkIDs {
+		chunkPath := filepath.Join(bundlePath, "c4", chunkID)
+		chunkData, err := os.ReadFile(chunkPath)
+		if err != nil {
+			v.addError(0, 0, "chunk", fmt.Sprintf("cannot read chunk %d (%s): %v", i+1, chunkID, err), false)
+			continue
+		}
+		
+		// Create a new validator for each chunk to avoid state contamination
+		chunkValidator := NewValidator(v.Strict)
+		chunkValidator.MaxErrors = 0 // Don't limit errors in chunks
+		
+		// Validate chunk manifest
+		chunkReader := strings.NewReader(string(chunkData))
+		if err := chunkValidator.ValidateManifest(chunkReader); err != nil {
+			// Don't report individual chunk validation errors as they can be numerous
+			// Just note that the chunk had issues
+			v.addWarning(0, 0, "chunk", fmt.Sprintf("chunk %d has %d validation issues", i+1, len(chunkValidator.GetErrors())))
+		}
+		
+		// Add chunk stats to aggregated
+		aggregatedStats = v.addStats(aggregatedStats, chunkValidator.stats)
+	}
+	
+	// Set final aggregated stats
+	v.stats = aggregatedStats
 	
 	return v.getResult()
+}
+
+// extractChunkIDs finds all C4 IDs referenced in .c4m files within a manifest
+func (v *Validator) extractChunkIDs(manifestContent string) []string {
+	var chunkIDs []string
+	lines := strings.Split(manifestContent, "\n")
+	
+	for _, line := range lines {
+		// Skip empty lines and directives
+		if line == "" || strings.HasPrefix(line, "@") {
+			continue
+		}
+		
+		// Look for .c4m files and extract directory names
+		if strings.Contains(line, ".c4m ") {
+			// Extract the directory name if this is in a progress/ subdirectory
+			if strings.Contains(line, "progress/") {
+				// Find the parent directory name
+				trimmed := strings.TrimSpace(line)
+				if idx := strings.LastIndex(trimmed, "progress/"); idx > 0 {
+					// Look backwards to find the parent directory
+					for i := idx-1; i >= 0; i-- {
+						if trimmed[i] == '/' || trimmed[i] == ' ' {
+							parentName := trimmed[i+1:idx]
+							if parentName != "" && !contains(v.stats.CollapsedDirs, parentName) {
+								v.stats.CollapsedDirs = append(v.stats.CollapsedDirs, parentName)
+							}
+							break
+						}
+					}
+				}
+			}
+			
+			// Extract the C4 ID at the end of the line
+			fields := strings.Fields(line)
+			for _, field := range fields {
+				if strings.HasPrefix(field, "c4") && len(field) > 10 {
+					chunkIDs = append(chunkIDs, field)
+					break
+				}
+			}
+		}
+	}
+	
+	return chunkIDs
+}
+
+// contains checks if a string slice contains a value
+func contains(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
+
+// addStats combines two ValidationStats structures
+func (v *Validator) addStats(a, b ValidationStats) ValidationStats {
+	result := ValidationStats{
+		TotalEntries:     a.TotalEntries + b.TotalEntries,
+		Files:            a.Files + b.Files,
+		Directories:      a.Directories + b.Directories,
+		Symlinks:         a.Symlinks + b.Symlinks,
+		SpecialFiles:     a.SpecialFiles + b.SpecialFiles,
+		TotalSize:        a.TotalSize + b.TotalSize,
+		NullTimes:        a.NullTimes + b.NullTimes,
+		NullSizes:        a.NullSizes + b.NullSizes,
+		Layers:           a.Layers + b.Layers,
+		Chunks:           a.Chunks + b.Chunks,
+		MaxDepth:         a.MaxDepth,
+		ChunkedManifests: a.ChunkedManifests + b.ChunkedManifests,
+		CollapsedDirs:    append(a.CollapsedDirs, b.CollapsedDirs...),
+	}
+	
+	if b.MaxDepth > result.MaxDepth {
+		result.MaxDepth = b.MaxDepth
+	}
+	
+	// Handle time comparisons
+	if a.OldestTime.IsZero() || (!b.OldestTime.IsZero() && b.OldestTime.Before(a.OldestTime)) {
+		result.OldestTime = b.OldestTime
+	} else {
+		result.OldestTime = a.OldestTime
+	}
+	
+	if a.NewestTime.IsZero() || (!b.NewestTime.IsZero() && b.NewestTime.After(a.NewestTime)) {
+		result.NewestTime = b.NewestTime
+	} else {
+		result.NewestTime = a.NewestTime
+	}
+	
+	return result
 }
 
 func (v *Validator) validateHeader(line string) bool {
@@ -209,10 +368,14 @@ func (v *Validator) validateEntry(line string) {
 		v.addError(v.lineNum, 1, "depth", fmt.Sprintf("invalid depth jump from %d to %d", v.lastDepth, depthLevel), false)
 	}
 	
+	// Store original stack size for validation
+	originalStackSize := len(v.depthStack)
+	
 	// Check dedentation rules (can dedent by any amount)
 	if depthLevel < v.lastDepth {
 		// After dedenting, reset directory tracking for this level
 		v.seenDirAtDepth[depthLevel] = false
+		// Don't adjust stack yet - we need it for validation
 	}
 	
 	// Parse fields
@@ -241,6 +404,9 @@ func (v *Validator) validateEntry(line string) {
 	// Extract name (handle quoted names)
 	name, symTarget, c4id := v.parseNameAndRest(fields[nameStart:])
 	
+	// Update statistics
+	v.updateStats(mode, timestamp, size, name, c4id)
+	
 	// Check files-before-directories rule at same depth
 	isDir := strings.HasSuffix(name, "/")
 	if !isDir && v.seenDirAtDepth[depthLevel] {
@@ -248,6 +414,19 @@ func (v *Validator) validateEntry(line string) {
 	}
 	if isDir {
 		v.seenDirAtDepth[depthLevel] = true
+	}
+	
+	// Check that non-directory entries at wrong depth relative to open directories
+	// A file should be at depth = len(depthStack) (inside the deepest directory)
+	// or at depth = 0 when no directories are open
+	if !isDir {
+		expectedDepth := originalStackSize
+		if depthLevel != expectedDepth {
+			if originalStackSize > 0 {
+				v.addError(v.lineNum, 0, "indentation", fmt.Sprintf("file at depth %d but should be at depth %d (inside directory '%s')", 
+					depthLevel, expectedDepth, v.depthStack[originalStackSize-1]), false)
+			}
+		}
 	}
 	
 	// Validate name
@@ -278,12 +457,14 @@ func (v *Validator) validateEntry(line string) {
 	// Update depth tracking
 	v.lastDepth = depthLevel
 	
-	// Track directory structure
+	// Track directory structure  
+	// First adjust stack for dedentation
+	if depthLevel < len(v.depthStack) {
+		v.depthStack = v.depthStack[:depthLevel]
+	}
+	
+	// Then add new directory if this is one
 	if strings.HasSuffix(name, "/") {
-		// Adjust stack to current depth
-		if depth < len(v.depthStack) {
-			v.depthStack = v.depthStack[:depth]
-		}
 		v.depthStack = append(v.depthStack, name)
 	}
 }
@@ -513,6 +694,78 @@ func (v *Validator) GetErrors() []ValidationError {
 // GetWarnings returns all validation warnings
 func (v *Validator) GetWarnings() []ValidationError {
 	return v.warnings
+}
+
+// GetStats returns validation statistics
+func (v *Validator) GetStats() ValidationStats {
+	return v.stats
+}
+
+// handleDirective processes @ directives
+func (v *Validator) handleDirective(line string) {
+	if strings.HasPrefix(line, "@layer") {
+		v.inLayer = true
+		v.stats.Layers++
+	} else if strings.HasPrefix(line, "@end") {
+		v.inLayer = false
+	}
+	// Other directives are allowed but not validated in detail
+}
+
+// updateStats updates validation statistics based on an entry
+func (v *Validator) updateStats(mode, timestamp, sizeStr, name, c4id string) {
+	v.stats.TotalEntries++
+	
+	// Track depth
+	depth := v.lastDepth
+	if depth > v.stats.MaxDepth {
+		v.stats.MaxDepth = depth
+	}
+	
+	// Track entry type
+	if mode != "-" && mode != "----------" && len(mode) > 0 {
+		switch mode[0] {
+		case '-':
+			v.stats.Files++
+		case 'd':
+			v.stats.Directories++
+		case 'l':
+			v.stats.Symlinks++
+		case 'b', 'c', 'p', 's':
+			v.stats.SpecialFiles++
+		}
+	} else if strings.HasSuffix(name, "/") {
+		v.stats.Directories++
+	} else {
+		v.stats.Files++
+	}
+	
+	// Track size
+	if sizeStr == "-" {
+		v.stats.NullSizes++
+	} else {
+		cleanSize := strings.ReplaceAll(sizeStr, ",", "")
+		if size, err := strconv.ParseInt(cleanSize, 10, 64); err == nil && size >= 0 {
+			v.stats.TotalSize += size
+		}
+	}
+	
+	// Track timestamp
+	if timestamp == "-" || timestamp == "0" {
+		v.stats.NullTimes++
+	} else if t, err := time.Parse("2006-01-02T15:04:05Z", timestamp); err == nil {
+		if v.stats.OldestTime.IsZero() || t.Before(v.stats.OldestTime) {
+			v.stats.OldestTime = t
+		}
+		if v.stats.NewestTime.IsZero() || t.After(v.stats.NewestTime) {
+			v.stats.NewestTime = t
+		}
+	}
+	
+	// Track chunks
+	if c4id != "" && strings.HasPrefix(c4id, "c4") {
+		v.stats.Chunks++
+	}
 }
 
 // ValidateFile validates a C4M or bundle file

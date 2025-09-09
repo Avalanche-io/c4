@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -90,6 +91,7 @@ Usage:
   c4 intersect <inputs...>          # Find common elements
   c4 subtract <from> <remove>       # Set subtraction
   c4 validate <file|bundle>         # Validate C4M manifest or bundle
+  c4 extract <bundle> [output]      # Extract bundle to single C4M file
 
 Examples:
   c4 file.txt                       # C4 ID of file
@@ -129,6 +131,9 @@ func main() {
 			return
 		case "validate":
 			runValidate(os.Args[2:])
+			return
+		case "extract":
+			runExtract(os.Args[2:])
 			return
 		}
 	}
@@ -640,6 +645,46 @@ func runValidate(args []string) {
 	// Report results
 	errors := validator.GetErrors()
 	warnings := validator.GetWarnings()
+	stats := validator.GetStats()
+	
+	// Display statistics
+	fmt.Printf("\nStatistics:\n")
+	fmt.Printf("  Total entries in manifests: %d\n", stats.TotalEntries)
+	fmt.Printf("  Files: %d\n", stats.Files)
+	fmt.Printf("  Directories: %d\n", stats.Directories)
+	fmt.Printf("  Symlinks: %d\n", stats.Symlinks)
+	if stats.SpecialFiles > 0 {
+		fmt.Printf("  Special files: %d\n", stats.SpecialFiles)
+	}
+	fmt.Printf("  Total size: %d bytes\n", stats.TotalSize)
+	if !stats.OldestTime.IsZero() {
+		fmt.Printf("  Oldest: %s\n", stats.OldestTime.Format(time.RFC3339))
+	}
+	if !stats.NewestTime.IsZero() {
+		fmt.Printf("  Newest: %s\n", stats.NewestTime.Format(time.RFC3339))
+	}
+	if stats.NullTimes > 0 {
+		fmt.Printf("  Null timestamps: %d\n", stats.NullTimes)
+	}
+	if stats.NullSizes > 0 {
+		fmt.Printf("  Null sizes: %d\n", stats.NullSizes)
+	}
+	if stats.Layers > 0 {
+		fmt.Printf("  Layers: %d\n", stats.Layers)
+	}
+	if stats.ChunkedManifests > 0 {
+		fmt.Printf("  Chunked manifests: %d\n", stats.ChunkedManifests)
+	}
+	if len(stats.CollapsedDirs) > 0 {
+		fmt.Printf("  Collapsed directories: %v\n", stats.CollapsedDirs)
+	}
+	fmt.Printf("  Max depth: %d\n", stats.MaxDepth)
+	
+	// Note about collapsed directories
+	if stats.ChunkedManifests > 0 {
+		fmt.Printf("\nNote: Large directories (>70K entries) are stored in separate chunks.\n")
+		fmt.Printf("The scan originally processed many more entries that are referenced in the chunks.\n")
+	}
 	
 	if len(warnings) > 0 {
 		fmt.Printf("\nWarnings (%d):\n", len(warnings))
@@ -658,4 +703,61 @@ func runValidate(args []string) {
 	}
 	
 	fmt.Printf("\n✓ Validation passed\n")
+}
+
+func runExtract(args []string) {
+	// Create a flag set for the extract command
+	fs := flag.NewFlagSet("extract", flag.ExitOnError)
+	pretty := fs.Bool("pretty", false, "Pretty-print manifest with aligned columns")
+	fs.Parse(args)
+	
+	if fs.NArg() < 1 || fs.NArg() > 2 {
+		fmt.Fprintf(os.Stderr, "Error: extract requires a bundle path and optional output file\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 extract [--pretty] <bundle_dir> [output.c4m]\n")
+		os.Exit(1)
+	}
+	
+	bundlePath := fs.Arg(0)
+	
+	// Check if bundle directory exists
+	info, err := os.Stat(bundlePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot access %s: %v\n", bundlePath, err)
+		os.Exit(1)
+	}
+	if !info.IsDir() {
+		fmt.Fprintf(os.Stderr, "Error: bundle path is not a directory\n")
+		os.Exit(1)
+	}
+	
+	// Extract to file or stdout
+	if fs.NArg() == 2 {
+		outputPath := fs.Arg(1)
+		fmt.Printf("Extracting bundle to: %s\n", outputPath)
+		if *pretty {
+			if err := c4m.ExtractBundlePrettyToFile(bundlePath, outputPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := c4m.ExtractBundleToFile(bundlePath, outputPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		fmt.Printf("✓ Extraction complete\n")
+	} else {
+		// Extract to stdout
+		if *pretty {
+			if err := c4m.ExtractBundlePretty(bundlePath, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := c4m.ExtractBundleToSingleManifest(bundlePath, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		}
+	}
 }
