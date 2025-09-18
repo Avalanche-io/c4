@@ -1,9 +1,103 @@
 package c4m
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
+	"time"
 )
+
+func TestSequenceDetector(t *testing.T) {
+	// Create manifest with sequences
+	manifest := NewManifest()
+
+	// Add a sequence of numbered files
+	for i := 1; i <= 10; i++ {
+		manifest.AddEntry(&Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: time.Now(),
+			Mode:      0644,
+		})
+	}
+
+	// Add non-sequence files
+	manifest.AddEntry(&Entry{
+		Name:      "readme.txt",
+		Size:      100,
+		Timestamp: time.Now(),
+		Mode:      0644,
+	})
+
+	// Detect sequences
+	detector := NewSequenceDetector(3)
+	result := detector.DetectSequences(manifest)
+
+	// Should have collapsed the sequence
+	if len(result.Entries) != 2 {
+		t.Errorf("Expected 2 entries (1 sequence + 1 file), got %d", len(result.Entries))
+	}
+
+	// Check sequence notation
+	foundSequence := false
+	for _, entry := range result.Entries {
+		if entry.IsSequence {
+			if entry.Pattern != "frame.[0001-0010].exr" {
+				t.Errorf("Expected pattern 'frame.[0001-0010].exr', got '%s'", entry.Pattern)
+			}
+			foundSequence = true
+		}
+	}
+
+	if !foundSequence {
+		t.Error("Sequence not detected")
+	}
+}
+
+func TestSequenceExpansion(t *testing.T) {
+	// Create manifest with sequence notation
+	manifest := NewManifest()
+	manifest.AddEntry(&Entry{
+		Name:       "shot.[001-005].dpx",
+		Size:       2048,
+		Timestamp:  time.Now(),
+		Mode:       0644,
+		IsSequence: true,
+		Pattern:    "shot.[001-005].dpx",
+	})
+
+	// Expand sequences
+	expander := NewSequenceExpander(SequenceEmbedded)
+	expanded, _, err := expander.ExpandManifest(manifest)
+	if err != nil {
+		t.Fatalf("Failed to expand manifest: %v", err)
+	}
+
+	// Should have 6 entries: 1 sequence notation + 5 expanded files
+	if len(expanded.Entries) != 6 {
+		t.Errorf("Expected 6 entries, got %d", len(expanded.Entries))
+	}
+
+	// Verify expanded files
+	expectedFiles := []string{
+		"shot.001.dpx",
+		"shot.002.dpx",
+		"shot.003.dpx",
+		"shot.004.dpx",
+		"shot.005.dpx",
+	}
+
+	foundFiles := make(map[string]bool)
+	for _, entry := range expanded.Entries {
+		foundFiles[entry.Name] = true
+	}
+
+	for _, expected := range expectedFiles {
+		if !foundFiles[expected] {
+			t.Errorf("Expected file %s not found in expansion", expected)
+		}
+	}
+}
 
 func TestParseSequence(t *testing.T) {
 	tests := []struct {

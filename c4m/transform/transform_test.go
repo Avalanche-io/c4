@@ -17,13 +17,13 @@ func TestFindMissing(t *testing.T) {
 		Name:      "file1.txt",
 		Size:      100,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content1")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content1"))),
 	})
 	source.AddEntry(&c4m.Entry{
 		Name:      "file2.txt",
 		Size:      200,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content2")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2"))),
 	})
 
 	// Create target manifest with additional files
@@ -32,25 +32,25 @@ func TestFindMissing(t *testing.T) {
 		Name:      "file1.txt",
 		Size:      100,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content1")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content1"))),
 	})
 	target.AddEntry(&c4m.Entry{
 		Name:      "file2.txt",
 		Size:      200,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content2")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2"))),
 	})
 	target.AddEntry(&c4m.Entry{
 		Name:      "file3.txt",
 		Size:      300,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content3")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content3"))),
 	})
 	target.AddEntry(&c4m.Entry{
 		Name:      "file4.txt",
 		Size:      400,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content4")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content4"))),
 	})
 
 	// Find missing files
@@ -88,7 +88,7 @@ func TestFindMissing(t *testing.T) {
 func TestTransformWithMoves(t *testing.T) {
 	// Create source manifest
 	source := c4m.NewManifest()
-	id1 := c4.Identify(bytes.NewReader([]byte("content1"))
+	id1 := c4.Identify(bytes.NewReader([]byte("content1")))
 	source.AddEntry(&c4m.Entry{
 		Name:      "old/path/file1.txt",
 		Size:      100,
@@ -99,7 +99,7 @@ func TestTransformWithMoves(t *testing.T) {
 		Name:      "file2.txt",
 		Size:      200,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content2")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2"))),
 	})
 
 	// Create target manifest with moved file
@@ -114,17 +114,17 @@ func TestTransformWithMoves(t *testing.T) {
 		Name:      "file2.txt",
 		Size:      250, // Modified
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content2_modified")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2_modified"))),
 	})
 	target.AddEntry(&c4m.Entry{
 		Name:      "file3.txt", // Added
 		Size:      300,
 		Timestamp: time.Now(),
-		C4ID:      c4.Identify(bytes.NewReader([]byte("content3")),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content3"))),
 	})
 
 	// Create transformer
-	transformer := NewTransformer(DefaultConfig()
+	transformer := NewTransformer(DefaultConfig())
 
 	// Generate transformation plan
 	plan, err := transformer.Transform(source, target)
@@ -232,7 +232,7 @@ func TestBuildTree(t *testing.T) {
 
 	// Verify structure
 	if len(tree.Children) != 3 { // file1.txt, dir1, dir2
-		t.Errorf("Expected 3 root children, got %d", len(tree.Children)
+		t.Errorf("Expected 3 root children, got %d", len(tree.Children))
 	}
 
 	// Find dir1
@@ -250,7 +250,7 @@ func TestBuildTree(t *testing.T) {
 
 	// Verify dir1 has 3 children (file2, file3, subdir)
 	if len(dir1.Children) != 3 {
-		t.Errorf("Expected 3 children in dir1, got %d", len(dir1.Children)
+		t.Errorf("Expected 3 children in dir1, got %d", len(dir1.Children))
 	}
 }
 
@@ -259,30 +259,30 @@ func TestFindExtra(t *testing.T) {
 	source := c4m.NewManifest()
 	source.AddEntry(&c4m.Entry{
 		Name: "file1.txt",
-		C4ID: c4.Identify(bytes.NewReader([]byte("content1")),
+		C4ID: c4.Identify(bytes.NewReader([]byte("content1"))),
 	})
 	source.AddEntry(&c4m.Entry{
 		Name: "file2.txt",
-		C4ID: c4.Identify(bytes.NewReader([]byte("content2")),
+		C4ID: c4.Identify(bytes.NewReader([]byte("content2"))),
 	})
 	source.AddEntry(&c4m.Entry{
 		Name: "extra1.txt",
-		C4ID: c4.Identify(bytes.NewReader([]byte("extra1")),
+		C4ID: c4.Identify(bytes.NewReader([]byte("extra1"))),
 	})
 	source.AddEntry(&c4m.Entry{
 		Name: "extra2.txt",
-		C4ID: c4.Identify(bytes.NewReader([]byte("extra2")),
+		C4ID: c4.Identify(bytes.NewReader([]byte("extra2"))),
 	})
 
 	// Create target manifest
 	target := c4m.NewManifest()
 	target.AddEntry(&c4m.Entry{
 		Name: "file1.txt",
-		C4ID: c4.Identify(bytes.NewReader([]byte("content1")),
+		C4ID: c4.Identify(bytes.NewReader([]byte("content1"))),
 	})
 	target.AddEntry(&c4m.Entry{
 		Name: "file2.txt",
-		C4ID: c4.Identify(bytes.NewReader([]byte("content2")),
+		C4ID: c4.Identify(bytes.NewReader([]byte("content2"))),
 	})
 
 	// Find extra files
@@ -293,7 +293,7 @@ func TestFindExtra(t *testing.T) {
 
 	// Should have 2 extra files
 	if len(extra.Entries) != 2 {
-		t.Errorf("Expected 2 extra files, got %d", len(extra.Entries)
+		t.Errorf("Expected 2 extra files, got %d", len(extra.Entries))
 	}
 
 	// Verify the extra files
@@ -311,7 +311,7 @@ func TestFindExtra(t *testing.T) {
 }
 
 func TestTransformEmptyManifests(t *testing.T) {
-	transformer := NewTransformer(DefaultConfig()
+	transformer := NewTransformer(DefaultConfig())
 
 	// Test empty source to populated target
 	source := c4m.NewManifest()
@@ -358,7 +358,7 @@ func TestTransformEmptyManifests(t *testing.T) {
 func TestDetectCopies(t *testing.T) {
 	// Create source manifest
 	source := c4m.NewManifest()
-	sharedID := c4.Identify(bytes.NewReader([]byte("shared_content")
+	sharedID := c4.Identify(bytes.NewReader([]byte("shared_content")))
 	source.AddEntry(&c4m.Entry{
 		Name: "original.txt",
 		C4ID: sharedID,
@@ -404,7 +404,7 @@ func BenchmarkTransformLargeManifest(b *testing.B) {
 	for i := 0; i < 10000; i++ {
 		source.AddEntry(&c4m.Entry{
 			Name: fmt.Sprintf("file%d.txt", i),
-			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
 		})
 	}
 
@@ -412,23 +412,23 @@ func BenchmarkTransformLargeManifest(b *testing.B) {
 	for i := 0; i < 9000; i++ {
 		target.AddEntry(&c4m.Entry{
 			Name: fmt.Sprintf("file%d.txt", i),
-			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
 		})
 	}
 	for i := 9000; i < 9500; i++ {
 		target.AddEntry(&c4m.Entry{
 			Name: fmt.Sprintf("file%d.txt", i),
-			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("modified%d", i)),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("modified%d", i)))),
 		})
 	}
 	for i := 10000; i < 11000; i++ {
 		target.AddEntry(&c4m.Entry{
 			Name: fmt.Sprintf("newfile%d.txt", i),
-			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("new%d", i)),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("new%d", i)))),
 		})
 	}
 
-	transformer := NewTransformer(DefaultConfig()
+	transformer := NewTransformer(DefaultConfig())
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -448,14 +448,14 @@ func BenchmarkFindMissing(b *testing.B) {
 	for i := 0; i < 5000; i++ {
 		source.AddEntry(&c4m.Entry{
 			Name: fmt.Sprintf("file%d.txt", i),
-			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
 		})
 	}
 
 	for i := 2500; i < 7500; i++ {
 		target.AddEntry(&c4m.Entry{
 			Name: fmt.Sprintf("file%d.txt", i),
-			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
 		})
 	}
 

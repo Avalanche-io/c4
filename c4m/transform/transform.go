@@ -184,6 +184,12 @@ func (t *Transformer) detectMoves(source, target *c4m.Manifest) []Operation {
 		targetPaths[entry.Name] = entry
 	}
 
+	// Build source path index
+	sourcePaths := make(map[string]*c4m.Entry)
+	for _, entry := range source.Entries {
+		sourcePaths[entry.Name] = entry
+	}
+
 	// Look for files with same C4 ID but different paths
 	for _, targetEntry := range target.Entries {
 		if targetEntry.C4ID.IsNil() {
@@ -192,9 +198,32 @@ func (t *Transformer) detectMoves(source, target *c4m.Manifest) []Operation {
 
 		// Check if this C4 ID exists in source
 		if sourceEntries, exists := t.idIndex[targetEntry.C4ID]; exists {
+			// First check if there's an exact path match - if so, skip this target for moves
+			if sourceEntry, exactMatch := sourcePaths[targetEntry.Name]; exactMatch &&
+				!sourceEntry.C4ID.IsNil() && sourceEntry.C4ID.String() == targetEntry.C4ID.String() {
+				continue
+			}
+
+			// Check if any source entry with this C4ID has an exact path match in target
+			// If so, prefer copies over moves
+			hasExactMatch := false
+			for _, srcEntry := range sourceEntries {
+				if targetEntry, exists := targetPaths[srcEntry.Name]; exists &&
+					!targetEntry.C4ID.IsNil() && srcEntry.C4ID.String() == targetEntry.C4ID.String() {
+					hasExactMatch = true
+					break
+				}
+			}
+
+			if hasExactMatch && t.config.DetectCopies {
+				// Skip move detection - let this be handled as an addition (copy)
+				continue
+			}
+
+			// Look for a source entry that hasn't been used and has a different path
 			for _, sourceEntry := range sourceEntries {
-				// Different path = move/rename
-				if sourceEntry.Name != targetEntry.Name && !processed[targetEntry.Name] {
+				// Different path = move/rename, and source not already processed
+				if sourceEntry.Name != targetEntry.Name && !processed[targetEntry.Name] && !processed[sourceEntry.Name] {
 					ops = append(ops, Operation{
 						Type:   OpMove,
 						Source: sourceEntry.Name,
