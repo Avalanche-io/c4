@@ -1,0 +1,598 @@
+// Package transform provides efficient algorithms for transforming one filesystem
+// manifest into another with minimum operations.
+package transform
+
+import (
+	"fmt"
+	"path"
+	"sort"
+	"strings"
+
+	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
+)
+
+// Operation represents a single transformation operation
+type Operation struct {
+	Type   OpType
+	Source string // Source path (for move/copy)
+	Target string // Target path
+	Entry  *c4m.Entry
+}
+
+// OpType represents the type of operation
+type OpType int
+
+const (
+	OpAdd OpType = iota
+	OpDelete
+	OpModify
+	OpMove
+	OpCopy
+)
+
+func (o OpType) String() string {
+	switch o {
+	case OpAdd:
+		return "ADD"
+	case OpDelete:
+		return "DELETE"
+	case OpModify:
+		return "MODIFY"
+	case OpMove:
+		return "MOVE"
+	case OpCopy:
+		return "COPY"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// Plan represents a transformation plan from source to target
+type Plan struct {
+	Operations []Operation
+	Stats      TransformStats
+}
+
+// TransformStats contains statistics about the transformation
+type TransformStats struct {
+	TotalOps    int
+	Adds        int
+	Deletes     int
+	Modifies    int
+	Moves       int
+	Copies      int
+	BytesToMove int64
+}
+
+// Transformer handles manifest transformations
+type Transformer struct {
+	config      *Config
+	idIndex     map[c4.ID][]*c4m.Entry // Index by C4 ID for move detection
+	pathIndex   map[string]*c4m.Entry   // Index by path
+}
+
+// Config contains transformation configuration
+type Config struct {
+	// Similarity threshold for detecting moves/renames (0.0 to 1.0)
+	SimilarityThreshold float64
+
+	// Enable move detection using C4 IDs
+	DetectMoves bool
+
+	// Enable copy detection (files with same C4 ID)
+	DetectCopies bool
+
+	// Maximum tree size for exact algorithms
+	MaxExactTreeSize int
+
+	// Use heuristics for large trees
+	UseHeuristics bool
+}
+
+// DefaultConfig returns a default configuration
+func DefaultConfig() *Config {
+	return &Config{
+		SimilarityThreshold: 0.5,
+		DetectMoves:         true,
+		DetectCopies:        true,
+		MaxExactTreeSize:    10000,
+		UseHeuristics:       true,
+	}
+}
+
+// NewTransformer creates a new transformer with the given configuration
+func NewTransformer(config *Config) *Transformer {
+	if config == nil {
+		config = DefaultConfig()
+	}
+	return &Transformer{
+		config:    config,
+		idIndex:   make(map[c4.ID][]*c4m.Entry),
+		pathIndex: make(map[string]*c4m.Entry),
+	}
+}
+
+// Transform generates a transformation plan from source to target manifest
+func (t *Transformer) Transform(source, target *c4m.Manifest) (*Plan, error) {
+	// Build indices
+	t.buildIndices(source, target)
+
+	// Initialize plan
+	plan := &Plan{
+		Operations: make([]Operation, 0),
+	}
+
+	// Phase 1: Detect exact matches by C4 ID (potential moves/copies)
+	moves := t.detectMoves(source, target)
+	for _, op := range moves {
+		plan.Operations = append(plan.Operations, op)
+		t.updateStats(&plan.Stats, op)
+	}
+
+	// Phase 2: Detect modifications (same path, different content)
+	mods := t.detectModifications(source, target)
+	for _, op := range mods {
+		plan.Operations = append(plan.Operations, op)
+		t.updateStats(&plan.Stats, op)
+	}
+
+	// Phase 3: Detect pure additions and deletions
+	adds, dels := t.detectAddsDeletes(source, target, moves, mods)
+	for _, op := range adds {
+		plan.Operations = append(plan.Operations, op)
+		t.updateStats(&plan.Stats, op)
+	}
+	for _, op := range dels {
+		plan.Operations = append(plan.Operations, op)
+		t.updateStats(&plan.Stats, op)
+	}
+
+	// Phase 4: Optimize operation order for efficiency
+	t.optimizeOperations(plan)
+
+	return plan, nil
+}
+
+// buildIndices builds lookup indices for efficient processing
+func (t *Transformer) buildIndices(source, target *c4m.Manifest) {
+	// Clear existing indices
+	t.idIndex = make(map[c4.ID][]*c4m.Entry)
+	t.pathIndex = make(map[string]*c4m.Entry)
+
+	// Index source by C4 ID
+	for _, entry := range source.Entries {
+		if !entry.C4ID.IsNil() {
+			t.idIndex[entry.C4ID] = append(t.idIndex[entry.C4ID], entry)
+		}
+		t.pathIndex[entry.Name] = entry
+	}
+}
+
+// detectMoves detects moved or renamed files using C4 IDs
+func (t *Transformer) detectMoves(source, target *c4m.Manifest) []Operation {
+	if !t.config.DetectMoves {
+		return nil
+	}
+
+	var ops []Operation
+	processed := make(map[string]bool)
+
+	// Build target path index
+	targetPaths := make(map[string]*c4m.Entry)
+	for _, entry := range target.Entries {
+		targetPaths[entry.Name] = entry
+	}
+
+	// Look for files with same C4 ID but different paths
+	for _, targetEntry := range target.Entries {
+		if targetEntry.C4ID.IsNil() {
+			continue
+		}
+
+		// Check if this C4 ID exists in source
+		if sourceEntries, exists := t.idIndex[targetEntry.C4ID]; exists {
+			for _, sourceEntry := range sourceEntries {
+				// Different path = move/rename
+				if sourceEntry.Name != targetEntry.Name && !processed[targetEntry.Name] {
+					ops = append(ops, Operation{
+						Type:   OpMove,
+						Source: sourceEntry.Name,
+						Target: targetEntry.Name,
+						Entry:  targetEntry,
+					})
+					processed[targetEntry.Name] = true
+					processed[sourceEntry.Name] = true
+					break
+				}
+			}
+		}
+	}
+
+	return ops
+}
+
+// detectModifications detects files that changed content but not location
+func (t *Transformer) detectModifications(source, target *c4m.Manifest) []Operation {
+	var ops []Operation
+
+	// Build target map
+	targetMap := make(map[string]*c4m.Entry)
+	for _, entry := range target.Entries {
+		targetMap[entry.Name] = entry
+	}
+
+	// Check each source entry
+	for _, sourceEntry := range source.Entries {
+		if targetEntry, exists := targetMap[sourceEntry.Name]; exists {
+			// Same path, check if content changed
+			if !sourceEntry.C4ID.IsNil() && !targetEntry.C4ID.IsNil() {
+				if sourceEntry.C4ID.String() != targetEntry.C4ID.String() {
+					ops = append(ops, Operation{
+						Type:   OpModify,
+						Target: targetEntry.Name,
+						Entry:  targetEntry,
+					})
+				}
+			} else if sourceEntry.Size != targetEntry.Size ||
+				!sourceEntry.Timestamp.Equal(targetEntry.Timestamp) {
+				// Fallback to size/time comparison if C4 IDs not available
+				ops = append(ops, Operation{
+					Type:   OpModify,
+					Target: targetEntry.Name,
+					Entry:  targetEntry,
+				})
+			}
+		}
+	}
+
+	return ops
+}
+
+// detectAddsDeletes detects pure additions and deletions
+func (t *Transformer) detectAddsDeletes(source, target *c4m.Manifest, moves, mods []Operation) ([]Operation, []Operation) {
+	// Mark processed entries
+	processed := make(map[string]bool)
+	for _, op := range moves {
+		processed[op.Source] = true
+		processed[op.Target] = true
+	}
+	for _, op := range mods {
+		processed[op.Target] = true
+	}
+
+	// Build maps
+	sourceMap := make(map[string]*c4m.Entry)
+	for _, entry := range source.Entries {
+		sourceMap[entry.Name] = entry
+	}
+
+	targetMap := make(map[string]*c4m.Entry)
+	for _, entry := range target.Entries {
+		targetMap[entry.Name] = entry
+	}
+
+	// Find additions (in target but not in source)
+	var adds []Operation
+	for _, entry := range target.Entries {
+		if !processed[entry.Name] {
+			if _, exists := sourceMap[entry.Name]; !exists {
+				adds = append(adds, Operation{
+					Type:   OpAdd,
+					Target: entry.Name,
+					Entry:  entry,
+				})
+			}
+		}
+	}
+
+	// Find deletions (in source but not in target)
+	var dels []Operation
+	for _, entry := range source.Entries {
+		if !processed[entry.Name] {
+			if _, exists := targetMap[entry.Name]; !exists {
+				dels = append(dels, Operation{
+					Type:   OpDelete,
+					Target: entry.Name,
+					Entry:  entry,
+				})
+			}
+		}
+	}
+
+	return adds, dels
+}
+
+// optimizeOperations reorders operations for efficiency
+func (t *Transformer) optimizeOperations(plan *Plan) {
+	// Sort operations by type priority:
+	// 1. Deletes (to free up space)
+	// 2. Moves (cheap if same filesystem)
+	// 3. Modifies
+	// 4. Adds
+	sort.Slice(plan.Operations, func(i, j int) bool {
+		priority := map[OpType]int{
+			OpDelete: 1,
+			OpMove:   2,
+			OpCopy:   3,
+			OpModify: 4,
+			OpAdd:    5,
+		}
+		return priority[plan.Operations[i].Type] < priority[plan.Operations[j].Type]
+	})
+}
+
+// updateStats updates transformation statistics
+func (t *Transformer) updateStats(stats *TransformStats, op Operation) {
+	stats.TotalOps++
+	switch op.Type {
+	case OpAdd:
+		stats.Adds++
+		if op.Entry != nil {
+			stats.BytesToMove += op.Entry.Size
+		}
+	case OpDelete:
+		stats.Deletes++
+	case OpModify:
+		stats.Modifies++
+		if op.Entry != nil {
+			stats.BytesToMove += op.Entry.Size
+		}
+	case OpMove:
+		stats.Moves++
+	case OpCopy:
+		stats.Copies++
+		if op.Entry != nil {
+			stats.BytesToMove += op.Entry.Size
+		}
+	}
+}
+
+// FindMissing returns a manifest of files that are in target but not in source
+// This is a key operation for synchronization
+func FindMissing(source, target *c4m.Manifest) (*c4m.Manifest, error) {
+	missing := c4m.NewManifest()
+
+	// Build source index by C4 ID for fast lookup
+	sourceIDs := make(map[c4.ID]bool)
+	sourcePaths := make(map[string]bool)
+
+	for _, entry := range source.Entries {
+		if !entry.C4ID.IsNil() {
+			sourceIDs[entry.C4ID] = true
+		}
+		sourcePaths[entry.Name] = true
+	}
+
+	// Find entries in target that don't exist in source
+	for _, entry := range target.Entries {
+		found := false
+
+		// First check by C4 ID if available
+		if !entry.C4ID.IsNil() && sourceIDs[entry.C4ID] {
+			found = true
+		}
+
+		// Fallback to path check
+		if !found && sourcePaths[entry.Name] {
+			// Exists by path, but may have different content
+			// This is not "missing", it's "modified"
+			continue
+		}
+
+		if !found {
+			missing.AddEntry(entry)
+		}
+	}
+
+	missing.Sort()
+	return missing, nil
+}
+
+// FindExtra returns a manifest of files that are in source but not in target
+func FindExtra(source, target *c4m.Manifest) (*c4m.Manifest, error) {
+	// This is the inverse of FindMissing
+	return FindMissing(target, source)
+}
+
+// TreeNode represents a node in the filesystem tree
+type TreeNode struct {
+	Name     string
+	Entry    *c4m.Entry
+	Children []*TreeNode
+	Parent   *TreeNode
+	Level    int
+}
+
+// BuildTree constructs a tree representation from a manifest
+func BuildTree(manifest *c4m.Manifest) *TreeNode {
+	root := &TreeNode{
+		Name:     "/",
+		Children: make([]*TreeNode, 0),
+		Level:    0,
+	}
+
+	// Build the tree structure
+	pathNodes := make(map[string]*TreeNode)
+	pathNodes["/"] = root
+
+	for _, entry := range manifest.Entries {
+		parts := splitPath(entry.Name)
+		currentPath := ""
+		parent := root
+
+		for i, part := range parts {
+			if currentPath == "" {
+				currentPath = part
+			} else {
+				currentPath = path.Join(currentPath, part)
+			}
+
+			if node, exists := pathNodes[currentPath]; exists {
+				parent = node
+			} else {
+				node := &TreeNode{
+					Name:     part,
+					Children: make([]*TreeNode, 0),
+					Parent:   parent,
+					Level:    i + 1,
+				}
+
+				// If this is the last part, attach the entry
+				if i == len(parts)-1 {
+					node.Entry = entry
+				}
+
+				parent.Children = append(parent.Children, node)
+				pathNodes[currentPath] = node
+				parent = node
+			}
+		}
+	}
+
+	return root
+}
+
+// splitPath splits a path into components
+func splitPath(p string) []string {
+	if p == "" || p == "/" {
+		return []string{}
+	}
+
+	// Remove leading slash
+	if p[0] == '/' {
+		p = p[1:]
+	}
+
+	// Remove trailing slash for directories
+	if p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
+	}
+
+	return strings.Split(p, "/")
+}
+
+// ComputeTreeEditDistance computes the edit distance between two filesystem trees
+// This is a simplified version of APTED algorithm optimized for filesystem hierarchies
+func ComputeTreeEditDistance(source, target *TreeNode) int {
+	// Base cases
+	if source == nil && target == nil {
+		return 0
+	}
+	if source == nil {
+		return countNodes(target)
+	}
+	if target == nil {
+		return countNodes(source)
+	}
+
+	// Check if nodes are equal
+	cost := 0
+	if !nodesEqual(source, target) {
+		cost = 1
+	}
+
+	// Compute child edit distances
+	sourceChildren := source.Children
+	targetChildren := target.Children
+
+	// Use dynamic programming for child matching
+	m := len(sourceChildren)
+	n := len(targetChildren)
+	dp := make([][]int, m+1)
+	for i := range dp {
+		dp[i] = make([]int, n+1)
+	}
+
+	// Initialize base cases
+	for i := 1; i <= m; i++ {
+		dp[i][0] = dp[i-1][0] + countNodes(sourceChildren[i-1])
+	}
+	for j := 1; j <= n; j++ {
+		dp[0][j] = dp[0][j-1] + countNodes(targetChildren[j-1])
+	}
+
+	// Fill DP table
+	for i := 1; i <= m; i++ {
+		for j := 1; j <= n; j++ {
+			// Cost of matching children[i-1] with children[j-1]
+			matchCost := ComputeTreeEditDistance(sourceChildren[i-1], targetChildren[j-1])
+
+			// Cost of deleting source child
+			deleteCost := dp[i-1][j] + countNodes(sourceChildren[i-1])
+
+			// Cost of inserting target child
+			insertCost := dp[i][j-1] + countNodes(targetChildren[j-1])
+
+			// Take minimum
+			dp[i][j] = min(matchCost+dp[i-1][j-1], min(deleteCost, insertCost))
+		}
+	}
+
+	return cost + dp[m][n]
+}
+
+// nodesEqual checks if two tree nodes are equal
+func nodesEqual(a, b *TreeNode) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	// Compare by C4 ID if available
+	if a.Entry != nil && b.Entry != nil {
+		if !a.Entry.C4ID.IsNil() && !b.Entry.C4ID.IsNil() {
+			return a.Entry.C4ID.String() == b.Entry.C4ID.String()
+		}
+	}
+
+	// Fallback to name comparison
+	return a.Name == b.Name
+}
+
+// countNodes counts the total number of nodes in a tree
+func countNodes(node *TreeNode) int {
+	if node == nil {
+		return 0
+	}
+	count := 1
+	for _, child := range node.Children {
+		count += countNodes(child)
+	}
+	return count
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// String returns a string representation of the plan
+func (p *Plan) String() string {
+	var result string
+	result += fmt.Sprintf("Transformation Plan:\n")
+	result += fmt.Sprintf("  Total Operations: %d\n", p.Stats.TotalOps)
+	result += fmt.Sprintf("  Adds: %d, Deletes: %d, Modifies: %d, Moves: %d, Copies: %d\n",
+		p.Stats.Adds, p.Stats.Deletes, p.Stats.Modifies, p.Stats.Moves, p.Stats.Copies)
+	result += fmt.Sprintf("  Bytes to transfer: %d\n", p.Stats.BytesToMove)
+	result += "\nOperations:\n"
+
+	for _, op := range p.Operations {
+		switch op.Type {
+		case OpAdd:
+			result += fmt.Sprintf("  ADD: %s\n", op.Target)
+		case OpDelete:
+			result += fmt.Sprintf("  DELETE: %s\n", op.Target)
+		case OpModify:
+			result += fmt.Sprintf("  MODIFY: %s\n", op.Target)
+		case OpMove:
+			result += fmt.Sprintf("  MOVE: %s -> %s\n", op.Source, op.Target)
+		case OpCopy:
+			result += fmt.Sprintf("  COPY: %s -> %s\n", op.Source, op.Target)
+		}
+	}
+
+	return result
+}

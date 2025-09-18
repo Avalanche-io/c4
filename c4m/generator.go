@@ -101,8 +101,8 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		return nil, err
 	}
 	
-	// Sort entries
-	manifest.Sort()
+	// Sort entries hierarchically (files before directories at each level)
+	manifest.SortSiblingsHierarchically()
 	
 	// Detect and group sequences if enabled
 	if g.detectSequences {

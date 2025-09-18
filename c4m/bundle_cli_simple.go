@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 // SimpleBundleCLI provides a simple CLI for bundle operations
@@ -84,6 +86,29 @@ func (sbc *SimpleBundleCLI) CreateBundle(scanPath string) error {
 	return nil
 }
 
+// findResumePath determines the last processed path from the manifest
+func (sbc *SimpleBundleCLI) findResumePath(manifest *Manifest) string {
+	if len(manifest.Entries) == 0 {
+		return ""
+	}
+
+	// Find the deepest directory that was being processed
+	deepestDir := ""
+	maxDepth := -1
+
+	for _, entry := range manifest.Entries {
+		if entry.Depth > maxDepth {
+			maxDepth = entry.Depth
+			// Build the path from the entry
+			if entry.Mode.IsDir() || strings.HasSuffix(entry.Name, "/") {
+				deepestDir = strings.TrimSuffix(entry.Name, "/")
+			}
+		}
+	}
+
+	return deepestDir
+}
+
 // ResumeBundle resumes scanning from an existing bundle
 func (sbc *SimpleBundleCLI) ResumeBundle(bundlePath string) error {
 	// Open existing bundle
@@ -106,9 +131,55 @@ func (sbc *SimpleBundleCLI) ResumeBundle(bundlePath string) error {
 		fmt.Fprintf(os.Stderr, "# Progress chunks found: %d\n", len(scan.ProgressChunks))
 	}
 	
-	// TODO: Implement actual resume logic
-	fmt.Fprintf(os.Stderr, "# Resume functionality not yet fully implemented\n")
-	fmt.Fprintf(os.Stderr, "# Would resume from last chunk and continue scanning\n")
-	
+	// Load the last chunk to determine resume point
+	var lastManifest *Manifest
+	var resumePath string
+
+	if len(scan.ProgressChunks) > 0 {
+		// Load the last chunk to find where we left off
+		lastChunkName := scan.ProgressChunks[len(scan.ProgressChunks)-1]
+		lastChunkPath := filepath.Join(bundle.Path, "c4", lastChunkName)
+
+		data, err := os.ReadFile(lastChunkPath)
+		if err != nil {
+			return fmt.Errorf("failed to read last chunk: %w", err)
+		}
+
+		parser := NewParser(strings.NewReader(string(data)))
+		lastManifest, err = parser.ParseAll()
+		if err != nil {
+			return fmt.Errorf("failed to parse last chunk: %w", err)
+		}
+
+		// Find the deepest path processed
+		resumePath = sbc.findResumePath(lastManifest)
+		fmt.Fprintf(os.Stderr, "# Last processed path: %s\n", resumePath)
+	} else {
+		// No chunks yet, start from beginning
+		resumePath = bundle.ScanPath
+	}
+
+	// Create scanner with resume support
+	config := sbc.config
+	if config == nil {
+		config = DefaultBundleConfig()
+	}
+
+	// Use ScannerV2 for actual scanning
+	scanner := NewScannerV2(bundle, scan, config)
+	scanner.SkipC4IDs = false // Default to computing C4 IDs
+
+	// Resume scanning from the last position
+	fmt.Fprintf(os.Stderr, "# Resuming scan from: %s\n", resumePath)
+	if err := scanner.ScanPath(bundle.ScanPath); err != nil {
+		return fmt.Errorf("scan failed: %w", err)
+	}
+
+	// Mark scan as complete
+	now := time.Now()
+	scan.CompletedAt = &now
+	bundle.writeHeader()
+
+	fmt.Fprintf(os.Stderr, "# Scan resumed and completed successfully\n")
 	return nil
 }

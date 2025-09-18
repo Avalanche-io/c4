@@ -43,7 +43,13 @@ var (
 	bundleFlag   bool
 	resumeFlag   bool
 	devModeFlag  bool
-	
+
+	// Sequence flags
+	expandSequencesFlag     bool
+	standaloneSequencesFlag bool
+	collapseSequencesFlag   bool
+	minSequenceLengthFlag   int
+
 	// Long-form aliases
 	helpFlag bool
 )
@@ -76,7 +82,13 @@ func init() {
 	flag.BoolVar(&bundleFlag, "bundle", false, "Create/use C4M bundle for unbounded scans")
 	flag.BoolVar(&resumeFlag, "resume", false, "Resume incomplete bundle scan")
 	flag.BoolVar(&devModeFlag, "dev", false, "Use development mode (small chunks)")
-	
+
+	// Sequence flags
+	flag.BoolVar(&expandSequencesFlag, "expand-sequences", false, "Expand sequence notation into individual entries")
+	flag.BoolVar(&standaloneSequencesFlag, "standalone-sequences", false, "Output sequence expansions to separate manifest")
+	flag.BoolVar(&collapseSequencesFlag, "collapse-sequences", false, "Detect and collapse file sequences into notation")
+	flag.IntVar(&minSequenceLengthFlag, "min-sequence", 3, "Minimum number of files to form a sequence")
+
 	// Help flag
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 }
@@ -394,7 +406,7 @@ func generateOneLevel(dirPath string, generator *c4m.Generator) (*c4m.Manifest, 
 		manifest.AddEntry(e)
 	}
 	
-	manifest.Sort()
+	manifest.SortSiblingsHierarchically()
 	return manifest, nil
 }
 
@@ -429,6 +441,26 @@ func outputID(id c4.ID, path string) {
 }
 
 func outputManifest(manifest *c4m.Manifest) {
+	// Apply sequence collapse if requested
+	if collapseSequencesFlag {
+		manifest = c4m.CollapseToSequences(manifest, minSequenceLengthFlag)
+	}
+
+	// Apply sequence expansion if requested
+	if expandSequencesFlag {
+		mode := c4m.SequenceEmbedded
+		if standaloneSequencesFlag {
+			mode = c4m.SequenceStandalone
+		}
+
+		expandedManifest, err := c4m.ProcessManifestWithSequences(manifest, mode)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error expanding sequences: %v\n", err)
+		} else {
+			manifest = expandedManifest
+		}
+	}
+
 	switch formatFlag {
 	case "paths":
 		for _, path := range manifest.PathList() {
@@ -709,6 +741,7 @@ func runExtract(args []string) {
 	// Create a flag set for the extract command
 	fs := flag.NewFlagSet("extract", flag.ExitOnError)
 	pretty := fs.Bool("pretty", false, "Pretty-print manifest with aligned columns")
+	v2 := fs.Bool("v2", false, "Use V2 extraction algorithm with proper @base chain following")
 	fs.Parse(args)
 	
 	if fs.NArg() < 1 || fs.NArg() > 2 {
@@ -734,7 +767,13 @@ func runExtract(args []string) {
 	if fs.NArg() == 2 {
 		outputPath := fs.Arg(1)
 		fmt.Printf("Extracting bundle to: %s\n", outputPath)
-		if *pretty {
+		if *v2 {
+			// Use V2 extraction (always pretty)
+			if err := c4m.ExtractBundlePrettyToFileV2(bundlePath, outputPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		} else if *pretty {
 			if err := c4m.ExtractBundlePrettyToFile(bundlePath, outputPath); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
@@ -748,7 +787,13 @@ func runExtract(args []string) {
 		fmt.Printf("✓ Extraction complete\n")
 	} else {
 		// Extract to stdout
-		if *pretty {
+		if *v2 {
+			// Use V2 extraction (always pretty)
+			if err := c4m.ExtractBundlePrettyV2(bundlePath, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		} else if *pretty {
 			if err := c4m.ExtractBundlePretty(bundlePath, os.Stdout); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)

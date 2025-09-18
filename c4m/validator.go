@@ -64,13 +64,16 @@ type Validator struct {
 	seenDirAtDepth map[int]bool // Track if we've seen a directory at each depth
 	inLayer      bool // Whether we're in a @layer section
 	stats        ValidationStats
+	isErgonomic  bool // Whether the file uses ergonomic format
+	formatDetected bool // Whether we've detected the format yet
+	currentPath  string // Current full path being processed
 }
 
 // NewValidator creates a new validator
 func NewValidator(strict bool) *Validator {
 	return &Validator{
 		Strict:    strict,
-		MaxErrors: 100,
+		MaxErrors: 100000, // Increased to handle large files
 		seenPaths: make(map[string]int),
 		depthStack: []string{},
 	}
@@ -86,6 +89,8 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.depthStack = []string{}
 	v.seenDirAtDepth = make(map[int]bool)
 	v.stats = ValidationStats{}
+	v.formatDetected = false
+	v.isErgonomic = false
 	
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB max line
@@ -118,6 +123,11 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 			continue
 		}
 		
+		// Detect format on first entry if not yet detected
+		if !v.formatDetected && !strings.HasPrefix(line, "#") {
+			v.detectFormat(line)
+		}
+		
 		v.validateEntry(line)
 		
 		if v.MaxErrors > 0 && len(v.errors) >= v.MaxErrors {
@@ -139,6 +149,10 @@ func (v *Validator) ValidateBundle(bundlePath string) error {
 	v.errors = nil
 	v.warnings = nil
 	v.stats = ValidationStats{}
+	v.formatDetected = false
+	v.isErgonomic = false
+	
+	fmt.Fprintf(os.Stderr, "Validating C4M bundle: %s\n", bundlePath)
 	
 	// Check if bundle directory exists
 	info, err := os.Stat(bundlePath)
@@ -388,9 +402,27 @@ func (v *Validator) validateEntry(line string) {
 	}
 	
 	mode := fields[0]
-	timestamp := fields[1]
-	size := fields[2]
-	nameStart := 3
+	var timestamp, size string
+	var nameStart int
+	
+	// Handle different timestamp formats
+	if v.formatDetected && v.isErgonomic {
+		// Ergonomic format: mode Month Day Time Year TZ size name [c4id]
+		// Example: drwxr-xr-x Feb 19 03:17:53 2025 CST 108,420 types/ c41x...
+		if len(fields) < 8 {
+			v.addError(v.lineNum, 0, "fields", fmt.Sprintf("insufficient fields for ergonomic format: need at least 8, got %d", len(fields)), false)
+			return
+		}
+		// Timestamp spans fields 1-5 (Month Day Time Year TZ)
+		timestamp = strings.Join(fields[1:6], " ")
+		size = fields[6]
+		nameStart = 7
+	} else {
+		// Canonical format: mode timestamp size name [c4id]
+		timestamp = fields[1]
+		size = fields[2]
+		nameStart = 3
+	}
 	
 	// Validate mode
 	v.validateMode(mode)
@@ -416,6 +448,9 @@ func (v *Validator) validateEntry(line string) {
 		v.seenDirAtDepth[depthLevel] = true
 	}
 	
+	// Build the current path
+	v.currentPath = v.buildPath(name, depthLevel)
+	
 	// Check that non-directory entries at wrong depth relative to open directories
 	// A file should be at depth = len(depthStack) (inside the deepest directory)
 	// or at depth = 0 when no directories are open
@@ -423,8 +458,9 @@ func (v *Validator) validateEntry(line string) {
 		expectedDepth := originalStackSize
 		if depthLevel != expectedDepth {
 			if originalStackSize > 0 {
-				v.addError(v.lineNum, 0, "indentation", fmt.Sprintf("file at depth %d but should be at depth %d (inside directory '%s')", 
-					depthLevel, expectedDepth, v.depthStack[originalStackSize-1]), false)
+				expectedPath := v.buildExpectedPath(name, expectedDepth)
+				v.addError(v.lineNum, 0, "indentation", fmt.Sprintf("file '%s' at depth %d but should be at depth %d (expected path: '%s')", 
+					v.currentPath, depthLevel, expectedDepth, expectedPath), false)
 			}
 		}
 	}
@@ -434,14 +470,14 @@ func (v *Validator) validateEntry(line string) {
 	
 	// Check for duplicates (unless in a layer which can override)
 	if !v.inLayer {
-		if prevLine, exists := v.seenPaths[name]; exists {
-			v.addError(v.lineNum, 0, "duplicate", fmt.Sprintf("duplicate path (first seen at line %d)", prevLine), false)
+		if prevLine, exists := v.seenPaths[v.currentPath]; exists {
+			v.addError(v.lineNum, 0, "duplicate", fmt.Sprintf("duplicate path '%s' (first seen at line %d)", v.currentPath, prevLine), false)
 		} else {
-			v.seenPaths[name] = v.lineNum
+			v.seenPaths[v.currentPath] = v.lineNum
 		}
 	} else {
 		// In layers, duplicates override previous entries
-		v.seenPaths[name] = v.lineNum
+		v.seenPaths[v.currentPath] = v.lineNum
 	}
 	
 	// Validate symlink target if present
@@ -500,13 +536,19 @@ func (v *Validator) validateTimestamp(ts string) {
 		return // Null timestamp is valid
 	}
 	
-	// Check ISO 8601 format with Z suffix
-	if !strings.HasSuffix(ts, "Z") {
-		v.addError(v.lineNum, 0, "timestamp", "timestamp must end with 'Z' for UTC", false)
+	// If we've detected ergonomic format, don't validate timestamp format
+	if v.isErgonomic {
+		// Could add validation for ergonomic format here if needed
 		return
 	}
 	
-	// Try to parse
+	// For canonical format, check ISO 8601 with Z suffix
+	if !strings.HasSuffix(ts, "Z") {
+		v.addError(v.lineNum, 0, "timestamp", "timestamp must end with 'Z' for UTC in canonical format", false)
+		return
+	}
+	
+	// Try to parse canonical format
 	_, err := time.Parse("2006-01-02T15:04:05Z", ts)
 	if err != nil {
 		v.addError(v.lineNum, 0, "timestamp", fmt.Sprintf("invalid ISO 8601 timestamp: %v", err), false)
@@ -518,11 +560,8 @@ func (v *Validator) validateSize(size string) {
 		return // Null size is valid
 	}
 	
-	// Check for comma separators (only allowed in ergonomic form)
+	// Remove comma separators if present (common in ergonomic form)
 	cleanSize := strings.ReplaceAll(size, ",", "")
-	if cleanSize != size && v.Strict {
-		v.addWarning(v.lineNum, 0, "size", "comma separators in size (ergonomic form)")
-	}
 	
 	// Parse as integer
 	val, err := strconv.ParseInt(cleanSize, 10, 64)
@@ -699,6 +738,76 @@ func (v *Validator) GetWarnings() []ValidationError {
 // GetStats returns validation statistics
 func (v *Validator) GetStats() ValidationStats {
 	return v.stats
+}
+
+// buildPath constructs the full path for an entry at the given depth
+func (v *Validator) buildPath(name string, depth int) string {
+	if depth == 0 {
+		return name
+	}
+	
+	// Build path from stack up to the specified depth
+	path := ""
+	for i := 0; i < depth && i < len(v.depthStack); i++ {
+		path += v.depthStack[i]
+	}
+	path += name
+	return path
+}
+
+// buildExpectedPath constructs what the path should be if at the correct depth
+func (v *Validator) buildExpectedPath(name string, expectedDepth int) string {
+	if expectedDepth == 0 {
+		return name
+	}
+	
+	// Build path from stack up to the expected depth
+	path := ""
+	for i := 0; i < expectedDepth && i < len(v.depthStack); i++ {
+		path += v.depthStack[i]
+	}
+	path += name
+	return path
+}
+
+// GetCurrentPath returns the full path of the entry being processed
+func (v *Validator) GetCurrentPath() string {
+	return v.currentPath
+}
+
+// detectFormat determines if the manifest uses canonical or ergonomic format
+func (v *Validator) detectFormat(line string) {
+	v.formatDetected = true
+	
+	// Look for timestamp pattern in the line
+	trimmed := strings.TrimSpace(line)
+	fields := strings.Fields(trimmed)
+	
+	if len(fields) < 3 {
+		return
+	}
+	
+	// Skip mode field, look at timestamp field (usually second field)
+	for i := 1; i < len(fields) && i < 4; i++ {
+		field := fields[i]
+		
+		// Check for canonical format (ISO 8601 with Z)
+		if strings.Contains(field, "T") && strings.HasSuffix(field, "Z") {
+			v.isErgonomic = false
+			fmt.Fprintf(os.Stderr, "Validating canonical format C4M manifest\n")
+			return
+		}
+		
+		// Check for ergonomic format (month name)
+		months := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+		for _, month := range months {
+			if field == month {
+				v.isErgonomic = true
+				fmt.Fprintf(os.Stderr, "Validating ergonomic format C4M manifest\n")
+				return
+			}
+		}
+	}
 }
 
 // handleDirective processes @ directives

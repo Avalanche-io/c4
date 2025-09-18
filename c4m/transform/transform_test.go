@@ -1,0 +1,469 @@
+package transform
+
+import (
+	"bytes"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
+)
+
+func TestFindMissing(t *testing.T) {
+	// Create source manifest
+	source := c4m.NewManifest()
+	source.AddEntry(&c4m.Entry{
+		Name:      "file1.txt",
+		Size:      100,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content1")),
+	})
+	source.AddEntry(&c4m.Entry{
+		Name:      "file2.txt",
+		Size:      200,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2")),
+	})
+
+	// Create target manifest with additional files
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{
+		Name:      "file1.txt",
+		Size:      100,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content1")),
+	})
+	target.AddEntry(&c4m.Entry{
+		Name:      "file2.txt",
+		Size:      200,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2")),
+	})
+	target.AddEntry(&c4m.Entry{
+		Name:      "file3.txt",
+		Size:      300,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content3")),
+	})
+	target.AddEntry(&c4m.Entry{
+		Name:      "file4.txt",
+		Size:      400,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content4")),
+	})
+
+	// Find missing files
+	missing, err := FindMissing(source, target)
+	if err != nil {
+		t.Fatalf("FindMissing failed: %v", err)
+	}
+
+	// Check results
+	if len(missing.Entries) != 2 {
+		t.Errorf("Expected 2 missing files, got %d", len(missing.Entries))
+	}
+
+	// Verify specific files are missing
+	expectedMissing := map[string]bool{
+		"file3.txt": false,
+		"file4.txt": false,
+	}
+
+	for _, entry := range missing.Entries {
+		if _, expected := expectedMissing[entry.Name]; expected {
+			expectedMissing[entry.Name] = true
+		} else {
+			t.Errorf("Unexpected missing file: %s", entry.Name)
+		}
+	}
+
+	for name, found := range expectedMissing {
+		if !found {
+			t.Errorf("Expected missing file not found: %s", name)
+		}
+	}
+}
+
+func TestTransformWithMoves(t *testing.T) {
+	// Create source manifest
+	source := c4m.NewManifest()
+	id1 := c4.Identify(bytes.NewReader([]byte("content1"))
+	source.AddEntry(&c4m.Entry{
+		Name:      "old/path/file1.txt",
+		Size:      100,
+		Timestamp: time.Now(),
+		C4ID:      id1,
+	})
+	source.AddEntry(&c4m.Entry{
+		Name:      "file2.txt",
+		Size:      200,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2")),
+	})
+
+	// Create target manifest with moved file
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{
+		Name:      "new/path/file1.txt", // Moved
+		Size:      100,
+		Timestamp: time.Now(),
+		C4ID:      id1, // Same content
+	})
+	target.AddEntry(&c4m.Entry{
+		Name:      "file2.txt",
+		Size:      250, // Modified
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content2_modified")),
+	})
+	target.AddEntry(&c4m.Entry{
+		Name:      "file3.txt", // Added
+		Size:      300,
+		Timestamp: time.Now(),
+		C4ID:      c4.Identify(bytes.NewReader([]byte("content3")),
+	})
+
+	// Create transformer
+	transformer := NewTransformer(DefaultConfig()
+
+	// Generate transformation plan
+	plan, err := transformer.Transform(source, target)
+	if err != nil {
+		t.Fatalf("Transform failed: %v", err)
+	}
+
+	// Verify statistics
+	if plan.Stats.TotalOps != 3 {
+		t.Errorf("Expected 3 total operations, got %d", plan.Stats.TotalOps)
+	}
+	if plan.Stats.Moves != 1 {
+		t.Errorf("Expected 1 move, got %d", plan.Stats.Moves)
+	}
+	if plan.Stats.Modifies != 1 {
+		t.Errorf("Expected 1 modify, got %d", plan.Stats.Modifies)
+	}
+	if plan.Stats.Adds != 1 {
+		t.Errorf("Expected 1 add, got %d", plan.Stats.Adds)
+	}
+
+	// Verify operations
+	foundMove := false
+	foundModify := false
+	foundAdd := false
+
+	for _, op := range plan.Operations {
+		switch op.Type {
+		case OpMove:
+			if op.Source == "old/path/file1.txt" && op.Target == "new/path/file1.txt" {
+				foundMove = true
+			}
+		case OpModify:
+			if op.Target == "file2.txt" {
+				foundModify = true
+			}
+		case OpAdd:
+			if op.Target == "file3.txt" {
+				foundAdd = true
+			}
+		}
+	}
+
+	if !foundMove {
+		t.Error("Move operation not found")
+	}
+	if !foundModify {
+		t.Error("Modify operation not found")
+	}
+	if !foundAdd {
+		t.Error("Add operation not found")
+	}
+}
+
+func TestTreeEditDistance(t *testing.T) {
+	// Create simple test trees
+	source := &TreeNode{
+		Name: "root",
+		Children: []*TreeNode{
+			{Name: "a", Children: []*TreeNode{
+				{Name: "a1"},
+				{Name: "a2"},
+			}},
+			{Name: "b"},
+		},
+	}
+
+	target := &TreeNode{
+		Name: "root",
+		Children: []*TreeNode{
+			{Name: "a", Children: []*TreeNode{
+				{Name: "a1"},
+				{Name: "a3"}, // a2 -> a3
+			}},
+			{Name: "b"},
+			{Name: "c"}, // added
+		},
+	}
+
+	// Compute edit distance
+	distance := ComputeTreeEditDistance(source, target)
+
+	// Should be 2: one rename (a2->a3) and one addition (c)
+	if distance != 2 {
+		t.Errorf("Expected edit distance of 2, got %d", distance)
+	}
+}
+
+func TestBuildTree(t *testing.T) {
+	// Create manifest with hierarchical structure
+	manifest := c4m.NewManifest()
+	manifest.AddEntry(&c4m.Entry{Name: "file1.txt"})
+	manifest.AddEntry(&c4m.Entry{Name: "dir1/file2.txt"})
+	manifest.AddEntry(&c4m.Entry{Name: "dir1/file3.txt"})
+	manifest.AddEntry(&c4m.Entry{Name: "dir1/subdir/file4.txt"})
+	manifest.AddEntry(&c4m.Entry{Name: "dir2/file5.txt"})
+
+	// Build tree
+	tree := BuildTree(manifest)
+
+	// Verify root
+	if tree.Name != "/" {
+		t.Errorf("Expected root name '/', got %s", tree.Name)
+	}
+
+	// Verify structure
+	if len(tree.Children) != 3 { // file1.txt, dir1, dir2
+		t.Errorf("Expected 3 root children, got %d", len(tree.Children)
+	}
+
+	// Find dir1
+	var dir1 *TreeNode
+	for _, child := range tree.Children {
+		if child.Name == "dir1" {
+			dir1 = child
+			break
+		}
+	}
+
+	if dir1 == nil {
+		t.Fatal("dir1 not found in tree")
+	}
+
+	// Verify dir1 has 3 children (file2, file3, subdir)
+	if len(dir1.Children) != 3 {
+		t.Errorf("Expected 3 children in dir1, got %d", len(dir1.Children)
+	}
+}
+
+func TestFindExtra(t *testing.T) {
+	// Create source manifest with extra files
+	source := c4m.NewManifest()
+	source.AddEntry(&c4m.Entry{
+		Name: "file1.txt",
+		C4ID: c4.Identify(bytes.NewReader([]byte("content1")),
+	})
+	source.AddEntry(&c4m.Entry{
+		Name: "file2.txt",
+		C4ID: c4.Identify(bytes.NewReader([]byte("content2")),
+	})
+	source.AddEntry(&c4m.Entry{
+		Name: "extra1.txt",
+		C4ID: c4.Identify(bytes.NewReader([]byte("extra1")),
+	})
+	source.AddEntry(&c4m.Entry{
+		Name: "extra2.txt",
+		C4ID: c4.Identify(bytes.NewReader([]byte("extra2")),
+	})
+
+	// Create target manifest
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{
+		Name: "file1.txt",
+		C4ID: c4.Identify(bytes.NewReader([]byte("content1")),
+	})
+	target.AddEntry(&c4m.Entry{
+		Name: "file2.txt",
+		C4ID: c4.Identify(bytes.NewReader([]byte("content2")),
+	})
+
+	// Find extra files
+	extra, err := FindExtra(source, target)
+	if err != nil {
+		t.Fatalf("FindExtra failed: %v", err)
+	}
+
+	// Should have 2 extra files
+	if len(extra.Entries) != 2 {
+		t.Errorf("Expected 2 extra files, got %d", len(extra.Entries)
+	}
+
+	// Verify the extra files
+	extraMap := make(map[string]bool)
+	for _, entry := range extra.Entries {
+		extraMap[entry.Name] = true
+	}
+
+	if !extraMap["extra1.txt"] {
+		t.Error("extra1.txt not found in extra files")
+	}
+	if !extraMap["extra2.txt"] {
+		t.Error("extra2.txt not found in extra files")
+	}
+}
+
+func TestTransformEmptyManifests(t *testing.T) {
+	transformer := NewTransformer(DefaultConfig()
+
+	// Test empty source to populated target
+	source := c4m.NewManifest()
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{Name: "file1.txt"})
+
+	plan, err := transformer.Transform(source, target)
+	if err != nil {
+		t.Fatalf("Transform failed: %v", err)
+	}
+
+	if plan.Stats.Adds != 1 {
+		t.Errorf("Expected 1 add operation, got %d", plan.Stats.Adds)
+	}
+
+	// Test populated source to empty target
+	source = c4m.NewManifest()
+	source.AddEntry(&c4m.Entry{Name: "file1.txt"})
+	target = c4m.NewManifest()
+
+	plan, err = transformer.Transform(source, target)
+	if err != nil {
+		t.Fatalf("Transform failed: %v", err)
+	}
+
+	if plan.Stats.Deletes != 1 {
+		t.Errorf("Expected 1 delete operation, got %d", plan.Stats.Deletes)
+	}
+
+	// Test empty to empty
+	source = c4m.NewManifest()
+	target = c4m.NewManifest()
+
+	plan, err = transformer.Transform(source, target)
+	if err != nil {
+		t.Fatalf("Transform failed: %v", err)
+	}
+
+	if plan.Stats.TotalOps != 0 {
+		t.Errorf("Expected 0 operations for empty manifests, got %d", plan.Stats.TotalOps)
+	}
+}
+
+func TestDetectCopies(t *testing.T) {
+	// Create source manifest
+	source := c4m.NewManifest()
+	sharedID := c4.Identify(bytes.NewReader([]byte("shared_content")
+	source.AddEntry(&c4m.Entry{
+		Name: "original.txt",
+		C4ID: sharedID,
+	})
+
+	// Create target with multiple copies
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{
+		Name: "original.txt",
+		C4ID: sharedID,
+	})
+	target.AddEntry(&c4m.Entry{
+		Name: "copy1.txt",
+		C4ID: sharedID,
+	})
+	target.AddEntry(&c4m.Entry{
+		Name: "copy2.txt",
+		C4ID: sharedID,
+	})
+
+	// Create transformer with copy detection
+	config := DefaultConfig()
+	config.DetectCopies = true
+	transformer := NewTransformer(config)
+
+	plan, err := transformer.Transform(source, target)
+	if err != nil {
+		t.Fatalf("Transform failed: %v", err)
+	}
+
+	// Should detect additions (copies not explicitly tracked in this simple implementation)
+	if plan.Stats.Adds != 2 {
+		t.Errorf("Expected 2 add operations for copies, got %d", plan.Stats.Adds)
+	}
+}
+
+func BenchmarkTransformLargeManifest(b *testing.B) {
+	// Create large manifests
+	source := c4m.NewManifest()
+	target := c4m.NewManifest()
+
+	// Add 10000 entries to source
+	for i := 0; i < 10000; i++ {
+		source.AddEntry(&c4m.Entry{
+			Name: fmt.Sprintf("file%d.txt", i),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+		})
+	}
+
+	// Target has 9000 same files, 500 modified, 500 deleted, 1000 new
+	for i := 0; i < 9000; i++ {
+		target.AddEntry(&c4m.Entry{
+			Name: fmt.Sprintf("file%d.txt", i),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+		})
+	}
+	for i := 9000; i < 9500; i++ {
+		target.AddEntry(&c4m.Entry{
+			Name: fmt.Sprintf("file%d.txt", i),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("modified%d", i)),
+		})
+	}
+	for i := 10000; i < 11000; i++ {
+		target.AddEntry(&c4m.Entry{
+			Name: fmt.Sprintf("newfile%d.txt", i),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("new%d", i)),
+		})
+	}
+
+	transformer := NewTransformer(DefaultConfig()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := transformer.Transform(source, target)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFindMissing(b *testing.B) {
+	// Create manifests
+	source := c4m.NewManifest()
+	target := c4m.NewManifest()
+
+	// Add entries
+	for i := 0; i < 5000; i++ {
+		source.AddEntry(&c4m.Entry{
+			Name: fmt.Sprintf("file%d.txt", i),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+		})
+	}
+
+	for i := 2500; i < 7500; i++ {
+		target.AddEntry(&c4m.Entry{
+			Name: fmt.Sprintf("file%d.txt", i),
+			C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)),
+		})
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := FindMissing(source, target)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}

@@ -9,6 +9,36 @@ import (
 	"strings"
 )
 
+// buildFullPath reconstructs the full path of an entry based on its depth and parent directories
+func buildFullPath(entry *Entry, allEntries []*Entry) string {
+	if entry.Depth == 0 {
+		return entry.Name
+	}
+	
+	// Find the entry's position in the list
+	var entryIndex int
+	for i, e := range allEntries {
+		if e == entry {
+			entryIndex = i
+			break
+		}
+	}
+	
+	// Build path by walking backwards to find parent directories
+	path := entry.Name
+	currentDepth := entry.Depth
+	
+	for i := entryIndex - 1; i >= 0 && currentDepth > 0; i-- {
+		e := allEntries[i]
+		if e.Depth == currentDepth-1 && e.IsDir() {
+			path = e.Name + path
+			currentDepth--
+		}
+	}
+	
+	return path
+}
+
 // ExtractBundleToSingleManifest reads a C4M bundle and outputs all entries as a single manifest
 // Note: This produces a simple concatenation of chunks. For large directories that were collapsed,
 // the output may have files and directories interleaved (not strictly sorted).
@@ -159,35 +189,80 @@ func LoadBundleAsManifest(bundlePath string) (*Manifest, error) {
 	
 	// Read the header manifest
 	headerManifestPath := filepath.Join(bundlePath, "c4", headerID)
-	headerManifest, err := os.ReadFile(headerManifestPath)
+	headerFile, err := os.Open(headerManifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read header manifest: %w", err)
 	}
+	defer headerFile.Close()
 	
-	// Extract chunk IDs from header manifest
-	chunkIDs := extractChunkIDsFromManifest(string(headerManifest))
+	// Parse the header manifest to get the structure
+	headerManifest, err := GenerateFromReader(headerFile)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse header manifest: %w", err)
+	}
 	
 	// Create a combined manifest
 	combined := NewManifest()
 	combined.Version = "1.0"
 	
-	// Load all chunks and merge their entries
-	for _, chunkID := range chunkIDs {
-		chunkPath := filepath.Join(bundlePath, "c4", chunkID)
-		chunkFile, err := os.Open(chunkPath)
-		if err != nil {
-			return nil, fmt.Errorf("cannot open chunk %s: %w", chunkID, err)
+	// Recursively process entries, expanding collapsed directories
+	var processEntries func(entries []*Entry, baseDepth int) error
+	processEntries = func(entries []*Entry, baseDepth int) error {
+		for _, entry := range entries {
+			// Check if this is a collapsed directory (.c4m file)
+			if strings.HasSuffix(entry.Name, ".c4m") && !entry.C4ID.IsNil() {
+				// This is a collapsed directory - load its chunk
+				chunkPath := filepath.Join(bundlePath, "c4", entry.C4ID.String())
+				chunkFile, err := os.Open(chunkPath)
+				if err != nil {
+					return fmt.Errorf("cannot open chunk %s: %w", entry.C4ID, err)
+				}
+				
+				// Parse the chunk
+				chunkManifest, err := GenerateFromReader(chunkFile)
+				chunkFile.Close()
+				if err != nil {
+					return fmt.Errorf("cannot parse chunk %s: %w", entry.C4ID, err)
+				}
+				
+				// Get the directory name (remove .c4m extension)
+				dirName := strings.TrimSuffix(entry.Name, ".c4m") + "/"
+				
+				// Add the directory entry itself
+				dirEntry := &Entry{
+					Mode:      entry.Mode | os.ModeDir,
+					Timestamp: entry.Timestamp,
+					Size:      0,
+					Name:      dirName,
+					Depth:     entry.Depth,
+				}
+				combined.Entries = append(combined.Entries, dirEntry)
+				
+				// Add all entries from the chunk, adjusting their depth
+				for _, chunkEntry := range chunkManifest.Entries {
+					// Adjust depth - entries in collapsed chunk start at 0 but should be relative to parent
+					adjustedEntry := &Entry{
+						Mode:      chunkEntry.Mode,
+						Timestamp: chunkEntry.Timestamp,
+						Size:      chunkEntry.Size,
+						Name:      chunkEntry.Name,
+						Target:    chunkEntry.Target,
+						C4ID:      chunkEntry.C4ID,
+						Depth:     chunkEntry.Depth + entry.Depth + 1, // Adjust depth relative to parent
+					}
+					combined.Entries = append(combined.Entries, adjustedEntry)
+				}
+			} else {
+				// Regular entry - add as is
+				combined.Entries = append(combined.Entries, entry)
+			}
 		}
-		
-		// Parse the chunk
-		chunkManifest, err := GenerateFromReader(chunkFile)
-		chunkFile.Close()
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse chunk %s: %w", chunkID, err)
-		}
-		
-		// Merge entries
-		combined.Entries = append(combined.Entries, chunkManifest.Entries...)
+		return nil
+	}
+	
+	// Process all entries from the header manifest
+	if err := processEntries(headerManifest.Entries, 0); err != nil {
+		return nil, err
 	}
 	
 	return combined, nil

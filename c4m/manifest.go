@@ -69,31 +69,100 @@ func (m *Manifest) WritePretty(w io.Writer) (int64, error) {
 }
 
 // SortEntries sorts all entries in the manifest to ensure correct C4M ordering:
-// files before directories at the same depth level
+// files before directories at the same depth level, maintaining parent-child hierarchy
 func (m *Manifest) SortEntries() {
-	// Simple approach: just sort the whole list with proper comparison
-	sort.SliceStable(m.Entries, func(i, j int) bool {
-		ei, ej := m.Entries[i], m.Entries[j]
-		
-		// Entries at different depths maintain their relative order (stable sort)
-		// We only sort siblings (same depth entries that appear consecutively)
-		if ei.Depth != ej.Depth {
-			return false // Keep original order for different depths
+	if len(m.Entries) == 0 {
+		return
+	}
+	
+	// Build a tree structure to properly sort entries
+	type node struct {
+		entry    *Entry
+		children []*node
+	}
+	
+	// Create root node
+	root := &node{}
+	
+	// Build the tree by tracking parent paths
+	var buildTree func(parent *node, entries []*Entry, parentDepth int) int
+	buildTree = func(parent *node, entries []*Entry, parentDepth int) int {
+		i := 0
+		for i < len(entries) {
+			entry := entries[i]
+			
+			// If this entry is at a lower depth, return to parent
+			if entry.Depth < parentDepth+1 {
+				return i
+			}
+			
+			// If this entry is at a deeper depth, skip it (will be handled by parent)
+			if entry.Depth > parentDepth+1 {
+				i++
+				continue
+			}
+			
+			// This entry is a direct child
+			n := &node{entry: entry}
+			parent.children = append(parent.children, n)
+			i++
+			
+			// If it's a directory, process its children
+			if entry.IsDir() {
+				i = buildTree(n, entries[i:], entry.Depth) + i
+			}
+		}
+		return i
+	}
+	
+	// Build the tree
+	buildTree(root, m.Entries, -1)
+	
+	// Sort children at each level
+	var sortNode func(n *node)
+	sortNode = func(n *node) {
+		if len(n.children) == 0 {
+			return
 		}
 		
-		// At same depth, check if they're actually siblings by checking if they're consecutive
-		// This is a simplified check - proper implementation would track parent paths
+		// Sort children: files before directories, then by name
+		sort.SliceStable(n.children, func(i, j int) bool {
+			ei, ej := n.children[i].entry, n.children[j].entry
+			
+			// Files before directories
+			iIsDir := ei.IsDir()
+			jIsDir := ej.IsDir()
+			if iIsDir != jIsDir {
+				return !iIsDir
+			}
+			
+			// Then by natural name order
+			return NaturalLess(ei.Name, ej.Name)
+		})
 		
-		// Files before directories at same depth
-		iIsDir := ei.IsDir()
-		jIsDir := ej.IsDir()
-		if iIsDir != jIsDir {
-			return !iIsDir // files first
+		// Recursively sort each child's children
+		for _, child := range n.children {
+			sortNode(child)
 		}
-		
-		// Then by natural name order
-		return NaturalLess(ei.Name, ej.Name)
-	})
+	}
+	
+	// Sort the tree
+	sortNode(root)
+	
+	// Flatten the tree back to a list
+	var result []*Entry
+	var flatten func(n *node)
+	flatten = func(n *node) {
+		if n.entry != nil {
+			result = append(result, n.entry)
+		}
+		for _, child := range n.children {
+			flatten(child)
+		}
+	}
+	
+	flatten(root)
+	m.Entries = result
 }
 
 
