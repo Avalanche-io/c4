@@ -10,4 +10,9 @@ require (
 	go.etcd.io/bbolt v1.4.2
 )
 
-require golang.org/x/sys v0.34.0 // indirect
+require (
+	github.com/absfs/absfs v0.0.0-20230318165928-6f31c6ac7458 // indirect
+	github.com/absfs/inode v0.0.0-20190804195220-b7cd14cdd0dc // indirect
+	github.com/absfs/memfs v0.0.0-20230318170722-e8d59e67c8b1 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+)

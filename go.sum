@@ -1,3 +1,9 @@
+github.com/absfs/absfs v0.0.0-20230318165928-6f31c6ac7458 h1:0yom2chSpwz80swFv+4F3qbaDq+/5UtdUTy5IgMQlnk=
+github.com/absfs/absfs v0.0.0-20230318165928-6f31c6ac7458/go.mod h1:IvFD36FQcMxLLZNhs2Lms+Uosc0G3AJ2JHOJIz8E5d8=
+github.com/absfs/inode v0.0.0-20190804195220-b7cd14cdd0dc h1:KjciuTgBUzV6RfeVLd/Ijhy9Iq7z0JoJ44te3fZaaNE=
+github.com/absfs/inode v0.0.0-20190804195220-b7cd14cdd0dc/go.mod h1:lc9vQxyCSyrjclBTgazRvacmElJLj7VfpDmgDnL77o0=
+github.com/absfs/memfs v0.0.0-20230318170722-e8d59e67c8b1 h1:bivMPRSx6Tb1/Cm9P0GcTfFBO++9f0w3o0YfepmRaMQ=
+github.com/absfs/memfs v0.0.0-20230318170722-e8d59e67c8b1/go.mod h1:ITY8mYr6yHK7ZTNblu5zQk33tMIRaJhoa+YX8/talDk=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

@@ -1,5 +1,7 @@
 # C4 Manifest Format (C4M) Specification v1.0
 
+> **Note**: This is the formal C4M specification. For implementation notes and edge cases, see [IMPLEMENTATION_NOTES.md](./IMPLEMENTATION_NOTES.md). For user documentation, see [README.md](./README.md).
+
 ## Overview
 
 The C4 Manifest Format (.c4m) is a text-based (UTF-8) format for describing filesystem contents with content-addressed identification using C4 IDs (SMPTE ST 2114:2017). It preserves filesystem metadata while enabling content verification, deduplication, and distributed workflows.

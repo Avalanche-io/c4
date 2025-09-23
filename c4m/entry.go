@@ -63,7 +63,8 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	if e.Timestamp.Unix() == 0 {
 		timeStr = "-"  // Null timestamp
 	} else {
-		timeStr = e.Timestamp.Format("2006-01-02T15:04:05Z")
+		// Canonical format MUST be UTC only
+		timeStr = e.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	
 	// Format size (handle null value)
@@ -97,7 +98,8 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 func (e *Entry) Canonical() string {
 	// No indentation in canonical form
 	modeStr := formatMode(e.Mode)
-	timeStr := e.Timestamp.Format("2006-01-02T15:04:05Z")
+	// Canonical format MUST be UTC only
+	timeStr := e.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
 	sizeStr := fmt.Sprintf("%d", e.Size) // No formatting in canonical
 	nameStr := formatName(e.Name)
 	

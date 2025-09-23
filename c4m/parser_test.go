@@ -631,3 +631,45 @@ func TestDirectiveErrorType(t *testing.T) {
 		t.Errorf("DirectiveError.Error() = %q, want %q", err.Error(), expected)
 	}
 }
+
+func TestParserNew(t *testing.T) {
+	// Test parsing a complete manifest
+	content := `@c4m 1.0
+@base c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+drwxr-xr-x 2025-09-19T12:00:00Z 200 dir/
+  -rw-r--r-- 2025-09-19T12:00:00Z 200 file.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`
+
+	parser := NewParser(strings.NewReader(content))
+
+	// Use ParseAll which handles header internally
+	manifest, err := parser.ParseAll()
+	if err != nil {
+		t.Fatalf("Failed to parse manifest: %v", err)
+	}
+
+	if manifest.Version != "1.0" {
+		t.Errorf("Expected version 1.0, got %s", manifest.Version)
+	}
+
+	if manifest.Base.IsNil() {
+		t.Error("Expected @base to be parsed")
+	}
+
+	// Check number of entries
+	if len(manifest.Entries) != 3 {
+		t.Errorf("Expected 3 entries, got %d", len(manifest.Entries))
+	}
+
+	// Verify entries
+	if manifest.Entries[0].Name != "test.txt" {
+		t.Errorf("First entry should be test.txt, got %s", manifest.Entries[0].Name)
+	}
+	if manifest.Entries[1].Name != "dir/" {
+		t.Errorf("Second entry should be dir/, got %s", manifest.Entries[1].Name)
+	}
+	if manifest.Entries[2].Name != "file.txt" {
+		t.Errorf("Third entry should be file.txt (inside dir), got %s", manifest.Entries[2].Name)
+	}
+}

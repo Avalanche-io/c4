@@ -2,6 +2,12 @@
 
 C4M is a human-readable, text-based format for describing filesystem contents with cryptographic content addressing using C4 IDs. It enables efficient tracking, comparison, and verification of directory structures and file contents.
 
+## Documentation Structure
+
+- **README.md** (this file) - User guide and quick start
+- **[SPECIFICATION.md](./SPECIFICATION.md)** - Formal C4M format specification v1.0
+- **[IMPLEMENTATION_NOTES.md](./IMPLEMENTATION_NOTES.md)** - Implementation clarifications and edge cases
+
 ## What is C4M?
 
 C4M (C4 Manifest) treats filesystems as documents, providing:

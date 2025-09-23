@@ -59,7 +59,7 @@ func (sbc *SimpleBundleCLI) CreateBundle(scanPath string) error {
 	}
 	
 	// Create scanner - use V2 for correct ordering
-	scanner := NewScannerV2(bundle, scan, sbc.config)
+	scanner := NewBundleScannerImpl(bundle, scan, sbc.config)
 	
 	TimedPrintf("Bundle created: %s\n", bundle.Path)
 	TimedPrintln("Starting scan...")
@@ -165,8 +165,8 @@ func (sbc *SimpleBundleCLI) ResumeBundle(bundlePath string) error {
 		config = DefaultBundleConfig()
 	}
 
-	// Use ScannerV2 for actual scanning
-	scanner := NewScannerV2(bundle, scan, config)
+	// Use Scanner for actual scanning
+	scanner := NewBundleScannerImpl(bundle, scan, config)
 	scanner.SkipC4IDs = false // Default to computing C4 IDs
 
 	// Resume scanning from the last position

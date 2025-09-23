@@ -67,6 +67,7 @@ type Validator struct {
 	isErgonomic  bool // Whether the file uses ergonomic format
 	formatDetected bool // Whether we've detected the format yet
 	currentPath  string // Current full path being processed
+	lastPathAtDepth map[int]string // Track last path at each depth for sorting validation
 }
 
 // NewValidator creates a new validator
@@ -76,6 +77,8 @@ func NewValidator(strict bool) *Validator {
 		MaxErrors: 100000, // Increased to handle large files
 		seenPaths: make(map[string]int),
 		depthStack: []string{},
+		lastPathAtDepth: make(map[int]string),
+		seenDirAtDepth: make(map[int]bool),
 	}
 }
 
@@ -91,6 +94,7 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.stats = ValidationStats{}
 	v.formatDetected = false
 	v.isErgonomic = false
+	v.lastPathAtDepth = make(map[int]string)
 	
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB max line
@@ -467,7 +471,19 @@ func (v *Validator) validateEntry(line string) {
 	
 	// Validate name
 	v.validateName(name, depthLevel)
-	
+
+	// Check sorting in strict mode
+	if v.Strict {
+		if lastPath, exists := v.lastPathAtDepth[depthLevel]; exists {
+			// Natural sort comparison - simple string comparison for now
+			// In a real implementation, would use natural sort algorithm
+			if v.currentPath < lastPath {
+				v.addError(v.lineNum, 0, "sorting", fmt.Sprintf("entries not sorted: '%s' should come before '%s'", v.currentPath, lastPath), false)
+			}
+		}
+		v.lastPathAtDepth[depthLevel] = v.currentPath
+	}
+
 	// Check for duplicates (unless in a layer which can override)
 	if !v.inLayer {
 		if prevLine, exists := v.seenPaths[v.currentPath]; exists {
@@ -599,20 +615,30 @@ func (v *Validator) validateName(name string, depth int) {
 }
 
 func (v *Validator) validateC4ID(id string) {
-	if !strings.HasPrefix(id, "c4") {
-		v.addError(v.lineNum, 0, "c4id", "C4 ID must start with 'c4'", false)
+	// Skip validation for null C4 ID
+	if id == "-" {
 		return
 	}
-	
-	// Basic length check (C4 IDs are typically 90 characters)
-	if len(id) < 20 || len(id) > 100 {
-		v.addWarning(v.lineNum, 0, "c4id", fmt.Sprintf("unusual C4 ID length: %d", len(id)))
+
+	if !strings.HasPrefix(id, "c4") {
+		v.addError(v.lineNum, 0, "c4id", fmt.Sprintf("C4 ID must start with 'c4', got: %s", id), false)
+		return
 	}
-	
-	// Check for valid base58 characters (simplified check)
+
+	// C4 IDs should be exactly 90 characters
+	if len(id) != 90 {
+		if v.Strict {
+			v.addError(v.lineNum, 0, "c4id", fmt.Sprintf("C4 ID must be 90 characters, got %d", len(id)), false)
+		} else {
+			v.addWarning(v.lineNum, 0, "c4id", fmt.Sprintf("unusual C4 ID length: %d (expected 90)", len(id)))
+		}
+	}
+
+	// Check for valid base58 characters (C4 uses a specific base58 alphabet)
+	// Base58 alphabet excludes: 0, O, I, l to avoid confusion
 	validChars := regexp.MustCompile(`^c4[1-9A-HJ-NP-Za-km-z]+$`)
 	if !validChars.MatchString(id) {
-		v.addError(v.lineNum, 0, "c4id", "invalid C4 ID format", false)
+		v.addError(v.lineNum, 0, "c4id", fmt.Sprintf("invalid C4 ID format: contains invalid characters in: %s", id), false)
 	}
 }
 
@@ -629,7 +655,25 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 		// Directory: everything up to and including the slash is the name
 		name = allFields[:slashIdx+1]
 		rest := allFields[slashIdx+1:]
-		
+
+		// Check if there's a quote after the slash (form: "dirname/")
+		if strings.HasPrefix(rest, `"`) && strings.HasPrefix(name, `"`) {
+			// The entire directory name including slash is quoted: "dirname/"
+			// Remove the leading quote from name and trailing quote from rest
+			name = strings.TrimPrefix(name, `"`)
+			rest = strings.TrimPrefix(rest, `"`)
+			v.addWarning(v.lineNum, 0, "name", "quoted directory names are non-canonical")
+		} else if strings.HasPrefix(name, `"`) {
+			// Check for form: "dirname"/
+			nameWithoutSlash := name[:len(name)-1]
+			if strings.HasSuffix(nameWithoutSlash, `"`) {
+				// Quotes don't include the slash
+				name = strings.TrimPrefix(nameWithoutSlash, `"`)
+				name = strings.TrimSuffix(name, `"`)
+				name = name + "/"
+				v.addWarning(v.lineNum, 0, "name", "quoted directory names are non-canonical")
+			}
+		}
 		// Parse remaining fields after the directory name
 		if rest != "" {
 			restFields := strings.Fields(rest)
@@ -674,14 +718,13 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 		}
 	}
 	
-	// Look for C4 ID
-	for _, field := range fields {
-		if strings.HasPrefix(field, "c4") {
-			c4id = field
-			break
-		}
+	// Look for C4 ID - any remaining field could be a C4 ID (valid or not)
+	// We'll validate it later to determine if it's actually valid
+	if len(fields) > 0 {
+		// The last field after name and optional symlink target should be the C4 ID
+		c4id = fields[len(fields)-1]
 	}
-	
+
 	return name, symTarget, c4id
 }
 

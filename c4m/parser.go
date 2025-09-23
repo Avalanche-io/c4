@@ -147,9 +147,22 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 			remainingLine = line[2:]
 		}
 	} else if len(line) >= 20 && line[4] == '-' && line[10] == 'T' {
-		// Canonical timestamp (2006-01-02T15:04:05Z format - exactly 20 chars)
-		timestampStr = line[:20]
-		remainingLine = line[21:] // Skip timestamp and space
+		// Canonical/RFC3339 timestamp format
+		// Could be:
+		// - 2006-01-02T15:04:05Z (20 chars)
+		// - 2006-01-02T15:04:05-07:00 (25 chars)
+		// - 2006-01-02T15:04:05+07:00 (25 chars)
+		endIdx := 20
+		if len(line) >= 25 && (line[19] == '-' || line[19] == '+') {
+			// Has timezone offset
+			endIdx = 25
+		}
+		timestampStr = line[:endIdx]
+		if len(line) > endIdx {
+			remainingLine = line[endIdx+1:] // Skip timestamp and space
+		} else {
+			remainingLine = ""
+		}
 	} else {
 		// Try pretty format (e.g., "Sep  1 00:36:18 2025 CDT")
 		parts := strings.Fields(line)
@@ -310,30 +323,42 @@ func (p *Parser) readLine() (string, error) {
 	return line, nil
 }
 
-// parseTimestamp tries multiple timestamp formats
+// parseTimestamp tries multiple timestamp formats.
+// The canonical format requires UTC-only timestamps (2006-01-02T15:04:05Z),
+// but the parser accepts various ergonomic formats and converts them to UTC.
 func parseTimestamp(s string) (time.Time, error) {
-	// Try canonical format first (most common)
+	// Try canonical format first (2006-01-02T15:04:05Z) - strict UTC subset of RFC3339
 	if t, err := time.Parse("2006-01-02T15:04:05Z", s); err == nil {
 		return t, nil
 	}
-	
+
+	// Try full RFC3339 with timezone offset (e.g., "2006-01-02T15:04:05-07:00")
+	// This is an ergonomic variation - will be converted to UTC
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC(), nil
+	}
+
+	// Try Unix format (e.g., "Mon Jan  2 15:04:05 MST 2006")
+	if t, err := time.Parse(time.UnixDate, s); err == nil {
+		return t.UTC(), nil
+	}
+
 	// Try pretty format with timezone (e.g., "Jan  2 15:04:05 2006 MST")
 	// Need to handle both single and double-space after month
 	if t, err := time.Parse("Jan _2 15:04:05 2006 MST", s); err == nil {
-		// Convert to UTC for internal consistency
 		return t.UTC(), nil
 	}
-	
+
 	// Try without the space padding
 	if t, err := time.Parse("Jan 2 15:04:05 2006 MST", s); err == nil {
 		return t.UTC(), nil
 	}
-	
-	// Try with other timezone formats
+
+	// Try with numeric timezone offset
 	if t, err := time.Parse("Jan _2 15:04:05 2006 -0700", s); err == nil {
 		return t.UTC(), nil
 	}
-	
+
 	return time.Time{}, fmt.Errorf("cannot parse timestamp %q", s)
 }
 

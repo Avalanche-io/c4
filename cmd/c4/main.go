@@ -740,18 +740,21 @@ func runValidate(args []string) {
 func runExtract(args []string) {
 	// Create a flag set for the extract command
 	fs := flag.NewFlagSet("extract", flag.ExitOnError)
-	pretty := fs.Bool("pretty", false, "Pretty-print manifest with aligned columns")
-	v2 := fs.Bool("v2", false, "Use V2 extraction algorithm with proper @base chain following")
+	pretty := fs.Bool("pretty", true, "Pretty-print manifest with aligned columns (default)")
+	canonical := fs.Bool("canonical", false, "Use canonical format instead of pretty format")
 	fs.Parse(args)
-	
+
 	if fs.NArg() < 1 || fs.NArg() > 2 {
 		fmt.Fprintf(os.Stderr, "Error: extract requires a bundle path and optional output file\n")
-		fmt.Fprintf(os.Stderr, "Usage: c4 extract [--pretty] <bundle_dir> [output.c4m]\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 extract [--canonical] <bundle_dir> [output.c4m]\n")
 		os.Exit(1)
 	}
-	
+
+	// Determine format: canonical takes precedence if specified
+	usePretty := *pretty && !*canonical
+
 	bundlePath := fs.Arg(0)
-	
+
 	// Check if bundle directory exists
 	info, err := os.Stat(bundlePath)
 	if err != nil {
@@ -762,47 +765,33 @@ func runExtract(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: bundle path is not a directory\n")
 		os.Exit(1)
 	}
-	
+
 	// Extract to file or stdout
 	if fs.NArg() == 2 {
 		outputPath := fs.Arg(1)
 		fmt.Printf("Extracting bundle to: %s\n", outputPath)
-		if *v2 {
-			// Use V2 extraction (always pretty)
-			if err := c4m.ExtractBundlePrettyToFileV2(bundlePath, outputPath); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-		} else if *pretty {
-			if err := c4m.ExtractBundlePrettyToFile(bundlePath, outputPath); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+		// Use the proper @base chain extraction with selected format
+		if usePretty {
+			err = c4m.ExtractBundlePrettyToFile(bundlePath, outputPath)
 		} else {
-			if err := c4m.ExtractBundleToFile(bundlePath, outputPath); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+			err = c4m.ExtractBundleToFile(bundlePath, outputPath)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
 		fmt.Printf("✓ Extraction complete\n")
 	} else {
 		// Extract to stdout
-		if *v2 {
-			// Use V2 extraction (always pretty)
-			if err := c4m.ExtractBundlePrettyV2(bundlePath, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-		} else if *pretty {
-			if err := c4m.ExtractBundlePretty(bundlePath, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+		// Use the proper @base chain extraction with selected format
+		if usePretty {
+			err = c4m.ExtractBundlePretty(bundlePath, os.Stdout)
 		} else {
-			if err := c4m.ExtractBundleToSingleManifest(bundlePath, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
+			err = c4m.ExtractBundle(bundlePath, os.Stdout)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
 	}
 }

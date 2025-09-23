@@ -11,8 +11,8 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
-// ScannerV2 is a simplified, correct implementation of the bundle scanner
-type ScannerV2 struct {
+// Scanner is a simplified, correct implementation of the bundle scanner
+type BundleScannerImpl struct {
 	bundle  *Bundle
 	scan    *BundleScan
 	config  *BundleConfig
@@ -29,13 +29,13 @@ type ScannerV2 struct {
 	SkipC4IDs bool
 }
 
-// NewScannerV2 creates a new simplified scanner
-func NewScannerV2(bundle *Bundle, scan *BundleScan, config *BundleConfig) *ScannerV2 {
+// NewScanner creates a new simplified scanner
+func NewBundleScannerImpl(bundle *Bundle, scan *BundleScan, config *BundleConfig) *BundleScannerImpl {
 	if config == nil {
 		config = DefaultBundleConfig()
 	}
 	
-	return &ScannerV2{
+	return &BundleScannerImpl{
 		bundle:    bundle,
 		scan:      scan,
 		config:    config,
@@ -55,7 +55,7 @@ type DirectoryPlan struct {
 }
 
 // ScanPath is the main entry point
-func (s *ScannerV2) ScanPath(scanPath string) error {
+func (s *BundleScannerImpl) ScanPath(scanPath string) error {
 	TimedPrintln("Phase 1: Counting directories...")
 	
 	// First pass: count everything
@@ -83,7 +83,7 @@ func (s *ScannerV2) ScanPath(scanPath string) error {
 }
 
 // countDirectory counts all entries recursively (phase 1)
-func (s *ScannerV2) countDirectory(path string) error {
+func (s *BundleScannerImpl) countDirectory(path string) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (s *ScannerV2) countDirectory(path string) error {
 }
 
 // planDirectory creates an execution plan for a directory
-func (s *ScannerV2) planDirectory(path string, depth int, isRoot bool) (*DirectoryPlan, error) {
+func (s *BundleScannerImpl) planDirectory(path string, depth int, isRoot bool) (*DirectoryPlan, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func (s *ScannerV2) planDirectory(path string, depth int, isRoot bool) (*Directo
 }
 
 // scanDirectory recursively scans and returns properly ordered entries
-func (s *ScannerV2) scanDirectory(path string, depth int, isRoot bool) ([]*Entry, error) {
+func (s *BundleScannerImpl) scanDirectory(path string, depth int, isRoot bool) ([]*Entry, error) {
 	var result []*Entry
 	
 	// Get the plan
@@ -314,7 +314,7 @@ func (s *ScannerV2) scanDirectory(path string, depth int, isRoot bool) ([]*Entry
 
 // scanCollapsedDirectory handles a collapsed directory as an isolated unit
 // It performs a separate root scan of the directory and returns the last chunk's C4 ID
-func (s *ScannerV2) scanCollapsedDirectory(path string) (c4.ID, error) {
+func (s *BundleScannerImpl) scanCollapsedDirectory(path string) (c4.ID, error) {
 	TimedPrintf("Scanning collapsed directory: %s (%d entries)\n",
 		filepath.Base(path), s.dirCounts[path])
 	
@@ -327,7 +327,7 @@ func (s *ScannerV2) scanCollapsedDirectory(path string) (c4.ID, error) {
 	
 	// Create an independent scanner for this collapsed directory
 	// It shares the bundle (for unified output) and cached counts (to avoid re-scanning)
-	collapsedScanner := &ScannerV2{
+	collapsedScanner := &BundleScannerImpl{
 		bundle:    s.bundle,           // Same bundle - unified output
 		scan:      collapsedScan,       // New scan context - independent chunks
 		config:    s.config,
@@ -367,7 +367,7 @@ func (s *ScannerV2) scanCollapsedDirectory(path string) (c4.ID, error) {
 }
 
 // chunkAndWrite splits entries into chunks and writes them
-func (s *ScannerV2) chunkAndWrite(entries []*Entry, useBase bool) error {
+func (s *BundleScannerImpl) chunkAndWrite(entries []*Entry, useBase bool) error {
 	manifest := NewManifest()
 	entryCount := 0
 	firstChunk := true
@@ -419,7 +419,7 @@ func (s *ScannerV2) chunkAndWrite(entries []*Entry, useBase bool) error {
 }
 
 // computeFileC4 computes the C4 ID of a file
-func (s *ScannerV2) computeFileC4(path string) (c4.ID, error) {
+func (s *BundleScannerImpl) computeFileC4(path string) (c4.ID, error) {
 	// Return empty ID immediately if skipping C4 IDs
 	if s.SkipC4IDs {
 		return c4.ID{}, nil
@@ -435,7 +435,7 @@ func (s *ScannerV2) computeFileC4(path string) (c4.ID, error) {
 }
 
 // computeDirectoryC4 computes the C4 ID from directory entries
-func (s *ScannerV2) computeDirectoryC4(entries []*Entry) c4.ID {
+func (s *BundleScannerImpl) computeDirectoryC4(entries []*Entry) c4.ID {
 	// Return empty ID immediately if skipping C4 IDs
 	if s.SkipC4IDs {
 		return c4.ID{}
@@ -460,7 +460,7 @@ func (s *ScannerV2) computeDirectoryC4(entries []*Entry) c4.ID {
 }
 
 // Complete finalizes the scan
-func (s *ScannerV2) Complete() error {
+func (s *BundleScannerImpl) Complete() error {
 	now := time.Now()
 	s.scan.CompletedAt = &now
 	
@@ -472,7 +472,7 @@ func (s *ScannerV2) Complete() error {
 }
 
 // GetStatistics returns scan statistics
-func (s *ScannerV2) GetStatistics() map[string]interface{} {
+func (s *BundleScannerImpl) GetStatistics() map[string]interface{} {
 	avgEntries := 0
 	if s.chunksWritten > 0 {
 		avgEntries = s.totalEntries / s.chunksWritten
