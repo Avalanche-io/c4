@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Avalanche-io/c4/db"
-	c4 "github.com/Avalanche-io/c4/id"
+	c4 "github.com/Avalanche-io/c4"
 )
 
 func mkdb(name string, t *testing.T) (*db.DB, func() error, error) {
@@ -418,29 +418,29 @@ func TestTreeApi(t *testing.T) {
 
 	t.Run("Tree Set, Get, Delete", func(t *testing.T) {
 		// Create a tree
-		var digests c4.DigestSlice
+		var ids c4.IDs
 		for i := 0; i < 100; i++ {
-			digests.Insert(randomDigest())
+			ids = append(ids, randomDigest().ID())
 		}
-		tree := c4.NewTree(digests)
-		tree_digest := tree.Compute()
+		tree := c4.NewTree(ids)
+		tree_digest := tree.ID()
 
-		err := db.TreeSet(tree)
+		err := db.TreeSet(&tree)
 		if err != nil {
 			t.Errorf("error setting tree %q", err)
 		}
 
-		tree2, err := db.TreeGet(tree_digest)
+		tree2, err := db.TreeGet(tree_digest.Digest())
 		if err != nil {
 			t.Errorf("error getting tree %q", err)
 		}
 
-		if tree2 == nil || tree2.ID().Cmp(tree_digest.ID()) != 0 {
+		if tree2 == nil || tree2.ID().Cmp(tree_digest) != 0 {
 			id_str := "<nil>"
 			if tree2 != nil {
 				id_str = tree2.ID().String()
 			}
-			t.Errorf("error tree ids don't match expected %q, got %q", tree_digest.ID(), id_str)
+			t.Errorf("error tree ids don't match expected %q, got %q", tree_digest, id_str)
 		}
 
 		st := db.Stats()
@@ -448,7 +448,7 @@ func TestTreeApi(t *testing.T) {
 			t.Errorf("error tree has incorrect stats before delete")
 		}
 		t.Logf("Stats Trees:%d, Keys:%d, Indexes: %d, Links:%d, TreesSize:%d(%d)\n", st.Trees, st.Keys, st.KeyIndexes, st.Links, st.TreesSize, st.TreesSize/64)
-		err = db.TreeDelete(tree_digest)
+		err = db.TreeDelete(tree_digest.Digest())
 		if err != nil {
 			t.Errorf("failed to delete tree")
 		}

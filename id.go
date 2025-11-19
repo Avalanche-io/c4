@@ -80,44 +80,26 @@ func Identify(src io.Reader) (id ID) {
 	return id
 }
 
-/*
-// Encoder generates an ID for a contiguous bock of data.
-type Encoder struct {
-	err error
-	h   hash.Hash
-}
-
-// NewIDEncoder makes a new Encoder.
-func NewEncoder() *Encoder {
-	return &Encoder{
-		h: sha512.New(),
-	}
-}
-
-// Write writes bytes to the hash that makes up the ID.
-func (e *Encoder) Write(b []byte) (int, error) {
-	return e.h.Write(b)
-}
-
-// ID returns the ID for the bytes written so far.
-func (e *Encoder) ID() (id ID) {
-	copy(id[:], e.h.Sum(nil))
-	return id
-}
-
-// Reset the encoder so it can identify a new block of data.
-func (e *Encoder) Reset() {
-	e.h.Reset()
-}
-*/
 // ID represents a C4 ID.
 type ID [64]byte
 
+// Digest represents the raw 64-byte SHA-512 hash (simplified from id subpackage for db compatibility)
+type Digest []byte
+
+// ID converts a Digest to an ID
+func (d Digest) ID() ID {
+	var id ID
+	copy(id[:], d)
+	return id
+}
+
 // Identifiable is an interface that requires an ID() method that returns
-// the c4 ID of the of the object.
+// the c4 ID of the object.
 type Identifiable interface {
 	ID() ID
 }
+
+// TODO: Fix inconsistent naming of nil, empty, and void IDs
 
 func (id ID) IsNil() bool {
 	for _, b := range id[:] {
@@ -177,7 +159,9 @@ func (id ID) Digest() []byte {
 // There are 3 possible return values.
 //
 // -1 : Argument id is less than calling id.
-//  0 : Argument id and calling id are identical.
+//
+//	0 : Argument id and calling id are identical.
+//
 // +1 : Argument id is greater than calling id.
 //
 // Comparison is done on the actual numerical value of the ids.
@@ -238,7 +222,8 @@ func (l ID) Sum(r ID) ID {
 }
 
 func (id *ID) UnmarshalJSON(data []byte) error {
-	s := strings.Trim(string(data), `"' \t`)
+	// Remove JSON quotes only (not ID content)
+	s := strings.Trim(string(data), `"`)
 	if len(s) == 0 {
 		return nil
 	}

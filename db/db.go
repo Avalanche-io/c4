@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	c4 "github.com/Avalanche-io/c4/id"
+	c4 "github.com/Avalanche-io/c4"
 	"go.etcd.io/bbolt"
 )
 
@@ -741,10 +741,7 @@ func (db *DB) LinkDeleteAll(sources ...c4.Digest) (int, error) {
 }
 
 func (db *DB) TreeSet(tree *c4.Tree) error {
-	data, err := tree.MarshalBinary()
-	if err != nil {
-		return err
-	}
+	data := tree.Bytes()
 	if db.treeMaxSize == 0 || len(data) <= db.treeMaxSize {
 		return db.db.Update(func(t *bbolt.Tx) error {
 			b := t.Bucket(c4Bucket).Bucket(treeBucket)
@@ -786,8 +783,8 @@ func (db *DB) TreeGet(tree_digest c4.Digest) (*c4.Tree, error) {
 			}
 			return nil
 		}
-		tree = new(c4.Tree)
-		tree.UnmarshalBinary(data)
+		treeData := c4.Tree(data)
+		tree = &treeData
 		return nil
 	})
 	if len(path) > 0 {
@@ -795,8 +792,8 @@ func (db *DB) TreeGet(tree_digest c4.Digest) (*c4.Tree, error) {
 		if err != nil {
 			return nil, err
 		}
-		tree = new(c4.Tree)
-		tree.UnmarshalBinary(data)
+		treeData := c4.Tree(data)
+		tree = &treeData
 	}
 	return tree, err
 }
@@ -873,8 +870,9 @@ func (db *DB) KeyBatch(f func(*Tx) bool) {
 // path in the list and attempts to write the file.  If that fails
 // it will continue trying paths until one succeeds or they all fail.
 func write_file_data(paths []string, digest c4.Digest, data []byte) (string, error) {
-
-	filename := digest.ID().String()
+	var id c4.ID
+	copy(id[:], digest)
+	filename := id.String()
 	var save_paths []string
 
 	// range over storage and check for existence.
