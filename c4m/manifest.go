@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -363,11 +364,95 @@ func (m *Manifest) Canonical() string {
 }
 
 // ComputeC4ID computes the C4 ID for the manifest
+// IMPORTANT: This automatically canonicalizes the manifest before computing the ID
+// This ensures deterministic IDs even if the manifest was created with null values
 func (m *Manifest) ComputeC4ID() c4.ID {
-	canonical := m.Canonical()
-	// Debug: print canonical form
-	// fmt.Fprintf(os.Stderr, "Canonical form:\n%s\n---\n", canonical)
-	return c4.Identify(strings.NewReader(canonical))
+	// Make a copy to avoid modifying the original
+	canonical := m.Copy()
+
+	// Ensure manifest is in canonical form
+	canonical.Canonicalize()
+
+	// Compute ID from canonical form
+	canonicalText := canonical.Canonical()
+	return c4.Identify(strings.NewReader(canonicalText))
+}
+
+// IsCanonical checks if manifest is in canonical form (no null values)
+// Returns nil if canonical, or an error describing what's missing
+func (m *Manifest) IsCanonical() error {
+	var issues []string
+
+	for i, entry := range m.Entries {
+		nullFields := entry.GetNullFields()
+		if len(nullFields) > 0 {
+			issues = append(issues,
+				fmt.Sprintf("Entry %d (%s) has null values: %s",
+					i, entry.Name, strings.Join(nullFields, ", ")))
+		}
+	}
+
+	if len(issues) > 0 {
+		return fmt.Errorf("manifest not in canonical form:\n  %s",
+			strings.Join(issues, "\n  "))
+	}
+
+	return nil
+}
+
+// Canonicalize resolves all null values in the manifest to explicit values
+// This makes the manifest ready for C4 ID computation
+func (m *Manifest) Canonicalize() {
+	// First propagate metadata from children to parents
+	PropagateMetadata(m.Entries)
+
+	// Then apply defaults for any remaining null values
+	for _, entry := range m.Entries {
+		// Mode defaults
+		if entry.Mode == 0 {
+			if entry.IsDir() {
+				entry.Mode = 0755 | os.ModeDir
+			} else {
+				entry.Mode = 0644
+			}
+		}
+
+		// Timestamp defaults to current time if still null
+		if entry.Timestamp.Unix() == 0 {
+			entry.Timestamp = time.Now().UTC()
+		}
+
+		// Size defaults
+		if entry.Size < 0 {
+			entry.Size = 0 // Empty/unknown size
+		}
+	}
+}
+
+// Copy creates a deep copy of the manifest
+func (m *Manifest) Copy() *Manifest {
+	copy := &Manifest{
+		Version: m.Version,
+		Base:    m.Base,
+		Entries: make([]*Entry, len(m.Entries)),
+	}
+
+	for i, e := range m.Entries {
+		entryCopy := *e
+		copy.Entries[i] = &entryCopy
+	}
+
+	return copy
+}
+
+// HasNullValues checks if any entries have null values
+func (m *Manifest) HasNullValues() bool {
+	for _, entry := range m.Entries {
+		if entry.HasNullValues() {
+			return true
+		}
+	}
+	return false
 }
 
 // GetEntry finds an entry by path

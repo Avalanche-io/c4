@@ -3,6 +3,8 @@
 *.a
 *.so
 c4
+c4_new
+c4_cli
 cmd/c4/c4
 
 # testdata

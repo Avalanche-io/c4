@@ -19,9 +19,19 @@ A system for handling unbounded filesystems by chunking output into multiple C4M
 ### [Progressive UI Status](progressive_ui_status.md)
 Real-time feedback system for long-running filesystem scans, displaying concurrent progress across multiple scanning stages with detailed metrics and progress bars.
 
-**Status**: Design Phase  
-**Priority**: High  
-**Complexity**: Medium  
+**Status**: Partially Implemented
+**Priority**: High
+**Complexity**: Medium
+
+### [Progress Feedback and ID Caching](progress_feedback_and_id_caching.md)
+Two complementary features enhancing c4 performance and user experience:
+- **Progress Feedback**: Visual progress indicators with live statistics during scans
+- **ID Caching**: Persistent SQLite cache avoiding redundant C4 ID computation
+
+**Status**: Design Complete, Ready for Implementation
+**Priority**: High
+**Complexity**: Medium
+**Implementation Plan**: See `/IMPLEMENTATION_PLAN.md` for phased rollout
 
 ## Design Process
 

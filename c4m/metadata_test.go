@@ -200,12 +200,155 @@ func TestScanResultToManifest(t *testing.T) {
 	if len(manifest.Entries) != 2 {
 		t.Errorf("Manifest should have 2 entries, got %v", len(manifest.Entries))
 	}
-	
+
 	// Verify entries were converted correctly
 	if manifest.Entries[0].Name != "file1.txt" {
 		t.Errorf("First entry name = %v, want %v", manifest.Entries[0].Name, "file1.txt")
 	}
 	if manifest.Entries[1].Name != "file2.txt" {
 		t.Errorf("Second entry name = %v, want %v", manifest.Entries[1].Name, "file2.txt")
+	}
+}
+
+func TestCalculateDirectorySize(t *testing.T) {
+	entries := []*Entry{
+		{Size: 100},
+		{Size: 200},
+		{Size: -1}, // Null - should be skipped
+		{Size: 300},
+	}
+
+	size := CalculateDirectorySize(entries)
+	if size != 600 {
+		t.Errorf("Expected 600, got %d", size)
+	}
+}
+
+func TestGetMostRecentModtime(t *testing.T) {
+	t1 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	t2 := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	t3 := time.Date(2024, 3, 10, 8, 30, 0, 0, time.UTC)
+
+	entries := []*Entry{
+		{Timestamp: t1},
+		{Timestamp: t2}, // Most recent
+		{Timestamp: time.Unix(0, 0)}, // Null - should be skipped
+		{Timestamp: t3},
+	}
+
+	mostRecent := GetMostRecentModtime(entries)
+	if !mostRecent.Equal(t2) {
+		t.Errorf("Expected %v, got %v", t2, mostRecent)
+	}
+}
+
+func TestEntryHasNullValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		entry    *Entry
+		expected bool
+	}{
+		{
+			name: "fully specified file",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: time.Now().UTC(),
+				Size:      100,
+			},
+			expected: false,
+		},
+		{
+			name: "null size",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: time.Now().UTC(),
+				Size:      -1,
+			},
+			expected: true,
+		},
+		{
+			name: "null timestamp",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: time.Unix(0, 0),
+				Size:      100,
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.entry.HasNullValues()
+			if result != tt.expected {
+				t.Errorf("HasNullValues() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestManifestCanonicalize(t *testing.T) {
+	manifest := NewManifest()
+
+	// Add entry with null values
+	manifest.AddEntry(&Entry{
+		Name:      "file.txt",
+		Mode:      0,              // Null
+		Timestamp: time.Unix(0, 0), // Null
+		Size:      -1,             // Null
+	})
+
+	// Should have null values
+	if !manifest.HasNullValues() {
+		t.Error("Expected manifest to have null values before canonicalization")
+	}
+
+	// Canonicalize
+	manifest.Canonicalize()
+
+	// Should no longer have null values
+	if manifest.HasNullValues() {
+		t.Error("Expected manifest to have no null values after canonicalization")
+	}
+
+	// Check that defaults were applied
+	entry := manifest.Entries[0]
+	if entry.Mode == 0 {
+		t.Error("Mode should not be 0 after canonicalization")
+	}
+	if entry.Timestamp.Unix() == 0 {
+		t.Error("Timestamp should not be epoch after canonicalization")
+	}
+	if entry.Size < 0 {
+		t.Error("Size should not be negative after canonicalization")
+	}
+}
+
+func TestComputeC4IDDeterministic(t *testing.T) {
+	// Create two manifests with same logical content but different null patterns
+
+	m1 := NewManifest()
+	m1.AddEntry(&Entry{
+		Name:      "file.txt",
+		Mode:      0644,
+		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Size:      -1, // Null
+	})
+
+	m2 := NewManifest()
+	m2.AddEntry(&Entry{
+		Name:      "file.txt",
+		Mode:      0644,
+		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Size:      0, // Explicit zero
+	})
+
+	// Both should produce same C4 ID after canonicalization
+	id1 := m1.ComputeC4ID()
+	id2 := m2.ComputeC4ID()
+
+	if id1 != id2 {
+		t.Errorf("Same logical content produced different IDs:\n  ID1: %s\n  ID2: %s",
+			id1.String(), id2.String())
 	}
 }

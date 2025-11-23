@@ -260,3 +260,136 @@ c4 extract --canonical bundle_dir [output.c4m]
 - Exact byte counts without formatting
 
 Both formats preserve the complete manifest structure including @base references for proper reconstruction of unbounded filesystem scans.
+
+## Canonical Form and C4 ID Computation
+
+**CRITICAL REQUIREMENT**: C4 IDs MUST only be computed from manifests in canonical form.
+
+### The Problem
+
+The c4m package currently allows computing C4 IDs from manifests containing null values (Mode=0, Timestamp=Unix(0), Size=-1, C4ID=nil). This creates **non-deterministic identification** where the same filesystem content can produce different C4 IDs depending on how null values are represented.
+
+This violates the fundamental C4 principle: **same content always produces the same C4 ID**.
+
+### Required Changes
+
+A comprehensive specification has been created detailing the required fixes:
+
+**See [CANONICAL_FORM_ENFORCEMENT.md](./CANONICAL_FORM_ENFORCEMENT.md)** for:
+- Complete problem statement with concrete examples
+- Canonical form requirements (what values are required)
+- Ergonomic form support (when nulls are allowed)
+- Required API changes (ComputeC4ID returns error, validation methods, canonicalization)
+- Implementation plan (4 phases from critical fixes to documentation)
+- Migration guide for existing code
+- Test requirements
+- Complete code examples
+
+### Quick Reference
+
+**Null Value Indicators**:
+- Mode: `0` (zero)
+- Timestamp: `time.Unix(0, 0).UTC()` (Unix epoch / 1970-01-01)
+- Size: `-1` (negative one)
+- C4ID: `c4.ID{}` (nil/zero value)
+
+**Text Format**:
+- Null mode: `----------` or `-`
+- Null timestamp: `-`
+- Null size: `-`
+- Null C4ID: `-` or omitted
+
+**Validation Levels**:
+1. `ValidateStructure()` - Check format, allow nulls (for working manifests)
+2. `IsCanonical()` - Check all values explicit (required before C4 ID computation)
+3. `IsReadyForSnapshot()` - Comprehensive check for permanent storage
+
+**Workflow**:
+```
+Working Manifest (may have nulls)
+         ↓
+   Canonicalize() with MetadataResolver
+         ↓
+Canonical Manifest (all values explicit)
+         ↓
+   ComputeC4ID() → deterministic C4 ID
+```
+
+**Key Principle**:
+- Ergonomic forms with nulls are allowed for **working manifests**
+- Canonical form without nulls is required for **C4 ID computation**
+- Same content MUST always produce same C4 ID
+
+## Path Resolution Through Manifest Hierarchy
+
+**TODO: Move this functionality from c4d into c4m package**
+
+Path resolution through manifest hierarchies is core c4m functionality that should be shared across all tools (c4d, c4v, c4, etc.).
+
+### Current Implementation (c4d)
+
+c4d currently implements path resolution in `internal/server/resolver.go`:
+- `ManifestCache` - caches parsed manifests for performance
+- `PathResolver` - traverses manifest hierarchy to resolve paths to C4 IDs
+- `ResolveResult` - contains resolved C4 ID, IsDir flag, and manifest (if directory)
+
+### Proposed c4m Package API
+
+```go
+package c4m
+
+// Resolver resolves paths through manifest hierarchies
+type Resolver struct {
+    storage  Storage      // Interface for loading manifests by C4 ID
+    cache    *ManifestCache
+}
+
+// Storage interface for loading manifests
+type Storage interface {
+    Get(id c4.ID) (io.ReadCloser, error)
+}
+
+// ResolveResult contains the result of path resolution
+type ResolveResult struct {
+    ID       c4.ID       // C4 ID of the resolved item
+    IsDir    bool        // True if this is a directory
+    Manifest *Manifest   // If IsDir, the manifest for this directory
+}
+
+// NewResolver creates a new path resolver
+func NewResolver(storage Storage) *Resolver
+
+// Resolve resolves a path through a manifest hierarchy
+func (r *Resolver) Resolve(rootManifestID c4.ID, path string) (*ResolveResult, error)
+```
+
+### Use Cases
+
+1. **c4d** - HTTP server path resolution through session views
+2. **c4v** - Local workspace path resolution through branch manifests
+3. **c4 CLI** - Path queries into manifest hierarchies
+4. **c4m tools** - Any tool working with virtual filesystem views
+
+### Design Considerations
+
+- **Manifest Caching** - Essential for performance with deep hierarchies
+- **Entry Lookup** - GetEntry() should handle both "dirname" and "dirname/" forms
+- **Error Messages** - Should list available entries when path not found (debugging)
+- **Path Normalization** - Trim leading/trailing slashes, collapse "//"
+- **Root Handling** - Empty path "" resolves to root manifest itself
+
+### Benefits of Moving to c4m
+
+1. **Code Reuse** - All tools benefit from same implementation
+2. **Consistency** - Same path resolution behavior everywhere
+3. **Testing** - Comprehensive tests in one place
+4. **Performance** - Shared optimizations benefit all tools
+5. **Simplicity** - Tools don't reimplement core functionality
+
+### Migration Path
+
+1. Move resolver.go from c4d to c4m package
+2. Refactor to use storage interface instead of concrete type
+3. Add comprehensive tests
+4. Update c4d to use c4m.Resolver
+5. Use in c4v when implementing workspace operations

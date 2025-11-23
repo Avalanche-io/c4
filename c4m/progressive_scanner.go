@@ -133,12 +133,14 @@ func NewProgressiveScanner(rootPath string) *ProgressiveScanner {
 func (ps *ProgressiveScanner) Start() error {
 	// Set up signal handling
 	// On macOS/BSD, SIGINFO (Ctrl+T) is perfect for status updates
-	signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1}
-	
-	// Add SIGINFO on systems that support it (macOS/BSD)
-	// SIGINFO is triggered by Ctrl+T and is meant for status updates
+	signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM}
+
+	// Add platform-specific signals
 	if runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" || runtime.GOOS == "openbsd" {
 		signals = append(signals, SIGINFO)
+	} else if runtime.GOOS != "windows" {
+		// SIGUSR1 on Linux/Unix (but not Windows)
+		signals = append(signals, syscall.Signal(10)) // SIGUSR1
 	}
 	
 	signal.Notify(ps.signalChan, signals...)
@@ -175,10 +177,9 @@ func (ps *ProgressiveScanner) signalHandler() {
 		select {
 		case sig := <-ps.signalChan:
 			switch sig {
-			case syscall.SIGUSR1, SIGINFO:
+			case SIGINFO:
 				// Output current status without stopping
-				// SIGUSR1: manual signal via kill command
-				// SIGINFO: Ctrl+T on macOS/BSD
+				// SIGINFO: Ctrl+T on macOS/BSD, SIGUSR1 on Linux
 				ps.OutputCurrentState(os.Stdout) // Don't run in goroutine for SIGINFO
 				
 			case syscall.SIGINT, syscall.SIGTERM:

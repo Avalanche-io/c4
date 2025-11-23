@@ -209,7 +209,7 @@ func formatName(name string) string {
 		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 		return escaped
 	}
-	
+
 	// For files, check if quoting is needed
 	needsQuotes := false
 	for _, c := range name {
@@ -218,20 +218,68 @@ func formatName(name string) string {
 			break
 		}
 	}
-	
+
 	// Check for leading/trailing whitespace
 	if name != strings.TrimSpace(name) {
 		needsQuotes = true
 	}
-	
+
 	if !needsQuotes {
 		return name
 	}
-	
+
 	// Escape special characters and quote
 	escaped := strings.ReplaceAll(name, `\`, `\\`)
 	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
 	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
-	
+
 	return fmt.Sprintf(`"%s"`, escaped)
+}
+
+// IsDevice returns true if the entry represents a device
+func (e *Entry) IsDevice() bool {
+	return e.Mode&os.ModeDevice != 0 || e.Mode&os.ModeCharDevice != 0
+}
+
+// IsPipe returns true if the entry represents a named pipe
+func (e *Entry) IsPipe() bool {
+	return e.Mode&os.ModeNamedPipe != 0
+}
+
+// IsSocket returns true if the entry represents a socket
+func (e *Entry) IsSocket() bool {
+	return e.Mode&os.ModeSocket != 0
+}
+
+// HasNullValues returns true if entry has any null metadata
+func (e *Entry) HasNullValues() bool {
+	// Mode can be 0 for certain file types, so check type
+	hasNullMode := e.Mode == 0 && !e.IsDir() && !e.IsSymlink() && !e.IsDevice() && !e.IsPipe() && !e.IsSocket()
+	hasNullTimestamp := e.Timestamp.Unix() == 0
+	hasNullSize := e.Size < 0
+	// C4ID being nil is OK for empty files or directories without computed IDs yet
+
+	return hasNullMode || hasNullTimestamp || hasNullSize
+}
+
+// GetNullFields returns list of fields that have null values
+func (e *Entry) GetNullFields() []string {
+	var nullFields []string
+
+	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
+		nullFields = append(nullFields, "Mode")
+	}
+	if e.Timestamp.Unix() == 0 {
+		nullFields = append(nullFields, "Timestamp")
+	}
+	if e.Size < 0 {
+		nullFields = append(nullFields, "Size")
+	}
+
+	return nullFields
+}
+
+// IsFullySpecified returns true if all required metadata is explicit
+func (e *Entry) IsFullySpecified() bool {
+	return !e.HasNullValues()
 }
