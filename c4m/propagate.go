@@ -76,7 +76,7 @@ func getMostRecentModtime(entries []*Entry) time.Time {
 	}
 
 	// If no valid timestamps found, return current time
-	if mostRecent.Unix() == 0 {
+	if mostRecent.IsZero() {
 		return time.Now().UTC()
 	}
 
