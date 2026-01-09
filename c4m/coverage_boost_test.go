@@ -25,24 +25,24 @@ func TestManifestWriting(t *testing.T) {
 		Mode: 0755 | os.ModeDir,
 	})
 
-	// Test WriteTo
+	// Test Encode (canonical)
 	var buf bytes.Buffer
-	n, err := manifest.WriteTo(&buf)
+	err := NewEncoder(&buf).Encode(manifest)
 	if err != nil {
-		t.Errorf("WriteTo failed: %v", err)
+		t.Errorf("Encode failed: %v", err)
 	}
-	if n == 0 {
-		t.Error("WriteTo wrote 0 bytes")
+	if buf.Len() == 0 {
+		t.Error("Encode wrote 0 bytes")
 	}
 
-	// Test WritePretty
+	// Test Encode (pretty)
 	buf.Reset()
-	n, err = manifest.WritePretty(&buf)
+	err = NewEncoder(&buf).SetPretty(true).Encode(manifest)
 	if err != nil {
-		t.Errorf("WritePretty failed: %v", err)
+		t.Errorf("Encode (pretty) failed: %v", err)
 	}
-	if n == 0 {
-		t.Error("WritePretty wrote 0 bytes")
+	if buf.Len() == 0 {
+		t.Error("Encode (pretty) wrote 0 bytes")
 	}
 }
 

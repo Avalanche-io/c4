@@ -104,9 +104,9 @@ func TestParserRoundTrip(t *testing.T) {
 			// Test canonical format round-trip
 			t.Run("canonical", func(t *testing.T) {
 				var buf bytes.Buffer
-				_, err := tt.manifest.WriteTo(&buf)
+				err := NewEncoder(&buf).Encode(tt.manifest)
 				if err != nil {
-					t.Fatalf("WriteTo() error = %v", err)
+					t.Fatalf("Encode() error = %v", err)
 				}
 
 				// Parse back
@@ -127,9 +127,9 @@ func TestParserRoundTrip(t *testing.T) {
 			// Test pretty format round-trip
 			t.Run("pretty", func(t *testing.T) {
 				var buf bytes.Buffer
-				_, err := tt.manifest.WritePretty(&buf)
+				err := NewEncoder(&buf).SetPretty(true).Encode(tt.manifest)
 				if err != nil {
-					t.Fatalf("WritePretty() error = %v", err)
+					t.Fatalf("Encode (pretty) error = %v", err)
 				}
 
 				// Parse back

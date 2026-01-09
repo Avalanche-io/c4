@@ -56,8 +56,7 @@ func (mc *ManifestCache) Get(id c4.ID) (*Manifest, error) {
 	}
 
 	// Parse manifest
-	parser := NewParser(bytes.NewReader(buf.Bytes()))
-	manifest, err := parser.ParseAll()
+	manifest, err := Unmarshal(buf.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("parsing manifest: %w", err)
 	}
@@ -87,6 +86,11 @@ func NewResolver(storage Storage) *Resolver {
 	return &Resolver{
 		cache: NewManifestCache(storage),
 	}
+}
+
+// Cache returns the manifest cache for direct access
+func (r *Resolver) Cache() *ManifestCache {
+	return r.cache
 }
 
 // ResolveResult contains the result of path resolution

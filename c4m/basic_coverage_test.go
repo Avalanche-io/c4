@@ -29,14 +29,14 @@ func TestManifestBasic(t *testing.T) {
 	// Test Sort
 	m.Sort()
 
-	// Test WriteTo
+	// Test Encoder
 	var buf bytes.Buffer
-	n, err := m.WriteTo(&buf)
+	err := NewEncoder(&buf).Encode(m)
 	if err != nil {
-		t.Errorf("WriteTo failed: %v", err)
+		t.Errorf("Encode failed: %v", err)
 	}
-	if n == 0 {
-		t.Error("WriteTo wrote 0 bytes")
+	if buf.Len() == 0 {
+		t.Error("Encode wrote 0 bytes")
 	}
 
 	// Test GetEntry
@@ -56,12 +56,6 @@ func TestManifestBasic(t *testing.T) {
 	canonical := m.Canonical()
 	if canonical == "" {
 		t.Error("Canonical returned empty string")
-	}
-
-	// Test AllEntriesString
-	str := m.AllEntriesString()
-	if str == "" {
-		t.Error("AllEntriesString returned empty")
 	}
 
 	// Test GetEntriesAtDepth
@@ -156,17 +150,20 @@ func TestValidatorBasic(t *testing.T) {
 	}
 }
 
-// Test Parser
-func TestParserBasic(t *testing.T) {
-	p := NewParser(nil)
+// Test Decoder
+func TestDecoderBasic(t *testing.T) {
+	p := NewDecoder(strings.NewReader("@c4m 1.0\n"))
 	if p == nil {
-		t.Fatal("NewParser returned nil")
+		t.Fatal("NewDecoder returned nil")
 	}
 
-	// Test NewStrictParser
-	p2 := NewStrictParser(nil)
-	if p2 == nil {
-		t.Fatal("NewStrictParser returned nil")
+	// Test Decode
+	m, err := p.Decode()
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if m == nil {
+		t.Fatal("Decode returned nil manifest")
 	}
 }
 

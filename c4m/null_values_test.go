@@ -210,9 +210,9 @@ func TestNullValueRoundTrip(t *testing.T) {
 
 	// Write to canonical format
 	var buf strings.Builder
-	_, err := manifest.WriteTo(&buf)
+	err := NewEncoder(&buf).Encode(manifest)
 	if err != nil {
-		t.Fatalf("WriteTo() error = %v", err)
+		t.Fatalf("Encode() error = %v", err)
 	}
 	
 	t.Logf("Written manifest:\n%s", buf.String())

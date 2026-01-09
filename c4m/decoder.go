@@ -12,72 +12,105 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
-// Parser handles parsing of C4M manifest files
-type Parser struct {
+// Decoder reads and decodes C4M manifests from an input stream.
+type Decoder struct {
 	reader      *bufio.Reader
 	lineNum     int
 	version     string
-	strict      bool
 	indentWidth int // detected indent width
 }
 
-// NewParser creates a new C4M parser
-func NewParser(r io.Reader) *Parser {
-	return &Parser{
+// NewDecoder creates a new Decoder that reads from r.
+func NewDecoder(r io.Reader) *Decoder {
+	return &Decoder{
 		reader:      bufio.NewReader(r),
-		strict:      false,
 		indentWidth: -1, // will be detected
 	}
 }
 
-// NewStrictParser creates a parser that enforces strict validation
-func NewStrictParser(r io.Reader) *Parser {
-	p := NewParser(r)
-	p.strict = true
-	return p
+// Version returns the parsed manifest version.
+// This is only valid after Decode() has been called.
+func (d *Decoder) Version() string {
+	return d.version
 }
 
-// Version returns the parsed manifest version
-func (p *Parser) Version() string {
-	return p.version
+// Decode reads and decodes a manifest from the input stream.
+func (d *Decoder) Decode() (*Manifest, error) {
+	if err := d.parseHeader(); err != nil {
+		return nil, err
+	}
+
+	m := &Manifest{
+		Version: d.version,
+		Entries: make([]*Entry, 0),
+	}
+
+	for {
+		entry, err := d.parseEntry()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			if dirErr, ok := err.(*directiveError); ok {
+				directive := dirErr.directive
+				// Check for @data which requires special multi-line handling
+				if strings.HasPrefix(directive, "@data ") {
+					if err := d.handleDataBlock(m, directive); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				// Handle other directives
+				if err := d.handleDirective(m, directive); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			return nil, err
+		}
+
+		m.Entries = append(m.Entries, entry)
+	}
+
+	return m, nil
 }
 
-// Parse reads and validates the version header
-func (p *Parser) ParseHeader() error {
-	line, err := p.readLine()
+// parseHeader reads and validates the version header
+func (d *Decoder) parseHeader() error {
+	line, err := d.readLine()
 	if err != nil {
 		return fmt.Errorf("failed to read header: %w", err)
 	}
-	
+
 	if !strings.HasPrefix(line, "@c4m ") {
 		return fmt.Errorf("invalid header: expected '@c4m X.Y', got %q", line)
 	}
-	
-	p.version = strings.TrimPrefix(line, "@c4m ")
-	if p.version == "" {
+
+	d.version = strings.TrimPrefix(line, "@c4m ")
+	if d.version == "" {
 		return fmt.Errorf("missing version number")
 	}
-	
-	// Currently only support version 1.0
-	if !strings.HasPrefix(p.version, "1.") {
-		return fmt.Errorf("unsupported version: %s", p.version)
+
+	// Currently only support version 1.x
+	if !strings.HasPrefix(d.version, "1.") {
+		return fmt.Errorf("unsupported version: %s", d.version)
 	}
-	
+
 	return nil
 }
 
-// ParseEntry parses a single manifest entry
-func (p *Parser) ParseEntry() (*Entry, error) {
-	line, err := p.readLine()
+// parseEntry parses a single manifest entry
+func (d *Decoder) parseEntry() (*Entry, error) {
+	line, err := d.readLine()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Handle directives
 	if strings.HasPrefix(line, "@") {
-		return nil, &DirectiveError{Directive: line}
+		return nil, &directiveError{directive: line}
 	}
-	
+
 	// Detect indentation
 	indent := 0
 	for i, c := range line {
@@ -86,20 +119,20 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 			break
 		}
 	}
-	
+
 	// Detect indent width from first indented line
-	if p.indentWidth == -1 && indent > 0 {
-		p.indentWidth = indent
+	if d.indentWidth == -1 && indent > 0 {
+		d.indentWidth = indent
 	}
-	
+
 	depth := 0
-	if p.indentWidth > 0 {
-		depth = indent / p.indentWidth
+	if d.indentWidth > 0 {
+		depth = indent / d.indentWidth
 	}
-	
+
 	// Trim indentation
 	line = strings.TrimLeft(line, " ")
-	
+
 	// Smart field parsing for ergonomic forms
 	// Mode could be single "-" or full 10 characters
 	var modeStr string
@@ -112,9 +145,9 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 		modeStr = line[:10]
 		line = line[11:] // Skip mode and space
 	} else {
-		return nil, fmt.Errorf("line %d: line too short", p.lineNum)
+		return nil, fmt.Errorf("line %d: line too short", d.lineNum)
 	}
-	
+
 	// Parse mode (handle null value "-")
 	var mode os.FileMode
 	if modeStr == "-" || modeStr == "----------" {
@@ -124,19 +157,19 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 		var err error
 		mode, err = parseMode(modeStr)
 		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid mode %q: %w", p.lineNum, modeStr, err)
+			return nil, fmt.Errorf("line %d: invalid mode %q: %w", d.lineNum, modeStr, err)
 		}
 	}
-	
+
 	entry := &Entry{
 		Depth: depth,
 		Mode:  mode,
 	}
-	
+
 	// Try to extract timestamp - could be canonical or pretty format
 	var timestampStr string
 	var remainingLine string
-	
+
 	// Check for null timestamp first
 	if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "0 ") {
 		// Null timestamp - use zero value (Unix epoch)
@@ -171,10 +204,10 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 			timestampStr = strings.Join(parts[:5], " ")
 			remainingLine = strings.Join(parts[5:], " ")
 		} else {
-			return nil, fmt.Errorf("line %d: cannot parse timestamp from %q", p.lineNum, line)
+			return nil, fmt.Errorf("line %d: cannot parse timestamp from %q", d.lineNum, line)
 		}
 	}
-	
+
 	// Parse timestamp (handle null value)
 	var timestamp time.Time
 	if timestampStr == "-" || timestampStr == "0" {
@@ -184,17 +217,17 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 		var err error
 		timestamp, err = parseTimestamp(timestampStr)
 		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid timestamp %q: %w", p.lineNum, timestampStr, err)
+			return nil, fmt.Errorf("line %d: invalid timestamp %q: %w", d.lineNum, timestampStr, err)
 		}
 	}
 	entry.Timestamp = timestamp
-	
+
 	// Parse remaining fields (size, name, optional target and C4 ID)
 	fields := strings.Fields(remainingLine)
 	if len(fields) < 2 {
-		return nil, fmt.Errorf("line %d: insufficient fields after timestamp", p.lineNum)
+		return nil, fmt.Errorf("line %d: insufficient fields after timestamp", d.lineNum)
 	}
-	
+
 	// Parse size (handle null value and strip commas for ergonomic forms)
 	var size int64
 	if fields[0] == "-" {
@@ -205,11 +238,11 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 		var err error
 		size, err = strconv.ParseInt(sizeStr, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid size %q: %w", p.lineNum, fields[0], err)
+			return nil, fmt.Errorf("line %d: invalid size %q: %w", d.lineNum, fields[0], err)
 		}
 	}
 	entry.Size = size
-	
+
 	// Parse name - check if it's quoted
 	nameIdx := 1
 	if len(fields[nameIdx]) > 0 && fields[nameIdx][0] == '"' {
@@ -224,17 +257,17 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 	} else {
 		entry.Name = fields[nameIdx]
 	}
-	
+
 	// Parse optional fields
 	i := nameIdx + 1
-	
+
 	// Check for symlink target
 	if i < len(fields) && fields[i] == "->" && i+1 < len(fields) {
 		// Handle quoted target
 		if len(fields[i+1]) > 0 && fields[i+1][0] == '"' {
 			quotedTarget := fields[i+1]
-			targetEndIdx := i+1
-			for j := i+2; j < len(fields) && !strings.HasSuffix(quotedTarget, "\""); j++ {
+			targetEndIdx := i + 1
+			for j := i + 2; j < len(fields) && !strings.HasSuffix(quotedTarget, "\""); j++ {
 				quotedTarget = quotedTarget + " " + fields[j]
 				targetEndIdx = j
 			}
@@ -245,7 +278,7 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 			i += 2
 		}
 	}
-	
+
 	// Check for C4 ID (handle null value)
 	if i < len(fields) {
 		if fields[i] == "-" {
@@ -254,65 +287,24 @@ func (p *Parser) ParseEntry() (*Entry, error) {
 		} else if strings.HasPrefix(fields[i], "c4") {
 			id, err := c4.Parse(fields[i])
 			if err != nil {
-				return nil, fmt.Errorf("line %d: invalid C4 ID %q: %w", p.lineNum, fields[i], err)
+				return nil, fmt.Errorf("line %d: invalid C4 ID %q: %w", d.lineNum, fields[i], err)
 			}
 			entry.C4ID = id
 		}
 		i++
 	}
-	
+
 	// Check for sequence notation
 	if strings.Contains(entry.Name, "[") && strings.Contains(entry.Name, "]") {
 		entry.IsSequence = true
 		entry.Pattern = entry.Name
 	}
-	
+
 	return entry, nil
 }
 
-// ParseAll parses the entire manifest
-func (p *Parser) ParseAll() (*Manifest, error) {
-	if err := p.ParseHeader(); err != nil {
-		return nil, err
-	}
-
-	m := &Manifest{
-		Version: p.version,
-		Entries: make([]*Entry, 0),
-	}
-
-	for {
-		entry, err := p.ParseEntry()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if dirErr, ok := err.(*DirectiveError); ok {
-				directive := dirErr.Directive
-				// Check for @data which requires special multi-line handling
-				if strings.HasPrefix(directive, "@data ") {
-					if err := p.handleDataBlock(m, directive); err != nil {
-						return nil, err
-					}
-					continue
-				}
-				// Handle other directives
-				if err := p.handleDirective(m, directive); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			return nil, err
-		}
-
-		m.Entries = append(m.Entries, entry)
-	}
-
-	return m, nil
-}
-
 // handleDataBlock reads and parses a @data block
-func (p *Parser) handleDataBlock(m *Manifest, directive string) error {
+func (d *Decoder) handleDataBlock(m *Manifest, directive string) error {
 	// Parse the C4 ID from the directive
 	parts := strings.Fields(directive)
 	if len(parts) < 2 {
@@ -327,7 +319,7 @@ func (p *Parser) handleDataBlock(m *Manifest, directive string) error {
 	// Read content until next @ directive or EOF
 	var content strings.Builder
 	for {
-		line, err := p.readLine()
+		line, err := d.readLine()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -338,11 +330,7 @@ func (p *Parser) handleDataBlock(m *Manifest, directive string) error {
 		// Check for next directive (but not lines that start with @ inside content)
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "@") && len(trimmed) > 1 {
-			// This is a new directive - we need to "unread" this line
-			// Since we can't unread, we'll handle this directive here
-			// and return to let the main loop continue
-			// Actually, we need to push this back somehow...
-			// For now, let's handle it recursively
+			// This is a new directive
 			if strings.HasPrefix(trimmed, "@data ") {
 				// Parse the accumulated content first
 				block, parseErr := ParseDataBlock(id, content.String())
@@ -351,7 +339,7 @@ func (p *Parser) handleDataBlock(m *Manifest, directive string) error {
 				}
 				m.AddDataBlock(block)
 				// Handle the new @data directive
-				return p.handleDataBlock(m, trimmed)
+				return d.handleDataBlock(m, trimmed)
 			}
 			// Parse the accumulated content
 			block, parseErr := ParseDataBlock(id, content.String())
@@ -360,7 +348,7 @@ func (p *Parser) handleDataBlock(m *Manifest, directive string) error {
 			}
 			m.AddDataBlock(block)
 			// Handle the other directive
-			return p.handleDirective(m, trimmed)
+			return d.handleDirective(m, trimmed)
 		}
 
 		content.WriteString(line)
@@ -378,28 +366,28 @@ func (p *Parser) handleDataBlock(m *Manifest, directive string) error {
 }
 
 // readLine reads a line from the input
-func (p *Parser) readLine() (string, error) {
-	line, err := p.reader.ReadString('\n')
+func (d *Decoder) readLine() (string, error) {
+	line, err := d.reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return "", err
 	}
-	
-	p.lineNum++
-	
+
+	d.lineNum++
+
 	// Trim line ending
 	line = strings.TrimSuffix(line, "\n")
 	line = strings.TrimSuffix(line, "\r") // handle CRLF
-	
+
 	if err == io.EOF && line == "" {
 		return "", io.EOF
 	}
-	
+
 	return line, nil
 }
 
 // parseTimestamp tries multiple timestamp formats.
 // The canonical format requires UTC-only timestamps (2006-01-02T15:04:05Z),
-// but the parser accepts various ergonomic formats and converts them to UTC.
+// but the decoder accepts various ergonomic formats and converts them to UTC.
 func parseTimestamp(s string) (time.Time, error) {
 	// Try canonical format first (2006-01-02T15:04:05Z) - strict UTC subset of RFC3339
 	if t, err := time.Parse(TimestampFormat, s); err == nil {
@@ -436,78 +424,13 @@ func parseTimestamp(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse timestamp %q", s)
 }
 
-// parseFields splits a line into fields, respecting quotes
-func (p *Parser) parseFields(line string) []string {
-	var fields []string
-	var current strings.Builder
-	inQuotes := false
-	escape := false
-	
-	for i, c := range line {
-		if escape {
-			switch c {
-			case 'n':
-				current.WriteRune('\n')
-			case 't':
-				current.WriteRune('\t')
-			case '\\', '"':
-				current.WriteRune(c)
-			default:
-				current.WriteRune('\\')
-				current.WriteRune(c)
-			}
-			escape = false
-			continue
-		}
-		
-		if c == '\\' {
-			escape = true
-			continue
-		}
-		
-		if c == '"' {
-			if inQuotes {
-				// End of quoted field
-				fields = append(fields, current.String())
-				current.Reset()
-				inQuotes = false
-				// Skip any spaces after closing quote
-				for i+1 < len(line) && line[i+1] == ' ' {
-					i++
-				}
-			} else {
-				// Start of quoted field
-				inQuotes = true
-			}
-			continue
-		}
-		
-		if !inQuotes && c == ' ' {
-			if current.Len() > 0 {
-				fields = append(fields, current.String())
-				current.Reset()
-			}
-			continue
-		}
-		
-		current.WriteRune(c)
-	}
-	
-	// Add final field
-	if current.Len() > 0 {
-		fields = append(fields, current.String())
-	}
-	
-	return fields
-}
-
 // handleDirective processes @ directives
-func (p *Parser) handleDirective(m *Manifest, directive string) error {
+func (d *Decoder) handleDirective(m *Manifest, directive string) error {
 	parts := strings.Fields(directive)
 	if len(parts) == 0 {
 		return nil
 	}
-	
+
 	switch parts[0] {
 	case "@base":
 		if len(parts) < 2 {
@@ -518,24 +441,26 @@ func (p *Parser) handleDirective(m *Manifest, directive string) error {
 			return fmt.Errorf("invalid base C4 ID: %w", err)
 		}
 		m.Base = id
-		
+
 	case "@layer":
 		m.CurrentLayer = &Layer{Type: LayerTypeAdd}
-		
+		m.Layers = append(m.Layers, m.CurrentLayer)
+
 	case "@remove":
 		m.CurrentLayer = &Layer{Type: LayerTypeRemove}
-		
+		m.Layers = append(m.Layers, m.CurrentLayer)
+
 	case "@expand":
 		if len(parts) < 2 {
 			return fmt.Errorf("@expand requires C4 ID")
 		}
 		// Store expansion reference
-		
+
 	case "@by":
 		if m.CurrentLayer != nil {
 			m.CurrentLayer.By = strings.Join(parts[1:], " ")
 		}
-		
+
 	case "@time":
 		if m.CurrentLayer != nil && len(parts) > 1 {
 			t, err := time.Parse(time.RFC3339, parts[1])
@@ -544,12 +469,12 @@ func (p *Parser) handleDirective(m *Manifest, directive string) error {
 			}
 			m.CurrentLayer.Time = t
 		}
-		
+
 	case "@note":
 		if m.CurrentLayer != nil {
 			m.CurrentLayer.Note = strings.Join(parts[1:], " ")
 		}
-		
+
 	case "@data":
 		if len(parts) > 1 {
 			id, err := c4.Parse(parts[1])
@@ -562,8 +487,12 @@ func (p *Parser) handleDirective(m *Manifest, directive string) error {
 				m.Data = id
 			}
 		}
+
+	case "@end":
+		// End of layer - reset current layer
+		m.CurrentLayer = nil
 	}
-	
+
 	return nil
 }
 
@@ -572,9 +501,9 @@ func parseMode(s string) (os.FileMode, error) {
 	if len(s) != 10 {
 		return 0, fmt.Errorf("mode must be 10 characters")
 	}
-	
+
 	var mode os.FileMode
-	
+
 	// File type
 	switch s[0] {
 	case '-':
@@ -594,26 +523,44 @@ func parseMode(s string) (os.FileMode, error) {
 	default:
 		return 0, fmt.Errorf("unknown file type: %c", s[0])
 	}
-	
+
 	// Permission bits (standard rwx)
 	perms := uint32(0)
 	permChars := s[1:]
-	
+
 	// User permissions
-	if permChars[0] == 'r' { perms |= 0400 }
-	if permChars[1] == 'w' { perms |= 0200 }
-	if permChars[2] == 'x' || permChars[2] == 's' { perms |= 0100 }
-	
+	if permChars[0] == 'r' {
+		perms |= 0400
+	}
+	if permChars[1] == 'w' {
+		perms |= 0200
+	}
+	if permChars[2] == 'x' || permChars[2] == 's' {
+		perms |= 0100
+	}
+
 	// Group permissions
-	if permChars[3] == 'r' { perms |= 0040 }
-	if permChars[4] == 'w' { perms |= 0020 }
-	if permChars[5] == 'x' || permChars[5] == 's' { perms |= 0010 }
-	
+	if permChars[3] == 'r' {
+		perms |= 0040
+	}
+	if permChars[4] == 'w' {
+		perms |= 0020
+	}
+	if permChars[5] == 'x' || permChars[5] == 's' {
+		perms |= 0010
+	}
+
 	// Other permissions
-	if permChars[6] == 'r' { perms |= 0004 }
-	if permChars[7] == 'w' { perms |= 0002 }
-	if permChars[8] == 'x' || permChars[8] == 't' { perms |= 0001 }
-	
+	if permChars[6] == 'r' {
+		perms |= 0004
+	}
+	if permChars[7] == 'w' {
+		perms |= 0002
+	}
+	if permChars[8] == 'x' || permChars[8] == 't' {
+		perms |= 0001
+	}
+
 	// Special bits
 	if permChars[2] == 's' || permChars[2] == 'S' {
 		mode |= os.ModeSetuid
@@ -624,24 +571,17 @@ func parseMode(s string) (os.FileMode, error) {
 	if permChars[8] == 't' || permChars[8] == 'T' {
 		mode |= os.ModeSticky
 	}
-	
+
 	mode |= os.FileMode(perms)
-	
+
 	return mode, nil
 }
 
-// DirectiveError indicates a directive was encountered
-type DirectiveError struct {
-	Directive string
+// directiveError indicates a directive was encountered during parsing
+type directiveError struct {
+	directive string
 }
 
-func (e *DirectiveError) Error() string {
-	return fmt.Sprintf("directive: %s", e.Directive)
-}
-
-// GenerateFromReader parses a C4M manifest from a reader
-// This is a convenience function that creates a parser and parses the entire manifest
-func GenerateFromReader(r io.Reader) (*Manifest, error) {
-	parser := NewParser(r)
-	return parser.ParseAll()
+func (e *directiveError) Error() string {
+	return fmt.Sprintf("directive: %s", e.directive)
 }

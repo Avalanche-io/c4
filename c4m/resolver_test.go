@@ -476,9 +476,9 @@ func TestResolverRealManifestGeneration(t *testing.T) {
 
 	// Generate canonical form
 	var buf bytes.Buffer
-	_, err := m.WriteTo(&buf)
+	err := NewEncoder(&buf).Encode(m)
 	if err != nil {
-		t.Fatalf("Failed to write manifest: %v", err)
+		t.Fatalf("Failed to encode manifest: %v", err)
 	}
 
 	// Calculate actual C4 ID

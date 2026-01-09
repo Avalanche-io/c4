@@ -101,9 +101,9 @@ func TestWritePretty(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			_, err := tt.manifest.WritePretty(&buf)
+			err := NewEncoder(&buf).SetPretty(true).Encode(tt.manifest)
 			if err != nil {
-				t.Fatalf("WritePretty() error = %v", err)
+				t.Fatalf("Encode (pretty) error = %v", err)
 			}
 
 			output := buf.String()
@@ -143,52 +143,6 @@ func TestFormatSizeWithCommas(t *testing.T) {
 	}
 }
 
-func TestCalculateC4IDColumn(t *testing.T) {
-	tests := []struct {
-		name     string
-		manifest *Manifest
-		want     int
-	}{
-		{
-			name: "short lines use column 80",
-			manifest: &Manifest{
-				Entries: []*Entry{
-					{
-						Mode:      0644,
-						Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-						Size:      100,
-						Name:      "short.txt",
-					},
-				},
-			},
-			want: 80,
-		},
-		{
-			name: "long lines shift to column 110",
-			manifest: &Manifest{
-				Entries: []*Entry{
-					{
-						Mode:      0644,
-						Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-						Size:      100,
-						Name:      "this_is_a_moderately_long_filename_that_needs_more_space.txt",
-					},
-				},
-			},
-			want: 110,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.manifest.calculateC4IDColumn(2)
-			if got != tt.want {
-				t.Errorf("calculateC4IDColumn() = %d, want %d", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestPrettyPrintComparison(t *testing.T) {
 	// Create a manifest with varied content
 	manifest := &Manifest{
@@ -213,15 +167,15 @@ func TestPrettyPrintComparison(t *testing.T) {
 
 	// Generate both canonical and pretty output
 	var canonical bytes.Buffer
-	_, err := manifest.WriteTo(&canonical)
+	err := NewEncoder(&canonical).Encode(manifest)
 	if err != nil {
-		t.Fatalf("WriteTo() error = %v", err)
+		t.Fatalf("Encode() error = %v", err)
 	}
 
 	var pretty bytes.Buffer
-	_, err = manifest.WritePretty(&pretty)
+	err = NewEncoder(&pretty).SetPretty(true).Encode(manifest)
 	if err != nil {
-		t.Fatalf("WritePretty() error = %v", err)
+		t.Fatalf("Encode (pretty) error = %v", err)
 	}
 
 	// Canonical should have no commas

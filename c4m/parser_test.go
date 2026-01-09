@@ -11,7 +11,7 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
-func TestParseHeader(t *testing.T) {
+func TestDecoder_parseHeader(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
@@ -52,11 +52,11 @@ func TestParseHeader(t *testing.T) {
 	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := NewParser(strings.NewReader(tt.input))
-			err := parser.ParseHeader()
+			parser := NewDecoder(strings.NewReader(tt.input))
+			err := parser.parseHeader()
 			
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseHeader() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("parseHeader() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			
@@ -67,7 +67,7 @@ func TestParseHeader(t *testing.T) {
 	}
 }
 
-func TestParseEntry(t *testing.T) {
+func TestDecoder_parseEntry(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
@@ -157,18 +157,18 @@ func TestParseEntry(t *testing.T) {
 	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := NewParser(strings.NewReader(tt.input))
+			parser := NewDecoder(strings.NewReader(tt.input))
 			
 			// Parse header first
-			if err := parser.ParseHeader(); err != nil {
-				t.Fatalf("ParseHeader() failed: %v", err)
+			if err := parser.parseHeader(); err != nil {
+				t.Fatalf("parseHeader() failed: %v", err)
 			}
 			
 			// Parse entry
-			got, err := parser.ParseEntry()
+			got, err := parser.parseEntry()
 			
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseEntry() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("parseEntry() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			
@@ -191,63 +191,6 @@ func TestParseEntry(t *testing.T) {
 				}
 				if got.Depth != tt.want.Depth {
 					t.Errorf("Depth = %v, want %v", got.Depth, tt.want.Depth)
-				}
-			}
-		})
-	}
-}
-
-func TestParseFields(t *testing.T) {
-	parser := NewParser(strings.NewReader(""))
-	
-	tests := []struct {
-		name   string
-		input  string
-		want   []string
-	}{
-		{
-			name:  "simple_fields",
-			input: "field1 field2 field3",
-			want:  []string{"field1", "field2", "field3"},
-		},
-		{
-			name:  "quoted_field",
-			input: `field1 "field with spaces" field3`,
-			want:  []string{"field1", "field with spaces", "field3"},
-		},
-		{
-			name:  "escaped_quotes",
-			input: `"field with \"quotes\""`,
-			want:  []string{`field with "quotes"`},
-		},
-		{
-			name:  "escaped_newline",
-			input: `"field with\nnewline"`,
-			want:  []string{"field with\nnewline"},
-		},
-		{
-			name:  "multiple_spaces",
-			input: "field1    field2     field3",
-			want:  []string{"field1", "field2", "field3"},
-		},
-		{
-			name:  "symlink_arrow",
-			input: "link -> target",
-			want:  []string{"link", "->", "target"},
-		},
-	}
-	
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := parser.parseFields(tt.input)
-			
-			if len(got) != len(tt.want) {
-				t.Fatalf("got %d fields, want %d", len(got), len(tt.want))
-			}
-			
-			for i, field := range got {
-				if field != tt.want[i] {
-					t.Errorf("field %d: got %q, want %q", i, field, tt.want[i])
 				}
 			}
 		})
@@ -288,7 +231,7 @@ func TestParseMode(t *testing.T) {
 	}
 }
 
-func TestParseAll(t *testing.T) {
+func TestDecode(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
@@ -418,10 +361,10 @@ lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> /absolute/path/target`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewParser(strings.NewReader(tt.input))
-			m, err := p.ParseAll()
+			p := NewDecoder(strings.NewReader(tt.input))
+			m, err := p.Decode()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseAll() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Decode() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !tt.wantErr && tt.check != nil {
@@ -435,26 +378,26 @@ func TestDirectiveError(t *testing.T) {
 	input := `@c4m 1.0
 @base c416ujTTpmKJwJM1bS1NM7F42WNSKAeLMzKWNfUjH7pNJkLHQGN6MDAJfLCeTEmGfSaW6mPo7xWzFRKCUQrEXJxY5KNP`
 
-	p := NewParser(strings.NewReader(input))
-	_ = p.ParseHeader()
+	p := NewDecoder(strings.NewReader(input))
+	_ = p.parseHeader()
 	
-	_, err := p.ParseEntry()
+	_, err := p.parseEntry()
 	if err == nil {
-		t.Error("Expected DirectiveError")
+		t.Error("Expected directiveError")
 	}
 	
-	if _, ok := err.(*DirectiveError); !ok {
-		t.Errorf("Expected DirectiveError, got %T", err)
+	if _, ok := err.(*directiveError); !ok {
+		t.Errorf("Expected directiveError, got %T", err)
 	}
 }
 
-func TestParseEntryEOF(t *testing.T) {
+func TestDecoder_parseEntryEOF(t *testing.T) {
 	input := `@c4m 1.0`
 	
-	p := NewParser(strings.NewReader(input))
-	_ = p.ParseHeader()
+	p := NewDecoder(strings.NewReader(input))
+	_ = p.parseHeader()
 	
-	_, err := p.ParseEntry()
+	_, err := p.parseEntry()
 	if err != io.EOF {
 		t.Errorf("Expected EOF, got %v", err)
 	}
@@ -607,7 +550,7 @@ func TestHandleDirective(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewParser(strings.NewReader(""))
+			p := NewDecoder(strings.NewReader(""))
 			err := p.handleDirective(tt.manifest, tt.directive)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleDirective() error = %v, wantErr %v", err, tt.wantErr)
@@ -620,18 +563,11 @@ func TestHandleDirective(t *testing.T) {
 	}
 }
 
-func TestStrictParser(t *testing.T) {
-	p := NewStrictParser(strings.NewReader("test"))
-	if !p.strict {
-		t.Error("NewStrictParser should set strict mode")
-	}
-}
-
 func TestDirectiveErrorType(t *testing.T) {
-	err := &DirectiveError{Directive: "@test"}
+	err := &directiveError{directive: "@test"}
 	expected := "directive: @test"
 	if err.Error() != expected {
-		t.Errorf("DirectiveError.Error() = %q, want %q", err.Error(), expected)
+		t.Errorf("directiveError.Error() = %q, want %q", err.Error(), expected)
 	}
 }
 
@@ -644,10 +580,10 @@ drwxr-xr-x 2025-09-19T12:00:00Z 200 dir/
   -rw-r--r-- 2025-09-19T12:00:00Z 200 file.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
-	parser := NewParser(strings.NewReader(content))
+	parser := NewDecoder(strings.NewReader(content))
 
-	// Use ParseAll which handles header internally
-	manifest, err := parser.ParseAll()
+	// Use Decode which handles header internally
+	manifest, err := parser.Decode()
 	if err != nil {
 		t.Fatalf("Failed to parse manifest: %v", err)
 	}
@@ -696,10 +632,10 @@ func TestParseDataBlock(t *testing.T) {
 %s
 `, block.ID.String(), block.ID.String(), id1.String(), id2.String())
 
-	parser := NewParser(strings.NewReader(content))
-	manifest, err := parser.ParseAll()
+	parser := NewDecoder(strings.NewReader(content))
+	manifest, err := parser.Decode()
 	if err != nil {
-		t.Fatalf("ParseAll() error = %v", err)
+		t.Fatalf("Decode() error = %v", err)
 	}
 
 	// Verify the data block was parsed
@@ -812,10 +748,10 @@ func TestHandleDataBlockConsecutive(t *testing.T) {
 
 	input := fmt.Sprintf("@c4m 1.0\n%s%s", FormatDataBlock(block1), FormatDataBlock(block2))
 
-	parser := NewParser(strings.NewReader(input))
-	manifest, err := parser.ParseAll()
+	parser := NewDecoder(strings.NewReader(input))
+	manifest, err := parser.Decode()
 	if err != nil {
-		t.Fatalf("ParseAll() error = %v", err)
+		t.Fatalf("Decode() error = %v", err)
 	}
 
 	if len(manifest.DataBlocks) != 2 {

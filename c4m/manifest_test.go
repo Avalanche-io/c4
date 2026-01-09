@@ -63,11 +63,11 @@ func TestManifestSort(t *testing.T) {
 	}
 }
 
-func TestManifestWriteTo(t *testing.T) {
+func TestManifestEncode(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	testID, _ := c4.Parse("c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
 	dataID, _ := c4.Parse("c42j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
-	
+
 	tests := []struct {
 		name     string
 		manifest *Manifest
@@ -109,19 +109,16 @@ func TestManifestWriteTo(t *testing.T) {
 			want: "@c4m 1.0\n@base c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			n, err := tt.manifest.WriteTo(&buf)
+			err := NewEncoder(&buf).Encode(tt.manifest)
 			if err != nil {
-				t.Fatalf("WriteTo() error = %v", err)
-			}
-			if n != int64(len(tt.want)) {
-				t.Errorf("WriteTo() wrote %d bytes, want %d", n, len(tt.want))
+				t.Fatalf("Encode() error = %v", err)
 			}
 			if got := buf.String(); got != tt.want {
-				t.Errorf("WriteTo() = %q, want %q", got, tt.want)
+				t.Errorf("Encode() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -312,12 +309,11 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 	}
 }
 
-func TestWriteLayer(t *testing.T) {
+func TestEncodeLayer(t *testing.T) {
 	tests := []struct {
-		name     string
-		layer    *Layer
-		wantOut  []string
-		wantErr  bool
+		name    string
+		layer   *Layer
+		wantOut []string
 	}{
 		{
 			name: "add layer",
@@ -386,23 +382,21 @@ func TestWriteLayer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &Manifest{}
+			m := &Manifest{
+				Version: "1.0",
+				Layers:  []*Layer{tt.layer},
+			}
 			var buf bytes.Buffer
-			
-			n, err := m.writeLayer(&buf, tt.layer)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("writeLayer() error = %v, wantErr %v", err, tt.wantErr)
-				return
+
+			err := NewEncoder(&buf).Encode(m)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
 			}
-			
-			if n == 0 && len(tt.wantOut) > 0 {
-				t.Error("writeLayer() wrote 0 bytes")
-			}
-			
+
 			output := buf.String()
 			for _, want := range tt.wantOut {
 				if !strings.Contains(output, want) {
-					t.Errorf("Output missing %q", want)
+					t.Errorf("Output missing %q\nGot:\n%s", want, output)
 				}
 			}
 		})
@@ -429,12 +423,12 @@ func TestManifestWithLayers(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	n, err := m.WriteTo(&buf)
+	err := NewEncoder(&buf).Encode(m)
 	if err != nil {
-		t.Fatalf("WriteTo() error = %v", err)
+		t.Fatalf("Encode() error = %v", err)
 	}
-	if n == 0 {
-		t.Error("WriteTo() wrote 0 bytes")
+	if buf.Len() == 0 {
+		t.Error("Encode() wrote 0 bytes")
 	}
 
 	output := buf.String()

@@ -235,14 +235,8 @@ func BenchmarkParsing(b *testing.B) {
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				parser := NewParser(bytes.NewReader(content))
-				parser.ParseHeader()
-				for {
-					_, err := parser.ParseEntry()
-					if err != nil {
-						break
-					}
-				}
+				decoder := NewDecoder(bytes.NewReader(content))
+				_, _ = decoder.Decode()
 			}
 		})
 	}
@@ -276,7 +270,7 @@ func BenchmarkWriting(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				var buf bytes.Buffer
-				_, _ = manifest.WriteTo(&buf)
+				_ = NewEncoder(&buf).Encode(manifest)
 			}
 		})
 	}
@@ -297,7 +291,7 @@ func BenchmarkValidation(b *testing.B) {
 
 	// Write to buffer
 	var buf bytes.Buffer
-	manifest.WriteTo(&buf)
+	_ = NewEncoder(&buf).Encode(manifest)
 	content := buf.Bytes()
 
 	validator := NewValidator(false)
