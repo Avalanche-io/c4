@@ -28,13 +28,6 @@ func NewIDList() *IDList {
 	}
 }
 
-// NewIDListFromIDs creates an ID list from a slice of C4 IDs
-func NewIDListFromIDs(ids []c4.ID) *IDList {
-	return &IDList{
-		IDs: ids,
-	}
-}
-
 // Add appends a C4 ID to the list
 func (l *IDList) Add(id c4.ID) {
 	l.IDs = append(l.IDs, id)
@@ -72,13 +65,6 @@ func (l *IDList) Bytes() []byte {
 // ComputeC4ID computes the C4 ID of the canonical form of this ID list
 func (l *IDList) ComputeC4ID() c4.ID {
 	return c4.Identify(strings.NewReader(l.Canonical()))
-}
-
-// WriteTo writes the canonical form to a writer
-func (l *IDList) WriteTo(w io.Writer) (int64, error) {
-	canonical := l.Canonical()
-	n, err := w.Write([]byte(canonical))
-	return int64(n), err
 }
 
 // ParseIDList parses an ID list from a reader.
@@ -240,14 +226,5 @@ func CreateDataBlockFromIDList(idList *IDList) *DataBlock {
 		ID:       c4.Identify(bytes.NewReader(content)),
 		Content:  content,
 		IsIDList: true,
-	}
-}
-
-// CreateDataBlockFromBytes creates a DataBlock from arbitrary bytes
-func CreateDataBlockFromBytes(content []byte) *DataBlock {
-	return &DataBlock{
-		ID:       c4.Identify(bytes.NewReader(content)),
-		Content:  content,
-		IsIDList: IsIDListContent(content),
 	}
 }

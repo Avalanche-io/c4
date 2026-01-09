@@ -1,11 +1,14 @@
 package c4m
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Avalanche-io/c4"
 )
 
 func TestParseHeader(t *testing.T) {
@@ -671,5 +674,47 @@ drwxr-xr-x 2025-09-19T12:00:00Z 200 dir/
 	}
 	if manifest.Entries[2].Name != "file.txt" {
 		t.Errorf("Third entry should be file.txt (inside dir), got %s", manifest.Entries[2].Name)
+	}
+}
+
+func TestParseDataBlock(t *testing.T) {
+	// Create a test ID list to embed
+	idList := NewIDList()
+	id1 := c4.Identify(strings.NewReader("content1\n"))
+	id2 := c4.Identify(strings.NewReader("content2\n"))
+	idList.Add(id1)
+	idList.Add(id2)
+
+	// Create the data block
+	block := CreateDataBlockFromIDList(idList)
+
+	// Build manifest with embedded @data block
+	content := fmt.Sprintf(`@c4m 1.0
+-rw-r--r-- 2024-01-15T10:30:00Z 100 files[0001-0002].txt %s
+@data %s
+%s
+%s
+`, block.ID.String(), block.ID.String(), id1.String(), id2.String())
+
+	parser := NewParser(strings.NewReader(content))
+	manifest, err := parser.ParseAll()
+	if err != nil {
+		t.Fatalf("ParseAll() error = %v", err)
+	}
+
+	// Verify the data block was parsed
+	if len(manifest.DataBlocks) != 1 {
+		t.Fatalf("Expected 1 data block, got %d", len(manifest.DataBlocks))
+	}
+
+	// Verify we can retrieve it
+	retrieved := manifest.GetDataBlock(block.ID)
+	if retrieved == nil {
+		t.Fatal("GetDataBlock() returned nil")
+	}
+
+	// Verify the content matches
+	if !retrieved.IsIDList {
+		t.Error("Expected data block to be an ID list")
 	}
 }

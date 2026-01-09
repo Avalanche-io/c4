@@ -302,28 +302,6 @@ func (m *Manifest) ComputeC4ID() c4.ID {
 	return c4.Identify(strings.NewReader(canonicalText))
 }
 
-// IsCanonical checks if manifest is in canonical form (no null values)
-// Returns nil if canonical, or an error describing what's missing
-func (m *Manifest) IsCanonical() error {
-	var issues []string
-
-	for i, entry := range m.Entries {
-		nullFields := entry.GetNullFields()
-		if len(nullFields) > 0 {
-			issues = append(issues,
-				fmt.Sprintf("Entry %d (%s) has null values: %s",
-					i, entry.Name, strings.Join(nullFields, ", ")))
-		}
-	}
-
-	if len(issues) > 0 {
-		return fmt.Errorf("manifest not in canonical form:\n  %s",
-			strings.Join(issues, "\n  "))
-	}
-
-	return nil
-}
-
 // Canonicalize resolves all null values in the manifest to explicit values
 // This makes the manifest ready for C4 ID computation
 func (m *Manifest) Canonicalize() {
@@ -598,11 +576,6 @@ func (m *Manifest) GetDataBlock(id c4.ID) *DataBlock {
 		}
 	}
 	return nil
-}
-
-// HasDataBlock checks if a data block with the given ID is embedded
-func (m *Manifest) HasDataBlock(id c4.ID) bool {
-	return m.GetDataBlock(id) != nil
 }
 
 // GetIDList retrieves an embedded ID list by its C4 ID

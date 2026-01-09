@@ -1,9 +1,6 @@
 package c4m
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // SequenceExpansionMode defines how sequences should be expanded
 type SequenceExpansionMode int
@@ -66,49 +63,6 @@ func (se *SequenceExpander) ExpandManifest(manifest *Manifest) (*Manifest, *Mani
 	} else {
 		return expanded, expansions, nil
 	}
-}
-
-// ProcessManifestWithSequences reads a manifest and expands sequences according to mode
-func ProcessManifestWithSequences(manifest *Manifest, mode SequenceExpansionMode) (*Manifest, error) {
-	expander := NewSequenceExpander(mode)
-	result, expansions, err := expander.ExpandManifest(manifest)
-	if err != nil {
-		return nil, err
-	}
-
-	if mode == SequenceEmbedded {
-		return result, nil
-	}
-
-	// For standalone mode, merge the expansions back if needed
-	// This could be written to a separate file instead
-	if expansions != nil && len(expansions.Entries) > 0 {
-		// Add a comment about the expansion being in a separate file
-		// The actual writing of the separate file would be handled by the caller
-	}
-
-	return result, nil
-}
-
-// sanitizeLayerName creates a valid layer name from a sequence pattern
-func sanitizeLayerName(pattern string) string {
-	// Remove special characters and spaces
-	name := strings.ReplaceAll(pattern, "[", "_")
-	name = strings.ReplaceAll(name, "]", "_")
-	name = strings.ReplaceAll(name, ".", "_")
-	name = strings.ReplaceAll(name, "-", "_")
-	name = strings.ReplaceAll(name, " ", "_")
-	name = strings.ReplaceAll(name, "/", "_")
-
-	// Remove consecutive underscores
-	for strings.Contains(name, "__") {
-		name = strings.ReplaceAll(name, "__", "_")
-	}
-
-	// Trim underscores from ends
-	name = strings.Trim(name, "_")
-
-	return name
 }
 
 // ExpandSequenceEntry expands a single sequence entry into individual file entries.

@@ -259,9 +259,3 @@ func (sd *SequenceDetector) findRanges(frames []int) []sequenceRange {
 
 	return ranges
 }
-
-// CollapseToSequences processes a manifest to detect and collapse sequences
-func CollapseToSequences(manifest *Manifest, minLength int) *Manifest {
-	detector := NewSequenceDetector(minLength)
-	return detector.DetectSequences(manifest)
-}

@@ -279,8 +279,3 @@ func (e *Entry) GetNullFields() []string {
 
 	return nullFields
 }
-
-// IsFullySpecified returns true if all required metadata is explicit
-func (e *Entry) IsFullySpecified() bool {
-	return !e.HasNullValues()
-}

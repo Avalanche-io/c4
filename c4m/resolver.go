@@ -89,11 +89,6 @@ func NewResolver(storage Storage) *Resolver {
 	}
 }
 
-// Cache returns the manifest cache (allows external access for manifest operations)
-func (r *Resolver) Cache() *ManifestCache {
-	return r.cache
-}
-
 // ResolveResult contains the result of path resolution
 type ResolveResult struct {
 	ID       c4.ID     // C4 ID of the resolved item

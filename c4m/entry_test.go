@@ -346,3 +346,153 @@ func TestFormatName(t *testing.T) {
 		})
 	}
 }
+
+func TestEntryIsDevice(t *testing.T) {
+	tests := []struct {
+		name string
+		mode os.FileMode
+		want bool
+	}{
+		{"regular file", 0644, false},
+		{"directory", os.ModeDir | 0755, false},
+		{"block device", os.ModeDevice | 0666, true},
+		{"char device", os.ModeCharDevice | 0666, true},
+		{"symlink", os.ModeSymlink | 0777, false},
+		{"named pipe", os.ModeNamedPipe | 0666, false},
+		{"socket", os.ModeSocket | 0666, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &Entry{Mode: tt.mode}
+			if got := e.IsDevice(); got != tt.want {
+				t.Errorf("IsDevice() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEntryIsPipe(t *testing.T) {
+	tests := []struct {
+		name string
+		mode os.FileMode
+		want bool
+	}{
+		{"regular file", 0644, false},
+		{"directory", os.ModeDir | 0755, false},
+		{"named pipe", os.ModeNamedPipe | 0666, true},
+		{"socket", os.ModeSocket | 0666, false},
+		{"device", os.ModeDevice | 0666, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &Entry{Mode: tt.mode}
+			if got := e.IsPipe(); got != tt.want {
+				t.Errorf("IsPipe() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEntryIsSocket(t *testing.T) {
+	tests := []struct {
+		name string
+		mode os.FileMode
+		want bool
+	}{
+		{"regular file", 0644, false},
+		{"directory", os.ModeDir | 0755, false},
+		{"socket", os.ModeSocket | 0666, true},
+		{"named pipe", os.ModeNamedPipe | 0666, false},
+		{"device", os.ModeDevice | 0666, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &Entry{Mode: tt.mode}
+			if got := e.IsSocket(); got != tt.want {
+				t.Errorf("IsSocket() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEntryGetNullFields(t *testing.T) {
+	tests := []struct {
+		name   string
+		entry  *Entry
+		expect []string
+	}{
+		{
+			name: "all fields set",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				Size:      100,
+			},
+			expect: nil,
+		},
+		{
+			name: "null mode",
+			entry: &Entry{
+				Mode:      0,
+				Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				Size:      100,
+			},
+			expect: []string{"Mode"},
+		},
+		{
+			name: "null timestamp",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: time.Unix(0, 0),
+				Size:      100,
+			},
+			expect: []string{"Timestamp"},
+		},
+		{
+			name: "null size",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				Size:      -1,
+			},
+			expect: []string{"Size"},
+		},
+		{
+			name: "all null",
+			entry: &Entry{
+				Mode:      0,
+				Timestamp: time.Unix(0, 0),
+				Size:      -1,
+			},
+			expect: []string{"Mode", "Timestamp", "Size"},
+		},
+		{
+			name: "directory with mode 0 is ok",
+			entry: &Entry{
+				Mode:      os.ModeDir,
+				Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				Size:      0,
+				Name:      "dir/",
+			},
+			expect: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.entry.GetNullFields()
+			if len(got) != len(tt.expect) {
+				t.Errorf("GetNullFields() = %v, want %v", got, tt.expect)
+				return
+			}
+			for i, field := range got {
+				if field != tt.expect[i] {
+					t.Errorf("GetNullFields()[%d] = %v, want %v", i, field, tt.expect[i])
+				}
+			}
+		})
+	}
+}

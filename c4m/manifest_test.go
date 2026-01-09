@@ -573,3 +573,112 @@ func TestManifestValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestManifestHasNullValues(t *testing.T) {
+	testTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		entries []*Entry
+		want    bool
+	}{
+		{
+			name:    "empty manifest",
+			entries: nil,
+			want:    false,
+		},
+		{
+			name: "all valid entries",
+			entries: []*Entry{
+				{Mode: 0644, Timestamp: testTime, Size: 100, Name: "a.txt"},
+				{Mode: 0644, Timestamp: testTime, Size: 200, Name: "b.txt"},
+			},
+			want: false,
+		},
+		{
+			name: "one entry with null size",
+			entries: []*Entry{
+				{Mode: 0644, Timestamp: testTime, Size: 100, Name: "a.txt"},
+				{Mode: 0644, Timestamp: testTime, Size: -1, Name: "b.txt"},
+			},
+			want: true,
+		},
+		{
+			name: "one entry with null timestamp",
+			entries: []*Entry{
+				{Mode: 0644, Timestamp: time.Unix(0, 0), Size: 100, Name: "a.txt"},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manifest{Version: "1.0", Entries: tt.entries}
+			if got := m.HasNullValues(); got != tt.want {
+				t.Errorf("HasNullValues() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestManifestGetDataBlock(t *testing.T) {
+	// Create test IDs
+	id1 := c4.Identify(strings.NewReader("content1"))
+	id2 := c4.Identify(strings.NewReader("content2"))
+	id3 := c4.Identify(strings.NewReader("content3"))
+
+	block1 := &DataBlock{ID: id1, Content: []byte("content1")}
+	block2 := &DataBlock{ID: id2, Content: []byte("content2")}
+
+	m := &Manifest{
+		Version:    "1.0",
+		DataBlocks: []*DataBlock{block1, block2},
+	}
+
+	// Test finding existing blocks
+	if got := m.GetDataBlock(id1); got != block1 {
+		t.Errorf("GetDataBlock(id1) = %v, want %v", got, block1)
+	}
+	if got := m.GetDataBlock(id2); got != block2 {
+		t.Errorf("GetDataBlock(id2) = %v, want %v", got, block2)
+	}
+
+	// Test not found
+	if got := m.GetDataBlock(id3); got != nil {
+		t.Errorf("GetDataBlock(id3) = %v, want nil", got)
+	}
+}
+
+func TestManifestGetIDList(t *testing.T) {
+	// Create an ID list
+	idList := NewIDList()
+	id1 := c4.Identify(strings.NewReader("file1"))
+	id2 := c4.Identify(strings.NewReader("file2"))
+	idList.Add(id1)
+	idList.Add(id2)
+
+	// Create a data block from the ID list
+	block := CreateDataBlockFromIDList(idList)
+
+	m := &Manifest{
+		Version:    "1.0",
+		DataBlocks: []*DataBlock{block},
+	}
+
+	// Test getting the ID list
+	got, err := m.GetIDList(block.ID)
+	if err != nil {
+		t.Fatalf("GetIDList() error = %v", err)
+	}
+	if got.Count() != 2 {
+		t.Errorf("GetIDList() count = %d, want 2", got.Count())
+	}
+
+	// Test not found
+	unknownID := c4.Identify(strings.NewReader("unknown"))
+	_, err = m.GetIDList(unknownID)
+	if err == nil {
+		t.Error("GetIDList(unknown) should return error")
+	}
+}
