@@ -1,6 +1,8 @@
 package c4m
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -209,5 +211,298 @@ func TestValidationReport(t *testing.T) {
 	// Check that the validator tracked errors
 	if len(strictValidator.errors) == 0 {
 		t.Error("Expected validation errors to be tracked")
+	}
+}
+
+func TestGetErrorsAndWarnings(t *testing.T) {
+	// Create a manifest that generates a warning (unknown version)
+	content := `@c4m 2.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`
+
+	validator := NewValidator(false)
+	validator.ValidateManifest(strings.NewReader(content))
+
+	// GetErrors returns the errors slice (may be nil if no errors)
+	errors := validator.GetErrors()
+	// This manifest is valid but has a version warning, so no errors
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors, got %d", len(errors))
+	}
+
+	// GetWarnings should return warnings slice (version 2.0 generates a warning)
+	warnings := validator.GetWarnings()
+	if len(warnings) == 0 {
+		t.Error("Expected warning for unknown version 2.0")
+	}
+
+	// Test manifest with actual errors
+	invalidContent := `not a valid manifest`
+	validator2 := NewValidator(false)
+	validator2.ValidateManifest(strings.NewReader(invalidContent))
+	errors2 := validator2.GetErrors()
+	if len(errors2) == 0 {
+		t.Error("Expected errors for invalid manifest")
+	}
+}
+
+func TestBuildPath(t *testing.T) {
+	validator := NewValidator(false)
+
+	// Test depth 0 (root level)
+	path := validator.buildPath("file.txt", 0)
+	if path != "file.txt" {
+		t.Errorf("buildPath at depth 0: got %q, want %q", path, "file.txt")
+	}
+
+	// Set up depth stack for nested paths
+	validator.depthStack = []string{"dir1/", "dir2/"}
+
+	// Test depth 1
+	path = validator.buildPath("file.txt", 1)
+	if path != "dir1/file.txt" {
+		t.Errorf("buildPath at depth 1: got %q, want %q", path, "dir1/file.txt")
+	}
+
+	// Test depth 2
+	path = validator.buildPath("file.txt", 2)
+	if path != "dir1/dir2/file.txt" {
+		t.Errorf("buildPath at depth 2: got %q, want %q", path, "dir1/dir2/file.txt")
+	}
+
+	// Test depth beyond stack
+	path = validator.buildPath("file.txt", 5)
+	if path != "dir1/dir2/file.txt" {
+		t.Errorf("buildPath beyond stack: got %q, want %q", path, "dir1/dir2/file.txt")
+	}
+}
+
+func TestBuildExpectedPath(t *testing.T) {
+	validator := NewValidator(false)
+
+	// Test depth 0 (root level)
+	path := validator.buildExpectedPath("file.txt", 0)
+	if path != "file.txt" {
+		t.Errorf("buildExpectedPath at depth 0: got %q, want %q", path, "file.txt")
+	}
+
+	// Set up depth stack
+	validator.depthStack = []string{"parent/", "child/"}
+
+	// Test depth 1
+	path = validator.buildExpectedPath("file.txt", 1)
+	if path != "parent/file.txt" {
+		t.Errorf("buildExpectedPath at depth 1: got %q, want %q", path, "parent/file.txt")
+	}
+
+	// Test depth 2
+	path = validator.buildExpectedPath("file.txt", 2)
+	if path != "parent/child/file.txt" {
+		t.Errorf("buildExpectedPath at depth 2: got %q, want %q", path, "parent/child/file.txt")
+	}
+}
+
+func TestValidateFile(t *testing.T) {
+	// Create a temporary manifest file
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "test.c4m")
+
+	content := `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`
+	if err := os.WriteFile(manifestPath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test manifest: %v", err)
+	}
+
+	// Test valid manifest
+	err := ValidateFile(manifestPath, false)
+	if err != nil {
+		t.Errorf("ValidateFile failed for valid manifest: %v", err)
+	}
+
+	// Test strict mode
+	err = ValidateFile(manifestPath, true)
+	if err != nil {
+		t.Errorf("ValidateFile strict mode failed for valid manifest: %v", err)
+	}
+
+	// Test non-existent file
+	err = ValidateFile(filepath.Join(tmpDir, "nonexistent.c4m"), false)
+	if err == nil {
+		t.Error("ValidateFile should fail for non-existent file")
+	}
+}
+
+func TestDetectFormat(t *testing.T) {
+	tests := []struct {
+		name        string
+		content     string
+		wantErgo    bool
+	}{
+		{
+			name: "canonical format",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`,
+			wantErgo: false,
+		},
+		{
+			name: "ergonomic format with month",
+			content: `@c4m 1.0
+-rw-r--r-- Jan 15 2025 100 test.txt
+`,
+			wantErgo: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := NewValidator(false)
+			validator.ValidateManifest(strings.NewReader(tt.content))
+			if validator.isErgonomic != tt.wantErgo {
+				t.Errorf("isErgonomic = %v, want %v", validator.isErgonomic, tt.wantErgo)
+			}
+		})
+	}
+}
+
+func TestValidatorHandleDirective(t *testing.T) {
+	tests := []struct {
+		name       string
+		content    string
+		wantLayers int64
+	}{
+		{
+			name: "with layer directive",
+			content: `@c4m 1.0
+@layer test
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+@end
+`,
+			wantLayers: 1,
+		},
+		{
+			name: "multiple layers",
+			content: `@c4m 1.0
+@layer first
+-rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+@end
+@layer second
+-rw-r--r-- 2025-09-19T12:00:00Z 100 b.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+@end
+`,
+			wantLayers: 2,
+		},
+		{
+			name: "no layers",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`,
+			wantLayers: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := NewValidator(false)
+			validator.ValidateManifest(strings.NewReader(tt.content))
+			stats := validator.GetStats()
+			if stats.Layers != tt.wantLayers {
+				t.Errorf("Layers = %d, want %d", stats.Layers, tt.wantLayers)
+			}
+		})
+	}
+}
+
+func TestValidateC4ID(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		strict  bool
+		wantErr bool
+	}{
+		{
+			name: "valid C4 ID",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`,
+			strict:  true,
+			wantErr: false,
+		},
+		{
+			name: "missing C4 ID is allowed",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt
+`,
+			strict:  true,
+			wantErr: false,
+		},
+		{
+			name: "invalid C4 ID format",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4invalid
+`,
+			strict:  true,
+			wantErr: true,
+		},
+		{
+			name: "C4 ID too short",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4abc
+`,
+			strict:  true,
+			wantErr: true,
+		},
+		{
+			name: "directory without C4 ID is ok",
+			content: `@c4m 1.0
+drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
+`,
+			strict:  true,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := NewValidator(tt.strict)
+			err := validator.ValidateManifest(strings.NewReader(tt.content))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateManifest() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidationErrorString(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      ValidationError
+		expected string
+	}{
+		{
+			name:     "with line and column",
+			err:      ValidationError{Line: 5, Column: 10, Message: "test error"},
+			expected: "line 5, col 10: test error",
+		},
+		{
+			name:     "with line only",
+			err:      ValidationError{Line: 3, Column: 0, Message: "test error"},
+			expected: "line 3: test error",
+		},
+		{
+			name:     "no line info",
+			err:      ValidationError{Line: 0, Column: 0, Message: "test error"},
+			expected: "test error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.err.Error()
+			if result != tt.expected {
+				t.Errorf("Error() = %q, want %q", result, tt.expected)
+			}
+		})
 	}
 }

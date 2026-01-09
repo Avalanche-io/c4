@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,8 +46,6 @@ type ValidationStats struct {
 	Layers          int64 // Number of @layer directives
 	Chunks          int64 // Number of referenced chunks
 	MaxDepth        int   // Maximum directory depth
-	ChunkedManifests int64 // Number of .c4m chunks found
-	CollapsedDirs   []string // Names of collapsed directories
 }
 
 // Validator validates C4M manifests and bundles
@@ -145,188 +142,6 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	}
 	
 	return v.getResult()
-}
-
-// ValidateBundle validates a C4M bundle directory
-func (v *Validator) ValidateBundle(bundlePath string) error {
-	// Reset statistics for bundle validation
-	v.errors = nil
-	v.warnings = nil
-	v.stats = ValidationStats{}
-	v.formatDetected = false
-	v.isErgonomic = false
-	
-	fmt.Fprintf(os.Stderr, "Validating C4M bundle: %s\n", bundlePath)
-	
-	// Check if bundle directory exists
-	info, err := os.Stat(bundlePath)
-	if err != nil {
-		return fmt.Errorf("cannot access bundle: %w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("bundle path is not a directory")
-	}
-	
-	// Check for header.c4 file
-	headerPath := filepath.Join(bundlePath, "header.c4")
-	headerData, err := os.ReadFile(headerPath)
-	if err != nil {
-		v.addError(0, 0, "bundle", "missing or unreadable header.c4", true)
-		return v.getResult()
-	}
-	
-	// Parse header to get manifest C4 ID
-	headerID := strings.TrimSpace(string(headerData))
-	if !strings.HasPrefix(headerID, "c4") {
-		v.addError(0, 0, "header", "invalid C4 ID in header.c4", true)
-		return v.getResult()
-	}
-	
-	// Read the header manifest from c4 directory
-	manifestPath := filepath.Join(bundlePath, "c4", headerID)
-	manifestData, err := os.ReadFile(manifestPath)
-	if err != nil {
-		v.addError(0, 0, "bundle", fmt.Sprintf("cannot read header manifest %s: %v", headerID, err), true)
-		return v.getResult()
-	}
-	
-	// Parse header manifest to find all chunks
-	chunkIDs := v.extractChunkIDs(string(manifestData))
-	
-	// Create an aggregated stats tracker
-	aggregatedStats := ValidationStats{}
-	
-	// Validate header manifest
-	headerReader := strings.NewReader(string(manifestData))
-	if err := v.ValidateManifest(headerReader); err != nil {
-		v.addError(0, 0, "header", "invalid header manifest format", false)
-	}
-	// Add header stats to aggregated
-	aggregatedStats = v.addStats(aggregatedStats, v.stats)
-	
-	// Validate each chunk
-	aggregatedStats.ChunkedManifests = int64(len(chunkIDs))
-	for i, chunkID := range chunkIDs {
-		chunkPath := filepath.Join(bundlePath, "c4", chunkID)
-		chunkData, err := os.ReadFile(chunkPath)
-		if err != nil {
-			v.addError(0, 0, "chunk", fmt.Sprintf("cannot read chunk %d (%s): %v", i+1, chunkID, err), false)
-			continue
-		}
-		
-		// Create a new validator for each chunk to avoid state contamination
-		chunkValidator := NewValidator(v.Strict)
-		chunkValidator.MaxErrors = 0 // Don't limit errors in chunks
-		
-		// Validate chunk manifest
-		chunkReader := strings.NewReader(string(chunkData))
-		if err := chunkValidator.ValidateManifest(chunkReader); err != nil {
-			// Don't report individual chunk validation errors as they can be numerous
-			// Just note that the chunk had issues
-			v.addWarning(0, 0, "chunk", fmt.Sprintf("chunk %d has %d validation issues", i+1, len(chunkValidator.GetErrors())))
-		}
-		
-		// Add chunk stats to aggregated
-		aggregatedStats = v.addStats(aggregatedStats, chunkValidator.stats)
-	}
-	
-	// Set final aggregated stats
-	v.stats = aggregatedStats
-	
-	return v.getResult()
-}
-
-// extractChunkIDs finds all C4 IDs referenced in .c4m files within a manifest
-func (v *Validator) extractChunkIDs(manifestContent string) []string {
-	var chunkIDs []string
-	lines := strings.Split(manifestContent, "\n")
-	
-	for _, line := range lines {
-		// Skip empty lines and directives
-		if line == "" || strings.HasPrefix(line, "@") {
-			continue
-		}
-		
-		// Look for .c4m files and extract directory names
-		if strings.Contains(line, ".c4m ") {
-			// Extract the directory name if this is in a progress/ subdirectory
-			if strings.Contains(line, "progress/") {
-				// Find the parent directory name
-				trimmed := strings.TrimSpace(line)
-				if idx := strings.LastIndex(trimmed, "progress/"); idx > 0 {
-					// Look backwards to find the parent directory
-					for i := idx-1; i >= 0; i-- {
-						if trimmed[i] == '/' || trimmed[i] == ' ' {
-							parentName := trimmed[i+1:idx]
-							if parentName != "" && !contains(v.stats.CollapsedDirs, parentName) {
-								v.stats.CollapsedDirs = append(v.stats.CollapsedDirs, parentName)
-							}
-							break
-						}
-					}
-				}
-			}
-			
-			// Extract the C4 ID at the end of the line
-			fields := strings.Fields(line)
-			for _, field := range fields {
-				if strings.HasPrefix(field, "c4") && len(field) > 10 {
-					chunkIDs = append(chunkIDs, field)
-					break
-				}
-			}
-		}
-	}
-	
-	return chunkIDs
-}
-
-// contains checks if a string slice contains a value
-func contains(slice []string, val string) bool {
-	for _, item := range slice {
-		if item == val {
-			return true
-		}
-	}
-	return false
-}
-
-// addStats combines two ValidationStats structures
-func (v *Validator) addStats(a, b ValidationStats) ValidationStats {
-	result := ValidationStats{
-		TotalEntries:     a.TotalEntries + b.TotalEntries,
-		Files:            a.Files + b.Files,
-		Directories:      a.Directories + b.Directories,
-		Symlinks:         a.Symlinks + b.Symlinks,
-		SpecialFiles:     a.SpecialFiles + b.SpecialFiles,
-		TotalSize:        a.TotalSize + b.TotalSize,
-		NullTimes:        a.NullTimes + b.NullTimes,
-		NullSizes:        a.NullSizes + b.NullSizes,
-		Layers:           a.Layers + b.Layers,
-		Chunks:           a.Chunks + b.Chunks,
-		MaxDepth:         a.MaxDepth,
-		ChunkedManifests: a.ChunkedManifests + b.ChunkedManifests,
-		CollapsedDirs:    append(a.CollapsedDirs, b.CollapsedDirs...),
-	}
-	
-	if b.MaxDepth > result.MaxDepth {
-		result.MaxDepth = b.MaxDepth
-	}
-	
-	// Handle time comparisons
-	if a.OldestTime.IsZero() || (!b.OldestTime.IsZero() && b.OldestTime.Before(a.OldestTime)) {
-		result.OldestTime = b.OldestTime
-	} else {
-		result.OldestTime = a.OldestTime
-	}
-	
-	if a.NewestTime.IsZero() || (!b.NewestTime.IsZero() && b.NewestTime.After(a.NewestTime)) {
-		result.NewestTime = b.NewestTime
-	} else {
-		result.NewestTime = a.NewestTime
-	}
-	
-	return result
 }
 
 func (v *Validator) validateHeader(line string) bool {
@@ -920,21 +735,15 @@ func (v *Validator) updateStats(mode, timestamp, sizeStr, name, c4id string) {
 	}
 }
 
-// ValidateFile validates a C4M or bundle file
+// ValidateFile validates a C4M manifest file
 func ValidateFile(path string, strict bool) error {
 	validator := NewValidator(strict)
-	
-	// Check if it's a bundle
-	if strings.HasSuffix(path, ".c4m_bundle") || strings.HasSuffix(path, "_bundle") {
-		return validator.ValidateBundle(path)
-	}
-	
-	// Otherwise treat as manifest
+
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	
+
 	return validator.ValidateManifest(file)
 }
