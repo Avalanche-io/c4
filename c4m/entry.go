@@ -25,9 +25,10 @@ type Entry struct {
 	Pattern    string // Original sequence pattern
 }
 
-// IsDir returns true if the entry represents a directory
+// IsDir returns true if the entry represents a directory.
+// Checks both the mode bits and trailing slash in the name (for robustness).
 func (e *Entry) IsDir() bool {
-	return e.Mode.IsDir()
+	return e.Mode.IsDir() || strings.HasSuffix(e.Name, "/")
 }
 
 // IsSymlink returns true if the entry represents a symbolic link
@@ -64,7 +65,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 		timeStr = "-"  // Null timestamp
 	} else {
 		// Canonical format MUST be UTC only
-		timeStr = e.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
+		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
 	}
 	
 	// Format size (handle null value)
@@ -99,7 +100,7 @@ func (e *Entry) Canonical() string {
 	// No indentation in canonical form
 	modeStr := formatMode(e.Mode)
 	// Canonical format MUST be UTC only
-	timeStr := e.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
+	timeStr := e.Timestamp.UTC().Format(TimestampFormat)
 	sizeStr := fmt.Sprintf("%d", e.Size) // No formatting in canonical
 	nameStr := formatName(e.Name)
 	

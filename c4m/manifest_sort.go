@@ -1,9 +1,6 @@
 package c4m
 
-import (
-	"sort"
-	"strings"
-)
+import "sort"
 
 // SortSiblingsHierarchically sorts manifest entries to maintain proper C4M format:
 // - Preserves hierarchical depth-first traversal  
@@ -63,15 +60,12 @@ func (m *Manifest) SortSiblingsHierarchically() {
 		// Sort the children (files before dirs, then natural sort)
 		sort.Slice(children, func(i, j int) bool {
 			a, b := children[i].entry, children[j].entry
-			
+
 			// Files before directories
-			aIsDir := a.Mode.IsDir() || strings.HasSuffix(a.Name, "/")
-			bIsDir := b.Mode.IsDir() || strings.HasSuffix(b.Name, "/")
-			
-			if aIsDir != bIsDir {
-				return !aIsDir // files first
+			if a.IsDir() != b.IsDir() {
+				return !a.IsDir() // files first
 			}
-			
+
 			// Natural sort for names
 			return NaturalLess(a.Name, b.Name)
 		})
@@ -80,9 +74,9 @@ func (m *Manifest) SortSiblingsHierarchically() {
 		for _, c := range children {
 			used[c.index] = true
 			result = append(result, c.entry)
-			
+
 			// If it's a directory, recursively process its children
-			if c.entry.Mode.IsDir() || strings.HasSuffix(c.entry.Name, "/") {
+			if c.entry.IsDir() {
 				processLevel(c.index, c.entry.Depth)
 			}
 		}

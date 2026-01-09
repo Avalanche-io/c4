@@ -12,6 +12,9 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
+// TimestampFormat is the canonical C4M timestamp format (RFC3339 UTC).
+const TimestampFormat = "2006-01-02T15:04:05Z"
+
 // Manifest represents a complete C4M manifest
 type Manifest struct {
 	Version      string

@@ -402,7 +402,7 @@ func (p *Parser) readLine() (string, error) {
 // but the parser accepts various ergonomic formats and converts them to UTC.
 func parseTimestamp(s string) (time.Time, error) {
 	// Try canonical format first (2006-01-02T15:04:05Z) - strict UTC subset of RFC3339
-	if t, err := time.Parse("2006-01-02T15:04:05Z", s); err == nil {
+	if t, err := time.Parse(TimestampFormat, s); err == nil {
 		return t, nil
 	}
 

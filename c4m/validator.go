@@ -565,7 +565,7 @@ func (v *Validator) validateTimestamp(ts string) {
 	}
 	
 	// Try to parse canonical format
-	_, err := time.Parse("2006-01-02T15:04:05Z", ts)
+	_, err := time.Parse(TimestampFormat, ts)
 	if err != nil {
 		v.addError(v.lineNum, 0, "timestamp", fmt.Sprintf("invalid ISO 8601 timestamp: %v", err), false)
 	}
@@ -905,7 +905,7 @@ func (v *Validator) updateStats(mode, timestamp, sizeStr, name, c4id string) {
 	// Track timestamp
 	if timestamp == "-" || timestamp == "0" {
 		v.stats.NullTimes++
-	} else if t, err := time.Parse("2006-01-02T15:04:05Z", timestamp); err == nil {
+	} else if t, err := time.Parse(TimestampFormat, timestamp); err == nil {
 		if v.stats.OldestTime.IsZero() || t.Before(v.stats.OldestTime) {
 			v.stats.OldestTime = t
 		}
