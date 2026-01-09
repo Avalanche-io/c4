@@ -682,3 +682,108 @@ func TestManifestGetIDList(t *testing.T) {
 		t.Error("GetIDList(unknown) should return error")
 	}
 }
+
+func TestCanonicalize(t *testing.T) {
+	t.Run("sets default mode for files", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "file.txt",
+			Size:      100,
+			Timestamp: time.Now().UTC(),
+			Mode:      0, // Null mode
+			C4ID:      c4.Identify(strings.NewReader("test")),
+		})
+
+		m.Canonicalize()
+
+		if m.Entries[0].Mode != 0644 {
+			t.Errorf("expected mode 0644, got %o", m.Entries[0].Mode)
+		}
+	})
+
+	t.Run("sets default mode for directories", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "dir/",
+			Size:      0,
+			Timestamp: time.Now().UTC(),
+			Mode:      0, // Null mode - will be detected as dir from name ending in /
+			C4ID:      c4.ID{},
+		})
+
+		m.Canonicalize()
+
+		expectedMode := os.ModeDir | 0755
+		if m.Entries[0].Mode != expectedMode {
+			t.Errorf("expected mode %o, got %o", expectedMode, m.Entries[0].Mode)
+		}
+	})
+
+	t.Run("sets default timestamp for null timestamp", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "file.txt",
+			Size:      100,
+			Timestamp: time.Unix(0, 0), // Null timestamp
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader("test")),
+		})
+
+		before := time.Now().UTC()
+		m.Canonicalize()
+		after := time.Now().UTC()
+
+		ts := m.Entries[0].Timestamp
+		if ts.Before(before) || ts.After(after) {
+			t.Errorf("expected timestamp between %v and %v, got %v", before, after, ts)
+		}
+	})
+
+	t.Run("sets default size for negative size", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "file.txt",
+			Size:      -1, // Null size
+			Timestamp: time.Now().UTC(),
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader("test")),
+		})
+
+		m.Canonicalize()
+
+		if m.Entries[0].Size != 0 {
+			t.Errorf("expected size 0, got %d", m.Entries[0].Size)
+		}
+	})
+
+	t.Run("propagates metadata from children to parents", func(t *testing.T) {
+		now := time.Now().UTC()
+		m := NewManifest()
+
+		// Add directory with null values
+		m.AddEntry(&Entry{
+			Name:      "dir/",
+			Size:      -1,
+			Timestamp: time.Unix(0, 0),
+			Mode:      os.ModeDir,
+			Depth:     0,
+		})
+
+		// Add child file with real values
+		m.AddEntry(&Entry{
+			Name:      "dir/file.txt",
+			Size:      100,
+			Timestamp: now,
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader("test")),
+			Depth:     1,
+		})
+
+		m.Canonicalize()
+
+		// Directory should have size propagated
+		if m.Entries[0].Size != 100 {
+			t.Errorf("expected dir size 100, got %d", m.Entries[0].Size)
+		}
+	})
+}

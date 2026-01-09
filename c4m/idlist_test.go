@@ -285,3 +285,131 @@ func TestCreateDataBlockFromIDList(t *testing.T) {
 		t.Errorf("expected ID %s, got %s", expectedID, block.ID)
 	}
 }
+
+func TestFormatDataBlockIDList(t *testing.T) {
+	list := NewIDList()
+	id1 := c4.Identify(strings.NewReader("test1"))
+	id2 := c4.Identify(strings.NewReader("test2"))
+	list.Add(id1)
+	list.Add(id2)
+
+	block := CreateDataBlockFromIDList(list)
+	formatted := FormatDataBlock(block)
+
+	// Should start with @data directive
+	if !strings.HasPrefix(formatted, "@data ") {
+		t.Errorf("expected to start with @data, got %q", formatted[:20])
+	}
+
+	// Should contain the block ID
+	if !strings.Contains(formatted, block.ID.String()) {
+		t.Errorf("expected to contain block ID")
+	}
+
+	// Should contain the C4 IDs in plain text (not base64)
+	if !strings.Contains(formatted, id1.String()) {
+		t.Errorf("expected to contain id1 in plain text")
+	}
+	if !strings.Contains(formatted, id2.String()) {
+		t.Errorf("expected to contain id2 in plain text")
+	}
+}
+
+func TestFormatDataBlockBinary(t *testing.T) {
+	// Create a non-ID list data block with binary content
+	binaryContent := []byte{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE}
+	id := c4.Identify(bytes.NewReader(binaryContent))
+
+	block := &DataBlock{
+		ID:       id,
+		Content:  binaryContent,
+		IsIDList: false,
+	}
+
+	formatted := FormatDataBlock(block)
+
+	// Should start with @data directive
+	if !strings.HasPrefix(formatted, "@data ") {
+		t.Errorf("expected to start with @data")
+	}
+
+	// Should contain base64 encoded content (AAECA//+)
+	// {0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE} encodes to "AAECA//+"
+	if !strings.Contains(formatted, "AAECA//+") {
+		t.Errorf("expected base64 encoded content 'AAECA//+', got %q", formatted)
+	}
+
+	// Should NOT contain raw binary
+	if strings.Contains(formatted, string(binaryContent)) {
+		t.Errorf("should not contain raw binary content")
+	}
+}
+
+func TestFormatDataBlockLongContent(t *testing.T) {
+	// Create a data block with content longer than 76 chars to test line wrapping
+	longContent := bytes.Repeat([]byte("ABCDEFGHIJ"), 20) // 200 bytes
+	id := c4.Identify(bytes.NewReader(longContent))
+
+	block := &DataBlock{
+		ID:       id,
+		Content:  longContent,
+		IsIDList: false,
+	}
+
+	formatted := FormatDataBlock(block)
+
+	// Split into lines and check line lengths
+	lines := strings.Split(formatted, "\n")
+	for i, line := range lines {
+		if i == 0 {
+			continue // Skip @data directive line
+		}
+		if len(line) > 76 && line != "" {
+			t.Errorf("line %d exceeds 76 chars: %d", i, len(line))
+		}
+	}
+}
+
+func TestDataBlockGetIDList(t *testing.T) {
+	t.Run("returns error for non-ID list", func(t *testing.T) {
+		block := &DataBlock{
+			ID:       c4.Identify(strings.NewReader("test")),
+			Content:  []byte("not an ID list"),
+			IsIDList: false,
+		}
+
+		_, err := block.GetIDList()
+		if err == nil {
+			t.Error("expected error for non-ID list block")
+		}
+		if !strings.Contains(err.Error(), "not an ID list") {
+			t.Errorf("expected 'not an ID list' error, got: %v", err)
+		}
+	})
+
+	t.Run("returns ID list for valid block", func(t *testing.T) {
+		// Create a valid ID list block
+		list := NewIDList()
+		id1 := c4.Identify(strings.NewReader("test1"))
+		id2 := c4.Identify(strings.NewReader("test2"))
+		list.Add(id1)
+		list.Add(id2)
+
+		block := CreateDataBlockFromIDList(list)
+
+		retrieved, err := block.GetIDList()
+		if err != nil {
+			t.Fatalf("GetIDList() error = %v", err)
+		}
+
+		if retrieved.Count() != 2 {
+			t.Errorf("expected 2 IDs, got %d", retrieved.Count())
+		}
+		if retrieved.Get(0) != id1 {
+			t.Errorf("expected first ID to be %s", id1)
+		}
+		if retrieved.Get(1) != id2 {
+			t.Errorf("expected second ID to be %s", id2)
+		}
+	})
+}

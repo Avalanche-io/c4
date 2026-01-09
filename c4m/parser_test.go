@@ -718,3 +718,108 @@ func TestParseDataBlock(t *testing.T) {
 		t.Error("Expected data block to be an ID list")
 	}
 }
+
+func TestParseTimestamp(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantUTC string // Expected time in UTC
+		wantErr bool
+	}{
+		{
+			name:    "canonical UTC format",
+			input:   "2024-06-15T10:30:00Z",
+			wantUTC: "2024-06-15T10:30:00Z",
+			wantErr: false,
+		},
+		{
+			name:    "RFC3339 with positive offset",
+			input:   "2024-06-15T10:30:00+05:00",
+			wantUTC: "2024-06-15T05:30:00Z", // Converted to UTC
+			wantErr: false,
+		},
+		{
+			name:    "RFC3339 with negative offset",
+			input:   "2024-06-15T10:30:00-07:00",
+			wantUTC: "2024-06-15T17:30:00Z", // Converted to UTC
+			wantErr: false,
+		},
+		{
+			name:    "Unix date format",
+			input:   "Sat Jun 15 10:30:00 UTC 2024",
+			wantUTC: "2024-06-15T10:30:00Z",
+			wantErr: false,
+		},
+		{
+			name:    "pretty format with timezone",
+			input:   "Jun 15 10:30:00 2024 UTC",
+			wantUTC: "2024-06-15T10:30:00Z",
+			wantErr: false,
+		},
+		{
+			name:    "pretty format single digit day",
+			input:   "Jun  5 10:30:00 2024 UTC",
+			wantUTC: "2024-06-05T10:30:00Z",
+			wantErr: false,
+		},
+		{
+			name:    "pretty format with numeric offset",
+			input:   "Jun 15 10:30:00 2024 -0700",
+			wantUTC: "2024-06-15T17:30:00Z",
+			wantErr: false,
+		},
+		{
+			name:    "invalid format",
+			input:   "not a timestamp",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTimestamp(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("parseTimestamp() expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("parseTimestamp() error = %v", err)
+				return
+			}
+			gotStr := got.Format(TimestampFormat)
+			if gotStr != tt.wantUTC {
+				t.Errorf("parseTimestamp() = %v, want %v", gotStr, tt.wantUTC)
+			}
+		})
+	}
+}
+
+func TestHandleDataBlockConsecutive(t *testing.T) {
+	// Test consecutive @data blocks using valid ID list blocks
+	// Create first ID list
+	list1 := NewIDList()
+	list1.Add(c4.Identify(strings.NewReader("file1")))
+	list1.Add(c4.Identify(strings.NewReader("file2")))
+	block1 := CreateDataBlockFromIDList(list1)
+
+	// Create second ID list
+	list2 := NewIDList()
+	list2.Add(c4.Identify(strings.NewReader("file3")))
+	list2.Add(c4.Identify(strings.NewReader("file4")))
+	block2 := CreateDataBlockFromIDList(list2)
+
+	input := fmt.Sprintf("@c4m 1.0\n%s%s", FormatDataBlock(block1), FormatDataBlock(block2))
+
+	parser := NewParser(strings.NewReader(input))
+	manifest, err := parser.ParseAll()
+	if err != nil {
+		t.Fatalf("ParseAll() error = %v", err)
+	}
+
+	if len(manifest.DataBlocks) != 2 {
+		t.Fatalf("Expected 2 data blocks, got %d", len(manifest.DataBlocks))
+	}
+}
+

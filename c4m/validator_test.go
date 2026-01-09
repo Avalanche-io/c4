@@ -506,3 +506,81 @@ func TestValidationErrorString(t *testing.T) {
 		})
 	}
 }
+
+func TestParseNameAndRest(t *testing.T) {
+	tests := []struct {
+		name          string
+		fields        []string
+		expectedName  string
+		expectedC4ID  string
+		expectWarning bool
+	}{
+		{
+			name:         "empty fields",
+			fields:       []string{},
+			expectedName: "",
+			expectedC4ID: "",
+		},
+		{
+			name:         "simple file",
+			fields:       []string{"file.txt", "c4abc123"},
+			expectedName: "file.txt",
+			expectedC4ID: "c4abc123",
+		},
+		{
+			name:         "simple directory",
+			fields:       []string{"dir/"},
+			expectedName: "dir/",
+			expectedC4ID: "",
+		},
+		{
+			name:         "directory with c4id",
+			fields:       []string{"dir/", "c4abc123"},
+			expectedName: "dir/",
+			expectedC4ID: "c4abc123",
+		},
+		{
+			name:          "quoted directory with slash inside quotes",
+			fields:        []string{`"my`, `dir/"`, "c4abc123"},
+			expectedName:  "my dir/",
+			expectedC4ID:  "c4abc123",
+			expectWarning: true,
+		},
+		{
+			name:          "quoted directory with slash outside quotes",
+			fields:        []string{`"mydir"/`, "c4abc123"},
+			expectedName:  "mydir/",
+			expectedC4ID:  "c4abc123",
+			expectWarning: true,
+		},
+		{
+			name:         "quoted file name with spaces",
+			fields:       []string{`"my`, `file.txt"`, "c4abc123"},
+			expectedName: `my file.txt`, // Quotes are stripped, content joined
+			expectedC4ID: "c4abc123",
+		},
+		{
+			name:         "file name without c4id",
+			fields:       []string{"file.txt"},
+			expectedName: "file.txt",
+			expectedC4ID: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator(false)
+			name, _, c4id := v.parseNameAndRest(tt.fields)
+
+			if name != tt.expectedName {
+				t.Errorf("parseNameAndRest() name = %q, want %q", name, tt.expectedName)
+			}
+			if c4id != tt.expectedC4ID {
+				t.Errorf("parseNameAndRest() c4id = %q, want %q", c4id, tt.expectedC4ID)
+			}
+			if tt.expectWarning && len(v.warnings) == 0 {
+				t.Error("parseNameAndRest() expected warning, got none")
+			}
+		})
+	}
+}

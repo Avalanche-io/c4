@@ -423,3 +423,155 @@ func TestExpandSequencePattern(t *testing.T) {
 	}
 }
 
+func TestNewSequenceDetectorMinLength(t *testing.T) {
+	t.Run("enforces minimum length of 2", func(t *testing.T) {
+		// Test with minLength < 2
+		detector := NewSequenceDetector(1)
+		if detector.minSequenceLength != 2 {
+			t.Errorf("expected minSequenceLength 2, got %d", detector.minSequenceLength)
+		}
+
+		detector = NewSequenceDetector(0)
+		if detector.minSequenceLength != 2 {
+			t.Errorf("expected minSequenceLength 2, got %d", detector.minSequenceLength)
+		}
+
+		detector = NewSequenceDetector(-5)
+		if detector.minSequenceLength != 2 {
+			t.Errorf("expected minSequenceLength 2, got %d", detector.minSequenceLength)
+		}
+	})
+
+	t.Run("accepts minLength >= 2", func(t *testing.T) {
+		detector := NewSequenceDetector(5)
+		if detector.minSequenceLength != 5 {
+			t.Errorf("expected minSequenceLength 5, got %d", detector.minSequenceLength)
+		}
+	})
+}
+
+func TestFindRanges(t *testing.T) {
+	detector := NewSequenceDetector(2)
+
+	t.Run("empty frames", func(t *testing.T) {
+		ranges := detector.findRanges([]int{})
+		if ranges != nil {
+			t.Errorf("expected nil for empty frames, got %v", ranges)
+		}
+	})
+
+	t.Run("single frame", func(t *testing.T) {
+		ranges := detector.findRanges([]int{5})
+		if len(ranges) != 1 {
+			t.Fatalf("expected 1 range, got %d", len(ranges))
+		}
+		if ranges[0].start != 5 || ranges[0].end != 5 || ranges[0].count != 1 {
+			t.Errorf("expected range {5, 5, 1}, got %+v", ranges[0])
+		}
+	})
+
+	t.Run("continuous range", func(t *testing.T) {
+		ranges := detector.findRanges([]int{1, 2, 3, 4, 5})
+		if len(ranges) != 1 {
+			t.Fatalf("expected 1 range, got %d", len(ranges))
+		}
+		if ranges[0].start != 1 || ranges[0].end != 5 || ranges[0].count != 5 {
+			t.Errorf("expected range {1, 5, 5}, got %+v", ranges[0])
+		}
+	})
+
+	t.Run("gap in sequence", func(t *testing.T) {
+		ranges := detector.findRanges([]int{1, 2, 3, 10, 11, 12})
+		if len(ranges) != 2 {
+			t.Fatalf("expected 2 ranges, got %d", len(ranges))
+		}
+		if ranges[0].start != 1 || ranges[0].end != 3 || ranges[0].count != 3 {
+			t.Errorf("expected first range {1, 3, 3}, got %+v", ranges[0])
+		}
+		if ranges[1].start != 10 || ranges[1].end != 12 || ranges[1].count != 3 {
+			t.Errorf("expected second range {10, 12, 3}, got %+v", ranges[1])
+		}
+	})
+
+	t.Run("multiple gaps", func(t *testing.T) {
+		ranges := detector.findRanges([]int{1, 5, 6, 10})
+		if len(ranges) != 3 {
+			t.Fatalf("expected 3 ranges, got %d", len(ranges))
+		}
+		// Range 1: just frame 1
+		if ranges[0].start != 1 || ranges[0].end != 1 {
+			t.Errorf("expected first range {1, 1}, got %+v", ranges[0])
+		}
+		// Range 2: frames 5-6
+		if ranges[1].start != 5 || ranges[1].end != 6 {
+			t.Errorf("expected second range {5, 6}, got %+v", ranges[1])
+		}
+		// Range 3: just frame 10
+		if ranges[2].start != 10 || ranges[2].end != 10 {
+			t.Errorf("expected third range {10, 10}, got %+v", ranges[2])
+		}
+	})
+}
+
+func TestSequenceExpanderStandalone(t *testing.T) {
+	// Test standalone mode where expansions go to separate manifest
+	manifest := NewManifest()
+	manifest.AddEntry(&Entry{
+		Name:       "shot.[001-003].dpx",
+		Size:       2048,
+		Timestamp:  time.Now(),
+		Mode:       0644,
+		IsSequence: true,
+		Pattern:    "shot.[001-003].dpx",
+	})
+
+	expander := NewSequenceExpander(SequenceStandalone)
+	main, expansions, err := expander.ExpandManifest(manifest)
+	if err != nil {
+		t.Fatalf("ExpandManifest() error = %v", err)
+	}
+
+	// Main manifest should have 1 entry (the sequence notation)
+	if len(main.Entries) != 1 {
+		t.Errorf("expected 1 entry in main manifest, got %d", len(main.Entries))
+	}
+
+	// Expansions manifest should have 3 entries
+	if expansions == nil {
+		t.Fatal("expected expansions manifest, got nil")
+	}
+	if len(expansions.Entries) != 3 {
+		t.Errorf("expected 3 entries in expansions manifest, got %d", len(expansions.Entries))
+	}
+}
+
+func TestExpandSequenceEntryWithManifestNilC4ID(t *testing.T) {
+	// Test with nil C4ID (uses legacy behavior - entry's C4ID for all)
+	manifest := NewManifest()
+	entry := &Entry{
+		Name:       "frame.[01-03].exr",
+		Size:       1024,
+		Timestamp:  time.Now(),
+		Mode:       0644,
+		IsSequence: true,
+		Pattern:    "frame.[01-03].exr",
+		// C4ID is nil
+	}
+
+	expanded, err := ExpandSequenceEntryWithManifest(entry, manifest)
+	if err != nil {
+		t.Fatalf("ExpandSequenceEntryWithManifest() error = %v", err)
+	}
+
+	if len(expanded) != 3 {
+		t.Errorf("expected 3 expanded entries, got %d", len(expanded))
+	}
+
+	// All entries should have nil C4ID (since entry.C4ID was nil)
+	for _, e := range expanded {
+		if !e.C4ID.IsNil() {
+			t.Errorf("expected nil C4ID, got %s", e.C4ID)
+		}
+	}
+}
+
