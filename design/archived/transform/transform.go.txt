@@ -1,5 +1,10 @@
 // Package transform provides efficient algorithms for transforming one filesystem
 // manifest into another with minimum operations.
+//
+// ARCHIVED: This code was removed from c4m/transform/ on 2025-01-08.
+// See README.md for details on revival.
+//
+// Original package: github.com/Avalanche-io/c4/c4m/transform
 package transform
 
 import (

@@ -1,3 +1,5 @@
+// ARCHIVED: Tests for transform package, removed from c4m/transform/ on 2025-01-08.
+// See README.md for details on revival.
 package transform
 
 import (
