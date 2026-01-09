@@ -275,32 +275,106 @@ func (p *Parser) ParseAll() (*Manifest, error) {
 	if err := p.ParseHeader(); err != nil {
 		return nil, err
 	}
-	
+
 	m := &Manifest{
 		Version: p.version,
 		Entries: make([]*Entry, 0),
 	}
-	
+
 	for {
 		entry, err := p.ParseEntry()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			if _, ok := err.(*DirectiveError); ok {
-				// Handle directive
-				if err := p.handleDirective(m, err.(*DirectiveError).Directive); err != nil {
+			if dirErr, ok := err.(*DirectiveError); ok {
+				directive := dirErr.Directive
+				// Check for @data which requires special multi-line handling
+				if strings.HasPrefix(directive, "@data ") {
+					if err := p.handleDataBlock(m, directive); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				// Handle other directives
+				if err := p.handleDirective(m, directive); err != nil {
 					return nil, err
 				}
 				continue
 			}
 			return nil, err
 		}
-		
+
 		m.Entries = append(m.Entries, entry)
 	}
-	
+
 	return m, nil
+}
+
+// handleDataBlock reads and parses a @data block
+func (p *Parser) handleDataBlock(m *Manifest, directive string) error {
+	// Parse the C4 ID from the directive
+	parts := strings.Fields(directive)
+	if len(parts) < 2 {
+		return fmt.Errorf("@data requires C4 ID")
+	}
+
+	id, err := c4.Parse(parts[1])
+	if err != nil {
+		return fmt.Errorf("invalid @data C4 ID: %w", err)
+	}
+
+	// Read content until next @ directive or EOF
+	var content strings.Builder
+	for {
+		line, err := p.readLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
+		// Check for next directive (but not lines that start with @ inside content)
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "@") && len(trimmed) > 1 {
+			// This is a new directive - we need to "unread" this line
+			// Since we can't unread, we'll handle this directive here
+			// and return to let the main loop continue
+			// Actually, we need to push this back somehow...
+			// For now, let's handle it recursively
+			if strings.HasPrefix(trimmed, "@data ") {
+				// Parse the accumulated content first
+				block, parseErr := ParseDataBlock(id, content.String())
+				if parseErr != nil {
+					return fmt.Errorf("failed to parse @data block: %w", parseErr)
+				}
+				m.AddDataBlock(block)
+				// Handle the new @data directive
+				return p.handleDataBlock(m, trimmed)
+			}
+			// Parse the accumulated content
+			block, parseErr := ParseDataBlock(id, content.String())
+			if parseErr != nil {
+				return fmt.Errorf("failed to parse @data block: %w", parseErr)
+			}
+			m.AddDataBlock(block)
+			// Handle the other directive
+			return p.handleDirective(m, trimmed)
+		}
+
+		content.WriteString(line)
+		content.WriteByte('\n')
+	}
+
+	// Parse the accumulated content
+	block, err := ParseDataBlock(id, content.String())
+	if err != nil {
+		return fmt.Errorf("failed to parse @data block: %w", err)
+	}
+	m.AddDataBlock(block)
+
+	return nil
 }
 
 // readLine reads a line from the input

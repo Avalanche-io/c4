@@ -20,6 +20,7 @@ type Manifest struct {
 	Layers       []*Layer
 	CurrentLayer *Layer // Current layer being parsed
 	Data         c4.ID  // Application-specific metadata
+	DataBlocks   []*DataBlock // Embedded @data blocks (for self-contained manifests)
 }
 
 // Layer represents a changeset layer
@@ -237,7 +238,17 @@ func (m *Manifest) writeWithOptions(w io.Writer, prettyPrint bool, indentWidth i
 			return written, err
 		}
 	}
-	
+
+	// Write embedded data blocks
+	for _, block := range m.DataBlocks {
+		formatted := FormatDataBlock(block)
+		n, err = fmt.Fprint(w, formatted)
+		written += int64(n)
+		if err != nil {
+			return written, err
+		}
+	}
+
 	return written, nil
 }
 
@@ -657,6 +668,36 @@ func (m *Manifest) Validate() error {
 			return fmt.Errorf("path traversal in %s", e.Name)
 		}
 	}
-	
+
 	return nil
+}
+
+// AddDataBlock adds an embedded data block to the manifest
+func (m *Manifest) AddDataBlock(block *DataBlock) {
+	m.DataBlocks = append(m.DataBlocks, block)
+}
+
+// GetDataBlock retrieves an embedded data block by its C4 ID
+func (m *Manifest) GetDataBlock(id c4.ID) *DataBlock {
+	for _, block := range m.DataBlocks {
+		if block.ID == id {
+			return block
+		}
+	}
+	return nil
+}
+
+// HasDataBlock checks if a data block with the given ID is embedded
+func (m *Manifest) HasDataBlock(id c4.ID) bool {
+	return m.GetDataBlock(id) != nil
+}
+
+// GetIDList retrieves an embedded ID list by its C4 ID
+// Returns nil if not found or if the block is not an ID list
+func (m *Manifest) GetIDList(id c4.ID) (*IDList, error) {
+	block := m.GetDataBlock(id)
+	if block == nil {
+		return nil, fmt.Errorf("data block not found: %s", id)
+	}
+	return block.GetIDList()
 }

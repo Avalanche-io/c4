@@ -2,10 +2,12 @@ package c4m
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"regexp"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // SequenceDetector identifies and collapses file sequences
@@ -131,19 +133,65 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 						group.padding, r.end, group.suffix)
 				}
 
-				// Use properties from first entry in range
+				// Aggregate metadata from all entries in range
+				var totalSize int64
+				var latestTime time.Time
+				var mostRestrictiveMode os.FileMode = 0777 // Start with most permissive
+				var depth int
+				idList := NewIDList()
+
+				for i := r.start; i <= r.end; i++ {
+					entry, ok := group.entries[i]
+					if !ok {
+						continue
+					}
+
+					// Sum sizes
+					totalSize += entry.Size
+
+					// Latest timestamp
+					if entry.Timestamp.After(latestTime) {
+						latestTime = entry.Timestamp
+					}
+
+					// Most restrictive mode (lowest permission bits)
+					// Only consider permission bits (lower 9 bits), preserve file type from first entry
+					entryPerms := entry.Mode.Perm()
+					if entryPerms < mostRestrictiveMode.Perm() {
+						mostRestrictiveMode = entryPerms
+					}
+
+					// Collect C4 IDs in order
+					idList.Add(entry.C4ID)
+
+					// Use depth from first entry
+					if i == r.start {
+						depth = entry.Depth
+					}
+				}
+
+				// Get file type from first entry
 				firstEntry := group.entries[r.start]
+				finalMode := (firstEntry.Mode & os.ModeType) | mostRestrictiveMode
+
+				// Compute C4 ID of the ID list
+				idListC4ID := idList.ComputeC4ID()
+
 				seqEntry := &Entry{
 					Name:       pattern,
-					Mode:       firstEntry.Mode,
-					Timestamp:  firstEntry.Timestamp,
-					Size:       firstEntry.Size * int64(r.count), // Total size
-					C4ID:       firstEntry.C4ID,                  // Note: This is placeholder
-					Depth:      firstEntry.Depth,
+					Mode:       finalMode,
+					Timestamp:  latestTime,
+					Size:       totalSize,
+					C4ID:       idListC4ID, // Reference to the ID list
+					Depth:      depth,
 					IsSequence: true,
 					Pattern:    pattern,
 				}
 				result.AddEntry(seqEntry)
+
+				// Create and embed the data block for the ID list
+				dataBlock := CreateDataBlockFromIDList(idList)
+				result.AddDataBlock(dataBlock)
 			} else {
 				// Add individual files for small ranges
 				for i := r.start; i <= r.end; i++ {

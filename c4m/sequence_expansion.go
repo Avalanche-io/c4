@@ -33,36 +33,20 @@ func (se *SequenceExpander) ExpandManifest(manifest *Manifest) (*Manifest, *Mani
 	for _, entry := range manifest.Entries {
 		// Check if entry name contains sequence notation
 		if sequencePattern.MatchString(entry.Name) {
-			// Parse the sequence
-			seq, err := ParseSequence(entry.Name)
-			if err != nil {
-				// Not a valid sequence, keep as-is
-				expanded.AddEntry(entry)
-				continue
-			}
-
 			// Add the sequence notation entry to the main manifest
 			expanded.AddEntry(entry)
 
-			// Create expanded entries
-			expandedFiles := seq.Expand()
-			for _, filename := range expandedFiles {
-				// Create a new entry for each expanded file
-				expandedEntry := &Entry{
-					Name:      filename,
-					Size:      entry.Size,       // Inherit size from sequence entry
-					Timestamp: entry.Timestamp,  // Inherit timestamp
-					Mode:      entry.Mode,       // Inherit mode
-					C4ID:      entry.C4ID,       // Note: In real use, each file would have unique ID
-					Depth:     entry.Depth,
-				}
+			// Expand using ID list if available
+			expandedEntries, err := ExpandSequenceEntryWithManifest(entry, manifest)
+			if err != nil {
+				// Not a valid sequence, keep as-is without expansion
+				continue
+			}
 
+			for _, expandedEntry := range expandedEntries {
 				if se.mode == SequenceEmbedded {
-					// Add to the same manifest with a layer marker
-					// Note: Layer directives are handled separately, just add the expanded entry
 					expanded.AddEntry(expandedEntry)
 				} else {
-					// Add to separate expansion manifest
 					expansions.AddEntry(expandedEntry)
 				}
 			}
@@ -70,6 +54,11 @@ func (se *SequenceExpander) ExpandManifest(manifest *Manifest) (*Manifest, *Mani
 			// Regular entry, copy as-is
 			expanded.AddEntry(entry)
 		}
+	}
+
+	// Copy data blocks to expanded manifest (they may be needed for further operations)
+	for _, block := range manifest.DataBlocks {
+		expanded.AddDataBlock(block)
 	}
 
 	if se.mode == SequenceEmbedded {
@@ -122,8 +111,10 @@ func sanitizeLayerName(pattern string) string {
 	return name
 }
 
-// ExpandSequenceEntry expands a single sequence entry into individual file entries
-func ExpandSequenceEntry(entry *Entry) ([]*Entry, error) {
+// ExpandSequenceEntry expands a single sequence entry into individual file entries.
+// The idList parameter provides individual C4 IDs for each file in order.
+// If idList is nil, the entry's C4ID is used for all expanded files (legacy behavior).
+func ExpandSequenceEntry(entry *Entry, idList *IDList) ([]*Entry, error) {
 	seq, err := ParseSequence(entry.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse sequence: %w", err)
@@ -132,18 +123,46 @@ func ExpandSequenceEntry(entry *Entry) ([]*Entry, error) {
 	var entries []*Entry
 	expandedFiles := seq.Expand()
 
-	for _, filename := range expandedFiles {
+	// Validate ID list count if provided
+	if idList != nil && idList.Count() != len(expandedFiles) {
+		return nil, fmt.Errorf("ID list count (%d) doesn't match expanded file count (%d)",
+			idList.Count(), len(expandedFiles))
+	}
+
+	for i, filename := range expandedFiles {
+		// Get individual C4 ID from ID list, or fall back to entry's C4ID
+		var fileID = entry.C4ID
+		if idList != nil {
+			fileID = idList.Get(i)
+		}
+
 		// Create a new entry for each expanded file
+		// Note: Size is unknown for individual files (use -1 for null)
 		expandedEntry := &Entry{
 			Name:      filename,
-			Size:      entry.Size,      // Inherit properties from sequence entry
-			Timestamp: entry.Timestamp,
-			Mode:      entry.Mode,
-			C4ID:      entry.C4ID, // Note: In real use, each would have unique ID
+			Size:      -1,              // Individual size unknown from range
+			Timestamp: entry.Timestamp, // Shared timestamp
+			Mode:      entry.Mode,      // Shared mode
+			C4ID:      fileID,
 			Depth:     entry.Depth,
 		}
 		entries = append(entries, expandedEntry)
 	}
 
 	return entries, nil
+}
+
+// ExpandSequenceEntryWithManifest expands a sequence entry using embedded DataBlocks
+func ExpandSequenceEntryWithManifest(entry *Entry, manifest *Manifest) ([]*Entry, error) {
+	// Try to get the ID list from embedded data blocks
+	var idList *IDList
+	if !entry.C4ID.IsNil() {
+		list, err := manifest.GetIDList(entry.C4ID)
+		if err == nil {
+			idList = list
+		}
+		// If not found in manifest, idList remains nil (legacy behavior)
+	}
+
+	return ExpandSequenceEntry(entry, idList)
 }

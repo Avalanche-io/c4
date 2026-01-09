@@ -225,3 +225,15 @@ Users can copy/paste a single range line to share a sequence.
 ### Storage
 
 ID list files are stored in the same content-addressed storage as any other content. They're just text files with a specific format.
+
+## Future Work
+
+### c4m fmt Tool
+
+A `gofmt`-like tool for c4m files that:
+- Reformats poorly formatted manifests into well-formatted output
+- Converts between canonical and ergonomic (pretty) forms
+- Normalizes whitespace in @data sections
+- Validates structure and C4 ID integrity
+
+Usage: `c4 fmt manifest.c4m` or `c4 fmt --canonical manifest.c4m`

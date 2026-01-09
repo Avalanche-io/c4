@@ -12,6 +12,8 @@ import (
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/bundle"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 	flag "github.com/spf13/pflag"
 )
 
@@ -264,17 +266,17 @@ func processPath(path string) error {
 
 func runBundleScan(path string) error {
 	// Configure bundle
-	var config *c4m.BundleConfig
+	var config *bundle.BundleConfig
 	if devModeFlag {
-		config = c4m.DevBundleConfig()
+		config = bundle.DevBundleConfig()
 		fmt.Fprintln(os.Stderr, "# Using development configuration (small chunks)")
 	} else {
-		config = c4m.DefaultBundleConfig()
+		config = bundle.DefaultBundleConfig()
 	}
-	
+
 	// Use simple CLI with directory-aware chunking
-	cli := c4m.NewSimpleBundleCLI(config, verboseFlag)
-	
+	cli := bundle.NewSimpleBundleCLI(config, verboseFlag)
+
 	// Execute command
 	if resumeFlag {
 		return cli.ResumeBundle(path)
@@ -284,14 +286,14 @@ func runBundleScan(path string) error {
 
 func runProgressiveScan(dirPath string) error {
 	// Create CLI options based on flags
-	var cliOpts []c4m.CLIOption
-	
-	cliOpts = append(cliOpts, c4m.WithOutput(os.Stdout, os.Stderr))
-	cliOpts = append(cliOpts, c4m.WithVerbose(verboseFlag))
-	cliOpts = append(cliOpts, c4m.WithProgress(!quietFlag))
-	
+	var cliOpts []scan.CLIOption
+
+	cliOpts = append(cliOpts, scan.WithOutput(os.Stdout, os.Stderr))
+	cliOpts = append(cliOpts, scan.WithVerbose(verboseFlag))
+	cliOpts = append(cliOpts, scan.WithProgress(!quietFlag))
+
 	if slowModeFlag {
-		cliOpts = append(cliOpts, c4m.WithSlowMode(true))
+		cliOpts = append(cliOpts, scan.WithSlowMode(true))
 	}
 	
 	if followFlag {
@@ -314,7 +316,7 @@ func runProgressiveScan(dirPath string) error {
 		fmt.Fprintf(os.Stderr, "#\n")
 	}
 	
-	cli := c4m.NewProgressiveCLI(dirPath, cliOpts...)
+	cli := scan.NewProgressiveCLI(dirPath, cliOpts...)
 	return cli.Run()
 }
 
@@ -323,14 +325,14 @@ func processDirectory(dirPath string) error {
 	if progressiveFlag {
 		return runProgressiveScan(dirPath)
 	}
-	
+
 	// Generate manifest for the directory
-	opts := []c4m.GeneratorOption{
-		c4m.WithC4IDs(!noIDsFlag),
-		c4m.WithSymlinks(followFlag),
+	opts := []scan.GeneratorOption{
+		scan.WithC4IDs(!noIDsFlag),
+		scan.WithSymlinks(followFlag),
 	}
-	
-	generator := c4m.NewGeneratorWithOptions(opts...)
+
+	generator := scan.NewGeneratorWithOptions(opts...)
 	
 	// For directories, we need different behavior based on flags
 	if manifestFlag {
@@ -364,7 +366,7 @@ func processDirectory(dirPath string) error {
 	return nil
 }
 
-func generateOneLevel(dirPath string, generator *c4m.Generator) (*c4m.Manifest, error) {
+func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest, error) {
 	manifest := c4m.NewManifest()
 	
 	entries, err := os.ReadDir(dirPath)
@@ -628,11 +630,11 @@ func getSource(path string) c4m.Source {
 	}
 	
 	// Treat as filesystem path
-	return c4m.FileSource{
+	return scan.FileSource{
 		Path: path,
-		Generator: c4m.NewGeneratorWithOptions(
-			c4m.WithC4IDs(!noIDsFlag),
-			c4m.WithSymlinks(followFlag),
+		Generator: scan.NewGeneratorWithOptions(
+			scan.WithC4IDs(!noIDsFlag),
+			scan.WithSymlinks(followFlag),
 		),
 	}
 }
@@ -772,9 +774,9 @@ func runExtract(args []string) {
 		fmt.Printf("Extracting bundle to: %s\n", outputPath)
 		// Use the proper @base chain extraction with selected format
 		if usePretty {
-			err = c4m.ExtractBundlePrettyToFile(bundlePath, outputPath)
+			err = bundle.ExtractBundlePrettyToFile(bundlePath, outputPath)
 		} else {
-			err = c4m.ExtractBundleToFile(bundlePath, outputPath)
+			err = bundle.ExtractBundleToFile(bundlePath, outputPath)
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -785,9 +787,9 @@ func runExtract(args []string) {
 		// Extract to stdout
 		// Use the proper @base chain extraction with selected format
 		if usePretty {
-			err = c4m.ExtractBundlePretty(bundlePath, os.Stdout)
+			err = bundle.ExtractBundlePretty(bundlePath, os.Stdout)
 		} else {
-			err = c4m.ExtractBundle(bundlePath, os.Stdout)
+			err = bundle.ExtractBundle(bundlePath, os.Stdout)
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
