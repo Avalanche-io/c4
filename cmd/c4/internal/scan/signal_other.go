@@ -1,6 +1,6 @@
 // +build !darwin,!freebsd,!openbsd,!windows
 
-package c4m
+package scan
 
 import "syscall"
 

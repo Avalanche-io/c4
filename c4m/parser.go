@@ -564,3 +564,10 @@ type DirectiveError struct {
 func (e *DirectiveError) Error() string {
 	return fmt.Sprintf("directive: %s", e.Directive)
 }
+
+// GenerateFromReader parses a C4M manifest from a reader
+// This is a convenience function that creates a parser and parses the entire manifest
+func GenerateFromReader(r io.Reader) (*Manifest, error) {
+	parser := NewParser(r)
+	return parser.ParseAll()
+}

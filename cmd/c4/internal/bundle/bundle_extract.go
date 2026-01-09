@@ -1,4 +1,4 @@
-package c4m
+package bundle
 
 import (
 	"fmt"

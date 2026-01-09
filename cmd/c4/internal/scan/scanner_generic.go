@@ -1,6 +1,6 @@
 // +build !darwin,!linux
 
-package c4m
+package scan
 
 // scanDirectoryFast falls back to standard scanning on unsupported platforms
 func (ps *ProgressiveScanner) scanDirectoryFast(dirPath string) error {

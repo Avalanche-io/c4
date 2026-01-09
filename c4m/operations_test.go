@@ -1,8 +1,6 @@
 package c4m
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,34 +24,6 @@ func createTestManifest(names ...string) *Manifest {
 		m.AddEntry(createTestEntry(name, int64(i*100)))
 	}
 	return m
-}
-
-func TestFileSource(t *testing.T) {
-	// Create a temp directory with a test file
-	tmpdir, err := os.MkdirTemp("", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpdir)
-	
-	// Create a test file
-	testFile := filepath.Join(tmpdir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	
-	fs := FileSource{Path: tmpdir}
-	manifest, err := fs.ToManifest()
-	if err != nil {
-		t.Fatalf("ToManifest() error = %v", err)
-	}
-	
-	if len(manifest.Entries) != 1 {
-		t.Errorf("Expected 1 entry, got %d", len(manifest.Entries))
-	}
-	if manifest.Entries[0].Name != "test.txt" {
-		t.Errorf("Entry name = %q, want %q", manifest.Entries[0].Name, "test.txt")
-	}
 }
 
 func TestManifestSource(t *testing.T) {

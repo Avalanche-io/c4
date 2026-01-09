@@ -1,6 +1,6 @@
-// +build linux
+// +build darwin
 
-package c4m
+package scan
 
 import (
 	"os"
@@ -10,7 +10,12 @@ import (
 	"unsafe"
 )
 
-// scanDirectoryFast uses optimized syscalls on Linux
+// FastDirScanner uses platform-specific optimizations for directory scanning
+type FastDirScanner struct {
+	scanner *ProgressiveScanner
+}
+
+// scanDirectoryFast uses optimized syscalls on Darwin/macOS
 func (ps *ProgressiveScanner) scanDirectoryFast(dirPath string) error {
 	// Open directory
 	fd, err := syscall.Open(dirPath, syscall.O_RDONLY, 0)
@@ -26,11 +31,11 @@ func (ps *ProgressiveScanner) scanDirectoryFast(dirPath string) error {
 	}
 	parent := parentEntry.(*ScanEntry)
 	
-	// Use getdents64 for faster directory reading
+	// Use getdirentries for faster directory reading
 	buf := make([]byte, 64*1024) // 64KB buffer
 	
 	for {
-		n, err := syscall.Getdents(fd, buf)
+		n, err := syscall.Getdirentries(fd, buf, nil)
 		if err != nil {
 			return err
 		}
@@ -38,7 +43,7 @@ func (ps *ProgressiveScanner) scanDirectoryFast(dirPath string) error {
 			break
 		}
 		
-		parseDirentsLinux(buf[:n], func(name string, typ uint8) {
+		parseDirents(buf[:n], func(name string, typ uint8) {
 			// Skip . and ..
 			if name == "." || name == ".." {
 				return
@@ -116,25 +121,12 @@ func (ps *ProgressiveScanner) scanDirectoryFast(dirPath string) error {
 	return nil
 }
 
-// LinuxDirent represents the Linux dirent structure
-type LinuxDirent struct {
-	Ino    uint64
-	Off    int64
-	Reclen uint16
-	Type   uint8
-	Name   [256]int8
-}
-
-// parseDirentsLinux parses the dirent structures from getdents
-func parseDirentsLinux(buf []byte, fn func(name string, typ uint8)) {
+// parseDirents parses the dirent structures from getdirentries
+func parseDirents(buf []byte, fn func(name string, typ uint8)) {
 	offset := 0
 	for offset < len(buf) {
-		if offset+19 > len(buf) { // Minimum size of dirent
-			break
-		}
-		
 		// Cast to dirent struct
-		dirent := (*LinuxDirent)(unsafe.Pointer(&buf[offset]))
+		dirent := (*syscall.Dirent)(unsafe.Pointer(&buf[offset]))
 		
 		// Check if we have a complete entry
 		if offset+int(dirent.Reclen) > len(buf) {
@@ -165,5 +157,7 @@ func clen(b []byte) int {
 
 // EnableFastScan enables platform-specific optimizations
 func (ps *ProgressiveScanner) EnableFastScan() {
-	// Linux-specific optimizations enabled
+	// Override the standard scanDirectory method
+	// This would be done through a method pointer or interface
+	// For simplicity, we'll just document that scanDirectoryFast should be used
 }

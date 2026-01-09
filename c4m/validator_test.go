@@ -1,7 +1,6 @@
 package c4m
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -97,48 +96,6 @@ drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 				t.Errorf("ValidateManifest() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestValidateBundle(t *testing.T) {
-	// Create a test bundle
-	tmpDir := t.TempDir()
-	scanPath := tmpDir + "/data"
-	os.MkdirAll(scanPath, 0755)
-
-	config := DevBundleConfig()
-	config.BundleDir = tmpDir
-	bundle, err := CreateBundle(scanPath, config)
-	if err != nil {
-		t.Fatalf("Failed to create test bundle: %v", err)
-	}
-
-	// Add some test data
-	manifest := NewManifest()
-	manifest.AddEntry(&Entry{
-		Name: "test.txt",
-		Size: 100,
-		Mode: 0644,
-	})
-
-	scan, err := bundle.NewScan(scanPath)
-	if err != nil {
-		t.Fatalf("Failed to create scan: %v", err)
-	}
-	bundle.AddProgressChunk(scan, manifest)
-	bundle.CompleteScan(scan)
-
-	// Test validation
-	validator := NewValidator(false)
-	err = validator.ValidateBundle(bundle.Path)
-	if err != nil {
-		t.Errorf("ValidateBundle() failed: %v", err)
-	}
-
-	// Test with non-existent bundle
-	err = validator.ValidateBundle("/non/existent/path")
-	if err == nil {
-		t.Error("Expected error for non-existent bundle")
 	}
 }
 

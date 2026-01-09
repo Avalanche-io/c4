@@ -12,19 +12,6 @@ type Source interface {
 	ToManifest() (*Manifest, error)
 }
 
-// FileSource represents a filesystem path
-type FileSource struct {
-	Path string
-	Generator *Generator
-}
-
-func (fs FileSource) ToManifest() (*Manifest, error) {
-	if fs.Generator == nil {
-		fs.Generator = NewGenerator()
-	}
-	return fs.Generator.GenerateFromPath(fs.Path)
-}
-
 // ManifestSource wraps an existing manifest
 type ManifestSource struct {
 	Manifest *Manifest

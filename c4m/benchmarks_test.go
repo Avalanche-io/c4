@@ -4,31 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Avalanche-io/c4"
 )
-
-// BenchmarkManifestGeneration tests manifest generation performance
-func BenchmarkManifestGeneration(b *testing.B) {
-	// Create temp directory with test files
-	tmpDir := b.TempDir()
-
-	// Create test files
-	for i := 0; i < 100; i++ {
-		path := filepath.Join(tmpDir, fmt.Sprintf("file%03d.txt", i))
-		os.WriteFile(path, []byte(fmt.Sprintf("content %d", i)), 0644)
-	}
-
-	generator := NewGenerator()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = generator.GenerateFromPath(tmpDir)
-	}
-}
 
 // BenchmarkManifestSort tests sorting performance
 func BenchmarkManifestSort(b *testing.B) {

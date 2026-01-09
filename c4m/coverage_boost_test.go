@@ -137,16 +137,6 @@ func TestSortingOperations(t *testing.T) {
 	}
 }
 
-// Test base chain resolver basic functionality
-func TestBaseChainBasic(t *testing.T) {
-	resolver := NewBaseChainResolver("/test/path")
-
-	// Test that resolver was created
-	if resolver == nil {
-		t.Error("Failed to create base chain resolver")
-	}
-}
-
 // Test natural sorting additional cases
 func TestNaturalSortAdditional(t *testing.T) {
 	tests := []struct {
@@ -179,9 +169,4 @@ func TestManifestSources(t *testing.T) {
 	if source.Manifest == nil {
 		t.Error("ManifestSource has nil manifest")
 	}
-
-	// Test FileSource
-	// This would need a real file, so we'll skip the actual file test
-	// but test the structure exists
-	_ = FileSource{Path: "test.c4m"}
 }

@@ -3,7 +3,7 @@
 *.a
 *.so
 *.exe
-c4
+/c4
 c4_new
 c4_cli
 cmd/c4/c4

@@ -1,6 +1,6 @@
 // +build windows
 
-package c4m
+package scan
 
 import "syscall"
 

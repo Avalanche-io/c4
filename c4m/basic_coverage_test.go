@@ -2,8 +2,6 @@ package c4m
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -111,56 +109,6 @@ func TestEntryBasic(t *testing.T) {
 	}
 }
 
-// Test Bundle configs
-func TestBundleConfigsBasic(t *testing.T) {
-	config1 := DefaultBundleConfig()
-	if config1.MaxBytesPerChunk == 0 {
-		t.Error("DefaultBundleConfig has zero MaxBytesPerChunk")
-	}
-
-	config2 := DevBundleConfig()
-	if config2.MaxBytesPerChunk == 0 {
-		t.Error("DevBundleConfig has zero MaxBytesPerChunk")
-	}
-}
-
-// Test Generator
-func TestGeneratorBasic(t *testing.T) {
-	g := NewGenerator()
-	if g == nil {
-		t.Fatal("NewGenerator returned nil")
-	}
-
-	// Test option functions
-	WithC4IDs(false)(g)
-	WithSymlinks(true)(g)
-	WithHidden(true)(g)
-	WithSequenceDetection(true)(g)
-
-	// Test NewGeneratorWithOptions
-	g2 := NewGeneratorWithOptions(
-		WithC4IDs(true),
-		WithSymlinks(false),
-	)
-	if g2 == nil {
-		t.Fatal("NewGeneratorWithOptions returned nil")
-	}
-}
-
-// Test GenerateFromReader
-func TestGenerateFromReaderBasic(t *testing.T) {
-	input := `@c4m 1.0
--rw-r--r-- 2025-01-01T00:00:00Z 100 test.txt`
-
-	manifest, err := GenerateFromReader(strings.NewReader(input))
-	if err != nil {
-		t.Errorf("GenerateFromReader failed: %v", err)
-	}
-	if manifest == nil {
-		t.Error("GenerateFromReader returned nil manifest")
-	}
-}
-
 // Test Sequence functions
 func TestSequenceBasic(t *testing.T) {
 	// Test IsSequence
@@ -184,30 +132,6 @@ func TestSequenceBasic(t *testing.T) {
 		if seq.Count() != 5 {
 			t.Errorf("Expected count 5, got %d", seq.Count())
 		}
-	}
-}
-
-// Test Progressive Scanner
-func TestProgressiveScannerBasic(t *testing.T) {
-	tmpDir := t.TempDir()
-	scanner := NewProgressiveScanner(tmpDir)
-	if scanner == nil {
-		t.Fatal("NewProgressiveScanner returned nil")
-	}
-}
-
-// Test Progressive CLI
-func TestProgressiveCLIBasic(t *testing.T) {
-	tmpDir := t.TempDir()
-	cli := NewProgressiveCLI(tmpDir)
-	if cli == nil {
-		t.Fatal("NewProgressiveCLI returned nil")
-	}
-
-	// Test GetStatus
-	status := cli.GetStatus()
-	if status == nil {
-		t.Error("GetStatus returned nil")
 	}
 }
 
@@ -288,55 +212,5 @@ func TestOperationsBasic(t *testing.T) {
 	}
 	if subtract == nil {
 		t.Error("Subtract returned nil")
-	}
-}
-
-// Test Metadata
-func TestMetadataBasic(t *testing.T) {
-	tmpFile := filepath.Join(t.TempDir(), "test.txt")
-	if err := os.WriteFile(tmpFile, []byte("test"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	info, err := os.Stat(tmpFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test NewFileMetadata - needs path, info, and depth
-	meta := NewFileMetadata(tmpFile, info, 0)
-	if meta == nil {
-		t.Fatal("NewFileMetadata returned nil")
-	}
-
-	// Test basic accessors
-	_ = meta.Name()
-	_ = meta.Size()
-	_ = meta.Mode()
-	_ = meta.ModTime()
-	_ = meta.IsDir()
-
-	// Test SetID
-	meta.SetID(c4.Identify(strings.NewReader("test")))
-
-	// Test MetadataToEntry
-	entry := MetadataToEntry(meta)
-	if entry == nil {
-		t.Error("MetadataToEntry returned nil")
-	}
-
-	// Test EntryToMetadata
-	meta2 := EntryToMetadata(entry)
-	if meta2 == nil {
-		t.Error("EntryToMetadata returned nil")
-	}
-}
-
-// Test timing functions
-func TestTimingBasic(t *testing.T) {
-	// Test ElapsedTime - it takes no parameters
-	elapsed := ElapsedTime()
-	if elapsed == "" {
-		t.Error("ElapsedTime returned empty string")
 	}
 }
