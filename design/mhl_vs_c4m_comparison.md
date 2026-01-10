@@ -9,6 +9,70 @@ MHL and C4M both create manifests with hashes, but they serve different purposes
 
 The key architectural difference: MHL's weaker hash support means content must stay attached to the manifest. C4's strong IDs mean content can safely be detached and stored separately.
 
+## The C4M Advantage: Work Without the Files
+
+The most immediate practical benefit of C4M is **communicating about files without having them**.
+
+### The Problem Today
+
+Nearly all file workflows require a full physical copy of the files to discuss them in detail:
+- Post-production can't organize footage until it physically arrives
+- Editors wait for terabytes to transfer before they can plan
+- Any discussion of "which files?" requires having those files on hand
+- Remote collaboration means shipping drives or waiting for uploads
+
+### The C4M Solution
+
+A C4M manifest is tiny - just text describing files with their C4 IDs. Send it from set via cell phone:
+
+```
+# DIT on set texts this to post-production
+Camera A, Day 1 footage ID: c4xyz...
+[attaches: day1_camera_a.c4m - 50KB]
+```
+
+Post-production receives the manifest in seconds and can immediately:
+- See all file names, sizes, timestamps
+- Reorganize the structure (rename shots, create folders)
+- Identify what's needed vs. what's not
+- Plan the edit structure
+- Discuss specific files by ID
+
+**All before a single byte of actual footage arrives.**
+
+### Re-association on Arrival
+
+When the physical media arrives (drive, upload, whatever):
+
+```go
+// The organized manifest from post-production
+organized := LoadManifest("edit_structure.c4m")
+
+// The actual files, from ANY source
+for _, entry := range organized.Entries {
+    content := FindContentByID(entry.C4ID)  // Source doesn't matter
+    PlaceAt(content, entry.Path)            // Put it where the editor wants it
+}
+```
+
+The files can arrive from:
+- Original camera cards from set
+- Backup drive from the vault
+- Cloud upload from another facility
+- Any source at all
+
+**If the C4 ID matches, it's the right content. The data IS the data.**
+
+### Why MHL Can't Do This
+
+MHL is designed around files being present:
+- Verification requires re-hashing files you have
+- Metadata describes files at their current location
+- Weak hashes mean you can't trust content from arbitrary sources
+
+MHL answers: "Are these files still what we recorded?"
+C4M answers: "What content do we need, and what structure should it have?"
+
 ## What Each System Does
 
 ### MHL: Metadata + Integrity
