@@ -1,239 +1,206 @@
-# ASC MHL vs C4M: A Philosophical Analysis
+# ASC MHL vs C4M: Different Tools for Different Jobs
 
 ## Executive Summary
 
-ASC MHL and C4M appear superficially similar - both create manifests with hashes for file verification. However, they represent fundamentally different approaches to data integrity:
+MHL and C4M both create manifests with hashes, but they serve different purposes:
 
-- **MHL**: Hash-based verification layer on top of traditional file systems
-- **C4M**: Expression of content-addressed identity where the ID IS the content
+- **MHL**: Metadata container with integrity checking - associates arbitrary information with files
+- **C4M**: Content structure definition with identity - describes what files exist with what content
 
-This analysis examines why many MHL "features" are unnecessary in the C4 world, and why apparent "gaps" in C4M often reflect architectural strengths rather than missing functionality.
+The key architectural difference: MHL's weaker hash support means content must stay attached to the manifest. C4's strong IDs mean content can safely be detached and stored separately.
 
-## The Fundamental Difference
+## What Each System Does
 
-### MHL's Model: "Hash of Content"
+### MHL: Metadata + Integrity
 
-In MHL, a hash is *metadata about* content:
-```
-File exists → Compute hash → Store hash → Later verify hash matches
-```
-
-The file and its hash are separate entities. The hash describes the file. Trust requires:
-- Trusting the hash was computed correctly
-- Trusting the hash wasn't tampered with
-- Chain of custody to establish provenance
-
-### C4's Model: "Content IS Identity"
-
-In C4, the ID *is* the content's identity:
-```
-Content exists → Content HAS an ID → ID uniquely identifies that exact content forever
-```
-
-There is no separation between content and identity. The C4 ID is not a "hash of the file" - it IS the identifier. This eliminates entire problem categories:
-
-| MHL Problem | C4 Resolution |
-|-------------|---------------|
-| "Was this hash computed correctly?" | If you have content with ID X, it IS content X by definition |
-| "Has the hash been tampered with?" | IDs are unforgeable - computing ID on any content tells you what it IS |
-| "Is this the same file as before?" | Same ID = same content, always and forever |
-| "Who computed this hash?" | Irrelevant - the ID is determined by content, not by who computes it |
-
-## Feature Analysis Through C4 Lens
-
-### "Creator/Process Metadata" - Misaligned Concept
-
-**MHL approach**: Embed creator info in the manifest to establish provenance.
-
-**C4 perspective**: The manifest has a C4 ID. The manifest IS whatever content produces that ID. Embedding creator metadata would:
-1. Change the manifest's C4 ID every time metadata changes
-2. Conflate "what exists" with "who recorded it"
-3. Break the fundamental property that identical content = identical ID
-
-**C4 solution**: Store provenance EXTERNALLY:
-```
-manifest_id → {creator, timestamp, location, notes}
-```
-
-This keeps the manifest's identity stable while allowing unlimited metadata to be associated with it. The mapping itself can have a C4 ID if you need to verify it.
-
-### "Hash Action Tracking" (original/verified/failed) - Unnecessary
-
-**MHL approach**: Track "original hash", "verified hash", "failed verification" as events.
-
-**C4 perspective**: These concepts don't apply:
-- **"Original hash"**: Content has ONE identity. First computation or millionth, same ID.
-- **"Verified hash"**: Computing an ID tells you what content IS. There's no separate "verification."
-- **"Failed verification"**: If ID differs, you have DIFFERENT content. Not "failed verification" - just "this is different content."
-
-**What you actually track**: "At time T, content at path P had ID X." Later: "At time T', content at path P has ID Y." If X ≠ Y, content changed. This is just comparing IDs, not "verification events."
-
-### "Multiple Hash Formats" - Architectural Mismatch
-
-**MHL approach**: Support MD5, SHA1, XXH64, C4, etc. for compatibility.
-
-**C4 perspective**: Supporting weaker algorithms undermines the entire security model:
-- MD5 has known collision attacks
-- SHA1 is deprecated for security purposes
-- Using multiple algorithms creates ambiguity about which is authoritative
-
-**C4 solution**: C4 IS the identity. Period. If legacy systems need other hashes, they compute them separately - but those are not the content's identity, they're compatibility shims.
-
-### "Chain of Custody" - Solved Differently
-
-**MHL approach**: Detailed provenance tracking because hashes alone don't establish trust.
-
-**C4 perspective**: The ID IS cryptographic proof. If you have content with ID X, you have exactly that content - guaranteed by mathematics, not by trusting who computed the hash.
-
-What remains is tracking WHICH IDs you care about and WHEN you observed them:
-```
-My archive contains: c4abc123..., c4def456..., c4ghi789...
-On 2025-01-01, directory /data had ID c4xyz...
-```
-
-This is simpler and more robust than MHL's approach.
-
-### "Ignore Patterns" - Application Logic, Not Format
-
-**MHL approach**: Embed ignore patterns in the manifest format.
-
-**C4 perspective**: A manifest describes WHAT EXISTS. What you CHOOSE to record is application logic:
-- Scanner decides what to scan
-- User configures exclusions
-- Result is a manifest of what was recorded
-
-Embedding ignore patterns in the format conflates "what is" with "how we looked."
-
-**C4 solution**: `.c4ignore` or scanner flags are fine - they're scanner configuration, not manifest features.
-
-### "Rename Tracking" - Automatic in C4
-
-**MHL approach**: Track `<previouspath>` because the hash alone doesn't tell you about renames.
-
-**C4 perspective**: Same content = same C4 ID regardless of path. Renames are VISIBLE automatically:
-```
-# Time T1:
--rw-r--r-- ... old/path/file.txt c4abc123...
-
-# Time T2:
--rw-r--r-- ... new/path/file.txt c4abc123...
-```
-
-You can SEE that c4abc123 moved from old/ to new/. No special tracking needed.
-
-For moves with modifications, they're different content (different IDs) - which is correct.
-
-### "Directory Structure vs Content Hashes" - False Dichotomy
-
-**MHL approach**: Separate "structure hash" and "content hash" for directories.
-
-**C4 perspective**: A directory's identity IS its structure+content. The C4 ID is computed from:
-1. Direct children's names, modes, timestamps
-2. Files' C4 IDs (content)
-3. Subdirectories' C4 IDs (recursive)
-
-Separating structure from content creates two identities for one thing. In C4, if ANYTHING changes (name, content, structure), the ID changes - because it's different content.
-
-### "Generations" vs "@base Chains"
-
-**MHL approach**: Numbered generations, each a complete snapshot.
-
-**C4 approach**: `@base` chains where each layer references previous state by ID.
-
-These LOOK similar but differ fundamentally:
-- MHL generations are separate documents linked by sequence numbers
-- C4 @base references are cryptographic: the base ID IS the exact previous state
+MHL is fundamentally a **metadata container**:
 
 ```
-@base c4abc123...   # This manifest builds on EXACTLY that content
+Files exist → Record metadata about files → Include hashes for integrity checking
 ```
 
-You can't fake or swap the base because the ID uniquely identifies it.
+The manifest holds:
+- File paths and hashes
+- Creator information, timestamps, locations
+- Process notes, verification history
+- Any arbitrary metadata the workflow needs
 
-## What MHL Gets Right (For Its Use Case)
+MHL uses hashing for integrity verification - "has this file changed since we recorded it?"
 
-### Production Workflow Integration
+### C4M: Structure + Identity
 
-MHL is designed for media production where:
-- Multiple parties handle media
-- Legal chain of custody matters
-- Human-readable audit trails are required
-- Integration with existing XML tooling is valuable
+C4M is fundamentally a **structure definition with content identity**:
 
-C4M is designed for:
+```
+Files exist → Record structure → Each file has its C4 ID
+```
+
+The manifest holds:
+- File paths with filesystem metadata (mode, timestamp, size)
+- C4 IDs for each file's content
+- Hierarchical structure
+
+C4M uses C4 IDs for identity - "this IS the content, identified forever by this ID."
+
+## The Hash Quality Difference
+
+This is the crucial architectural distinction:
+
+### MHL: Variable Hash Strength
+
+MHL supports MD5, SHA1, XXH64, C4, and others. This flexibility has consequences:
+
+- **MD5/SHA1 have known collision attacks** - an attacker can create different files with the same hash
+- **Content must stay attached** - you can't safely store files by hash since collisions could be forged
+- **Which hash is authoritative?** - ambiguity when multiple algorithms are present
+
+MHL trades security for compatibility with legacy systems.
+
+### C4M: Strong Identity Only
+
+C4M uses only C4 IDs (SMPTE ST 2114:2017, 512-bit SHA-512):
+
+- **No known collision attacks** - finding two files with the same C4 ID is computationally infeasible
+- **Content can be detached** - safely store files by C4 ID, reference them from any manifest
+- **ID IS identity** - no ambiguity, no "which hash should I trust?"
+
+This enables content-addressed storage: files stored once by ID, referenced from anywhere.
+
+## Content Detachment: The Key Capability
+
+Because C4 IDs are cryptographically strong, C4M enables something MHL cannot safely do:
+
+```
+# C4M workflow
+project/
+├── manifest.c4m           # Structure definition
+└── .c4_store/             # Content stored by ID
+    ├── c4abc.../          # File content
+    └── c4def.../          # File content
+
+# Or even more separated:
+manifest.c4m               # Just the structure (can email this)
+content-server.example.com # Files stored by C4 ID elsewhere
+```
+
+The manifest says "file.txt has ID c4abc..." - you can find that content anywhere it's stored by ID. The structure is fully detached from the content.
+
+With MHL's weaker hashes, this would be dangerous - someone could forge a collision and substitute malicious content.
+
+## Metadata: Different Philosophies
+
+### MHL: Embedded Metadata
+
+MHL embeds metadata directly:
+```xml
+<hash>
+  <creatorinfo>John Doe, DIT</creatorinfo>
+  <location>Stage 5</location>
+  <process>original</process>
+</hash>
+```
+
+This is MHL's purpose - it's a metadata container.
+
+### C4M: Metadata is Just Another File
+
+C4M doesn't embed arbitrary metadata because it doesn't need to. In the C4 worldview:
+
+```
+project/
+├── footage/
+│   └── A001.mov          c4abc...
+├── footage.c4m           # Structure manifest
+└── metadata.json         # Any metadata you want
+```
+
+Want to associate metadata with files? Add a file to the bundle. The C4 ID of that metadata file proves it hasn't changed either.
+
+This isn't a limitation - it's a simpler model. Metadata is content too.
+
+## Re-association: Finding Content by ID
+
+In C4M, if you have:
+- A manifest with IDs
+- Files somewhere (maybe stored by ID, maybe not)
+
+You can always re-associate them:
+
+```go
+// Trivial if files are stored by ID
+content := store.Get(entry.C4ID)
+
+// Possible even without ID-based storage (compute IDs to find matches)
+for _, file := range allFiles {
+    if c4.Identify(file) == entry.C4ID {
+        // Found it
+    }
+}
+```
+
+MHL can't do this as reliably because weak hashes might have collisions.
+
+## Verification vs Identity
+
+### MHL: "Has it changed?"
+
+MHL verifies by re-computing hash and comparing:
+```
+original_hash == computed_hash  →  file unchanged
+original_hash != computed_hash  →  file changed (or hash collision)
+```
+
+### C4M: "What is it?"
+
+C4M identifies by computing ID:
+```
+computed_id == expected_id  →  this IS that content
+computed_id != expected_id  →  this IS different content
+```
+
+The distinction is subtle but important. MHL asks "is this still the same?" C4M says "this IS content X" (mathematical fact, not verification).
+
+## Use Cases
+
+### When to Use MHL
+
+- Production workflows requiring chain-of-custody documentation
+- Systems that need arbitrary embedded metadata
+- Contractual requirements for MHL format
+- Integration with existing MHL tooling (cameras, post-production)
+
+### When to Use C4M
+
 - Content-addressed storage systems
 - Deduplication workflows
-- Cryptographic verification
-- Developer/archive use cases
+- Distributed file synchronization
+- Archive systems where content may be stored separately
+- Any workflow benefiting from strong content identity
 
-### Industry Adoption
+## Interoperability
 
-MHL has ASC backing and film industry adoption. This is valuable for:
-- Camera manufacturer support
-- DIT tool integration
-- Post-production pipelines
-- Contractual requirements
+The formats can coexist:
 
-## Interoperability Approach
-
-Rather than making C4M "more like MHL", the right approach is:
-
-### 1. Export Tools (C4M → MHL)
-```bash
-c4 export --format mhl manifest.c4m > output.mhl
 ```
-Generate MHL-format output for systems that require it.
-
-### 2. Import Tools (MHL → C4M)
-```bash
-c4 import-mhl ascmhl/ > manifest.c4m
-```
-Convert MHL history to C4M, computing C4 IDs for content.
-
-### 3. Parallel Existence
-Keep both where needed:
-```
-data/
-├── ascmhl/           # MHL for production chain of custody
-└── .c4m_bundle/      # C4M for content-addressed operations
+project/
+├── ascmhl/               # MHL for production chain of custody
+├── data.c4m              # C4M for content-addressed operations
+└── files/                # Actual content
 ```
 
-### 4. External Metadata for C4M
-If production metadata is needed:
-```
-scan.c4m              # Pure C4M manifest (stable ID)
-scan.c4m.meta.json    # External metadata (creator, location, notes)
-```
+Tools can convert between formats:
+- `c4 export --format mhl` - Generate MHL from C4M (adding metadata at export)
+- `c4 import-mhl` - Convert MHL to C4M (computing C4 IDs for content)
 
-The manifest's ID is stable; metadata can evolve independently.
+## Summary
 
-## Conclusion
+| Aspect | MHL | C4M |
+|--------|-----|-----|
+| **Purpose** | Metadata container + integrity | Structure definition + identity |
+| **Hash strength** | Variable (MD5, SHA1, etc.) | Strong only (C4/SHA-512) |
+| **Content attachment** | Must stay attached (collision risk) | Can safely detach (ID is identity) |
+| **Arbitrary metadata** | Embedded in format | Just another file in bundle |
+| **Re-association** | By path/hash (collision risk) | By ID (mathematically certain) |
+| **Verification model** | "Has it changed?" | "What is it?" |
 
-### MHL Features That Are "Missing" From C4M
-
-| "Missing" Feature | Why It's Not Missing |
-|-------------------|---------------------|
-| Creator metadata | Belongs external to manifest (doesn't change ID) |
-| Multiple hashes | C4 IS identity; others are compatibility shims |
-| Hash actions | ID is computed, not "verified" - concepts don't apply |
-| Verification log | Computing ID tells you what content IS |
-| Rename tracking | Same ID = same content, visible automatically |
-| Structure hashes | Structure IS part of content identity |
-
-### What C4M Actually Offers
-
-1. **Mathematical certainty**: ID proves content, not trust in process
-2. **Automatic deduplication**: Same content = same ID everywhere
-3. **Simpler model**: Content HAS identity, not "content plus separate hash"
-4. **Efficient deltas**: @base chains reference exact previous state
-5. **Sequence support**: First-class handling of numbered file sequences
-6. **Boolean operations**: Set math on manifests (diff, union, intersect)
-
-### Strategic Position
-
-C4M is not "MHL minus features" - it's a fundamentally different approach where many MHL features become unnecessary. The formats serve different philosophies:
-
-- **MHL**: "Track hashes to verify files haven't changed"
-- **C4M**: "Content has identity; manifest describes what exists"
-
-Interoperability tools make sense. Feature adoption does not - it would compromise C4's architectural advantages while gaining little benefit.
+Neither format is "better" - they solve different problems. MHL is a metadata container for production workflows. C4M is a content structure definition enabling content-addressed operations.
