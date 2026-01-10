@@ -8,51 +8,69 @@ Should C4M include production metadata like creator info, location, and verifica
 
 Production metadata serves real needs, but embedding it in C4M conflicts with content-addressed identity. This document explains why, and outlines the right approach.
 
-## What MHL Provenance Actually Solves
+## What MHL Provenance Actually Is
 
-MHL's detailed metadata isn't about proving content authenticity - C4 IDs do that mathematically. MHL metadata solves **human/legal/operational problems**:
+### The Honest Truth About MHL "Provenance"
 
-### The Real Use Cases
+MHL doesn't **provide** provenance - it provides a **place to write claims about provenance**:
 
-**1. Audit Trail for Blame Assignment**
-```
-If footage arrives corrupted, who had custody?
-- DIT created manifest at 9:15 AM on Stage 5
-- Courier picked up drive at 11:30 AM
-- Post house received at 2:00 PM with different hash
-→ Investigate the courier's handling
-```
+1. Someone voluntarily runs `ascmhl create`
+2. They type in their name, location, role
+3. The software writes that into XML
 
-**2. Contract Compliance**
-```
-Studio contract requires:
-- Named DIT signs off on ingest
-- Location documented for insurance
-- Timestamp proves delivery deadline met
-```
+Nothing prevents:
+- Not running the tool at all (thumbdrive sits in a hot car, no log entry)
+- Lying about who you are
+- Forging entries after the fact
+- Running it at a different time than claimed
 
-**3. Quality Control Forensics**
-```
-Which camera cards were ingested by which operator?
-Which workstation was used?
-Were ignore patterns applied consistently?
-```
+The XML records **claims**, not **proof**. The "chain of custody" is really "a log of when people chose to run MHL and what they typed."
 
-**4. Legal Discovery**
-```
-Lawsuit requires documentation of everyone who handled footage
-XML audit trail is evidence
-```
+### What MHL Actually Provides
 
-### What C4 Already Solves (That MHL Also Tries To Solve)
+| What It Seems To Provide | What It Actually Provides |
+|--------------------------|---------------------------|
+| Proof of who handled media | A place to record who CLAIMS to have handled it |
+| Proof of location | A place to record CLAIMED location |
+| Chain of custody | A log of when MHL was voluntarily run |
+| Verification history | Records of when someone CHOSE to verify |
 
-| Problem | MHL Approach | C4 Approach |
-|---------|--------------|-------------|
-| "Is this the same content?" | Hash comparison | ID comparison (same, but simpler) |
-| "Has content been modified?" | Compare hashes across generations | Compare IDs (identical mechanism) |
-| "Prove content authenticity" | Chain of custody + hashes | ID IS mathematical proof |
+### Why Production Uses It Anyway
 
-The key insight: **C4 IDs prove content identity mathematically. MHL metadata documents human processes.**
+MHL's value isn't cryptographic proof - it's **standardized documentation**:
+
+- **Industry convention**: Studios expect MHL, contracts specify it
+- **Legal recognition**: Lawyers accept XML logs as "documentation"
+- **Tool ecosystem**: Cameras, DITs, post houses all speak MHL
+- **Process formalization**: Having a standard encourages consistent practice
+
+The actual provenance comes from **human trust and process** - MHL just gives that process a standard format.
+
+### C4's More Honest Approach
+
+C4 accepts that:
+- **Content identity** can be proven mathematically (the ID)
+- **Process documentation** requires human trust regardless of format
+- **No format can make someone run software** they don't want to run
+- **No format can prevent lying** about metadata
+
+So C4 separates these clearly:
+- The **ID proves content** (mathematical, unforgeable)
+- **Everything else is external** (documented however you want)
+
+An email saying "the footage ID is c4xyz, signed John Doe DIT" has exactly as much provenance value as an MHL entry claiming the same thing - both require trusting John Doe.
+
+### What C4 Actually Proves vs What MHL Claims
+
+| Aspect | C4 Proof | MHL Claim |
+|--------|----------|-----------|
+| Content identity | Mathematical (ID = content) | Hash match (same mechanism) |
+| Who created manifest | None (external documentation) | XML field (unverified claim) |
+| When it was created | None (external documentation) | XML field (unverified claim) |
+| Where it was created | None (external documentation) | XML field (unverified claim) |
+| That verification occurred | Comparing IDs proves content match | XML entry claims verification happened |
+
+The key insight: **Both systems require trusting human process for provenance. C4 is honest about this; MHL provides a standard format for claims.**
 
 ## Why NOT to Embed Metadata in C4M
 
