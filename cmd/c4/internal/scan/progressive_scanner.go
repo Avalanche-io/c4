@@ -587,8 +587,7 @@ func (ps *ProgressiveScanner) OutputCurrentState(w io.Writer) error {
 	}
 	
 	// Output manifest
-	_, err := manifest.WriteTo(w)
-	return err
+	return NewEncoder(w).Encode(manifest)
 }
 
 // addEntriesToManifest recursively adds entries to manifest

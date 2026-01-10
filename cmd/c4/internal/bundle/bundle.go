@@ -406,9 +406,13 @@ func (b *Bundle) AddProgressChunkWithBase(scan *BundleScan, manifest *Manifest, 
 	
 	// Sort entries: files before directories at same depth
 	manifest.SortEntries()
-	
-	// Add manifest entries - use AllEntriesString for full hierarchy
-	content.WriteString(manifest.AllEntriesString())
+
+	// Add manifest entries with proper indentation
+	for _, entry := range manifest.Entries {
+		content.WriteString(strings.Repeat("  ", entry.Depth))
+		content.WriteString(entry.Canonical())
+		content.WriteString("\n")
+	}
 	
 	// Track content size
 	chunkContent := []byte(content.String())

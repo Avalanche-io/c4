@@ -145,8 +145,8 @@ func (sbc *SimpleBundleCLI) ResumeBundle(bundlePath string) error {
 			return fmt.Errorf("failed to read last chunk: %w", err)
 		}
 
-		parser := NewParser(strings.NewReader(string(data)))
-		lastManifest, err = parser.ParseAll()
+		decoder := NewDecoder(strings.NewReader(string(data)))
+		lastManifest, err = decoder.Decode()
 		if err != nil {
 			return fmt.Errorf("failed to parse last chunk: %w", err)
 		}

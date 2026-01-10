@@ -547,6 +547,6 @@ func extractSequencePattern(name string) (string, int) {
 
 // GenerateFromReader creates a manifest by parsing an existing C4M
 func GenerateFromReader(r io.Reader) (*Manifest, error) {
-	parser := NewParser(r)
-	return parser.ParseAll()
+	decoder := NewDecoder(r)
+	return decoder.Decode()
 }

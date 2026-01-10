@@ -6,6 +6,7 @@ C4M is a human-readable, text-based format for describing filesystem contents wi
 
 - **README.md** (this file) - User guide and quick start
 - **[SPECIFICATION.md](./SPECIFICATION.md)** - Formal C4M format specification v1.0
+- **[WORKFLOWS.md](./WORKFLOWS.md)** - Common workflows and usage patterns
 - **[IMPLEMENTATION_NOTES.md](./IMPLEMENTATION_NOTES.md)** - Implementation clarifications and edge cases
 
 ## What is C4M?

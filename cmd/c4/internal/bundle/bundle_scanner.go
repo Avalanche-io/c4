@@ -455,8 +455,7 @@ func (s *BundleScannerImpl) computeDirectoryC4(entries []*Entry) c4.ID {
 	}
 	
 	// Compute C4 of the manifest
-	manifestStr := manifest.AllEntriesString()
-	return c4.Identify(strings.NewReader(manifestStr))
+	return manifest.ComputeC4ID()
 }
 
 // Complete finalizes the scan

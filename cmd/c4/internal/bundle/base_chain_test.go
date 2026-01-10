@@ -155,7 +155,7 @@ func TestBaseChainResolution(t *testing.T) {
 
 			// Generate ID for this manifest
 			var buf strings.Builder
-			m.WriteTo(&buf)
+			NewEncoder(&buf).Encode(m)
 			id := c4.Identify(strings.NewReader(buf.String()))
 
 			resolver.cache[id] = m

@@ -76,8 +76,8 @@ drwxr-xr-x 2025-01-01T00:00:00Z 200 dir/
 	defer f.Close()
 
 	// Parse the manifest
-	parser := NewParser(f)
-	manifest, err := parser.ParseAll()
+	decoder := NewDecoder(f)
+	manifest, err := decoder.Decode()
 	if err != nil {
 		t.Fatalf("Failed to parse manifest: %v", err)
 	}
@@ -123,8 +123,8 @@ func TestBaseChainResolutionWithMemFS(t *testing.T) {
 	}
 	defer f.Close()
 
-	parser := NewParser(f)
-	manifest, err := parser.ParseAll()
+	decoder := NewDecoder(f)
+	manifest, err := decoder.Decode()
 	if err != nil {
 		t.Fatalf("Failed to parse derived manifest: %v", err)
 	}

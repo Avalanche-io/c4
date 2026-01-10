@@ -422,9 +422,8 @@ func ExtractBundle(bundlePath string, output io.Writer) error {
 		return err
 	}
 
-	// Use the manifest's WriteTo method for canonical format
-	_, err = manifest.WriteTo(output)
-	return err
+	// Use the encoder for canonical format
+	return NewEncoder(output).Encode(manifest)
 }
 
 // ExtractBundleToFile extracts a bundle to a file in canonical format
@@ -445,9 +444,8 @@ func ExtractBundlePretty(bundlePath string, output io.Writer) error {
 		return err
 	}
 
-	// Use the manifest's WritePretty method
-	_, err = manifest.WritePretty(output)
-	return err
+	// Use the encoder with pretty format
+	return NewEncoder(output).SetPretty(true).Encode(manifest)
 }
 
 // ExtractBundlePrettyToFile extracts a bundle to a file in pretty format

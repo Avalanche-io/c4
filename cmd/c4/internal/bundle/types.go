@@ -14,13 +14,14 @@ type Manifest = c4m.Manifest
 
 // Function aliases
 var NewManifest = c4m.NewManifest
-var NewParser = c4m.NewParser
+var NewDecoder = c4m.NewDecoder
+var NewEncoder = c4m.NewEncoder
 var NaturalLess = c4m.NaturalLess
 
 // GenerateFromReader creates a manifest by parsing an existing C4M
 func GenerateFromReader(r interface{ Read([]byte) (int, error) }) (*Manifest, error) {
-	parser := c4m.NewParser(r)
-	return parser.ParseAll()
+	decoder := c4m.NewDecoder(r)
+	return decoder.Decode()
 }
 
 // Timing helpers for progress output

@@ -98,8 +98,9 @@ func init() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `c4 - Content-addressable identification using C4 IDs
 
-Usage: 
+Usage:
   c4 [options] [path...]           # Generate C4 IDs or manifests
+  c4 fmt [options] <file.c4m>       # Format manifest (canonical or ergonomic)
   c4 diff <source> <target>         # Compare manifests or paths
   c4 union <inputs...>              # Combine manifests
   c4 intersect <inputs...>          # Find common elements
@@ -148,6 +149,9 @@ func main() {
 			return
 		case "extract":
 			runExtract(os.Args[2:])
+			return
+		case "fmt":
+			runFmt(os.Args[2:])
 			return
 		}
 	}
@@ -443,25 +447,30 @@ func outputID(id c4.ID, path string) {
 }
 
 func outputManifest(manifest *c4m.Manifest) {
+	// TODO: Sequence collapse/expansion not yet implemented
 	// Apply sequence collapse if requested
-	if collapseSequencesFlag {
-		manifest = c4m.CollapseToSequences(manifest, minSequenceLengthFlag)
-	}
+	// if collapseSequencesFlag {
+	// 	manifest = c4m.CollapseToSequences(manifest, minSequenceLengthFlag)
+	// }
 
 	// Apply sequence expansion if requested
-	if expandSequencesFlag {
-		mode := c4m.SequenceEmbedded
-		if standaloneSequencesFlag {
-			mode = c4m.SequenceStandalone
-		}
-
-		expandedManifest, err := c4m.ProcessManifestWithSequences(manifest, mode)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error expanding sequences: %v\n", err)
-		} else {
-			manifest = expandedManifest
-		}
-	}
+	// if expandSequencesFlag {
+	// 	mode := c4m.SequenceEmbedded
+	// 	if standaloneSequencesFlag {
+	// 		mode = c4m.SequenceStandalone
+	// 	}
+	//
+	// 	expandedManifest, err := c4m.ProcessManifestWithSequences(manifest, mode)
+	// 	if err != nil {
+	// 		fmt.Fprintf(os.Stderr, "Error expanding sequences: %v\n", err)
+	// 	} else {
+	// 		manifest = expandedManifest
+	// 	}
+	// }
+	_ = collapseSequencesFlag
+	_ = expandSequencesFlag
+	_ = minSequenceLengthFlag
+	_ = standaloneSequencesFlag
 
 	switch formatFlag {
 	case "paths":
@@ -470,15 +479,15 @@ func outputManifest(manifest *c4m.Manifest) {
 		}
 	case "c4m":
 		if prettyFlag {
-			manifest.WritePretty(os.Stdout)
+			c4m.NewEncoder(os.Stdout).SetPretty(true).Encode(manifest)
 		} else {
-			manifest.WriteTo(os.Stdout)
+			c4m.NewEncoder(os.Stdout).Encode(manifest)
 		}
 	default:
 		if prettyFlag {
-			manifest.WritePretty(os.Stdout)
+			c4m.NewEncoder(os.Stdout).SetPretty(true).Encode(manifest)
 		} else {
-			manifest.WriteTo(os.Stdout)
+			c4m.NewEncoder(os.Stdout).Encode(manifest)
 		}
 	}
 }
@@ -661,20 +670,20 @@ func runValidate(args []string) {
 	
 	var validationErr error
 	if info.IsDir() {
-		// Validate as bundle
-		fmt.Printf("Validating bundle: %s\n", path)
-		validationErr = validator.ValidateBundle(path)
-	} else {
-		// Validate as manifest file
-		fmt.Printf("Validating manifest: %s\n", path)
-		file, err := os.Open(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: cannot open file: %v\n", err)
-			os.Exit(1)
-		}
-		defer file.Close()
-		validationErr = validator.ValidateManifest(file)
+		// Bundle validation not yet implemented
+		fmt.Fprintf(os.Stderr, "Error: bundle validation not yet implemented, please specify a .c4m manifest file\n")
+		os.Exit(1)
 	}
+
+	// Validate as manifest file
+	fmt.Printf("Validating manifest: %s\n", path)
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot open file: %v\n", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+	validationErr = validator.ValidateManifest(file)
 	
 	// Report results
 	errors := validator.GetErrors()
@@ -706,19 +715,10 @@ func runValidate(args []string) {
 	if stats.Layers > 0 {
 		fmt.Printf("  Layers: %d\n", stats.Layers)
 	}
-	if stats.ChunkedManifests > 0 {
-		fmt.Printf("  Chunked manifests: %d\n", stats.ChunkedManifests)
-	}
-	if len(stats.CollapsedDirs) > 0 {
-		fmt.Printf("  Collapsed directories: %v\n", stats.CollapsedDirs)
+	if stats.Chunks > 0 {
+		fmt.Printf("  Chunks referenced: %d\n", stats.Chunks)
 	}
 	fmt.Printf("  Max depth: %d\n", stats.MaxDepth)
-	
-	// Note about collapsed directories
-	if stats.ChunkedManifests > 0 {
-		fmt.Printf("\nNote: Large directories (>70K entries) are stored in separate chunks.\n")
-		fmt.Printf("The scan originally processed many more entries that are referenced in the chunks.\n")
-	}
 	
 	if len(warnings) > 0 {
 		fmt.Printf("\nWarnings (%d):\n", len(warnings))
@@ -794,6 +794,133 @@ func runExtract(args []string) {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
+		}
+	}
+}
+
+// runFmt formats a C4M manifest file in canonical or ergonomic form.
+func runFmt(args []string) {
+	fs := flag.NewFlagSet("fmt", flag.ExitOnError)
+	canonical := fs.Bool("canonical", false, "Use canonical format (default is ergonomic/pretty)")
+	write := fs.BoolP("write", "w", false, "Write result to source file instead of stdout")
+	diff := fs.BoolP("diff", "d", false, "Display diff instead of rewriting file")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, `c4 fmt - Format C4M manifest files
+
+Usage:
+  c4 fmt [options] <file.c4m>       # Format a manifest file
+  cat manifest.c4m | c4 fmt         # Format from stdin
+
+Options:
+`)
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, `
+Examples:
+  c4 fmt manifest.c4m               # Pretty-print to stdout
+  c4 fmt --canonical manifest.c4m   # Canonical form to stdout
+  c4 fmt -w manifest.c4m            # Format file in place
+  c4 fmt -d manifest.c4m            # Show what would change
+`)
+	}
+	fs.Parse(args)
+
+	var input []byte
+	var inputPath string
+	var err error
+
+	if fs.NArg() == 0 {
+		// Read from stdin
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
+			fs.Usage()
+			os.Exit(1)
+		}
+		input, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		// Read from file
+		inputPath = fs.Arg(0)
+		input, err = os.ReadFile(inputPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", inputPath, err)
+			os.Exit(1)
+		}
+	}
+
+	// Format the manifest
+	var output []byte
+	if *canonical {
+		output, err = c4m.Format(input)
+	} else {
+		output, err = c4m.FormatPretty(input)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Handle output mode
+	if *diff {
+		// Show diff
+		if string(input) == string(output) {
+			// No changes
+			os.Exit(0)
+		}
+		// Simple diff output - show before/after
+		fmt.Fprintf(os.Stderr, "--- %s (original)\n", inputPath)
+		fmt.Fprintf(os.Stderr, "+++ %s (formatted)\n", inputPath)
+		showSimpleDiff(input, output)
+		os.Exit(1) // Exit with 1 to indicate differences found
+	} else if *write {
+		if inputPath == "" {
+			fmt.Fprintf(os.Stderr, "Error: cannot use -w with stdin input\n")
+			os.Exit(1)
+		}
+		// Check if content changed
+		if string(input) == string(output) {
+			// No changes needed
+			os.Exit(0)
+		}
+		// Write back to file
+		if err := os.WriteFile(inputPath, output, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", inputPath, err)
+			os.Exit(1)
+		}
+	} else {
+		// Write to stdout
+		os.Stdout.Write(output)
+	}
+}
+
+// showSimpleDiff displays a simple line-by-line diff
+func showSimpleDiff(original, formatted []byte) {
+	origLines := strings.Split(string(original), "\n")
+	fmtLines := strings.Split(string(formatted), "\n")
+
+	maxLines := len(origLines)
+	if len(fmtLines) > maxLines {
+		maxLines = len(fmtLines)
+	}
+
+	for i := 0; i < maxLines; i++ {
+		var origLine, fmtLine string
+		if i < len(origLines) {
+			origLine = origLines[i]
+		}
+		if i < len(fmtLines) {
+			fmtLine = fmtLines[i]
+		}
+
+		if origLine != fmtLine {
+			if origLine != "" {
+				fmt.Printf("-%s\n", origLine)
+			}
+			if fmtLine != "" {
+				fmt.Printf("+%s\n", fmtLine)
+			}
 		}
 	}
 }

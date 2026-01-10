@@ -12,7 +12,8 @@ type Bundle = bundle.Bundle
 
 // Function aliases
 var NewManifest = c4m.NewManifest
-var NewParser = c4m.NewParser
+var NewDecoder = c4m.NewDecoder
+var NewEncoder = c4m.NewEncoder
 
 // NaturalLess is an alias for c4m.NaturalLess
 var NaturalLess = c4m.NaturalLess

@@ -147,15 +147,15 @@ func (r *BaseChainResolver) loadManifestFromFile(path string) (*Manifest, error)
 	}
 	defer file.Close()
 
-	parser := NewParser(file)
-	return parser.ParseAll()
+	decoder := NewDecoder(file)
+	return decoder.Decode()
 }
 
 // ResolveFromReader resolves @base chain from a reader
 func ResolveBaseChain(reader io.Reader, bundlePath string) (*Manifest, error) {
 	// Parse the initial manifest
-	parser := NewParser(reader)
-	manifest, err := parser.ParseAll()
+	decoder := NewDecoder(reader)
+	manifest, err := decoder.Decode()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
@@ -239,7 +239,7 @@ func WriteChunkedManifest(manifest *Manifest, bundlePath string, config *BundleC
 
 		// Write chunk to string
 		var buf strings.Builder
-		if _, err := chunk.WriteTo(&buf); err != nil {
+		if err := NewEncoder(&buf).Encode(chunk); err != nil {
 			return fmt.Errorf("failed to write chunk %d: %w", chunkNum, err)
 		}
 
