@@ -1,996 +1,279 @@
-# C4M Metadata Extension Design
+# C4M and Production Metadata: Design Analysis
 
-> **Status: FUTURE EXTENSION PROPOSAL**
->
-> This document describes proposed metadata extensions for C4M. Most directives in this
-> document are **NOT YET IMPLEMENTED**. See the Implementation Status section below.
+## The Core Question
 
-## Implementation Status
+Should C4M include production metadata like creator info, location, and verification logs?
 
-| Directive | Status | Notes |
-|-----------|--------|-------|
-| `@base` | ✅ Implemented | References parent manifest for layered changesets |
-| `@layer` | ✅ Implemented | Starts an add/modify layer |
-| `@remove` | ✅ Implemented | Starts a removal layer |
-| `@by` | ✅ Implemented | Layer author attribution |
-| `@time` | ✅ Implemented | Layer timestamp |
-| `@note` | ✅ Implemented | Layer description |
-| `@data` | ✅ Implemented | Embedded data blocks (ID lists, metadata) |
-| `@expand` | ✅ Implemented | Sequence expansion reference |
-| `@creator` | ❌ Not implemented | Production metadata - future |
-| `@author` | ❌ Not implemented | Production metadata - future |
-| `@location` | ❌ Not implemented | Production metadata - future |
-| `@comment` | ❌ Not implemented | Production metadata - future |
-| `@process` | ❌ Not implemented | Workflow tracking - future |
-| `@verify` | ❌ Not implemented | Verification records - future |
-| `@ignore` | ❌ Not implemented | Scan exclusions - future |
-| `@previous` | ❌ Not implemented | Chain linkage - future |
-| `@chain` | ❌ Not implemented | Generation tracking - future |
-| `@hashdate` | ❌ Not implemented | Hash timestamps - future |
-| `@roothash` | ❌ Not implemented | Integrity hashes - future |
-| `@hashformat` | ❌ Not implemented | Multi-hash support - future |
+**Answer: No, but with nuance.**
 
-For the current specification, see [c4m/SPECIFICATION.md](../c4m/SPECIFICATION.md).
+Production metadata serves real needs, but embedding it in C4M conflicts with content-addressed identity. This document explains why, and outlines the right approach.
 
----
+## What MHL Provenance Actually Solves
 
-## Design Principles
+MHL's detailed metadata isn't about proving content authenticity - C4 IDs do that mathematically. MHL metadata solves **human/legal/operational problems**:
 
-1. **Backward Compatible**: Old parsers ignore unknown @ directives
-2. **Optional**: Metadata is always optional, never required
-3. **Minimal**: Stay true to C4M's minimalist philosophy
-4. **Structured**: Easy to parse, validate, and extend
-5. **Non-Breaking**: Adding metadata never changes manifest C4 ID calculation
+### The Real Use Cases
 
-## Metadata Directive Format
-
-### Core Syntax
+**1. Audit Trail for Blame Assignment**
 ```
-@directive-name [arguments...] ["quoted string"]
+If footage arrives corrupted, who had custody?
+- DIT created manifest at 9:15 AM on Stage 5
+- Courier picked up drive at 11:30 AM
+- Post house received at 2:00 PM with different hash
+→ Investigate the courier's handling
 ```
 
-### Rules
-1. Metadata lines start with `@` followed by directive name
-2. Arguments are space-separated
-3. Strings with spaces must be quoted
-4. Directives appear after `@c4m` version header, before entries
-5. Order matters for some directives (like `@creator` before `@author`)
-6. Unknown directives are ignored (forward compatibility)
-
-## Standard Metadata Directives
-
-### 1. Creator Information
-
-#### @creator
-Records who/what/when/where the manifest was created.
-
-**Format**:
+**2. Contract Compliance**
 ```
-@creator <timestamp> <hostname> <username> <tool> <version>
+Studio contract requires:
+- Named DIT signs off on ingest
+- Location documented for insurance
+- Timestamp proves delivery deadline met
 ```
 
-**Example**:
+**3. Quality Control Forensics**
 ```
-@creator 2025-09-20T01:49:47Z mymac.local john c4 1.0.0-beta
-```
-
-**Fields**:
-- `timestamp`: ISO8601 UTC timestamp (same format as file timestamps)
-- `hostname`: Machine hostname (no spaces)
-- `username`: OS username (no spaces, or "unknown")
-- `tool`: Tool name (no spaces, e.g., "c4", "ascmhl", "custom")
-- `version`: Tool version (no spaces)
-
-**Alternative verbose format** (for detailed info):
-```
-@creator timestamp="2025-09-20T01:49:47Z" hostname="mymac.local" user="john" tool="c4" version="1.0.0-beta"
+Which camera cards were ingested by which operator?
+Which workstation was used?
+Were ignore patterns applied consistently?
 ```
 
-#### @author
-Records human author information (production context).
-
-**Format**:
+**4. Legal Discovery**
 ```
-@author <name> <email> <phone> <role>
+Lawsuit requires documentation of everyone who handled footage
+XML audit trail is evidence
 ```
 
-**Example**:
-```
-@author "John Doe" john.doe@example.com "+1-555-0100" DIT
-```
+### What C4 Already Solves (That MHL Also Tries To Solve)
 
-**Fields**:
-- `name`: Full name (quoted if spaces)
-- `email`: Email address (or "-" if unknown)
-- `phone`: Phone number (quoted, or "-" if unknown)
-- `role`: Job role (DIT, Editor, DataManager, etc., or "-")
+| Problem | MHL Approach | C4 Approach |
+|---------|--------------|-------------|
+| "Is this the same content?" | Hash comparison | ID comparison (same, but simpler) |
+| "Has content been modified?" | Compare hashes across generations | Compare IDs (identical mechanism) |
+| "Prove content authenticity" | Chain of custody + hashes | ID IS mathematical proof |
 
-#### @location
-Records physical location where manifest was created.
+The key insight: **C4 IDs prove content identity mathematically. MHL metadata documents human processes.**
 
-**Format**:
-```
-@location "location description"
-```
+## Why NOT to Embed Metadata in C4M
 
-**Example**:
+### The ID Stability Problem
+
 ```
-@location "On Set - Stage 5, Pinewood Studios"
-@location "Post House - Deluxe Toronto, Suite 3"
-@location "Archive - Iron Mountain, Vault A-127"
+# Manifest v1
+@c4m 1.0
+@creator 2025-01-10T09:00:00Z set.local john c4 1.0
+-rw-r--r-- ... file.txt c4abc...
+
+# Manifest ID: c4xyz...
 ```
 
-#### @comment
-Free-form comment about this manifest/generation.
+```
+# Manifest v2 - same files, different creator
+@c4m 1.0
+@creator 2025-01-10T10:00:00Z office.local jane c4 1.0
+-rw-r--r-- ... file.txt c4abc...
 
-**Format**:
-```
-@comment "free form text"
-```
-
-**Example**:
-```
-@comment "Initial ingest from CF card A002"
-@comment "Verified after network transfer, 3 failures re-checked"
-@comment "Archive snapshot before project delivery"
+# Manifest ID: c4def... (DIFFERENT!)
 ```
 
-### 2. Process Information
+The same files now have different manifest IDs because metadata differs. This breaks the fundamental property: **identical content should have identical identity**.
 
-#### @process
-Describes what process created this manifest.
+### The Conceptual Confusion
 
-**Format**:
+C4M answers: "What files exist with what content?"
+
+MHL metadata answers: "Who recorded this, when, where, why?"
+
+These are different questions. Mixing them creates a format that does neither well.
+
+## The Right Approach: External Metadata
+
+### Pattern 1: Sidecar Metadata File
+
 ```
-@process <type> [<parent-id>]
-```
-
-**Types**:
-- `initial`: First generation, original capture
-- `verify`: Verification without changes
-- `copy`: Created during copy operation
-- `transfer`: Created during network transfer
-- `archive`: Created for archival purposes
-- `restore`: Created during restore operation
-- `inplace`: Created in-place (scanning existing files)
-- `update`: Incremental update (@base reference required)
-
-**Example**:
-```
-@process initial
-@process verify c45previousManifest...
-@process copy
-@process update
+project/
+├── footage.c4m           # Pure content manifest (stable ID)
+├── footage.c4m.meta      # Process documentation (mutable)
 ```
 
-#### @verify
-Records verification results.
-
-**Format**:
-```
-@verify <timestamp> <status> <files-checked> <files-passed> <files-failed>
-```
-
-**Example**:
-```
-@verify 2025-09-20T02:15:33Z complete 1024 1021 3
-@verify 2025-09-20T01:49:47Z partial 512 512 0
-```
-
-**Status values**:
-- `complete`: All files verified
-- `partial`: Some files verified
-- `failed`: Verification found errors
-- `interrupted`: Verification stopped early
-
-#### @ignore
-Records ignore patterns used during scan.
-
-**Format**:
-```
-@ignore <pattern>
-```
-
-**Example**:
-```
-@ignore .DS_Store
-@ignore *.tmp
-@ignore thumbs.db
-@ignore .c4m_bundle/
-```
-
-Multiple `@ignore` directives can be specified.
-
-### 3. Chain/Reference Metadata
-
-#### @base
-(Already exists in C4M) References parent manifest for delta updates.
-
-**Format**:
-```
-@base <c4-id>
-```
-
-**Example**:
-```
-@base c45previousGeneration...
-```
-
-#### @previous (NEW)
-Explicitly links to previous generation (for non-delta manifests).
-
-**Format**:
-```
-@previous <c4-id> <filepath>
-```
-
-**Example**:
-```
-@previous c45gen001... /path/to/gen001.c4m
-```
-
-Useful for MHL-style full generations that reference previous state.
-
-#### @chain
-Records position in chain.
-
-**Format**:
-```
-@chain <generation-number> <total-generations>
-```
-
-**Example**:
-```
-@chain 3 5
-```
-
-Indicates this is generation 3 of 5 total generations.
-
-### 4. Data Integrity Metadata
-
-#### @hashdate
-Records when hashes were computed (per-entry granularity optional).
-
-**Format** (global):
-```
-@hashdate 2025-09-20T01:49:47Z
-```
-
-**Per-entry format** (optional, for verification tracking):
-```
--rw-r--r-- 2025-09-20T01:49:47Z 1024 file.txt c44aMtvPeo... @hashdate=2025-09-20T02:00:00Z
-```
-
-#### @roothash
-Records directory hash for entire manifest root.
-
-**Format**:
-```
-@roothash <c4-id> <type>
-```
-
-**Types**:
-- `content`: Hash of all file content
-- `structure`: Hash of directory structure
-- `manifest`: Hash of manifest itself
-
-**Example**:
-```
-@roothash c46contentHash... content
-@roothash c47structureHash... structure
-```
-
-### 5. Multi-Hash Extension (Optional)
-
-#### @hashformat
-Declares additional hash formats (beyond C4).
-
-**Format**:
-```
-@hashformat <format-name> <format-name> ...
-```
-
-**Example**:
-```
-@hashformat c4 xxh128 md5
-```
-
-When declared, entries can have multiple hashes:
-```
--rw-r--r-- 2025-09-20T01:49:47Z 1024 file.txt \
-  c4=c44aMtvPeo... \
-  xxh128=8d02114c32e28cbe \
-  md5=9e107d9d372bb682
-```
-
-**Note**: C4 is always the primary/canonical hash. Others are supplementary.
-
-## Complete Example: Production Manifest
-
+**footage.c4m** (content identity):
 ```
 @c4m 1.0
-
-# Creator information
-@creator 2025-09-20T01:49:47Z mymac.local john c4 1.0.0-beta
-@author "John Doe" john.doe@example.com "+1-555-0100" DIT
-@location "On Set - Stage 5, Pinewood Studios"
-@comment "Initial ingest from Camera A, CF card A002"
-
-# Process information
-@process initial
-@hashdate 2025-09-20T01:49:47Z
-
-# Ignore patterns (if any)
-@ignore .DS_Store
-@ignore *.tmp
-
-# Root integrity
-@roothash c46rootContent123... content
-@roothash c47rootStructure456... structure
-
-# Entries
-drwxr-xr-x 2025-09-20T01:45:00Z 1024 Clips/
-  -rw-r--r-- 2025-09-20T01:45:12Z 512000000 A002C006_141024_R2EC.mov c44aMtvPeo...
-  -rw-r--r-- 2025-09-20T01:46:33Z 487000000 A002C007_141024_R2EC.mov c44bNuwQfp...
--rw-r--r-- 2025-09-20T01:44:00Z 58 Sidecar.txt c43xYzAbCd...
+-rw-r--r-- 2025-01-10T09:00:00Z 512000000 A001.mov c4abc...
+-rw-r--r-- 2025-01-10T09:01:00Z 487000000 A002.mov c4def...
 ```
 
-## Complete Example: Verification Update
-
-```
-@c4m 1.0
-@base c45initialManifest...
-
-# Creator information
-@creator 2025-09-21T14:30:00Z fileserver.local backupadmin c4 1.0.0-beta
-@author "Jane Smith" jane.smith@example.com "+1-555-0200" "Data Manager"
-@location "Post House - Deluxe Toronto"
-@comment "Verification after network transfer from set"
-
-# Process information
-@process verify c45initialManifest...
-@verify 2025-09-21T14:30:00Z complete 3 3 0
-@hashdate 2025-09-21T14:30:00Z
-
-# Chain information
-@previous c45initialManifest... /mnt/archive/ingests/initial.c4m
-@chain 2 2
-
-# Only changed/new files (delta mode with @base)
-# In this case, no changes, so empty entry list
-# (Verification passed, no files modified)
-```
-
-## Complete Example: Multi-Hash for Legacy Systems
-
-```
-@c4m 1.0
-@hashformat c4 xxh128 md5
-
-# Creator information
-@creator 2025-09-20T01:49:47Z mymac.local john c4 1.0.0-beta
-@comment "Multi-hash manifest for legacy system compatibility"
-
-# Entries with multiple hashes
--rw-r--r-- 2025-09-20T01:49:47Z 1024 file1.txt \
-  c4=c44aMtvPeo123... \
-  xxh128=8d02114c32e28cbe \
-  md5=9e107d9d372bb682
-
--rw-r--r-- 2025-09-20T01:50:12Z 2048 file2.txt \
-  c4=c44bNuwQfp456... \
-  xxh128=7c01003b21d17bad \
-  md5=8f107e8e261a95c3
-```
-
-## Parsing Strategy
-
-### Parser Compatibility Levels
-
-**Level 0: Basic Parser** (current C4M)
-- Reads `@c4m` version
-- Skips all unknown `@` directives
-- Parses entry lines
-- Result: Works with metadata-enhanced manifests
-
-**Level 1: Metadata-Aware Parser**
-- Reads `@c4m` version
-- Parses known metadata directives
-- Stores metadata for access
-- Parses entry lines
-- Result: Can extract and use metadata
-
-**Level 2: Metadata-Validating Parser**
-- All Level 1 features
-- Validates metadata format
-- Checks required fields
-- Reports metadata errors
-- Result: Strict metadata compliance
-
-### Implementation Example
-
-```go
-type ManifestMetadata struct {
-    // Creator info
-    CreatorTime     time.Time
-    Hostname        string
-    Username        string
-    Tool            string
-    ToolVersion     string
-
-    // Author info (optional)
-    AuthorName      string
-    AuthorEmail     string
-    AuthorPhone     string
-    AuthorRole      string
-
-    // Context
-    Location        string
-    Comment         string
-
-    // Process
-    ProcessType     string
-    ProcessParentID *c4.ID
-
-    // Verification (optional)
-    VerifyTime      time.Time
-    VerifyStatus    string
-    VerifyChecked   int
-    VerifyPassed    int
-    VerifyFailed    int
-
-    // Ignore patterns
-    IgnorePatterns  []string
-
-    // Chain info
-    ChainGeneration int
-    ChainTotal      int
-
-    // Root hashes
-    RootContentHash *c4.ID
-    RootStructHash  *c4.ID
-}
-
-// Parser with metadata support
-type MetadataParser struct {
-    *Parser  // Embed existing parser
-    Metadata ManifestMetadata
-}
-
-func (p *MetadataParser) ParseMetadataLine(line string) error {
-    // Skip non-metadata lines
-    if !strings.HasPrefix(line, "@") {
-        return nil
-    }
-
-    parts := strings.Fields(line)
-    if len(parts) == 0 {
-        return nil
-    }
-
-    directive := strings.TrimPrefix(parts[0], "@")
-    args := parts[1:]
-
-    switch directive {
-    case "creator":
-        if len(args) >= 5 {
-            p.Metadata.CreatorTime, _ = time.Parse(time.RFC3339, args[0])
-            p.Metadata.Hostname = args[1]
-            p.Metadata.Username = args[2]
-            p.Metadata.Tool = args[3]
-            p.Metadata.ToolVersion = args[4]
-        }
-    case "author":
-        if len(args) >= 4 {
-            p.Metadata.AuthorName = strings.Trim(args[0], `"`)
-            p.Metadata.AuthorEmail = args[1]
-            p.Metadata.AuthorPhone = strings.Trim(args[2], `"`)
-            p.Metadata.AuthorRole = args[3]
-        }
-    case "location":
-        p.Metadata.Location = strings.Trim(strings.Join(args, " "), `"`)
-    case "comment":
-        p.Metadata.Comment = strings.Trim(strings.Join(args, " "), `"`)
-    case "process":
-        if len(args) >= 1 {
-            p.Metadata.ProcessType = args[0]
-            if len(args) >= 2 {
-                id, _ := c4.Parse(args[1])
-                p.Metadata.ProcessParentID = &id
-            }
-        }
-    case "ignore":
-        if len(args) >= 1 {
-            p.Metadata.IgnorePatterns = append(p.Metadata.IgnorePatterns, args[0])
-        }
-    // ... handle other directives
-    default:
-        // Unknown directive - ignore for forward compatibility
-    }
-
-    return nil
+**footage.c4m.meta** (process documentation):
+```json
+{
+  "manifest_id": "c4xyz...",
+  "creator": {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "DIT",
+    "timestamp": "2025-01-10T09:15:00Z"
+  },
+  "location": "Stage 5, Pinewood Studios",
+  "notes": "Camera A, CF cards A001-A002",
+  "tool": {"name": "c4", "version": "1.0.0"}
 }
 ```
 
-## Metadata Sidecar Option
+The manifest ID is stable. Metadata can be added, corrected, or extended without changing the content identity.
 
-Alternative approach: Keep metadata in separate file.
+### Pattern 2: The Email Proof
 
-**Files**:
-```
-scan.c4m           # Pure C4M manifest
-scan.c4m.meta      # Metadata sidecar
-```
+Your example is perfect:
 
-**scan.c4m** (unchanged):
 ```
-@c4m 1.0
--rw-r--r-- 2025-09-20T01:49:47Z 1024 file.txt c44aMtvPeo...
-```
+From: DIT on set
+To: Post production
+Subject: Footage delivery
 
-**scan.c4m.meta**:
-```
-@c4m-metadata 1.0
-@manifest c46scanManifest...
-@creator 2025-09-20T01:49:47Z mymac.local john c4 1.0.0-beta
-@author "John Doe" john.doe@example.com "+1-555-0100" DIT
-@location "On Set"
-@comment "Initial ingest"
+The camera footage C4 ID is: c4xyz...
+
+- John Doe, DIT
+- Stage 5, Pinewood Studios
+- 2025-01-10 9:15 AM
 ```
 
-**Advantages**:
-- Manifest C4 ID never changes due to metadata
-- Pure C4M remains minimal
-- Metadata is truly optional (separate file)
+Post production receives files, computes ID, gets `c4xyz...` - **mathematically proven** to be identical to what was on set.
 
-**Disadvantages**:
-- Two files to manage
-- Can lose metadata file
-- Less integrated
+The email itself is the provenance record. The C4 ID is the proof. No metadata needs to be embedded.
 
-**Recommendation**: Inline metadata preferred, but sidecar option available.
+### Pattern 3: Database/Registry
 
-## MHL Export Tool Design
+For organizations:
+```sql
+CREATE TABLE manifests (
+    c4_id TEXT PRIMARY KEY,
+    created_at TIMESTAMP,
+    created_by TEXT,
+    location TEXT,
+    notes TEXT,
+    project_id TEXT
+);
 
-### Tool: `c4-mhl`
+INSERT INTO manifests VALUES (
+    'c4xyz...',
+    '2025-01-10 09:15:00',
+    'John Doe',
+    'Stage 5',
+    'Camera A footage',
+    'proj_12345'
+);
+```
 
-Converts C4M manifests to MHL XML format.
+Now you have full provenance tracking without touching the manifest format.
 
-### Command: `c4-mhl export`
+## What C4M Already Has (And Why It's Enough)
+
+### Implemented Directives
+
+| Directive | Purpose | Why It Belongs |
+|-----------|---------|----------------|
+| `@base` | References parent manifest | Content relationship (cryptographic) |
+| `@layer` | Starts changeset | Content structure |
+| `@remove` | Marks deletions | Content structure |
+| `@by` | Layer author | Changeset attribution (part of layer) |
+| `@time` | Layer timestamp | Changeset timing (part of layer) |
+| `@note` | Layer description | Changeset documentation (part of layer) |
+| `@data` | Embedded data blocks | Content (ID lists, sidecar data) |
+| `@expand` | Sequence expansion | Content structure |
+
+Note: `@by`, `@time`, `@note` are **layer metadata**, not manifest metadata. They document changes within a layered manifest, not who created the overall manifest.
+
+### Why @base Is Different From MHL Generations
+
+MHL generations:
+```
+ascmhl/
+├── 0001_gen1.mhl  (labeled "generation 1")
+├── 0002_gen2.mhl  (labeled "generation 2", references gen1 by filename)
+```
+
+C4M @base:
+```
+@base c4abc123...  # Cryptographic reference to EXACT previous state
+```
+
+The @base ID **is** the previous state. You can't fake it, mislabel it, or accidentally reference the wrong thing. Generation numbers are human labels; @base is mathematical proof.
+
+## MHL Interoperability: The Right Solution
+
+Instead of making C4M more like MHL, provide tools to bridge the formats.
+
+### Export: C4M → MHL
 
 ```bash
-# Export single manifest
-c4-mhl export scan.c4m output.mhl
-
-# Export bundle (all generations)
-c4-mhl export bundle.c4m_bundle/ output_dir/
-
-# Export with options
-c4-mhl export --generation 1 \
-              --hash-formats c4,xxh64,md5 \
-              --creator-info \
-              scan.c4m output.mhl
+c4-mhl export footage.c4m \
+    --creator "John Doe" john@example.com DIT \
+    --location "Stage 5" \
+    --comment "Camera A footage" \
+    > footage.mhl
 ```
 
-### Options
+This generates MHL with all the metadata production workflows need, from a minimal C4M source.
 
-```
---generation <n>           Export specific generation (for bundles)
---all-generations          Export all generations (creates multiple .mhl files)
---hash-formats <list>      Include hash formats (c4, xxh64, md5, sha1, xxh128)
---creator-info             Include creator/author metadata (from @creator, @author)
---ignore-patterns          Include ignore patterns (from @ignore)
---root-hash                Include root directory hash
---chain-file               Generate ascmhl_chain.xml
---output-dir <path>        Output directory (for multiple generations)
-```
-
-### Export Logic
-
-#### Single Manifest Export
-
-**Input** (scan.c4m):
-```
-@c4m 1.0
-@creator 2025-09-20T01:49:47Z mymac.local john c4 1.0.0-beta
-@author "John Doe" john.doe@example.com "+1-555-0100" DIT
-@location "On Set"
-@comment "Initial ingest"
-@ignore .DS_Store
-@roothash c46rootContent... content
-
--rw-r--r-- 2025-09-20T01:49:47Z 1024 file.txt c44aMtvPeo...
-drwxr-xr-x 2025-09-20T01:49:00Z 2048 mydir/
-  -rw-r--r-- 2025-09-20T01:49:30Z 1024 subfile.txt c44bNuwQfp...
-```
-
-**Output** (scan.mhl):
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<hashlist version="2.0" xmlns="urn:ASC:MHL:v2.0">
-  <creatorinfo>
-    <creationdate>2025-09-20T01:49:47+00:00</creationdate>
-    <hostname>mymac.local</hostname>
-    <tool version="1.0.0-beta">c4</tool>
-    <author>
-      <name>John Doe</name>
-      <email>john.doe@example.com</email>
-      <phone>+1-555-0100</phone>
-      <role>DIT</role>
-    </author>
-    <location>On Set</location>
-    <comment>Initial ingest</comment>
-  </creatorinfo>
-  <processinfo>
-    <process>initial</process>
-    <roothash>
-      <content>
-        <c4 hashdate="2025-09-20T01:49:47+00:00">c46rootContent...</c4>
-      </content>
-    </roothash>
-    <ignore>
-      <pattern>.DS_Store</pattern>
-    </ignore>
-  </processinfo>
-  <hashes>
-    <hash>
-      <path size="1024" lastmodificationdate="2025-09-20T01:49:47+00:00">file.txt</path>
-      <c4 action="original" hashdate="2025-09-20T01:49:47+00:00">c44aMtvPeo...</c4>
-    </hash>
-    <directoryhash>
-      <path lastmodificationdate="2025-09-20T01:49:00+00:00">mydir</path>
-      <content>
-        <c4 hashdate="2025-09-20T01:49:00+00:00">c46dirContent...</c4>
-      </content>
-    </directoryhash>
-    <hash>
-      <path size="1024" lastmodificationdate="2025-09-20T01:49:30+00:00">mydir/subfile.txt</path>
-      <c4 action="original" hashdate="2025-09-20T01:49:47+00:00">c44bNuwQfp...</c4>
-    </hash>
-  </hashes>
-</hashlist>
-```
-
-#### Bundle Export (Multiple Generations)
-
-**Input**: `bundle.c4m_bundle/` with 3 generations
-
-**Output Structure**:
-```
-output_dir/
-├── ascmhl/
-│   ├── 0001_bundle_2025-09-20_014947Z.mhl
-│   ├── 0002_bundle_2025-09-21_143000Z.mhl
-│   ├── 0003_bundle_2025-09-22_100000Z.mhl
-│   └── ascmhl_chain.xml
-```
-
-**ascmhl_chain.xml**:
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<ascmhldirectory xmlns="urn:ASC:MHL:DIRECTORY:v2.0">
-  <hashlist sequencenr="1">
-    <path>0001_bundle_2025-09-20_014947Z.mhl</path>
-    <c4>c46generation1ManifestC4...</c4>
-  </hashlist>
-  <hashlist sequencenr="2">
-    <path>0002_bundle_2025-09-21_143000Z.mhl</path>
-    <c4>c47generation2ManifestC4...</c4>
-  </hashlist>
-  <hashlist sequencenr="3">
-    <path>0003_bundle_2025-09-22_100000Z.mhl</path>
-    <c4>c48generation3ManifestC4...</c4>
-  </hashlist>
-</ascmhldirectory>
-```
-
-### Multi-Hash Export
-
-If C4M manifest has multi-hash entries:
-
-**Input**:
-```
-@c4m 1.0
-@hashformat c4 xxh64 md5
-
--rw-r--r-- 2025-09-20T01:49:47Z 1024 file.txt \
-  c4=c44aMtvPeo... \
-  xxh64=0ea03b369a463d9d \
-  md5=9e107d9d372bb682
-```
-
-**Output**:
-```xml
-<hash>
-  <path size="1024" lastmodificationdate="2025-09-20T01:49:47+00:00">file.txt</path>
-  <c4 action="original" hashdate="2025-09-20T01:49:47+00:00">c44aMtvPeo...</c4>
-  <xxh64 action="original" hashdate="2025-09-20T01:49:47+00:00">0ea03b369a463d9d</xxh64>
-  <md5 action="original" hashdate="2025-09-20T01:49:47+00:00">9e107d9d372bb682</md5>
-</hash>
-```
-
-### Implementation Outline
-
-```go
-package main
-
-type MHLExporter struct {
-    manifest    *c4m.Manifest
-    metadata    *c4m.ManifestMetadata
-    options     ExportOptions
-}
-
-type ExportOptions struct {
-    HashFormats    []string  // c4, xxh64, md5, sha1, xxh128
-    IncludeCreator bool
-    IncludeIgnore  bool
-    IncludeRootHash bool
-    Generation     int       // Which generation (for bundles)
-    AllGenerations bool      // Export all (for bundles)
-}
-
-func (e *MHLExporter) Export(outputPath string) error {
-    // Create XML structure
-    mhl := &MHLHashList{
-        Version: "2.0",
-        Xmlns: "urn:ASC:MHL:v2.0",
-    }
-
-    // Add creator info from metadata
-    if e.options.IncludeCreator && e.metadata != nil {
-        mhl.CreatorInfo = e.buildCreatorInfo()
-    }
-
-    // Add process info
-    mhl.ProcessInfo = e.buildProcessInfo()
-
-    // Convert entries
-    for _, entry := range e.manifest.Entries {
-        if entry.IsDir() {
-            // Directory hash
-            dirHash := e.buildDirectoryHash(entry)
-            mhl.Hashes = append(mhl.Hashes, dirHash)
-        } else {
-            // File hash
-            fileHash := e.buildFileHash(entry)
-            mhl.Hashes = append(mhl.Hashes, fileHash)
-        }
-    }
-
-    // Write XML
-    return e.writeXML(mhl, outputPath)
-}
-
-func (e *MHLExporter) buildCreatorInfo() *MHLCreatorInfo {
-    ci := &MHLCreatorInfo{
-        CreationDate: e.metadata.CreatorTime.Format(time.RFC3339),
-        Hostname: e.metadata.Hostname,
-        Tool: MHLTool{
-            Name: e.metadata.Tool,
-            Version: e.metadata.ToolVersion,
-        },
-    }
-
-    if e.metadata.AuthorName != "" {
-        ci.Author = &MHLAuthor{
-            Name: e.metadata.AuthorName,
-            Email: e.metadata.AuthorEmail,
-            Phone: e.metadata.AuthorPhone,
-            Role: e.metadata.AuthorRole,
-        }
-    }
-
-    if e.metadata.Location != "" {
-        ci.Location = e.metadata.Location
-    }
-
-    if e.metadata.Comment != "" {
-        ci.Comment = e.metadata.Comment
-    }
-
-    return ci
-}
-
-func (e *MHLExporter) buildFileHash(entry *c4m.Entry) *MHLHash {
-    hash := &MHLHash{
-        Path: MHLPath{
-            Value: entry.Name,
-            Size: entry.Size,
-            LastModificationDate: entry.Timestamp.Format(time.RFC3339),
-        },
-    }
-
-    // Add C4 hash (always present)
-    hash.C4 = &MHLHashValue{
-        Value: entry.C4ID.String(),
-        Action: "original",
-        HashDate: entry.Timestamp.Format(time.RFC3339),
-    }
-
-    // Add additional hash formats if present
-    // (from multi-hash extension)
-
-    return hash
-}
-
-// Command-line tool
-func main() {
-    app := &cli.App{
-        Name: "c4-mhl",
-        Usage: "Convert C4M manifests to MHL format",
-        Commands: []*cli.Command{
-            {
-                Name: "export",
-                Usage: "Export C4M to MHL",
-                Flags: []cli.Flag{
-                    &cli.StringSliceFlag{
-                        Name: "hash-formats",
-                        Value: cli.NewStringSlice("c4"),
-                        Usage: "Hash formats to include",
-                    },
-                    &cli.BoolFlag{
-                        Name: "creator-info",
-                        Value: true,
-                        Usage: "Include creator information",
-                    },
-                    &cli.IntFlag{
-                        Name: "generation",
-                        Value: -1,
-                        Usage: "Specific generation (for bundles)",
-                    },
-                    &cli.BoolFlag{
-                        Name: "all-generations",
-                        Value: false,
-                        Usage: "Export all generations",
-                    },
-                    &cli.BoolFlag{
-                        Name: "chain-file",
-                        Value: true,
-                        Usage: "Generate chain file",
-                    },
-                },
-                Action: exportCommand,
-            },
-        },
-    }
-
-    app.Run(os.Args)
-}
-```
-
-## Reverse Direction: MHL Import
-
-### Command: `c4-mhl import`
+### Import: MHL → C4M
 
 ```bash
-# Import single MHL file
-c4-mhl import scan.mhl output.c4m
-
-# Import MHL directory (all generations)
-c4-mhl import ascmhl/ output.c4m_bundle/
-
-# Import with metadata preservation
-c4-mhl import --preserve-metadata scan.mhl output.c4m
+c4-mhl import ascmhl/ --extract-metadata > footage.c4m
+# Metadata goes to sidecar: footage.c4m.meta
 ```
 
-### Import Logic
+### Why This Is Better
 
-**Input** (scan.mhl):
-```xml
-<hashlist version="2.0">
-  <creatorinfo>
-    <creationdate>2025-09-20T01:49:47+00:00</creationdate>
-    <hostname>mymac.local</hostname>
-    <tool version="0.3">ascmhl.py</tool>
-  </creatorinfo>
-  <hashes>
-    <hash>
-      <path size="1024">file.txt</path>
-      <c4>c44aMtvPeo...</c4>
-    </hash>
-  </hashes>
-</hashlist>
-```
+1. **C4M stays minimal**: Pure content identity
+2. **MHL workflows supported**: Full metadata when exporting
+3. **No format compromise**: Each format does what it's designed for
+4. **User choice**: Add metadata at export time, not manifest creation time
 
-**Output** (scan.c4m):
-```
-@c4m 1.0
-@creator 2025-09-20T01:49:47Z mymac.local unknown ascmhl.py 0.3
-@comment "Imported from MHL"
+## What NOT to Implement
 
--rw-r--r-- 2025-09-20T01:49:47Z 1024 file.txt c44aMtvPeo...
-```
+The following proposed directives should **NOT** be added to C4M:
 
-## Practical Usage Scenarios
-
-### Scenario 1: On-Set Ingest with Metadata
-
-```bash
-# Camera operator creates manifest with metadata
-c4 -mr /Volumes/CFCard \
-    --creator "John Doe" john@example.com "+1-555-0100" DIT \
-    --location "On Set - Stage 5" \
-    --comment "Camera A, CF card A002" \
-    > ingest_001.c4m
-
-# Later, data manager wants MHL for post house
-c4-mhl export ingest_001.c4m posthou se/ascmhl/0001_ingest_2025-09-20.mhl
-```
-
-### Scenario 2: Post House Receives C4M, Needs MHL
-
-```bash
-# Post house receives: production.c4m_bundle/
-# They need MHL for their workflow
-
-c4-mhl export --all-generations \
-              --chain-file \
-              production.c4m_bundle/ \
-              /mnt/project/ascmhl/
-
-# Result: /mnt/project/ascmhl/ now has full MHL history
-# Their existing MHL tools work perfectly
-```
-
-### Scenario 3: Archive with Both Formats
-
-```bash
-# Create C4M bundle (efficient, primary)
-c4 --bundle /mnt/archive/project/media
-
-# Also generate MHL (compatibility)
-c4-mhl export /mnt/archive/project/media/*.c4m_bundle/ \
-              /mnt/archive/project/ascmhl/
-
-# Now have both:
-# - C4M bundle for deduplication, boolean ops, efficiency
-# - MHL for legacy tool compatibility
-```
-
-## Integration with Main C4 Tool
-
-### Add Metadata Flags to `c4` command
-
-```bash
-c4 -mr /path \
-   --creator-name "John Doe" \
-   --creator-email john@example.com \
-   --creator-phone "+1-555-0100" \
-   --creator-role DIT \
-   --location "On Set" \
-   --comment "Initial ingest" \
-   > output.c4m
-```
-
-Generates:
-```
-@c4m 1.0
-@creator 2025-09-20T01:49:47Z $(hostname) $(whoami) c4 1.0.0-beta
-@author "John Doe" john@example.com "+1-555-0100" DIT
-@location "On Set"
-@comment "Initial ingest"
-...
-```
+| Directive | Why Not |
+|-----------|---------|
+| `@creator` | Changes manifest ID; use external metadata |
+| `@author` | Changes manifest ID; use external metadata |
+| `@location` | Changes manifest ID; use external metadata |
+| `@comment` | Changes manifest ID; use external metadata |
+| `@process` | MHL workflow concept; doesn't apply to content identity |
+| `@verify` | "Verification" is just ID comparison in C4 |
+| `@ignore` | Scanner config, not content state |
+| `@previous` | @base already provides this cryptographically |
+| `@chain` | Human labeling; @base chain is the real structure |
+| `@hashdate` | ID is determined by content, not when computed |
+| `@roothash` | Manifest ID IS the root identity |
+| `@hashformat` | Multiple hashes undermines single-identity model |
 
 ## Conclusion
 
-**Metadata Extension**:
-- ✅ Backward compatible (old parsers ignore)
-- ✅ Optional (never required)
-- ✅ Minimal (stay true to C4M philosophy)
-- ✅ Structured (easy to parse and extend)
-- ✅ Practical (covers MHL use cases)
+### C4M's Role
+- **Pure content identity**: What exists, with what content
+- **Cryptographic proof**: ID proves authenticity mathematically
+- **Minimal format**: Easy to parse, small, stable
 
-**MHL Bridge**:
-- ✅ Export C4M → MHL (full feature parity)
-- ✅ Import MHL → C4M (preserve metadata)
-- ✅ Bundle support (multiple generations)
-- ✅ Chain file generation
-- ✅ Multi-hash support
+### External Metadata's Role
+- **Process documentation**: Who, when, where, why
+- **Audit trails**: For legal/operational needs
+- **Mutable information**: Can be corrected without changing content ID
 
-**Strategic Value**:
-- C4M remains minimal and efficient
-- Optional metadata for production workflows
-- Full MHL interoperability
-- C4M as primary, MHL as export format
-- Best of both worlds
+### MHL's Role
+- **Production workflows**: Industry-standard format
+- **Human-readable audit trail**: XML with full provenance
+- **Contractual compliance**: What studios and insurers expect
+
+### The Right Architecture
+
+```
+Content Identity          Process Documentation       Production Workflow
+     (C4M)                  (External)                   (MHL Export)
+       │                        │                            │
+       ▼                        ▼                            ▼
+   footage.c4m  ─────────► footage.c4m.meta  ─────────► footage.mhl
+   (stable ID)              (mutable)                  (full metadata)
+```
+
+C4M proves content. External systems document process. MHL export serves production needs. Each layer does what it's designed for.
