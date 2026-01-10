@@ -17,11 +17,12 @@ type Source interface {
 	ToManifest() (*Manifest, error)
 }
 
-// ManifestSource wraps an existing manifest
+// ManifestSource wraps an existing manifest to implement the Source interface.
 type ManifestSource struct {
 	Manifest *Manifest
 }
 
+// ToManifest returns the wrapped manifest.
 func (ms ManifestSource) ToManifest() (*Manifest, error) {
 	return ms.Manifest, nil
 }
