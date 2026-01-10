@@ -70,8 +70,7 @@ MHL is designed around files being present:
 - Metadata describes files at their current location
 - Weak hashes mean you can't trust content from arbitrary sources
 
-MHL answers: "Are these files still what we recorded?" (requires the files)
-C4M answers: "What content do we have and how is it organized?" (doesn't need the content on hand)
+MHL couples metadata to content. C4M decouples structure from content - organize files before they arrive, reunite automatically.
 
 ## What Each System Does
 
