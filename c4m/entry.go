@@ -122,7 +122,6 @@ func (e *Entry) Canonical() string {
 
 // formatMode converts os.FileMode to Unix-style permission string
 func formatMode(mode os.FileMode) string {
-	const str = "dalTLDpSugct?"
 	var buf [10]byte
 	
 	// File type

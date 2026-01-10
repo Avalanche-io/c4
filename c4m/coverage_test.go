@@ -680,7 +680,7 @@ func TestParseDataBlockCoverage(t *testing.T) {
 			t.Fatalf("ParseDataBlock failed: %v", err)
 		}
 		if block == nil {
-			t.Error("Expected non-nil block")
+			t.Fatal("Expected non-nil block")
 		}
 		if !block.IsIDList {
 			t.Error("Expected IsIDList to be true")
@@ -1001,7 +1001,7 @@ func TestHandleDataBlockCoverage(t *testing.T) {
 			t.Fatalf("Failed to parse manifest with base: %v", err)
 		}
 		if manifest == nil {
-			t.Error("Manifest should not be nil")
+			t.Fatal("Manifest should not be nil")
 		}
 		if manifest.Base.IsNil() {
 			t.Error("Base should be set")
