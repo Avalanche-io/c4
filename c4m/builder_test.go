@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestManifestBuilder_Basic(t *testing.T) {
 	m := NewBuilder().
 		AddFile("readme.txt", WithSize(100)).
 		AddFile("go.mod", WithSize(50)).
-		Build()
+		MustBuild()
 
 	if len(m.Entries) != 2 {
 		t.Errorf("expected 2 entries, got %d", len(m.Entries))
@@ -47,7 +48,7 @@ func TestManifestBuilder_WithDirectory(t *testing.T) {
 			AddFile("util.go", WithSize(200)).
 		End().
 		AddFile("go.mod").
-		Build()
+		MustBuild()
 
 	if len(m.Entries) != 5 {
 		t.Errorf("expected 5 entries, got %d", len(m.Entries))
@@ -87,7 +88,7 @@ func TestManifestBuilder_NestedDirectories(t *testing.T) {
 			EndDir().
 			AddFile("util.go").
 		End().
-		Build()
+		MustBuild()
 
 	// Check depths
 	tests := []struct {
@@ -124,7 +125,7 @@ func TestManifestBuilder_Options(t *testing.T) {
 			WithMode(0644),
 			WithTimestamp(ts),
 		).
-		Build()
+		MustBuild()
 
 	entry := m.GetByPath("test.txt")
 	if entry == nil {
@@ -144,7 +145,7 @@ func TestManifestBuilder_Options(t *testing.T) {
 func TestManifestBuilder_WithTarget(t *testing.T) {
 	m := NewBuilder().
 		AddFile("link", WithTarget("/usr/bin/something")).
-		Build()
+		MustBuild()
 
 	entry := m.GetByPath("link")
 	if entry == nil {
@@ -164,7 +165,7 @@ func TestManifestBuilder_DirTrailingSlash(t *testing.T) {
 		AddDir("nodash").
 			AddFile("file.txt").
 		End().
-		Build()
+		MustBuild()
 
 	// Should find with trailing slash
 	if m.GetByPath("nodash/") == nil {
@@ -215,7 +216,7 @@ func TestTreeNavigation_GetByPath(t *testing.T) {
 		AddDir("dir").
 			AddFile("nested.txt").
 		End().
-		Build()
+		MustBuild()
 
 	if m.GetByPath("root.txt") == nil {
 		t.Error("GetByPath failed for root.txt")
@@ -240,7 +241,7 @@ func TestTreeNavigation_Children(t *testing.T) {
 				AddFile("grandchild.txt").
 			EndDir().
 		End().
-		Build()
+		MustBuild()
 
 	parent := m.GetByPath("parent/")
 	children := m.Children(parent)
@@ -277,7 +278,7 @@ func TestTreeNavigation_Parent(t *testing.T) {
 				AddFile("deep.txt").
 			EndDir().
 		End().
-		Build()
+		MustBuild()
 
 	deep := m.GetByPath("deep.txt")
 	parent := m.Parent(deep)
@@ -310,7 +311,7 @@ func TestTreeNavigation_Siblings(t *testing.T) {
 			AddFile("nested1.txt").
 			AddFile("nested2.txt").
 		End().
-		Build()
+		MustBuild()
 
 	// Test root-level siblings
 	file1 := m.GetByPath("file1.txt")
@@ -344,7 +345,7 @@ func TestTreeNavigation_Ancestors(t *testing.T) {
 				EndDir().
 			EndDir().
 		End().
-		Build()
+		MustBuild()
 
 	deep := m.GetByPath("deep.txt")
 	ancestors := m.Ancestors(deep)
@@ -385,7 +386,7 @@ func TestTreeNavigation_Descendants(t *testing.T) {
 				AddFile("file3.txt").
 			EndDir().
 		End().
-		Build()
+		MustBuild()
 
 	root := m.GetByPath("root/")
 	descendants := m.Descendants(root)
@@ -413,7 +414,7 @@ func TestTreeNavigation_Root(t *testing.T) {
 			AddFile("nested.txt").
 		End().
 		AddFile("root2.txt").
-		Build()
+		MustBuild()
 
 	roots := m.Root()
 	if len(roots) != 3 {
@@ -432,7 +433,7 @@ func TestTreeNavigation_Root(t *testing.T) {
 func TestTreeNavigation_IndexInvalidation(t *testing.T) {
 	m := NewBuilder().
 		AddFile("initial.txt").
-		Build()
+		MustBuild()
 
 	// Build index
 	_ = m.Root()
@@ -452,7 +453,7 @@ func TestManifestBuilder_WithC4ID(t *testing.T) {
 
 	m := NewBuilder().
 		AddFile("test.txt", WithC4ID(testID)).
-		Build()
+		MustBuild()
 
 	entry := m.GetByPath("test.txt")
 	if entry == nil {
@@ -469,7 +470,7 @@ func TestManifestBuilder_WithAttrs(t *testing.T) {
 
 	m := NewBuilder().
 		AddFile("test.txt", WithAttrs(testID, 999, 0755, ts)).
-		Build()
+		MustBuild()
 
 	entry := m.GetByPath("test.txt")
 	if entry == nil {
@@ -496,7 +497,7 @@ func TestManifestBuilder_EndDirOnRootDir(t *testing.T) {
 			AddFile("child.txt").
 		EndDir(). // This calls EndDir() on root dir, should return self
 		End().
-		Build()
+		MustBuild()
 
 	if len(m.Entries) != 2 {
 		t.Errorf("expected 2 entries, got %d", len(m.Entries))
@@ -509,7 +510,7 @@ func TestManifestBuilder_DirWithExistingSlash(t *testing.T) {
 		AddDir("withslash/"). // Already has slash
 			AddFile("child.txt").
 		End().
-		Build()
+		MustBuild()
 
 	// Should find with single trailing slash (not double)
 	if m.GetByPath("withslash/") == nil {
@@ -528,7 +529,7 @@ func TestManifestBuilder_Roundtrip(t *testing.T) {
 		AddDir("src", WithTimestamp(ts)).
 			AddFile("main.go", WithSize(500), WithMode(0644), WithTimestamp(ts)).
 		End().
-		Build()
+		MustBuild()
 
 	// Encode
 	data, err := Marshal(m)
@@ -556,4 +557,228 @@ func TestManifestBuilder_Roundtrip(t *testing.T) {
 	if string(data) != string(data2) {
 		t.Errorf("roundtrip data mismatch:\nOriginal:\n%s\nRoundtrip:\n%s", data, data2)
 	}
+}
+
+// ----------------------------------------------------------------------------
+// Remove and Layer Tests
+// ----------------------------------------------------------------------------
+
+func TestManifestBuilder_WithBase(t *testing.T) {
+	// Create a base manifest
+	base := NewBuilder().
+		AddFile("file1.txt", WithSize(100)).
+		AddFile("file2.txt", WithSize(200)).
+		MustBuild()
+
+	// Create manifest extending base
+	m, err := NewBuilder().
+		WithBase(base).
+		AddFile("file3.txt", WithSize(300)).
+		Build()
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Check base ID was set
+	if m.Base.IsNil() {
+		t.Error("expected Base ID to be set")
+	}
+
+	// Check new file was added
+	if m.GetByPath("file3.txt") == nil {
+		t.Error("expected to find file3.txt")
+	}
+}
+
+func TestManifestBuilder_WithBaseID(t *testing.T) {
+	testID := mustParseID("c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111")
+
+	m, err := NewBuilder().
+		WithBaseID(testID).
+		AddFile("newfile.txt").
+		Build()
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if m.Base != testID {
+		t.Errorf("expected Base ID %s, got %s", testID, m.Base)
+	}
+}
+
+func TestManifestBuilder_Remove_WithValidation(t *testing.T) {
+	// Create base manifest
+	base := NewBuilder().
+		AddFile("keep.txt", WithSize(100)).
+		AddFile("remove.txt", WithSize(200)).
+		MustBuild()
+
+	// Remove a file that exists
+	m, err := NewBuilder().
+		WithBase(base).
+		Remove("remove.txt").
+		Build()
+
+	if err != nil {
+		t.Fatalf("unexpected error removing existing file: %v", err)
+	}
+
+	// Check remove layer was created
+	if len(m.Layers) != 1 {
+		t.Errorf("expected 1 layer, got %d", len(m.Layers))
+	}
+	if m.Layers[0].Type != LayerTypeRemove {
+		t.Error("expected LayerTypeRemove")
+	}
+}
+
+func TestManifestBuilder_Remove_NonExistent(t *testing.T) {
+	// Create base manifest
+	base := NewBuilder().
+		AddFile("exists.txt", WithSize(100)).
+		MustBuild()
+
+	// Try to remove a file that doesn't exist
+	m, err := NewBuilder().
+		WithBase(base).
+		Remove("notexists.txt").
+		Build()
+
+	// Should return error but manifest should still be valid
+	if err == nil {
+		t.Error("expected error for non-existent file")
+	}
+	if m == nil {
+		t.Fatal("manifest should still be returned even with error")
+	}
+
+	// The removal should still be in the layer
+	if len(m.Layers) != 1 {
+		t.Errorf("expected 1 layer even with error, got %d", len(m.Layers))
+	}
+}
+
+func TestManifestBuilder_Remove_NoBase(t *testing.T) {
+	// Try to remove without base
+	m, err := NewBuilder().
+		Remove("somefile.txt").
+		Build()
+
+	// Should return error
+	if err == nil {
+		t.Error("expected error for removal without base")
+	}
+	if m == nil {
+		t.Fatal("manifest should still be returned")
+	}
+
+	// Removal should still be in layer
+	if len(m.Layers) != 1 {
+		t.Errorf("expected 1 layer, got %d", len(m.Layers))
+	}
+}
+
+func TestManifestBuilder_Remove_BaseIDOnly(t *testing.T) {
+	// Generate a real C4 ID
+	testID := c4.Identify(strings.NewReader("test content for base ID"))
+
+	builder := NewBuilder().
+		WithBaseID(testID).
+		Remove("somefile.txt")
+
+	m, err := builder.Build()
+
+	// Should succeed (can't validate, but that's OK)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have a warning
+	warnings := builder.Warnings()
+	if len(warnings) == 0 {
+		t.Error("expected warning about unvalidatable removals")
+	}
+
+	if m == nil {
+		t.Fatal("manifest should be returned")
+	}
+
+	// Verify base ID was set
+	if m.Base.IsNil() {
+		t.Error("expected Base ID to be set")
+	}
+}
+
+func TestManifestBuilder_RemoveDir(t *testing.T) {
+	base := NewBuilder().
+		AddDir("mydir").
+			AddFile("nested.txt").
+		End().
+		MustBuild()
+
+	m, err := NewBuilder().
+		WithBase(base).
+		RemoveDir("mydir").
+		Build()
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Check that mydir/ was added to removals (with trailing slash)
+	found := false
+	for _, e := range m.Entries {
+		if e.Name == "mydir/" && e.removeLayer {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected mydir/ in removals")
+	}
+}
+
+func TestManifestBuilder_LayerMetadata(t *testing.T) {
+	ts := time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC)
+	base := NewBuilder().
+		AddFile("old.txt").
+		MustBuild()
+
+	m, _ := NewBuilder().
+		WithBase(base).
+		By("testuser").
+		Note("Test removal").
+		At(ts).
+		Remove("old.txt").
+		Build()
+
+	if len(m.Layers) != 1 {
+		t.Fatalf("expected 1 layer, got %d", len(m.Layers))
+	}
+
+	layer := m.Layers[0]
+	if layer.By != "testuser" {
+		t.Errorf("expected By 'testuser', got %q", layer.By)
+	}
+	if layer.Note != "Test removal" {
+		t.Errorf("expected Note 'Test removal', got %q", layer.Note)
+	}
+	if !layer.Time.Equal(ts) {
+		t.Errorf("expected Time %v, got %v", ts, layer.Time)
+	}
+}
+
+func TestManifestBuilder_MustBuild_Panics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("MustBuild should panic on error")
+		}
+	}()
+
+	// This should panic because we're removing without base
+	NewBuilder().
+		Remove("file.txt").
+		MustBuild()
 }

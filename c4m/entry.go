@@ -19,10 +19,13 @@ type Entry struct {
 	Target    string      // Symlink target (if applicable)
 	C4ID      c4.ID       // Content identifier
 	Depth     int         // Indentation level
-	
+
 	// For sequences
 	IsSequence bool
 	Pattern    string // Original sequence pattern
+
+	// For layered manifests
+	removeLayer bool // Entry belongs to @remove layer (internal use)
 }
 
 // IsDir returns true if the entry represents a directory.

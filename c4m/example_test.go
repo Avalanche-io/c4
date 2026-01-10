@@ -158,7 +158,7 @@ func ExampleNewBuilder() {
 			AddFile("util.go", c4m.WithSize(150)).
 		End().
 		AddFile("go.mod", c4m.WithSize(50)).
-		Build()
+		MustBuild()
 
 	fmt.Printf("Total entries: %d\n", len(m.Entries))
 
@@ -198,7 +198,7 @@ func ExampleManifest_Children() {
 				AddFile("lib.go", c4m.WithSize(500)).
 			EndDir().
 		End().
-		Build()
+		MustBuild()
 
 	// Get direct children of project/
 	project := m.GetByPath("project/")
@@ -224,7 +224,7 @@ func ExampleManifest_Ancestors() {
 				EndDir().
 			EndDir().
 		End().
-		Build()
+		MustBuild()
 
 	deep := m.GetByPath("deep.txt")
 	ancestors := m.Ancestors(deep)
@@ -247,7 +247,7 @@ func ExampleManifest_Root() {
 			AddFile("nested.txt").
 		End().
 		AddFile("root2.txt").
-		Build()
+		MustBuild()
 
 	roots := m.Root()
 	fmt.Printf("Root entries: %d\n", len(roots))
