@@ -36,7 +36,7 @@ Post-production receives the manifest in seconds and can immediately:
 - Reorganize the structure (rename shots, create folders)
 - Identify what's needed vs. what's not
 - Plan the edit structure
-- Discuss specific files by ID
+- Discuss specific files by name (the IDs are for machines, not conversations)
 
 **All before a single byte of actual footage arrives.**
 
