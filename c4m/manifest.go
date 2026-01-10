@@ -23,6 +23,7 @@ type Manifest struct {
 	CurrentLayer *Layer // Current layer being parsed
 	Data         c4.ID  // Application-specific metadata
 	DataBlocks   []*DataBlock // Embedded @data blocks (for self-contained manifests)
+	index        *treeIndex   // Lazily-built tree index for O(1) navigation
 }
 
 // Layer represents a changeset layer
@@ -53,6 +54,7 @@ func NewManifest() *Manifest {
 // AddEntry adds an entry to the manifest
 func (m *Manifest) AddEntry(e *Entry) {
 	m.Entries = append(m.Entries, e)
+	m.invalidateIndex()
 }
 
 // Sort sorts entries using natural sort algorithm
@@ -320,4 +322,351 @@ func (m *Manifest) GetIDList(id c4.ID) (*IDList, error) {
 		return nil, fmt.Errorf("data block not found: %s", id)
 	}
 	return block.GetIDList()
+}
+
+// ----------------------------------------------------------------------------
+// Sorting
+// ----------------------------------------------------------------------------
+
+// SortSiblingsHierarchically sorts manifest entries to maintain proper C4M format:
+// - Preserves hierarchical depth-first traversal
+// - Files before directories at same level
+// - Natural sort for names within siblings
+func (m *Manifest) SortSiblingsHierarchically() {
+	if len(m.Entries) == 0 {
+		return
+	}
+
+	// We'll build a new sorted list while preserving hierarchy
+	result := make([]*Entry, 0, len(m.Entries))
+	used := make([]bool, len(m.Entries))
+
+	// Process entries depth-first, sorting siblings at each level
+	var processLevel func(parentIdx int, parentDepth int)
+	processLevel = func(parentIdx int, parentDepth int) {
+		// Find all children at the next depth level
+		childDepth := parentDepth + 1
+		startIdx := parentIdx + 1
+
+		// Special case for root level
+		if parentIdx == -1 {
+			startIdx = 0
+			childDepth = 0
+		}
+
+		// Collect all immediate children
+		type child struct {
+			entry *Entry
+			index int
+		}
+		children := []child{}
+
+		for i := startIdx; i < len(m.Entries); i++ {
+			if used[i] {
+				continue
+			}
+
+			entry := m.Entries[i]
+
+			// Stop when we've gone back up the hierarchy
+			if entry.Depth < childDepth {
+				break
+			}
+
+			// Skip deeper descendants - they'll be processed recursively
+			if entry.Depth > childDepth {
+				continue
+			}
+
+			// This is an immediate child
+			children = append(children, child{entry, i})
+		}
+
+		// Sort the children (files before dirs, then natural sort)
+		sort.Slice(children, func(i, j int) bool {
+			a, b := children[i].entry, children[j].entry
+
+			// Files before directories
+			if a.IsDir() != b.IsDir() {
+				return !a.IsDir() // files first
+			}
+
+			// Natural sort for names
+			return NaturalLess(a.Name, b.Name)
+		})
+
+		// Process sorted children
+		for _, c := range children {
+			used[c.index] = true
+			result = append(result, c.entry)
+
+			// If it's a directory, recursively process its children
+			if c.entry.IsDir() {
+				processLevel(c.index, c.entry.Depth)
+			}
+		}
+	}
+
+	// Start from root level
+	processLevel(-1, -1)
+
+	// If any entries weren't processed (orphaned), add them at the end
+	// This can happen with incomplete chunks
+	for i, entry := range m.Entries {
+		if !used[i] {
+			// Silently handle orphaned entries - this is expected in continuation chunks
+			result = append(result, entry)
+		}
+	}
+
+	m.Entries = result
+}
+
+// ----------------------------------------------------------------------------
+// Metadata Propagation
+// ----------------------------------------------------------------------------
+
+// PropagateMetadata resolves null values in entries by propagating from children
+// This is used for directory entries to compute size and timestamp from contents
+func PropagateMetadata(entries []*Entry) {
+	// Find directory entries with null values
+	for i := range entries {
+		entry := entries[i]
+
+		if entry.IsDir() && entry.HasNullValues() {
+			// Get children of this directory
+			children := getDirectoryChildren(entries, entry)
+
+			// Propagate size if null
+			if entry.Size < 0 {
+				entry.Size = calculateDirectorySize(children)
+			}
+
+			// Propagate timestamp if null
+			if entry.Timestamp.Unix() == 0 {
+				entry.Timestamp = getMostRecentModtime(children)
+			}
+		}
+	}
+}
+
+// getDirectoryChildren returns all entries that are direct children of a directory
+func getDirectoryChildren(entries []*Entry, dir *Entry) []*Entry {
+	var children []*Entry
+	dirDepth := dir.Depth
+
+	// Find entries at depth+1 that appear after this directory
+	collecting := false
+	for _, e := range entries {
+		if e == dir {
+			collecting = true
+			continue
+		}
+		if collecting {
+			if e.Depth == dirDepth+1 {
+				children = append(children, e)
+			} else if e.Depth <= dirDepth {
+				// Reached next sibling or parent, stop
+				break
+			}
+		}
+	}
+
+	return children
+}
+
+// calculateDirectorySize computes the total size of all entries
+// This is the sum of all file sizes recursively, excluding null sizes
+func calculateDirectorySize(entries []*Entry) int64 {
+	var total int64
+	for _, e := range entries {
+		if e.Size >= 0 { // Skip null sizes (-1)
+			total += e.Size
+		}
+	}
+	return total
+}
+
+// getMostRecentModtime finds the most recent modification time among entries
+// Returns current time if no valid timestamps found
+func getMostRecentModtime(entries []*Entry) time.Time {
+	var mostRecent time.Time
+
+	for _, e := range entries {
+		// Skip null timestamps (epoch)
+		if e.Timestamp.Unix() > 0 && e.Timestamp.After(mostRecent) {
+			mostRecent = e.Timestamp
+		}
+	}
+
+	// If no valid timestamps found, return current time
+	if mostRecent.IsZero() {
+		return time.Now().UTC()
+	}
+
+	return mostRecent
+}
+
+// ----------------------------------------------------------------------------
+// Tree Index and Navigation
+// ----------------------------------------------------------------------------
+
+// treeIndex provides O(1) navigation through manifest hierarchy
+type treeIndex struct {
+	byPath   map[string]*Entry   // path -> entry
+	children map[*Entry][]*Entry // parent -> direct children
+	parent   map[*Entry]*Entry   // child -> parent
+	root     []*Entry            // depth-0 entries
+}
+
+// invalidateIndex marks the tree index as stale
+func (m *Manifest) invalidateIndex() {
+	m.index = nil
+}
+
+// ensureIndex builds the tree index if needed
+func (m *Manifest) ensureIndex() *treeIndex {
+	if m.index != nil {
+		return m.index
+	}
+
+	idx := &treeIndex{
+		byPath:   make(map[string]*Entry),
+		children: make(map[*Entry][]*Entry),
+		parent:   make(map[*Entry]*Entry),
+		root:     make([]*Entry, 0),
+	}
+
+	// Build path lookup and collect root entries
+	for _, e := range m.Entries {
+		idx.byPath[e.Name] = e
+		if e.Depth == 0 {
+			idx.root = append(idx.root, e)
+		}
+	}
+
+	// Build parent-child relationships
+	// For each entry, find its parent based on depth and position
+	for i, e := range m.Entries {
+		if e.Depth == 0 {
+			continue // Root entries have no parent
+		}
+
+		// Search backwards for parent (first directory at depth-1)
+		for j := i - 1; j >= 0; j-- {
+			candidate := m.Entries[j]
+			if candidate.Depth == e.Depth-1 && candidate.IsDir() {
+				idx.parent[e] = candidate
+				idx.children[candidate] = append(idx.children[candidate], e)
+				break
+			}
+			// Stop if we've gone past possible parents
+			if candidate.Depth < e.Depth-1 {
+				break
+			}
+		}
+	}
+
+	m.index = idx
+	return idx
+}
+
+// GetByPath returns an entry by its path (O(1) after index build)
+func (m *Manifest) GetByPath(path string) *Entry {
+	idx := m.ensureIndex()
+	return idx.byPath[path]
+}
+
+// Children returns the direct children of an entry
+func (m *Manifest) Children(e *Entry) []*Entry {
+	if e == nil || !e.IsDir() {
+		return nil
+	}
+	idx := m.ensureIndex()
+	return idx.children[e]
+}
+
+// Parent returns the parent directory of an entry
+func (m *Manifest) Parent(e *Entry) *Entry {
+	if e == nil || e.Depth == 0 {
+		return nil
+	}
+	idx := m.ensureIndex()
+	return idx.parent[e]
+}
+
+// Siblings returns entries at the same depth with the same parent
+func (m *Manifest) Siblings(e *Entry) []*Entry {
+	if e == nil {
+		return nil
+	}
+
+	idx := m.ensureIndex()
+	parent := idx.parent[e]
+
+	var siblings []*Entry
+	if parent == nil {
+		// Root level - siblings are other root entries
+		for _, r := range idx.root {
+			if r != e {
+				siblings = append(siblings, r)
+			}
+		}
+	} else {
+		// Non-root - siblings are other children of same parent
+		for _, c := range idx.children[parent] {
+			if c != e {
+				siblings = append(siblings, c)
+			}
+		}
+	}
+
+	return siblings
+}
+
+// Ancestors returns all parent entries from immediate parent to root
+func (m *Manifest) Ancestors(e *Entry) []*Entry {
+	if e == nil || e.Depth == 0 {
+		return nil
+	}
+
+	idx := m.ensureIndex()
+	var ancestors []*Entry
+
+	current := idx.parent[e]
+	for current != nil {
+		ancestors = append(ancestors, current)
+		current = idx.parent[current]
+	}
+
+	return ancestors
+}
+
+// Descendants returns all entries nested under this entry
+func (m *Manifest) Descendants(e *Entry) []*Entry {
+	if e == nil || !e.IsDir() {
+		return nil
+	}
+
+	idx := m.ensureIndex()
+	var descendants []*Entry
+
+	var collect func(*Entry)
+	collect = func(parent *Entry) {
+		for _, child := range idx.children[parent] {
+			descendants = append(descendants, child)
+			if child.IsDir() {
+				collect(child)
+			}
+		}
+	}
+
+	collect(e)
+	return descendants
+}
+
+// Root returns all depth-0 entries
+func (m *Manifest) Root() []*Entry {
+	idx := m.ensureIndex()
+	return idx.root
 }
