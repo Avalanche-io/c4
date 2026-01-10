@@ -297,6 +297,19 @@ Provides inline expansion of sequences:
 -rw-r--r-- 2023-01-01T12:00:00Z 3500 frames.03.exr c4CCC...
 ```
 
+#### @end
+Explicitly ends a `@layer` or `@remove` section, returning to the default layer:
+```
+@layer
+@by "Editor"
+-rw-r--r-- 2023-01-01T12:00:00Z 1024 new.txt c4ABC...
+@end
+
+-rw-r--r-- 2023-01-01T12:00:00Z 2048 main.txt c4DEF...
+```
+
+The `@end` directive is optional when layers are followed by other `@layer` or `@remove` directives, but recommended for clarity when returning to the default layer.
+
 ## Metadata Keywords
 
 Can follow any @ directive that starts a section:

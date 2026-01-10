@@ -1,5 +1,39 @@
 # C4M Metadata Extension Design
 
+> **Status: FUTURE EXTENSION PROPOSAL**
+>
+> This document describes proposed metadata extensions for C4M. Most directives in this
+> document are **NOT YET IMPLEMENTED**. See the Implementation Status section below.
+
+## Implementation Status
+
+| Directive | Status | Notes |
+|-----------|--------|-------|
+| `@base` | ✅ Implemented | References parent manifest for layered changesets |
+| `@layer` | ✅ Implemented | Starts an add/modify layer |
+| `@remove` | ✅ Implemented | Starts a removal layer |
+| `@by` | ✅ Implemented | Layer author attribution |
+| `@time` | ✅ Implemented | Layer timestamp |
+| `@note` | ✅ Implemented | Layer description |
+| `@data` | ✅ Implemented | Embedded data blocks (ID lists, metadata) |
+| `@expand` | ✅ Implemented | Sequence expansion reference |
+| `@creator` | ❌ Not implemented | Production metadata - future |
+| `@author` | ❌ Not implemented | Production metadata - future |
+| `@location` | ❌ Not implemented | Production metadata - future |
+| `@comment` | ❌ Not implemented | Production metadata - future |
+| `@process` | ❌ Not implemented | Workflow tracking - future |
+| `@verify` | ❌ Not implemented | Verification records - future |
+| `@ignore` | ❌ Not implemented | Scan exclusions - future |
+| `@previous` | ❌ Not implemented | Chain linkage - future |
+| `@chain` | ❌ Not implemented | Generation tracking - future |
+| `@hashdate` | ❌ Not implemented | Hash timestamps - future |
+| `@roothash` | ❌ Not implemented | Integrity hashes - future |
+| `@hashformat` | ❌ Not implemented | Multi-hash support - future |
+
+For the current specification, see [c4m/SPECIFICATION.md](../c4m/SPECIFICATION.md).
+
+---
+
 ## Design Principles
 
 1. **Backward Compatible**: Old parsers ignore unknown @ directives

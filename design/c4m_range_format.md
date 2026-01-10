@@ -163,7 +163,7 @@ IGp1c3QgQzQgSURzLCBzbyBpdCBuZWVkcyBhcm1vcmluZy4K
 
 ### Detection Rules
 
-Content is treated as a plain C4 ID list if and only if every non-empty line (after whitespace trimming) matches the C4 ID pattern: `c4[1-9A-Za-z]{87}`
+Content is treated as a plain C4 ID list if and only if every non-empty line (after whitespace trimming) matches the C4 ID pattern: `c4[1-9A-HJ-NP-Za-km-z]{88}` (base58 alphabet, 90 total characters)
 
 Otherwise, content is interpreted as base64-encoded binary data.
 
