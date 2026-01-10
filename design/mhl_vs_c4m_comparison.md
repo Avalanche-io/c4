@@ -4,8 +4,8 @@
 
 MHL and C4M both create manifests with hashes, but they serve different purposes:
 
-- **MHL**: Metadata container with integrity checking - associates arbitrary information with files
-- **C4M**: Content structure definition with identity - describes what files exist with what content
+- **MHL**: Couples metadata to content - attach arbitrary information to files
+- **C4M**: Decouples structure from content - organize files before they arrive, reunite automatically
 
 The key architectural difference: MHL's weaker hash support means content must stay attached to the manifest. C4's strong IDs mean content can safely be detached and stored separately.
 
@@ -234,11 +234,11 @@ The distinction is subtle but important. MHL asks "is this still the same?" C4M 
 
 ### When to Use C4M
 
+- Working with files before they arrive (organize, plan, discuss)
 - Content-addressed storage systems
 - Deduplication workflows
 - Distributed file synchronization
 - Archive systems where content may be stored separately
-- Any workflow benefiting from strong content identity
 
 ## Interoperability
 
@@ -259,11 +259,10 @@ Tools can convert between formats:
 
 | Aspect | MHL | C4M |
 |--------|-----|-----|
-| **Purpose** | Metadata container + integrity | Structure definition + identity |
+| **Core model** | Couples metadata to content | Decouples structure from content |
 | **Hash strength** | Variable (MD5, SHA1, etc.) | Strong only (C4/SHA-512) |
-| **Content attachment** | Must stay attached (collision risk) | Can safely detach (ID is identity) |
+| **Work without files** | No - files must be present | Yes - organize before arrival |
 | **Arbitrary metadata** | Embedded in format | Just another file in bundle |
 | **Re-association** | By path/hash (collision risk) | By ID (mathematically certain) |
-| **Verification model** | "Has it changed?" | "What is it?" |
 
-Neither format is "better" - they solve different problems. MHL is a metadata container for production workflows. C4M is a content structure definition enabling content-addressed operations.
+Neither format is "better" - they solve different problems. MHL couples metadata to content for production workflows. C4M decouples structure from content so you can work with files before they arrive.
