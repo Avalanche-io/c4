@@ -958,6 +958,253 @@ When legacy host opens this path:
 
 **Completely transparent to legacy hosts.**
 
+### The Async Content Challenge
+
+OpenAssetIO's `resolve()` is synchronous - it blocks until results are ready, then returns paths that hosts expect to work immediately. But C4D may need time to fetch content from peers.
+
+**The problem:**
+```
+Host calls resolve()
+    → Manager returns /c4mount/c4abc123.../file.exr
+    → Host immediately opens file
+    → File doesn't exist yet (C4D still fetching)
+    → Error!
+```
+
+**Solutions:**
+
+#### Option A: Blocking Resolve (Simplest)
+
+The C4 Manager's `resolve()` blocks until content is available:
+
+```python
+class C4Manager(ManagerInterface):
+    def resolve(self, refs, trait_set, context, host_session):
+        results = []
+        for ref in refs:
+            entity = self.db.lookup(ref)
+            c4_id = entity.c4_id
+
+            # Block until C4D has content locally
+            self.c4d.ensure_available(c4_id)  # Blocks here
+
+            # Now safe to return path
+            data = TraitsData()
+            LocatableContentTrait(data).setLocation(f"/c4mount/{c4_id}/content")
+            results.append(data)
+        return results
+```
+
+**Pros**: Simple, works with existing hosts
+**Cons**: Resolve can be slow, no parallelism
+
+#### Option B: Batch Prefetch + Resolve
+
+Prefetch in parallel, then resolve returns immediately:
+
+```python
+class C4Manager(ManagerInterface):
+    def resolve(self, refs, trait_set, context, host_session):
+        # Collect all C4 IDs
+        entities = [self.db.lookup(ref) for ref in refs]
+        c4_ids = [e.c4_id for e in entities]
+
+        # Prefetch all in parallel (blocks until all ready)
+        self.c4d.ensure_available_batch(c4_ids)  # Parallel fetch
+
+        # Now all paths work immediately
+        results = []
+        for entity in entities:
+            data = TraitsData()
+            LocatableContentTrait(data).setLocation(f"/c4mount/{entity.c4_id}/content")
+            results.append(data)
+        return results
+```
+
+**Pros**: Parallel fetching, still simple host integration
+**Cons**: Resolve still blocks (but faster due to parallelism)
+
+#### Option C: NFS Lazy Fetch (Transparent)
+
+Use `absfs/absnfs` with lazy content materialization:
+
+```
+Host opens /c4mount/c4abc123.../file.exr
+    → NFS server receives open()
+    → absnfs asks C4D for content (blocks until available)
+    → Returns file handle
+    → Host reads content
+```
+
+This is standard NFS behavior - remote file access can block. The Manager returns paths immediately; the NFS layer handles blocking.
+
+```python
+class C4Manager(ManagerInterface):
+    def resolve(self, refs, trait_set, context, host_session):
+        results = []
+        for ref in refs:
+            entity = self.db.lookup(ref)
+
+            # Return path immediately - NFS will handle fetch
+            data = TraitsData()
+            LocatableContentTrait(data).setLocation(
+                f"/c4mount/{entity.c4_id}/content.exr"
+            )
+            results.append(data)
+        return results
+```
+
+The `absnfs` server backed by C4D:
+
+```go
+// absfs filesystem implementation
+func (fs *C4FS) Open(path string) (absfs.File, error) {
+    c4id := extractC4ID(path)
+
+    // This blocks until content is available
+    localPath, err := fs.c4d.GetFile(c4id)
+    if err != nil {
+        return nil, err
+    }
+
+    return os.Open(localPath)
+}
+```
+
+**Pros**: Transparent to Manager AND Host, standard NFS semantics
+**Cons**: Open() latency visible to user, may timeout
+
+#### Option D: Explicit Prefetch Trait (Best UX)
+
+Add a prefetch capability that hosts can use proactively:
+
+```python
+# New trait for prefetch
+class PrefetchableTrait:
+    kId = "c4:content.Prefetchable"
+
+# Manager indicates support
+def managementPolicy(self, trait_sets, context):
+    policies = []
+    for trait_set in trait_sets:
+        data = TraitsData()
+        PrefetchableTrait.imbueTo(data)  # "I support prefetch"
+        policies.append(data)
+    return policies
+
+# New prefetch method (extension to OpenAssetIO)
+def prefetch(self, refs, context, host_session, callback):
+    """Begin fetching content for entities. Non-blocking."""
+    for i, ref in enumerate(refs):
+        entity = self.db.lookup(ref)
+        self.c4d.prefetch_async(entity.c4_id,
+            on_complete=lambda: callback(i, True),
+            on_error=lambda e: callback(i, False, e))
+```
+
+Host usage:
+```python
+# Smart host with prefetch support
+refs = get_entity_refs_for_scene()
+
+# Start prefetch early (non-blocking)
+manager.prefetch(refs, context, session, on_prefetch_complete)
+
+# Do other scene setup work...
+setup_scene_parameters()
+configure_render_settings()
+
+# By now, prefetch likely complete
+# Resolve is instant since content is cached
+results = manager.resolve(refs, traits, context)
+```
+
+**Pros**: Best UX, parallel with other work, non-blocking
+**Cons**: Requires host changes, not in OpenAssetIO spec (yet)
+
+#### Option E: Hybrid Approach (Recommended)
+
+Combine Options B and C:
+
+1. **NFS provides transparent blocking** - works even without prefetch
+2. **Manager batches prefetch internally** - parallel fetching
+3. **Optional explicit prefetch** - for hosts that support it
+
+```python
+class C4Manager(ManagerInterface):
+    def resolve(self, refs, trait_set, context, host_session):
+        # Collect C4 IDs
+        entities = [self.db.lookup(ref) for ref in refs]
+        c4_ids = [e.c4_id for e in entities]
+
+        # Trigger parallel prefetch (best effort, may not complete)
+        self.c4d.prefetch_batch(c4_ids)
+
+        # Return paths immediately - NFS handles any remaining wait
+        results = []
+        for entity in entities:
+            data = TraitsData()
+            LocatableContentTrait(data).setLocation(
+                f"/c4mount/{entity.c4_id}/content.exr"
+            )
+            results.append(data)
+        return results
+```
+
+The resolve starts fetching but returns immediately. If content isn't ready when the host opens the file, NFS blocks transparently. In practice, batch prefetch often completes before the host gets around to opening files.
+
+### absnfs Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Host (DCC)                               │
+│                                                                  │
+│   resolve() → /c4mount/c4abc123.../render.exr                    │
+│                    │                                             │
+│                    ▼                                             │
+│   open("/c4mount/c4abc123.../render.exr")                        │
+│                                                                  │
+└────────────────────┼────────────────────────────────────────────┘
+                     │
+                     │ NFS protocol
+                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    absnfs Server                                 │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              absfs.FileSystem (C4FS)                     │   │
+│   │                                                          │   │
+│   │   Open(path) {                                           │   │
+│   │       id := parseC4ID(path)                              │   │
+│   │       localPath := c4d.GetFile(id)  // blocks            │   │
+│   │       return os.Open(localPath)                          │   │
+│   │   }                                                      │   │
+│   │                                                          │   │
+│   │   ReadDir(path) {                                        │   │
+│   │       // Virtual directory listing from manifest         │   │
+│   │       return manifest.EntriesAt(path)                    │   │
+│   │   }                                                      │   │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                              │                                   │
+│                              ▼                                   │
+│                    ┌─────────────────┐                          │
+│                    │      C4D        │                          │
+│                    │   GetFile(id)   │                          │
+│                    └────────┬────────┘                          │
+│                             │                                    │
+└─────────────────────────────┼───────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+        Local Cache      LAN Peers       Cloud
+```
+
+The absnfs server presents a virtual filesystem where:
+- Directory structure comes from C4M manifests
+- File content is fetched by C4D on demand
+- All the NFS semantics (caching, read-ahead) work normally
+
 ### Summary: The Full Stack
 
 ```
