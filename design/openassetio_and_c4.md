@@ -136,6 +136,184 @@ drwxr-xr-x 2024-01-15T10:00:00Z 0 shot001/
 
 The manifest describes structure; C4 IDs identify content. Structure and content can travel separately.
 
+## The Indirection Models: Where They Overlap and Differ
+
+Both systems use indirection - separating "what you want" from "getting the data." This is the source of apparent overlap.
+
+### C4's "Push Intent, Pull Data"
+
+```
+┌─────────────────┐                    ┌─────────────────┐
+│   C4M Manifest  │  ───(email)───►   │    Recipient    │
+│  (structure +   │                    │                 │
+│    C4 IDs)      │                    │  Has manifest,  │
+└─────────────────┘                    │  no content yet │
+        │                              └────────┬────────┘
+        │                                       │
+        ▼                                       ▼
+   "I want files                         Fetch content
+    organized                            by C4 ID from
+    like THIS"                           ANY source
+```
+
+**Intent (pushed)**: The manifest describes structure and identifies content by C4 ID
+**Data (pulled)**: Content fetched by ID from wherever it's available
+
+The key property: **C4 ID IS the content.** The manifest carries identity itself, not a handle that must be resolved by an authority.
+
+### OpenAssetIO's "Reference → Resolution → Data"
+
+```
+┌─────────────────┐                    ┌─────────────────┐
+│  Nuke Script    │                    │    ShotGrid     │
+│  (contains      │ ───(resolve)───►   │    (Manager)    │
+│   entity refs)  │                    │                 │
+└─────────────────┘                    └────────┬────────┘
+        │                                       │
+        │                               "That entity is
+        ▼                                currently at
+   "I want asset                         /path/to/v003"
+    shot001/comp/                               │
+    approved"                                   ▼
+                                         Fetch from
+                                         resolved path
+```
+
+**Reference**: Opaque handle to a workflow entity (shot, version, approval)
+**Resolution**: Manager answers "where is that right now?"
+**Data**: Fetched from the resolved location
+
+The key property: **Manager controls the mapping.** The document carries a handle; the Manager must be consulted to know what it means.
+
+### The Fundamental Difference
+
+| Aspect | C4 | OpenAssetIO |
+|--------|-----|-------------|
+| **What does the reference identify?** | Content itself | Workflow entity (concept) |
+| **Who controls the mapping?** | Mathematics (immutable) | Manager database (mutable) |
+| **Can the mapping change?** | No - same content = same ID forever | Yes - "approved" version can change |
+| **Can you work offline?** | Yes, if content is cached | No, need Manager to resolve |
+| **Verification** | Compute ID, compare | Trust Manager's answer |
+
+### A Concrete Example
+
+**OpenAssetIO alone:**
+```python
+# Script contains reference
+ref = "shotgrid://shot001/comp/approved"
+
+# Must ask Manager what this means RIGHT NOW
+location = manager.resolve(ref)  # → /path/to/v003.exr
+
+# Load from that path
+content = load(location)
+
+# But wait... is this actually the right content?
+# We're trusting the Manager's database AND the filesystem
+```
+
+If the Manager is offline, the script breaks.
+If someone replaced v003.exr with garbage, we won't know.
+
+**C4 alone:**
+```python
+# Manifest contains content identity
+entry = manifest.get("shot001/comp.exr")  # C4 ID: c4abc123...
+
+# Find content with that ID - could be anywhere
+content = find_by_id(entry.c4_id)  # Local cache? Cloud? USB drive?
+
+# Verify it's correct (just compute ID)
+assert c4.identify(content) == entry.c4_id
+
+# But wait... is this the APPROVED version?
+# C4 doesn't know about workflow - just content
+```
+
+C4 guarantees you have the right content, but doesn't help with "which version is approved."
+
+**Combined:**
+```python
+# Script contains reference
+ref = "shotgrid://shot001/comp/approved"
+
+# Ask Manager for location AND content identity
+location, c4_id = manager.resolve(ref)  # path + C4 ID
+
+# Check cache first - skip download if we have it
+if cache.has(c4_id):
+    content = cache.get(c4_id)
+else:
+    content = fetch(location)
+    assert c4.identify(content) == c4_id  # Verify!
+    cache.put(c4_id, content)
+
+# Now we have:
+# - The APPROVED version (OpenAssetIO workflow)
+# - VERIFIED content (C4 identity)
+```
+
+### What Each System Provides
+
+**OpenAssetIO provides:**
+- Workflow concepts: versions, approvals, relationships
+- Context-aware resolution: different paths for different environments
+- Metadata: traits like color space, frame range
+- Abstraction: same API works with any AMS
+
+**OpenAssetIO requires:**
+- Manager access to resolve references
+- Trust in Manager's database accuracy
+- Trust in filesystem integrity
+
+**C4 provides:**
+- Content identity: mathematical certainty about what content IS
+- Verification: prove content matches expectations
+- Source agnosticism: get content from anywhere
+- Offline operation: work without central authority
+
+**C4 requires:**
+- The content (or a cache of it)
+- Does NOT provide workflow concepts (versions, approvals)
+
+### They Answer Different Questions
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │                                         │
+   OpenAssetIO:     │  "What is the approved comp for shot 1? │
+                    │   Where is it on this render farm?"     │
+                    │                                         │
+                    └─────────────────────────────────────────┘
+                                        │
+                                        ▼
+                    ┌─────────────────────────────────────────┐
+                    │                                         │
+   Answer:          │  Entity: shotgrid://shot001/comp/v003   │
+                    │  Location: /render/cache/shot001.exr    │
+                    │                                         │
+                    └─────────────────────────────────────────┘
+                                        │
+                                        ▼
+                    ┌─────────────────────────────────────────┐
+                    │                                         │
+   C4:              │  "Is the file at that location actually │
+                    │   the content I expect?"                │
+                    │                                         │
+                    └─────────────────────────────────────────┘
+                                        │
+                                        ▼
+                    ┌─────────────────────────────────────────┐
+                    │                                         │
+   Answer:          │  Compute ID → c4abc123...               │
+                    │  Expected:  → c4abc123...  ✓ Match      │
+                    │                                         │
+                    └─────────────────────────────────────────┘
+```
+
+OpenAssetIO: "Which content do we want?" (workflow decision)
+C4: "Is this the content we want?" (verification)
+
 ## Comparison: Different Questions, Different Answers
 
 | Aspect | OpenAssetIO | C4 |
