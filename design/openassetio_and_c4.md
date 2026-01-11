@@ -664,6 +664,359 @@ A pipeline using both gets:
 - Source-agnostic retrieval (fetch from anywhere)
 - Offline workflows (C4M manifests describe content without having it)
 
+## C4 Manager: A Native OpenAssetIO Backend
+
+The most powerful integration isn't adding C4 as a trait to existing Managers - it's building a **C4-native OpenAssetIO Manager** backed by C4D.
+
+### The Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              DCC (Host)                                  │
+│                                                                          │
+│   ┌─────────────────┐                                                    │
+│   │   Nuke Script   │                                                    │
+│   │  "c4mgr://shot  │                                                    │
+│   │   /comp/latest" │                                                    │
+│   └────────┬────────┘                                                    │
+│            │                                                             │
+│            ▼                                                             │
+│   ┌─────────────────┐         ┌─────────────────────────────────────┐   │
+│   │  OpenAssetIO    │◄───────►│            C4 Manager               │   │
+│   │   Host API      │         │  (ManagerInterface implementation)  │   │
+│   └─────────────────┘         └──────────────────┬──────────────────┘   │
+│                                                  │                       │
+└──────────────────────────────────────────────────┼───────────────────────┘
+                                                   │
+                           Resolve: entity → C4 ID │
+                                                   ▼
+                               ┌───────────────────────────────────┐
+                               │         C4 Manager Database       │
+                               │                                   │
+                               │  shot/comp/v001 → c4abc123...     │
+                               │  shot/comp/v002 → c4def456...     │
+                               │  shot/comp/latest → c4def456...   │
+                               │                                   │
+                               └───────────────────────────────────┘
+                                                   │
+                                                   │ C4 ID
+                                                   ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                              C4D (Daemon)                                │
+│                                                                          │
+│   ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐     │
+│   │   Local Cache   │    │    LAN Peers    │    │  Cloud Storage  │     │
+│   └────────┬────────┘    └────────┬────────┘    └────────┬────────┘     │
+│            │                      │                      │               │
+│            └──────────────────────┴──────────────────────┘               │
+│                                   │                                      │
+│                          Content by C4 ID                                │
+│                                   │                                      │
+│                                   ▼                                      │
+│                         ┌─────────────────┐                              │
+│                         │  /cache/c4abc.. │  ← Local path (ephemeral)    │
+│                         └─────────────────┘                              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+**1. Resolution returns C4 ID, not location:**
+
+```python
+class C4Manager(ManagerInterface):
+    """OpenAssetIO Manager backed by C4D."""
+
+    def resolve(self, refs, trait_set, context, host_session):
+        results = []
+        for ref in refs:
+            entity = self.db.lookup(ref)
+            data = TraitsData()
+
+            # Return C4 ID - this IS the identity
+            if C4IdentityTrait.kId in trait_set:
+                C4IdentityTrait(data).setId(entity.c4_id)
+
+            # Return C4 URL - C4D will handle actual retrieval
+            if LocatableContentTrait.kId in trait_set:
+                LocatableContentTrait(data).setLocation(f"c4://{entity.c4_id}")
+
+            # Other traits work as normal
+            if VersionTrait.kId in trait_set:
+                VersionTrait(data).setStableTag(entity.version)
+
+            results.append(data)
+        return results
+```
+
+**2. C4D handles content retrieval:**
+
+```python
+# C4D client library
+class C4DClient:
+    def get(self, c4_id: str) -> Path:
+        """Get content by C4 ID. Returns local path."""
+        # Check local cache
+        if self.cache.has(c4_id):
+            return self.cache.path(c4_id)
+
+        # Ask peers (LAN discovery, known remotes, cloud)
+        content = self.network.fetch(c4_id)
+
+        # Verify (automatic - if ID matches, it's correct)
+        # Cache locally
+        return self.cache.store(c4_id, content)
+```
+
+**3. Host integration:**
+
+```python
+def load_asset(ref: str, manager: Manager, c4d: C4DClient):
+    """Load asset through OpenAssetIO + C4D."""
+    # Resolve entity reference to C4 ID
+    traits = {C4IdentityTrait.kId, VersionTrait.kId}
+    result = manager.resolve([ref], traits, context)
+
+    c4_id = C4IdentityTrait(result[0]).getId()
+    version = VersionTrait(result[0]).getStableTag()
+
+    print(f"Loading {ref} (version {version})")
+
+    # C4D handles all the networking, caching, verification
+    local_path = c4d.get(c4_id)
+
+    return load_file(local_path)
+```
+
+### What This Eliminates
+
+**No stored paths anywhere:**
+- Manager database: entity → C4 ID (not path)
+- Documents: entity references (not paths)
+- No mount point dependencies
+- No platform-specific paths
+- No broken links
+
+**No location configuration:**
+- Render farm doesn't need path mappings
+- Cloud vs local is transparent
+- Site-to-site works without path translation
+
+**No filesystem trust:**
+- Content verified by C4 ID automatically
+- Can't load wrong content
+- Can't load corrupted content
+
+### What This Enables
+
+**Source-agnostic retrieval:**
+```python
+# C4D finds content from best available source
+c4d.get("c4abc123...")
+
+# Could come from:
+# - Local SSD cache (fastest)
+# - LAN peer with content (fast)
+# - Remote office peer (medium)
+# - Cloud storage (slower but always available)
+# - Origin server (fallback)
+```
+
+**Automatic deduplication:**
+```python
+# v002 and v004 have same content (revert)
+manager.resolve("shot/comp/v002")  # → c4abc123
+manager.resolve("shot/comp/v004")  # → c4abc123 (same!)
+
+# Only stored/transferred once
+c4d.get("c4abc123...")  # Same content, single cache entry
+```
+
+**Offline capability:**
+```python
+# Manager might be offline, but...
+c4_id = "c4abc123..."  # Known from previous resolve or manifest
+
+# C4D can still deliver from cache/peers
+c4d.get(c4_id)  # Works without Manager access
+```
+
+**Pre-caching via manifest:**
+```python
+# Receive manifest before shoot day
+manifest = c4m.load("tomorrow_assets.c4m")
+
+# C4D pre-fetches all content
+for entry in manifest.entries:
+    c4d.prefetch(entry.c4_id)
+
+# Next day: everything loads instantly from local cache
+```
+
+### Publishing Flow
+
+```python
+def publish_asset(content_path: Path, entity_ref: str, manager: Manager, c4d: C4DClient):
+    """Publish through C4D + OpenAssetIO."""
+    # 1. Compute C4 ID
+    c4_id = c4.identify(content_path)
+
+    # 2. Store in C4D (makes content available to peers)
+    c4d.store(c4_id, content_path)
+
+    # 3. Register with Manager (maps entity → C4 ID)
+    data = TraitsData()
+    C4IdentityTrait(data).setId(c4_id)
+    ImageTrait.imbueTo(data)
+
+    return manager.register(data, entity_ref, context)
+```
+
+### C4D as the Location Abstraction Layer
+
+The key insight: **C4D replaces the entire location layer.**
+
+Traditional stack:
+```
+OpenAssetIO → Path → Filesystem → Content
+```
+
+C4 stack:
+```
+OpenAssetIO → C4 ID → C4D (peer-to-peer network) → Content
+```
+
+C4D handles:
+- Local cache management
+- Peer discovery (mDNS, DHT, configured peers)
+- Content routing (which peer has it?)
+- Transfer optimization (parallel chunks, resume)
+- Verification (automatic - ID is content)
+- Replication (content spreads to peers that request it)
+
+### The C4D API
+
+```go
+// C4D service interface
+type C4D interface {
+    // Get content by ID - handles all networking/caching
+    Get(id c4.ID) (io.ReadCloser, error)
+
+    // Get to local file - returns cache path
+    GetFile(id c4.ID) (string, error)
+
+    // Store content - makes available to network
+    Store(id c4.ID, content io.Reader) error
+
+    // Check if content is available (local or known peer)
+    Has(id c4.ID) bool
+
+    // Prefetch - background fetch for later use
+    Prefetch(ids []c4.ID) error
+
+    // List peers that have content
+    Locate(id c4.ID) ([]Peer, error)
+}
+```
+
+### Protocol: c4:// URLs
+
+For LocatableContentTrait compatibility, use c4:// URLs:
+
+```
+c4://c4id1NSVcw9KpKEvnLgPaVbShbh7gQQWTKMV55EZ2s1PAZXF6xVxWjdXN9CXCDR3Swtvmcqnb4DEebJKY7KFYiLYNGK
+```
+
+Hosts that understand c4:// URLs can:
+1. Extract the C4 ID
+2. Request from C4D
+3. Load from returned local path
+
+Legacy hosts see a URL, try to load it, and need a C4D filesystem integration (FUSE mount or similar).
+
+### FUSE Integration
+
+For legacy hosts that expect filesystem paths:
+
+```
+/c4/                                          ← FUSE mount point
+/c4/c4abc123.../content                       ← Auto-fetched by C4D on access
+/c4/c4abc123.../content.exr                   ← With extension hint
+```
+
+Manager returns:
+```python
+LocatableContentTrait(data).setLocation("/c4/c4abc123.../content.exr")
+```
+
+When legacy host opens this path:
+1. FUSE intercepts
+2. C4D fetches content by ID
+3. Returns file handle
+4. Host reads content
+
+**Completely transparent to legacy hosts.**
+
+### Summary: The Full Stack
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Workflow Layer                            │
+│                                                              │
+│   OpenAssetIO C4 Manager                                     │
+│   - Entity references (shots, versions, approvals)           │
+│   - Relationships                                            │
+│   - Metadata (traits)                                        │
+│   - Maps workflow concepts → C4 IDs                          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ C4 ID
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Identity Layer                            │
+│                                                              │
+│   C4 ID                                                      │
+│   - Content IS identity                                      │
+│   - Mathematical certainty                                   │
+│   - Immutable                                                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ C4 ID
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Delivery Layer                            │
+│                                                              │
+│   C4D (Daemon)                                               │
+│   - Peer-to-peer networking                                  │
+│   - Source-agnostic retrieval                                │
+│   - Local caching                                            │
+│   - Transfer optimization                                    │
+│   - Automatic verification                                   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ Content
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Storage Layer                             │
+│                                                              │
+│   Any storage: local disk, NAS, cloud, peer cache            │
+│   - Content stored by C4 ID                                  │
+│   - Deduplicated                                             │
+│   - Location is implementation detail                        │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**OpenAssetIO provides workflow.**
+**C4 provides identity.**
+**C4D provides delivery.**
+
+Each layer does one thing well. Together, they eliminate paths entirely.
+
 ## References
 
 - [OpenAssetIO GitHub](https://github.com/OpenAssetIO/OpenAssetIO)
