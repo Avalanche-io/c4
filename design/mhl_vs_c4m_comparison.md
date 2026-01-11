@@ -1,4 +1,4 @@
-# ASC MHL vs C4M: Different Tools for Different Jobs
+# ASC MHL and C4M: Complementary Tools
 
 ## Executive Summary
 
@@ -223,37 +223,34 @@ computed_id != expected_id  →  this IS different content
 
 The distinction is subtle but important. MHL asks "is this still the same?" C4M says "this IS content X" (mathematical fact, not verification).
 
-## Use Cases
+## In Production: Using Both Together
 
-### When to Use MHL
+A typical production will use both formats - they don't intersect much:
 
-- Production workflows requiring chain-of-custody documentation
-- Systems that need arbitrary embedded metadata
-- Contractual requirements for MHL format
-- Integration with existing MHL tooling (cameras, post-production)
+**MHL handles**:
+- Chain-of-custody documentation
+- Embedded production metadata (who, when, where)
+- Contractual compliance
+- Integration with cameras and post-production tools
 
-### When to Use C4M
-
-- Working with files before they arrive (organize, plan, discuss)
-- Content-addressed storage systems
-- Deduplication workflows
+**C4M handles**:
+- Working with files before they arrive
+- Content-addressed storage and deduplication
 - Distributed file synchronization
-- Archive systems where content may be stored separately
+- Re-association from any source
 
-## Interoperability
-
-The formats can coexist:
+**Together in a project**:
 
 ```
 project/
-├── ascmhl/               # MHL for production chain of custody
-├── data.c4m              # C4M for content-addressed operations
+├── ascmhl/               # MHL for chain of custody, production metadata
+├── project.c4m           # C4M for content identity, remote collaboration
 └── files/                # Actual content
 ```
 
-Tools can convert between formats:
-- `c4 export --format mhl` - Generate MHL from C4M (adding metadata at export)
-- `c4 import-mhl` - Convert MHL to C4M (computing C4 IDs for content)
+Tools can bridge when needed:
+- `c4 export --format mhl` - Generate MHL from C4M
+- `c4 import-mhl` - Convert MHL to C4M
 
 ## Summary
 
@@ -265,4 +262,4 @@ Tools can convert between formats:
 | **Arbitrary metadata** | Embedded in format | Just another file in bundle |
 | **Re-association** | By path/hash (collision risk) | By ID (mathematically certain) |
 
-Neither format is "better" - they solve different problems. MHL couples metadata to content for production workflows. C4M decouples structure from content so you can work with files before they arrive.
+The formats complement each other. MHL couples metadata to content for production documentation. C4M decouples structure from content so you can work with files before they arrive. Use both.
