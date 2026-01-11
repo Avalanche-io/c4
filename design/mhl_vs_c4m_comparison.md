@@ -113,7 +113,7 @@ This is the crucial architectural distinction:
 
 MHL supports MD5, SHA1, XXH64, C4, and others. This flexibility has consequences:
 
-- **MD5/SHA1 have known collision attacks** - an attacker can create different files with the same hash
+- **MD5/SHA1/XXH64 are not collision resistant** - MD5 and SHA1 have known attacks; XXH64 is a speed-optimized hash not designed for security
 - **Content must stay attached** - you can't safely store files by hash since collisions could be forged
 - **Which hash is authoritative?** - ambiguity when multiple algorithms are present
 
