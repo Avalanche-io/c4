@@ -9,6 +9,10 @@ require (
 	github.com/absfs/memfs v1.0.0
 	github.com/spf13/pflag v1.0.7
 	github.com/xtgo/set v1.0.0
+	github.com/zeebo/xxh3 v1.0.2
 )
 
-require github.com/absfs/inode v1.0.0 // indirect
+require (
+	github.com/absfs/inode v1.0.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+)
