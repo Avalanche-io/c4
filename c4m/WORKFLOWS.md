@@ -182,16 +182,17 @@ func buildNestedManifest() error {
 }
 ```
 
-### Using the Generator
-
-For filesystem-based generation:
+### Using the Builder API
 
 ```go
-generator := c4m.NewGeneratorWithOptions(
-    c4m.WithC4IDs(true),
-    c4m.WithHidden(false),
-)
-manifest, err := generator.GenerateFromPath("/path/to/project")
+m := c4m.NewBuilder().
+    AddDir("project", c4m.WithMode(os.ModeDir|0755)).
+        AddFile("README.md", c4m.WithSize(1024), c4m.WithMode(0644)).
+        AddDir("src", c4m.WithMode(os.ModeDir|0755)).
+            AddFile("main.go", c4m.WithSize(2048), c4m.WithMode(0644)).
+        End().
+    End().
+    MustBuild()
 ```
 
 ---

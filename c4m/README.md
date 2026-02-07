@@ -190,135 +190,49 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 - Workflow examples
 - Documentation improvements
 
-## Package Contents
+## Package Files
 
-### Complexity Analysis
+### Core API
+- `manifest.go` - Manifest type, sorting, canonicalization, tree index, metadata propagation
+- `entry.go` - Entry type, formatting, mode/name/size encoding
+- `encoder.go` - Encoder, Marshal, MarshalPretty, Format, Unmarshal
+- `decoder.go` - Decoder with character-level parser, timestamp/mode parsing
+- `builder.go` - Fluent manifest builder API
+- `operations.go` - Diff, Union, Intersect, Subtract, Resolver, ManifestCache
+- `merge.go` - Layer merge operations
+- `validator.go` - Streaming validator with configurable strictness
+- `naturalsort.go` - Natural sort (text before numeric, ASCII digits only)
+- `sequence.go` - Media file sequence detection and compression
 
-The c4m package contains approximately 7,500 lines of Go code (excluding tests). The areas of highest complexity are:
+### API Examples
 
-#### High Complexity Components (>500 lines)
+```go
+// Decode a manifest
+m, err := c4m.NewDecoder(reader).Decode()
 
-1. **`progressive_scanner.go` (700 lines, 18 functions)** - The most complex component, implementing concurrent three-phase scanning with:
-   - Parallel directory traversal using worker pools
-   - Three-stage pipeline: structure discovery → metadata collection → C4 ID computation
-   - Signal handling for progress reporting (Ctrl+T on macOS)
-   - Complex synchronization with channels and wait groups
-   - Platform-specific optimizations
+// Encode canonical
+err = c4m.NewEncoder(writer).Encode(m)
 
-2. **`generator.go` (543 lines, 19 functions)** - Traditional recursive manifest generator with:
-   - Configurable C4 ID computation strategies
-   - Media sequence detection and compression
-   - Symlink handling with cycle detection
-   - Multiple output formats (canonical, ergonomic, recursive)
+// Encode pretty
+err = c4m.NewEncoder(writer).SetPretty(true).Encode(m)
 
-3. **`parser.go` (540 lines, 12 functions)** - Comprehensive C4M format parser handling:
-   - Multiple timestamp formats and timezone parsing
-   - Escape sequence processing in quoted strings
-   - Null value representation (-)
-   - All @-directives (version, base, data, layer)
-   - Error recovery and line tracking
+// Build a manifest
+m := c4m.NewBuilder().
+    AddFile("readme.txt", c4m.WithSize(100), c4m.WithMode(0644)).
+    AddDir("src", c4m.WithMode(os.ModeDir|0755)).
+        AddFile("main.go", c4m.WithSize(1024)).
+    End().
+    MustBuild()
 
-4. **`manifest.go` (500 lines)** - Core data structure with:
-   - Multiple serialization formats
-   - Entry sorting algorithms
-   - Canonical form generation for C4 ID computation
-   - Layer management for incremental updates
+// Look up an entry (O(1) indexed)
+entry := m.GetEntry("main.go")
 
-5. **`bundle.go` (485 lines, 16 functions)** - Bundle storage system managing:
-   - Atomic file operations with temporary files
-   - Scan session lifecycle
-   - Chunk management with @base linking
-   - Progress tracking and resumption
+// Sort entries for output
+m.SortEntries()
 
-6. **`bundle_scanner_v2.go` (486 lines, 11 functions)** - Production scanner with:
-   - Three-phase architecture (count → scan → chunk)
-   - Collapsed directory handling (>70K entries)
-   - Depth tracking and natural sorting
-   - Independent scan contexts for large directories
-
-#### Medium Complexity Components (200-500 lines)
-
-- **`progressive_cli.go` (417 lines)** - CLI orchestration with progress display
-- **`operations.go` (234 lines)** - Set operations on manifests
-- **`entry.go` (237 lines)** - Entry formatting and serialization
-- **`sequence.go` (204 lines)** - Media sequence detection algorithms
-
-#### Lower Complexity Utilities (<200 lines)
-
-- **`naturalsort.go` (154 lines)** - Natural sorting algorithm
-- **`manifest_sort.go` (115 lines)** - Hierarchical sibling sorting
-- **`timing.go` (45 lines)** - Simple timing helpers
-- **Platform-specific files** - Signal handling and system call optimizations
-
-### Core Components
-
-- **`manifest.go`** *(500 lines, high complexity)* - Core manifest data structure and operations. Implements the C4M format with version handling, entry management, and canonical form generation for C4 ID computation. Contains multiple serialization strategies and sorting algorithms.
-
-- **`entry.go`** *(237 lines, medium complexity)* - Individual filesystem entry representation. Handles file/directory metadata including permissions, timestamps, sizes, names, symlink targets, and C4 IDs. Includes formatting logic for different output modes.
-
-- **`parser.go`** *(540 lines, high complexity)* - Robust C4M format parser. Handles all @-directives, multiple timestamp formats, quoted filenames, escape sequences, and null values. One of the most complex components due to format flexibility requirements.
-
-### Bundle System
-
-- **`bundle.go`** *(485 lines, high complexity)* - Content-addressed storage container for large filesystem scans. Manages chunked manifests, scan sessions, progress tracking, and atomic file operations. Complex due to concurrent access patterns and atomic operations.
-
-- **`bundle_scanner_v2.go`** *(486 lines, high complexity)* - Current production scanner with three-phase architecture (count, scan, chunk). Handles collapsed directories as separate scan contexts. Critical component with intricate depth tracking and chunking logic.
-
-
-### CLI Components
-
-
-- **`bundle_cli_simple.go`** - Simplified CLI wrapper using ScannerV2 for bundle creation.
-
-
-- **`progressive_cli.go`** *(417 lines, medium complexity)* - CLI for progressive scanning with real-time output and signal handling. Manages output coordination and user interaction.
-
-### Scanning Infrastructure
-
-- **`progressive_scanner.go`** *(700 lines, highest complexity)* - Multi-stage concurrent scanner with three phases: structure discovery, metadata collection, and C4 ID computation. Most complex component due to concurrent worker pools, channel orchestration, and signal handling.
-
-- **`scanner_darwin.go`** *(low complexity)* - macOS-specific optimizations using Darwin system calls.
-
-- **`scanner_linux.go`** *(low complexity)* - Linux-specific optimizations for efficient filesystem traversal.
-
-- **`scanner_generic.go`** *(low complexity)* - Fallback implementation for other platforms.
-
-- **`generator.go`** *(543 lines, high complexity)* - Traditional filesystem-to-manifest generator with configurable options for C4 ID computation, symlink following, and sequence detection. Complex due to recursive traversal and multiple configuration options.
-
-### Streaming Components
-
-
-### Utilities
-
-- **`naturalsort.go`** *(154 lines, low complexity)* - Natural sorting implementation for mixed alphanumeric filenames (file2 before file10).
-
-- **`sequence.go`** *(204 lines, medium complexity)* - Media file sequence detection and compression. Handles patterns like `frame[0001-0100].png`. Contains pattern matching algorithms.
-
-- **`operations.go`** *(234 lines, medium complexity)* - Manifest comparison and set operations: diff, union, intersect, subtract. Implements efficient set algorithms.
-
-- **`manifest_sort.go`** *(115 lines, low complexity)* - Sorting utilities for manifest entries maintaining C4M format rules.
-
-- **`timing.go`** *(45 lines, minimal complexity)* - Performance timing utilities for debugging and optimization.
-
-### Platform Support
-
-- **`signal_darwin.go`** - macOS signal handling (SIGINFO/Ctrl+T for progress).
-
-- **`signal_other.go`** - Signal handling for non-Darwin platforms.
-
-### Documentation
-
-- **`doc.go`** - Package documentation and API overview.
-
-### Test Files
-
-The package includes comprehensive test coverage:
-- **Test files** (>3,800 lines total):
-  - `generator_test.go` (947 lines) - Comprehensive generator testing
-  - `parser_test.go` (632 lines) - Parser edge cases and error handling
-  - `operations_test.go` (597 lines) - Set operation testing
-  - `manifest_test.go` (574 lines) - Core manifest functionality
-  - Additional specialized tests for sorting, sequences, and null values
+// Compute deterministic C4 ID
+id := m.ComputeC4ID()
+```
 
 ## License
 
