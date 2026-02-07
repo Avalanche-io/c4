@@ -296,8 +296,7 @@ func FormatPretty(src []byte) ([]byte, error) {
 	return MarshalPretty(m)
 }
 
-// GenerateFromReader parses a manifest from r.
-// This is a convenience function equivalent to NewDecoder(r).Decode().
+// Deprecated: Use NewDecoder(r).Decode() directly.
 func GenerateFromReader(r io.Reader) (*Manifest, error) {
 	return NewDecoder(r).Decode()
 }

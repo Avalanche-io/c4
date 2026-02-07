@@ -133,7 +133,7 @@ func (b *ManifestBuilder) Build() (*Manifest, error) {
 		} else {
 			// Can validate against base
 			for _, path := range b.removals {
-				if b.base.GetByPath(path) == nil {
+				if b.base.GetEntry(path) == nil {
 					b.errs = append(b.errs, fmt.Errorf("remove %q: not found in base", path))
 				}
 			}

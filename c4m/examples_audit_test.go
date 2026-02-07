@@ -917,7 +917,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 			t.Fatalf("Unmarshal error: %v", err)
 		}
 		// After @end, the current layer should be nil (reset)
-		if m.CurrentLayer != nil {
+		if m.currentLayer != nil {
 			t.Error("expected CurrentLayer to be nil after @end")
 		}
 		if len(m.Entries) != 1 {

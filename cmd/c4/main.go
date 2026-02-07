@@ -196,7 +196,7 @@ func processStdin() {
 	input := strings.Join(lines, "\n")
 	if strings.HasPrefix(input, "@c4m ") {
 		// Parse as C4M and compute its ID
-		manifest, err := c4m.GenerateFromReader(strings.NewReader(input))
+		manifest, err := c4m.NewDecoder(strings.NewReader(input)).Decode()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error parsing C4M: %v\n", err)
 			os.Exit(1)
@@ -412,7 +412,7 @@ func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest,
 		manifest.AddEntry(e)
 	}
 	
-	manifest.SortSiblingsHierarchically()
+	manifest.SortEntries()
 	return manifest, nil
 }
 
@@ -618,7 +618,7 @@ func getSource(path string) c4m.Source {
 			lines = append(lines, scanner.Text())
 		}
 		input := strings.Join(lines, "\n")
-		manifest, err := c4m.GenerateFromReader(strings.NewReader(input))
+		manifest, err := c4m.NewDecoder(strings.NewReader(input)).Decode()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
 			os.Exit(1)
@@ -631,7 +631,7 @@ func getSource(path string) c4m.Source {
 		file, err := os.Open(path)
 		if err == nil {
 			defer file.Close()
-			manifest, err := c4m.GenerateFromReader(file)
+			manifest, err := c4m.NewDecoder(file).Decode()
 			if err == nil {
 				return c4m.ManifestSource{Manifest: manifest}
 			}

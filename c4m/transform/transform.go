@@ -431,7 +431,7 @@ func FindMissing(source, target *c4m.Manifest) *c4m.Manifest {
 		}
 	}
 
-	missing.Sort()
+	missing.SortEntries()
 	return missing
 }
 
@@ -460,6 +460,6 @@ func FindCommon(source, target *c4m.Manifest) *c4m.Manifest {
 		}
 	}
 
-	common.Sort()
+	common.SortEntries()
 	return common
 }

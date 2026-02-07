@@ -52,8 +52,8 @@ func TestManifestSort(t *testing.T) {
 	m.AddEntry(&Entry{Name: "file1.txt"})
 	m.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir})
 	
-	m.Sort()
-	
+	m.sortFlat()
+
 	// Check natural sort order - directories come first
 	expected := []string{"dir1/", "file1.txt", "file2.txt", "file10.txt"}
 	for i, e := range m.Entries {
@@ -971,7 +971,7 @@ func TestPropagateMetadata(t *testing.T) {
 		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t1, Depth: 1}
 
 		entries := []*Entry{dir, file1, file2}
-		PropagateMetadata(entries)
+		propagateMetadata(entries)
 
 		if dir.Size != 300 {
 			t.Errorf("dir size: got %d, want 300", dir.Size)
@@ -985,7 +985,7 @@ func TestPropagateMetadata(t *testing.T) {
 		file3 := &Entry{Name: "c.txt", Size: 300, Timestamp: t3, Depth: 1}
 
 		entries := []*Entry{dir, file1, file2, file3}
-		PropagateMetadata(entries)
+		propagateMetadata(entries)
 
 		if !dir.Timestamp.Equal(t2) {
 			t.Errorf("dir timestamp: got %v, want %v", dir.Timestamp, t2)
@@ -998,7 +998,7 @@ func TestPropagateMetadata(t *testing.T) {
 		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1}
 
 		entries := []*Entry{dir, file1, file2}
-		PropagateMetadata(entries)
+		propagateMetadata(entries)
 
 		if dir.Size != 300 {
 			t.Errorf("dir size: got %d, want 300", dir.Size)
@@ -1014,7 +1014,7 @@ func TestPropagateMetadata(t *testing.T) {
 		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t2, Depth: 1}
 
 		entries := []*Entry{dir, file1}
-		PropagateMetadata(entries)
+		propagateMetadata(entries)
 
 		// Values should remain unchanged
 		if dir.Size != 999 {
@@ -1032,7 +1032,7 @@ func TestPropagateMetadata(t *testing.T) {
 		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1}
 
 		entries := []*Entry{root, subdir, file1, file2}
-		PropagateMetadata(entries)
+		propagateMetadata(entries)
 
 		// subdir should get file1's info (its only direct child)
 		if subdir.Size != 100 {
@@ -1056,7 +1056,7 @@ func TestPropagateMetadata(t *testing.T) {
 	t.Run("skips non-directory entries", func(t *testing.T) {
 		file := &Entry{Name: "file.txt", Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
 		entries := []*Entry{file}
-		PropagateMetadata(entries)
+		propagateMetadata(entries)
 
 		// File should not be modified (null values preserved)
 		if file.Size != -1 {
@@ -1066,6 +1066,6 @@ func TestPropagateMetadata(t *testing.T) {
 
 	t.Run("handles empty entries", func(t *testing.T) {
 		entries := []*Entry{}
-		PropagateMetadata(entries) // Should not panic
+		propagateMetadata(entries) // Should not panic
 	})
 }

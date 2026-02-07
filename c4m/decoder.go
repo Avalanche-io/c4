@@ -614,33 +614,33 @@ func (d *Decoder) handleDirective(m *Manifest, directive string) error {
 		m.Base = id
 
 	case "@layer":
-		m.CurrentLayer = &Layer{Type: LayerTypeAdd}
-		m.Layers = append(m.Layers, m.CurrentLayer)
+		m.currentLayer = &Layer{Type: LayerTypeAdd}
+		m.Layers = append(m.Layers, m.currentLayer)
 
 	case "@remove":
-		m.CurrentLayer = &Layer{Type: LayerTypeRemove}
-		m.Layers = append(m.Layers, m.CurrentLayer)
+		m.currentLayer = &Layer{Type: LayerTypeRemove}
+		m.Layers = append(m.Layers, m.currentLayer)
 
 	case "@expand":
 		return fmt.Errorf("@expand directive not yet supported")
 
 	case "@by":
-		if m.CurrentLayer != nil {
-			m.CurrentLayer.By = strings.Join(parts[1:], " ")
+		if m.currentLayer != nil {
+			m.currentLayer.By = strings.Join(parts[1:], " ")
 		}
 
 	case "@time":
-		if m.CurrentLayer != nil && len(parts) > 1 {
+		if m.currentLayer != nil && len(parts) > 1 {
 			t, err := time.Parse(time.RFC3339, parts[1])
 			if err != nil {
 				return fmt.Errorf("invalid @time: %w", err)
 			}
-			m.CurrentLayer.Time = t
+			m.currentLayer.Time = t
 		}
 
 	case "@note":
-		if m.CurrentLayer != nil {
-			m.CurrentLayer.Note = strings.Join(parts[1:], " ")
+		if m.currentLayer != nil {
+			m.currentLayer.Note = strings.Join(parts[1:], " ")
 		}
 
 	case "@data":
@@ -649,8 +649,8 @@ func (d *Decoder) handleDirective(m *Manifest, directive string) error {
 			if err != nil {
 				return fmt.Errorf("invalid @data C4 ID: %w", err)
 			}
-			if m.CurrentLayer != nil {
-				m.CurrentLayer.Data = id
+			if m.currentLayer != nil {
+				m.currentLayer.Data = id
 			} else {
 				m.Data = id
 			}
@@ -658,7 +658,7 @@ func (d *Decoder) handleDirective(m *Manifest, directive string) error {
 
 	case "@end":
 		// End of layer - reset current layer
-		m.CurrentLayer = nil
+		m.currentLayer = nil
 	}
 
 	return nil

@@ -134,7 +134,7 @@ func TestManifestOperationsCLI(t *testing.T) {
 	}
 
 	// Test sorting
-	manifest.Sort()
+	manifest.SortEntries()
 
 	// NaturalLess sorts by natural order, so "dir/" comes before "file1.txt"
 	if manifest.Entries[0].Name != "dir/" {

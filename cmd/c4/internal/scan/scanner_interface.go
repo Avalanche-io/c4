@@ -74,7 +74,7 @@ func (mb *ManifestBuilder) BuildFromScanResult(result *ScanResult) *Manifest {
 	
 	// Sort if requested
 	if mb.options.SortEntries {
-		manifest.Sort()
+		manifest.SortEntries()
 	}
 	
 	// Detect sequences if requested

@@ -163,7 +163,7 @@ func ExampleNewBuilder() {
 	fmt.Printf("Total entries: %d\n", len(m.Entries))
 
 	// Verify depth was computed correctly
-	helper := m.GetByPath("helper.go")
+	helper := m.GetEntry("helper.go")
 	fmt.Printf("helper.go depth: %d\n", helper.Depth)
 
 	// Output:
@@ -201,7 +201,7 @@ func ExampleManifest_Children() {
 		MustBuild()
 
 	// Get direct children of project/
-	project := m.GetByPath("project/")
+	project := m.GetEntry("project/")
 	children := m.Children(project)
 
 	fmt.Printf("project/ has %d direct children\n", len(children))
@@ -226,7 +226,7 @@ func ExampleManifest_Ancestors() {
 		End().
 		MustBuild()
 
-	deep := m.GetByPath("deep.txt")
+	deep := m.GetEntry("deep.txt")
 	ancestors := m.Ancestors(deep)
 
 	fmt.Printf("deep.txt has %d ancestors:\n", len(ancestors))

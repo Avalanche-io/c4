@@ -34,7 +34,7 @@ func BenchmarkManifestSort(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				m := *manifest // Copy
-				m.Sort()
+				m.SortEntries()
 			}
 		})
 	}
@@ -63,7 +63,7 @@ func BenchmarkHierarchicalSort(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		m := *manifest // Copy
-		m.SortSiblingsHierarchically()
+		m.SortEntries()
 	}
 }
 

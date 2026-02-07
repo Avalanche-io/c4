@@ -3568,11 +3568,11 @@ func TestOperationsErrorSources(t *testing.T) {
 	})
 }
 
-// TestSortSiblingsCoverage tests SortSiblingsHierarchically
+// TestSortSiblingsCoverage tests SortEntries
 func TestSortSiblingsCoverage(t *testing.T) {
 	t.Run("empty manifest", func(t *testing.T) {
 		manifest := NewManifest()
-		manifest.SortSiblingsHierarchically() // Should not panic
+		manifest.SortEntries() // Should not panic
 		if len(manifest.Entries) != 0 {
 			t.Error("Empty manifest should remain empty")
 		}
@@ -3594,7 +3594,7 @@ func TestSortSiblingsCoverage(t *testing.T) {
 			Depth: 0,
 		})
 
-		manifest.SortSiblingsHierarchically()
+		manifest.SortEntries()
 		// Orphaned entry should be handled
 		if len(manifest.Entries) != 2 {
 			t.Errorf("Expected 2 entries, got %d", len(manifest.Entries))
@@ -3608,7 +3608,7 @@ func TestSortSiblingsCoverage(t *testing.T) {
 		manifest.AddEntry(&Entry{Name: "c/", Mode: os.ModeDir | 0755, Size: 4096, Depth: 2})
 		manifest.AddEntry(&Entry{Name: "file.txt", Mode: 0644, Size: 100, Depth: 3})
 
-		manifest.SortSiblingsHierarchically()
+		manifest.SortEntries()
 		if len(manifest.Entries) != 4 {
 			t.Errorf("Expected 4 entries, got %d", len(manifest.Entries))
 		}
@@ -3841,19 +3841,19 @@ func TestSortingOperations(t *testing.T) {
 	manifest.AddEntry(&Entry{Name: "dir/", Mode: os.ModeDir | 0755})
 	manifest.AddEntry(&Entry{Name: "m.txt", Mode: 0644})
 
-	// Test Sort
-	manifest.Sort()
+	// Test sortFlat
+	manifest.sortFlat()
 	if manifest.Entries[0].Name != "a.txt" {
 		t.Errorf("Expected first entry to be a.txt after sort, got %s", manifest.Entries[0].Name)
 	}
 
-	// Test SortSiblingsHierarchically
+	// Test SortEntries (hierarchical sort)
 	manifest2 := NewManifest()
 	manifest2.AddEntry(&Entry{Name: "file.txt", Mode: 0644, Depth: 0})
 	manifest2.AddEntry(&Entry{Name: "dir/", Mode: os.ModeDir | 0755, Depth: 0})
 	manifest2.AddEntry(&Entry{Name: "another.txt", Mode: 0644, Depth: 0})
 
-	manifest2.SortSiblingsHierarchically()
+	manifest2.SortEntries()
 	// Files should come before directories at same depth
 	if manifest2.Entries[0].Mode.IsDir() {
 		t.Error("Directory came before file at same depth")
@@ -3913,8 +3913,8 @@ func TestManifestBasic(t *testing.T) {
 	}
 	m.AddEntry(entry)
 
-	// Test Sort
-	m.Sort()
+	// Test SortEntries
+	m.SortEntries()
 
 	// Test Encoder
 	var buf bytes.Buffer

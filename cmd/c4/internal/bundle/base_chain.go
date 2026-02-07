@@ -92,7 +92,7 @@ func (r *BaseChainResolver) ResolveChain(manifest *Manifest) (*Manifest, error) 
 	}
 
 	// Sort the final result
-	result.SortSiblingsHierarchically()
+	result.SortEntries()
 
 	return result, nil
 }

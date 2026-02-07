@@ -80,10 +80,10 @@ func Diff(a, b Source) (*DiffResult, error) {
 	}
 	
 	// Sort all results
-	result.Added.Sort()
-	result.Removed.Sort()
-	result.Modified.Sort()
-	result.Same.Sort()
+	result.Added.SortEntries()
+	result.Removed.SortEntries()
+	result.Modified.SortEntries()
+	result.Same.SortEntries()
 	
 	return result, nil
 }
@@ -125,7 +125,7 @@ func Union(sources ...Source) (*Manifest, error) {
 		result.AddEntry(entry)
 	}
 	
-	result.Sort()
+	result.SortEntries()
 	return result, nil
 }
 
@@ -174,7 +174,7 @@ func Intersect(sources ...Source) (*Manifest, error) {
 		result.AddEntry(entry)
 	}
 	
-	result.Sort()
+	result.SortEntries()
 	return result, nil
 }
 
@@ -204,7 +204,7 @@ func Subtract(from, remove Source) (*Manifest, error) {
 		}
 	}
 	
-	result.Sort()
+	result.SortEntries()
 	return result, nil
 }
 

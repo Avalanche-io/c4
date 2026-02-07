@@ -23,7 +23,7 @@ type Manifest struct {
 	Entries      []*Entry
 	Base         c4.ID // For layered manifests
 	Layers       []*Layer
-	CurrentLayer *Layer // Current layer being parsed
+	currentLayer *Layer // Current layer being parsed
 	Data         c4.ID  // Application-specific metadata
 	DataBlocks   []*DataBlock // Embedded @data blocks (for self-contained manifests)
 	index        *treeIndex   // Lazily-built tree index for O(1) navigation
@@ -60,8 +60,8 @@ func (m *Manifest) AddEntry(e *Entry) {
 	m.invalidateIndex()
 }
 
-// Sort sorts entries using natural sort algorithm
-func (m *Manifest) Sort() {
+// sortFlat sorts entries using flat natural sort (no hierarchy awareness).
+func (m *Manifest) sortFlat() {
 	sort.Slice(m.Entries, func(i, j int) bool {
 		return NaturalLess(m.Entries[i].Name, m.Entries[j].Name)
 	})
@@ -69,9 +69,8 @@ func (m *Manifest) Sort() {
 
 // SortEntries sorts all entries in the manifest to ensure correct C4M ordering:
 // files before directories at the same depth level, maintaining parent-child hierarchy.
-// This is an alias for SortSiblingsHierarchically.
 func (m *Manifest) SortEntries() {
-	m.SortSiblingsHierarchically()
+	m.sortSiblingsHierarchically()
 }
 
 // Canonical returns the canonical form for C4 ID computation
@@ -145,7 +144,7 @@ func (m *Manifest) ComputeC4ID() c4.ID {
 // This makes the manifest ready for C4 ID computation
 func (m *Manifest) Canonicalize() {
 	// First propagate metadata from children to parents
-	PropagateMetadata(m.Entries)
+	propagateMetadata(m.Entries)
 
 	// Then apply defaults for any remaining null values
 	for _, entry := range m.Entries {
@@ -169,18 +168,32 @@ func (m *Manifest) Canonicalize() {
 
 // Copy creates a deep copy of the manifest
 func (m *Manifest) Copy() *Manifest {
-	copy := &Manifest{
+	cp := &Manifest{
 		Version: m.Version,
 		Base:    m.Base,
+		Data:    m.Data,
 		Entries: make([]*Entry, len(m.Entries)),
 	}
 
 	for i, e := range m.Entries {
 		entryCopy := *e
-		copy.Entries[i] = &entryCopy
+		cp.Entries[i] = &entryCopy
 	}
 
-	return copy
+	if m.Layers != nil {
+		cp.Layers = make([]*Layer, len(m.Layers))
+		for i, l := range m.Layers {
+			layerCopy := *l
+			cp.Layers[i] = &layerCopy
+		}
+	}
+
+	if m.DataBlocks != nil {
+		cp.DataBlocks = make([]*DataBlock, len(m.DataBlocks))
+		copy(cp.DataBlocks, m.DataBlocks)
+	}
+
+	return cp
 }
 
 // HasNullValues checks if any entries have null values
@@ -193,14 +206,10 @@ func (m *Manifest) HasNullValues() bool {
 	return false
 }
 
-// GetEntry finds an entry by path
+// GetEntry returns an entry by its path (O(1) after index build).
 func (m *Manifest) GetEntry(path string) *Entry {
-	for _, e := range m.Entries {
-		if e.Name == path {
-			return e
-		}
-	}
-	return nil
+	idx := m.ensureIndex()
+	return idx.byPath[path]
 }
 
 // GetEntriesAtDepth returns all entries at a specific depth
@@ -320,11 +329,11 @@ func (m *Manifest) GetIDList(id c4.ID) (*IDList, error) {
 // Sorting
 // ----------------------------------------------------------------------------
 
-// SortSiblingsHierarchically sorts manifest entries to maintain proper C4M format:
+// sortSiblingsHierarchically sorts manifest entries to maintain proper C4M format:
 // - Preserves hierarchical depth-first traversal
 // - Files before directories at same level
 // - Natural sort for names within siblings
-func (m *Manifest) SortSiblingsHierarchically() {
+func (m *Manifest) sortSiblingsHierarchically() {
 	if len(m.Entries) == 0 {
 		return
 	}
@@ -418,9 +427,9 @@ func (m *Manifest) SortSiblingsHierarchically() {
 // Metadata Propagation
 // ----------------------------------------------------------------------------
 
-// PropagateMetadata resolves null values in entries by propagating from children
-// This is used for directory entries to compute size and timestamp from contents
-func PropagateMetadata(entries []*Entry) {
+// propagateMetadata resolves null values in entries by propagating from children.
+// This is used for directory entries to compute size and timestamp from contents.
+func propagateMetadata(entries []*Entry) {
 	// Find directory entries with null values
 	for i := range entries {
 		entry := entries[i]
@@ -561,12 +570,6 @@ func (m *Manifest) ensureIndex() *treeIndex {
 
 	m.index = idx
 	return idx
-}
-
-// GetByPath returns an entry by its path (O(1) after index build)
-func (m *Manifest) GetByPath(path string) *Entry {
-	idx := m.ensureIndex()
-	return idx.byPath[path]
 }
 
 // Children returns the direct children of an entry

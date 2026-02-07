@@ -432,11 +432,11 @@ func TestHandleDirective(t *testing.T) {
 			directive: "@layer",
 			manifest:  &Manifest{},
 			check: func(t *testing.T, m *Manifest) {
-				if m.CurrentLayer == nil {
-					t.Fatal("CurrentLayer should not be nil")
+				if m.currentLayer == nil {
+					t.Fatal("currentLayer should not be nil")
 				}
-				if m.CurrentLayer.Type != LayerTypeAdd {
-					t.Errorf("Layer type = %v, want LayerTypeAdd", m.CurrentLayer.Type)
+				if m.currentLayer.Type != LayerTypeAdd {
+					t.Errorf("Layer type = %v, want LayerTypeAdd", m.currentLayer.Type)
 				}
 			},
 		},
@@ -445,42 +445,42 @@ func TestHandleDirective(t *testing.T) {
 			directive: "@remove",
 			manifest:  &Manifest{},
 			check: func(t *testing.T, m *Manifest) {
-				if m.CurrentLayer == nil {
-					t.Fatal("CurrentLayer should not be nil")
+				if m.currentLayer == nil {
+					t.Fatal("currentLayer should not be nil")
 				}
-				if m.CurrentLayer.Type != LayerTypeRemove {
-					t.Errorf("Layer type = %v, want LayerTypeRemove", m.CurrentLayer.Type)
+				if m.currentLayer.Type != LayerTypeRemove {
+					t.Errorf("Layer type = %v, want LayerTypeRemove", m.currentLayer.Type)
 				}
 			},
 		},
 		{
 			name:      "by directive",
 			directive: "@by user@example.com",
-			manifest:  &Manifest{CurrentLayer: &Layer{}},
+			manifest:  &Manifest{currentLayer: &Layer{}},
 			check: func(t *testing.T, m *Manifest) {
-				if m.CurrentLayer.By != "user@example.com" {
-					t.Errorf("Layer by = %q, want user@example.com", m.CurrentLayer.By)
+				if m.currentLayer.By != "user@example.com" {
+					t.Errorf("Layer by = %q, want user@example.com", m.currentLayer.By)
 				}
 			},
 		},
 		{
 			name:      "time directive",
 			directive: "@time 2024-01-01T00:00:00Z",
-			manifest:  &Manifest{CurrentLayer: &Layer{}},
+			manifest:  &Manifest{currentLayer: &Layer{}},
 			check: func(t *testing.T, m *Manifest) {
 				expected, _ := time.Parse(time.RFC3339, "2024-01-01T00:00:00Z")
-				if !m.CurrentLayer.Time.Equal(expected) {
-					t.Errorf("Layer time = %v, want %v", m.CurrentLayer.Time, expected)
+				if !m.currentLayer.Time.Equal(expected) {
+					t.Errorf("Layer time = %v, want %v", m.currentLayer.Time, expected)
 				}
 			},
 		},
 		{
 			name:      "note directive",
 			directive: "@note This is a note",
-			manifest:  &Manifest{CurrentLayer: &Layer{}},
+			manifest:  &Manifest{currentLayer: &Layer{}},
 			check: func(t *testing.T, m *Manifest) {
-				if m.CurrentLayer.Note != "This is a note" {
-					t.Errorf("Layer note = %q, want 'This is a note'", m.CurrentLayer.Note)
+				if m.currentLayer.Note != "This is a note" {
+					t.Errorf("Layer note = %q, want 'This is a note'", m.currentLayer.Note)
 				}
 			},
 		},
@@ -497,9 +497,9 @@ func TestHandleDirective(t *testing.T) {
 		{
 			name:      "data directive on layer",
 			directive: "@data c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN",
-			manifest:  &Manifest{CurrentLayer: &Layer{}},
+			manifest:  &Manifest{currentLayer: &Layer{}},
 			check: func(t *testing.T, m *Manifest) {
-				if m.CurrentLayer.Data.IsNil() {
+				if m.currentLayer.Data.IsNil() {
 					t.Error("Layer Data should not be nil")
 				}
 			},
@@ -543,7 +543,7 @@ func TestHandleDirective(t *testing.T) {
 		{
 			name:      "invalid time format",
 			directive: "@time not_a_time",
-			manifest:  &Manifest{CurrentLayer: &Layer{}},
+			manifest:  &Manifest{currentLayer: &Layer{}},
 			wantErr:   true,
 		},
 	}
