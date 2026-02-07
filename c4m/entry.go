@@ -87,14 +87,14 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	
 	// Add symlink target if present
 	if e.Target != "" {
-		parts = append(parts, "->", e.Target)
+		parts = append(parts, "->", formatTarget(e.Target))
 	}
-	
+
 	// Add C4 ID if present
 	if !e.C4ID.IsNil() {
 		parts = append(parts, e.C4ID.String())
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
@@ -106,11 +106,11 @@ func (e *Entry) Canonical() string {
 	timeStr := e.Timestamp.UTC().Format(TimestampFormat)
 	sizeStr := fmt.Sprintf("%d", e.Size) // No formatting in canonical
 	nameStr := formatName(e.Name)
-	
+
 	parts := []string{modeStr, timeStr, sizeStr, nameStr}
-	
+
 	if e.Target != "" {
-		parts = append(parts, "->", e.Target)
+		parts = append(parts, "->", formatTarget(e.Target))
 	}
 	
 	if !e.C4ID.IsNil() {
@@ -236,6 +236,29 @@ func formatName(name string) string {
 	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
 	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 
+	return fmt.Sprintf(`"%s"`, escaped)
+}
+
+// formatTarget quotes a symlink target if it contains special characters.
+// Unlike formatName, targets don't get directory treatment (no trailing slash logic)
+// since a target path like "/usr/lib/" is a full path, not a name.
+func formatTarget(target string) string {
+	needsQuotes := false
+	for _, c := range target {
+		if c == ' ' || c == '"' || c == '\\' || c == '\n' {
+			needsQuotes = true
+			break
+		}
+	}
+	if target != strings.TrimSpace(target) {
+		needsQuotes = true
+	}
+	if !needsQuotes {
+		return target
+	}
+	escaped := strings.ReplaceAll(target, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 	return fmt.Sprintf(`"%s"`, escaped)
 }
 

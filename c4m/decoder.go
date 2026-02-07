@@ -222,77 +222,16 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	}
 	entry.Timestamp = timestamp
 
-	// Parse remaining fields (size, name, optional target and C4 ID)
-	fields := strings.Fields(remainingLine)
-	if len(fields) < 2 {
-		return nil, fmt.Errorf("line %d: insufficient fields after timestamp", d.lineNum)
+	// Parse remaining fields using character-level parsing
+	size, name, target, id, err := d.parseEntryFields(remainingLine)
+	if err != nil {
+		return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
 	}
 
-	// Parse size (handle null value and strip commas for ergonomic forms)
-	var size int64
-	if fields[0] == "-" {
-		// Null size - use -1 to indicate unspecified
-		size = -1
-	} else {
-		sizeStr := strings.ReplaceAll(fields[0], ",", "")
-		var err error
-		size, err = strconv.ParseInt(sizeStr, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid size %q: %w", d.lineNum, fields[0], err)
-		}
-	}
 	entry.Size = size
-
-	// Parse name - check if it's quoted
-	nameIdx := 1
-	if len(fields[nameIdx]) > 0 && fields[nameIdx][0] == '"' {
-		// Handle quoted name
-		quotedName := fields[nameIdx]
-		for j := nameIdx + 1; j < len(fields) && !strings.HasSuffix(quotedName, "\""); j++ {
-			quotedName = quotedName + " " + fields[j]
-			nameIdx = j
-		}
-		// Remove quotes
-		entry.Name = strings.Trim(quotedName, "\"")
-	} else {
-		entry.Name = fields[nameIdx]
-	}
-
-	// Parse optional fields
-	i := nameIdx + 1
-
-	// Check for symlink target
-	if i < len(fields) && fields[i] == "->" && i+1 < len(fields) {
-		// Handle quoted target
-		if len(fields[i+1]) > 0 && fields[i+1][0] == '"' {
-			quotedTarget := fields[i+1]
-			targetEndIdx := i + 1
-			for j := i + 2; j < len(fields) && !strings.HasSuffix(quotedTarget, "\""); j++ {
-				quotedTarget = quotedTarget + " " + fields[j]
-				targetEndIdx = j
-			}
-			entry.Target = strings.Trim(quotedTarget, "\"")
-			i = targetEndIdx + 1
-		} else {
-			entry.Target = fields[i+1]
-			i += 2
-		}
-	}
-
-	// Check for C4 ID (handle null value)
-	if i < len(fields) {
-		if fields[i] == "-" {
-			// Null C4 ID - leave as zero value
-			entry.C4ID = c4.ID{}
-		} else if strings.HasPrefix(fields[i], "c4") {
-			id, err := c4.Parse(fields[i])
-			if err != nil {
-				return nil, fmt.Errorf("line %d: invalid C4 ID %q: %w", d.lineNum, fields[i], err)
-			}
-			entry.C4ID = id
-		}
-		i++
-	}
+	entry.Name = name
+	entry.Target = target
+	entry.C4ID = id
 
 	// Check for sequence notation
 	if strings.Contains(entry.Name, "[") && strings.Contains(entry.Name, "]") {
@@ -301,6 +240,238 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	}
 
 	return entry, nil
+}
+
+// parseEntryFields parses the remaining line after timestamp using character-level
+// scanning. This correctly handles quoted names with escapes, symlink targets
+// with spaces, and filenames with backslashes or leading spaces.
+//
+// The expected format is: SIZE NAME [-> TARGET] [C4ID]
+// Where NAME and TARGET may be quoted with backslash escapes.
+func (d *Decoder) parseEntryFields(line string) (size int64, name, target string, id c4.ID, err error) {
+	pos := 0
+	n := len(line)
+
+	// Skip leading whitespace
+	for pos < n && line[pos] == ' ' {
+		pos++
+	}
+	if pos >= n {
+		return 0, "", "", c4.ID{}, fmt.Errorf("insufficient fields after timestamp")
+	}
+
+	// 1. Parse size token (digits, commas, or "-")
+	sizeStart := pos
+	if line[pos] == '-' {
+		// Null size
+		size = -1
+		pos++
+	} else {
+		for pos < n && (line[pos] >= '0' && line[pos] <= '9' || line[pos] == ',') {
+			pos++
+		}
+		if pos == sizeStart {
+			return 0, "", "", c4.ID{}, fmt.Errorf("invalid size at position %d", pos)
+		}
+		sizeStr := strings.ReplaceAll(line[sizeStart:pos], ",", "")
+		size, err = strconv.ParseInt(sizeStr, 10, 64)
+		if err != nil {
+			return 0, "", "", c4.ID{}, fmt.Errorf("invalid size %q: %w", line[sizeStart:pos], err)
+		}
+	}
+
+	// Skip whitespace between size and name
+	for pos < n && line[pos] == ' ' {
+		pos++
+	}
+	if pos >= n {
+		return 0, "", "", c4.ID{}, fmt.Errorf("missing name after size")
+	}
+
+	// 2. Parse name (quoted or unquoted)
+	name, pos, err = d.parseNameOrTarget(line, pos)
+	if err != nil {
+		return 0, "", "", c4.ID{}, fmt.Errorf("parsing name: %w", err)
+	}
+
+	// Skip whitespace
+	for pos < n && line[pos] == ' ' {
+		pos++
+	}
+
+	// 3. Check for symlink target ("->")
+	if pos+1 < n && line[pos] == '-' && line[pos+1] == '>' {
+		pos += 2
+		// Skip whitespace after ->
+		for pos < n && line[pos] == ' ' {
+			pos++
+		}
+		if pos >= n {
+			return 0, "", "", c4.ID{}, fmt.Errorf("missing symlink target after ->")
+		}
+		target, pos, err = d.parseTarget(line, pos)
+		if err != nil {
+			return 0, "", "", c4.ID{}, fmt.Errorf("parsing symlink target: %w", err)
+		}
+		// Skip whitespace
+		for pos < n && line[pos] == ' ' {
+			pos++
+		}
+	}
+
+	// 4. Check for C4 ID or null ("-")
+	if pos < n {
+		remaining := strings.TrimSpace(line[pos:])
+		if remaining == "-" {
+			// Null C4 ID
+			id = c4.ID{}
+		} else if strings.HasPrefix(remaining, "c4") {
+			id, err = c4.Parse(remaining)
+			if err != nil {
+				return 0, "", "", c4.ID{}, fmt.Errorf("invalid C4 ID %q: %w", remaining, err)
+			}
+		}
+	}
+
+	return size, name, target, id, nil
+}
+
+// parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
+// Returns the parsed string and the new position after consuming it.
+//
+// Quoted names: "..." with \\→\, \"→", \n→newline
+// Unquoted names: read until the boundary is detected:
+//   - For directory names (trailing /): read until / then stop
+//   - For file names: read until space followed by ->, c4 prefix, or end-of-line
+func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, error) {
+	n := len(line)
+	if pos >= n {
+		return "", pos, fmt.Errorf("unexpected end of line")
+	}
+
+	if line[pos] == '"' {
+		// Quoted name: process escape sequences
+		pos++ // skip opening quote
+		var buf strings.Builder
+		for pos < n {
+			ch := line[pos]
+			if ch == '\\' && pos+1 < n {
+				next := line[pos+1]
+				switch next {
+				case '\\':
+					buf.WriteByte('\\')
+				case '"':
+					buf.WriteByte('"')
+				case 'n':
+					buf.WriteByte('\n')
+				default:
+					buf.WriteByte('\\')
+					buf.WriteByte(next)
+				}
+				pos += 2
+			} else if ch == '"' {
+				pos++ // skip closing quote
+				return buf.String(), pos, nil
+			} else {
+				buf.WriteByte(ch)
+				pos++
+			}
+		}
+		return "", pos, fmt.Errorf("unterminated quoted name")
+	}
+
+	// Unquoted name: scan for boundary
+	start := pos
+	for pos < n {
+		ch := line[pos]
+
+		// Directory name ends at / (inclusive)
+		if ch == '/' {
+			pos++ // include the slash
+			return line[start:pos], pos, nil
+		}
+
+		// Check for boundary: space followed by -> or c4 prefix or -
+		if ch == ' ' {
+			rest := line[pos:]
+			if strings.HasPrefix(rest, " -> ") {
+				return line[start:pos], pos, nil
+			}
+			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
+				return line[start:pos], pos, nil
+			}
+			// Space followed by "-" and then end-of-line or space (null C4 ID)
+			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
+				return line[start:pos], pos, nil
+			}
+		}
+		pos++
+	}
+
+	// End of line — the whole remainder is the name
+	return line[start:pos], pos, nil
+}
+
+// parseTarget parses a symlink target starting at pos.
+// Unlike parseNameOrTarget, this does NOT treat / as a boundary because
+// symlink targets can be absolute paths or contain path separators.
+// For unquoted targets, the boundary is a space followed by a c4 prefix or end-of-line.
+func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
+	n := len(line)
+	if pos >= n {
+		return "", pos, fmt.Errorf("unexpected end of line")
+	}
+
+	if line[pos] == '"' {
+		// Quoted target: same logic as quoted name
+		pos++ // skip opening quote
+		var buf strings.Builder
+		for pos < n {
+			ch := line[pos]
+			if ch == '\\' && pos+1 < n {
+				next := line[pos+1]
+				switch next {
+				case '\\':
+					buf.WriteByte('\\')
+				case '"':
+					buf.WriteByte('"')
+				case 'n':
+					buf.WriteByte('\n')
+				default:
+					buf.WriteByte('\\')
+					buf.WriteByte(next)
+				}
+				pos += 2
+			} else if ch == '"' {
+				pos++ // skip closing quote
+				return buf.String(), pos, nil
+			} else {
+				buf.WriteByte(ch)
+				pos++
+			}
+		}
+		return "", pos, fmt.Errorf("unterminated quoted target")
+	}
+
+	// Unquoted target: scan until c4 prefix or end-of-line
+	start := pos
+	for pos < n {
+		ch := line[pos]
+		if ch == ' ' {
+			rest := line[pos:]
+			// Space followed by c4 prefix
+			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
+				return line[start:pos], pos, nil
+			}
+			// Space followed by "-" and then end-of-line or space (null C4 ID)
+			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
+				return line[start:pos], pos, nil
+			}
+		}
+		pos++
+	}
+
+	return line[start:pos], pos, nil
 }
 
 // handleDataBlock reads and parses a @data block

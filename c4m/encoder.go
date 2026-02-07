@@ -227,7 +227,7 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 
 	// Add symlink target if present
 	if entry.Target != "" {
-		parts = append(parts, "->", entry.Target)
+		parts = append(parts, "->", formatTarget(entry.Target))
 	}
 
 	baseLine := strings.Join(parts, " ")
