@@ -1,6 +1,9 @@
 # Incremental Filesystem Scanner with C4M
 
-This document describes patterns for building high-performance filesystem scanners that use c4m as a presentation layer. The goal is responsive UI feedback during scans of large, deep filesystems while progressively resolving metadata and content identifiers.
+This document describes patterns for building high-performance filesystem
+scanners that use c4m as a presentation layer. The goal is responsive UI
+feedback during scans of large, deep filesystems while progressively resolving
+metadata and content identifiers.
 
 ---
 
@@ -8,14 +11,15 @@ This document describes patterns for building high-performance filesystem scanne
 
 Scanning a large filesystem involves multiple expensive operations:
 
-| Operation | Cost | Notes |
-|-----------|------|-------|
-| `readdir` | Low | Returns names only (fast) |
-| `stat` | Medium | File metadata (mode, size, mtime) |
-| `readlink` | Medium | Symlink target resolution |
-| `c4.Identify` | High | Full file read + SHA-512 hash |
+| Operation     | Cost   | Notes                             |
+| ------------- | ------ | --------------------------------- |
+| `readdir`     | Low    | Returns names only (fast)         |
+| `stat`        | Medium | File metadata (mode, size, mtime) |
+| `readlink`    | Medium | Symlink target resolution         |
+| `c4.Identify` | High   | Full file read + SHA-512 hash     |
 
-A naive approach that does all operations for each file before returning results would be unusable for:
+A naive approach that does all operations for each file before returning results
+would be unusable for:
 - Deep hierarchies (thousands of nested directories)
 - Wide directories (millions of files in one folder)
 - Large files (gigabytes to terabytes)
@@ -25,7 +29,8 @@ A naive approach that does all operations for each file before returning results
 
 ## Progressive Resolution Strategy
 
-C4M's null value support enables **progressive resolution** - return what you have immediately, refine later:
+C4M's null value support enables **progressive resolution** - return what you
+have immediately, refine later:
 
 ```
 Level 0: Names + Structure (readdir only)
@@ -89,11 +94,13 @@ Each level can be returned as a **changeset** layered on top of the previous sta
 
 ## Using absfs/fstools for Efficient Walking
 
-The [absfs/fstools](https://github.com/absfs/fstools) package provides optimized filesystem traversal with multiple strategies:
+The [absfs/fstools](https://github.com/absfs/fstools) package provides optimized
+filesystem traversal with multiple strategies:
 
 ### BreadthFirst for Interactive Navigation
 
-For UI-driven scanning, **BreadthFirst** traversal is ideal - it visits all entries at each depth level before descending:
+For UI-driven scanning, **BreadthFirst** traversal is ideal - it visits all
+entries at each depth level before descending:
 
 ```go
 import (
@@ -618,14 +625,14 @@ func (d *DirectoryLoader) FinalID() c4.ID {
 
 ### Why Paged > Streaming
 
-| Aspect | Streaming | Paged with @base |
-|--------|-----------|------------------|
-| Verifiability | None - entries ephemeral | Each page has C4 ID |
-| Resumability | Start over on disconnect | Resume from last page ID |
-| Cacheability | No | Each page cacheable |
-| Final identity | None | Merged manifest has canonical ID |
-| Parent reference | Must inline all entries | Single C4 ID for directory |
-| Network efficiency | Re-transmit on error | Only retransmit failed page |
+| Aspect             | Streaming                | Paged with @base                 |
+| ------------------ | ------------------------ | -------------------------------- |
+| Verifiability      | None - entries ephemeral | Each page has C4 ID              |
+| Resumability       | Start over on disconnect | Resume from last page ID         |
+| Cacheability       | No                       | Each page cacheable              |
+| Final identity     | None                     | Merged manifest has canonical ID |
+| Parent reference   | Must inline all entries  | Single C4 ID for directory       |
+| Network efficiency | Re-transmit on error     | Only retransmit failed page      |
 
 ---
 
@@ -743,17 +750,16 @@ In this example:
 
 ## Performance Considerations
 
-| Technique | Benefit |
-|-----------|---------|
-| BreadthFirst traversal | Show structure quickly, details later |
-| Priority queue | User focus drives resolution order |
-| Batched readdir | Reduce syscall overhead for large dirs |
-| Worker pool | Parallelize stat/hash operations |
-| Paged manifests | Verifiable chunks with canonical IDs |
-| @base chaining | Resume from any page, cache intermediates |
-| Depth limiting | Prevent resource exhaustion on deep trees |
-| Null values in c4m | Clear indication of resolution state |
-| Final merge | Canonical ID for entire directory |
+| Technique              | Benefit                                   |
+| ---------------------- | ----------------------------------------- |
+| BreadthFirst traversal | Show structure quickly, details later     |
+| Priority queue         | User focus drives resolution order        |
+| Batched readdir        | Reduce syscall overhead for large dirs    |
+| Worker pool            | Parallelize stat/hash operations          |
+| Streaming responses    | Handle directories too large for memory   |
+| Depth limiting         | Prevent resource exhaustion on deep trees |
+| Changeset updates      | Minimize data transfer for updates        |
+| Null values in c4m     | Clear indication of resolution state      |
 
 ---
 
@@ -762,21 +768,10 @@ In this example:
 When combining scan results from multiple sources or sessions:
 
 ```go
-// Resume a previous scan from a known page
-func (s *Scanner) ResumeFromPage(pageID c4.ID, getter c4m.Getter) error {
-    // Load the page and merge to get current state
-    page, err := getter.Get(pageID)
-    if err != nil {
-        return err
-    }
-
-    merged, err := page.Merge(getter)
-    if err != nil {
-        return err
-    }
-
-    // Populate cache with merged state
-    for _, entry := range merged.Entries {
+// Resume a previous scan
+func (s *Scanner) Resume(previousManifest *c4m.Manifest) {
+    // Load previous state into cache
+    for _, entry := range previousManifest.Entries {
         level := LevelContent
         if entry.C4ID.IsNil() {
             level = LevelMetadata
@@ -795,10 +790,33 @@ func (s *Scanner) ResumeFromPage(pageID c4.ID, getter c4m.Getter) error {
             s.priority.Push(entry.Name, PriorityBackground)
         }
     }
-
-    return nil
 }
 ```
+
+---
+
+## Why Partial Representations Matter
+
+Most systems treat incomplete data as an error state — a transfer either
+succeeded or it didn't. C4M treats every partial state as a valid, addressable
+snapshot. This has concrete consequences:
+
+- **Useful before complete.** A manifest with names but no hashes already
+  supports browsing, searching, and structural comparison. A user doesn't wait
+  for terabytes of hashing to see what's in a directory.
+- **Decisions from partial data.** File sizes alone enable prioritization (sync
+  small files first), capacity planning, and duplicate detection by size before
+  committing to expensive hashing.
+- **Progressive trust.** Each resolution level adds a stronger guarantee — names
+  confirm structure, metadata confirms recency, content hashes confirm
+  integrity. You can act at whatever trust level your use case requires.
+- **No wasted work.** If a scan is interrupted at any resolution level,
+  everything resolved so far is retained and usable — not discarded as an
+  incomplete operation.
+- **Naturally models reality.** Filesystems are too large to observe atomically.
+  Progressive resolution reflects the physical reality that learning about a
+  filesystem is incremental, and formalizes each stage of that learning as a
+  valid state.
 
 ---
 
@@ -810,15 +828,52 @@ Building an incremental filesystem scanner with c4m involves:
 2. **Priority-driven**: User navigation boosts resolution priority
 3. **BreadthFirst walking**: Show directory structure quickly
 4. **Null values**: c4m format clearly indicates unresolved fields
-5. **Paged manifests**: Each page has a C4 ID, chains via @base
+5. **Changeset updates**: Send deltas rather than full manifests
 6. **Worker pools**: Parallelize expensive operations (stat, hash)
-7. **Depth limiting**: Prevent resource exhaustion
+7. **Streaming**: Handle arbitrarily large directories
 8. **Final merge**: Produce canonical C4 ID for directories of any size
 
-The key insight is that **paged @base chains** give you the benefits of streaming (handle any size) while preserving content-addressability:
+The key is that **paged @base chains** give you the benefits of streaming
+(handle any size) while preserving content-addressability:
 - Each page is verifiable and cacheable
 - Interrupted scans resume from the last page ID
 - The final merged manifest has a canonical C4 ID
 - Parent directories can reference child directories with a single ID
+
+Regardless of transmission bundle, the C4 ID of an entire filesystem represents
+a deterministic snapshot of that filesystem's state at a moment in time. A
+partially transmitted or scanned filesystem is itself a complete "version."
+Large filesystems are scanned, transmitted, and reconstructed in discrete atomic
+steps, each representing a progressively more complete version until source and
+target match exactly. Once initial synchronization is complete, only changesets
+need to be transmitted to maintain parity.
+
+All state modifications throughout the C4M ecosystem are atomic and
+content-addressed. Any interruption of scanning, transmission, or
+reconstruction can be resumed from the last known good state without risk of
+data corruption or inconsistency. The design of C4M makes incoherent state
+unrepresentable — only the most recent complete root C4 ID is considered valid.
+
+Because of content addressing, a partially complete update can be restarted
+without loss of progress. If a large directory is being transmitted in pages and
+the connection drops while receiving page 3 of 10, the receiver requests the
+remaining files in page 3 and continues with pages 4–10 without restarting from
+page 1. The same applies to scanning — an interrupted scan resumes from the
+last completed resolution level for each path.
+
+Among existing distributed filesystem synchronization and backup systems, no
+single tool provides this combination of guarantees. Content-addressed backup
+tools like Restic and Borg lack progressive metadata and valid intermediate
+snapshots. Snapshot-based replication tools like ZFS and Btrfs provide atomic
+state transitions but are not content-addressed. Content-addressed systems like
+IPFS and Git struggle at filesystem scale or lack changeset-based sync. The
+database sync tool Dolt comes closest — providing content-addressed, resumable,
+changeset-based sync at arbitrary scale — but models database tables rather
+than filesystem trees and does not support progressive metadata resolution.
+
+The specific combination of paged, content-addressed manifest chains where every
+intermediate page is independently verifiable, cacheable, and resumable — while
+supporting progressive metadata resolution from names through sizes through
+content hashes — appears to be unique to C4M.
 
 The [absfs](https://github.com/absfs) ecosystem provides the filesystem abstraction, and [fstools](https://github.com/absfs/fstools) provides optimized walking strategies. C4M provides the presentation layer with built-in support for partial/incremental data through null values and layered @base chains.

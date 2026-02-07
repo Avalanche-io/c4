@@ -254,12 +254,12 @@ Tools can bridge when needed:
 
 ## Summary
 
-| Aspect | MHL | C4M |
-|--------|-----|-----|
-| **Core model** | Couples metadata to content | Decouples structure from content |
-| **Hash strength** | Variable (MD5, SHA1, etc.) | Strong only (C4/SHA-512) |
-| **Work without files** | No - files must be present | Yes - organize before arrival |
-| **Arbitrary metadata** | Embedded in format | Just another file in bundle |
-| **Re-association** | By path/hash (collision risk) | By ID (mathematically certain) |
+| Aspect                 | MHL                           | C4M                              |
+| ---------------------- | ----------------------------- | -------------------------------- |
+| **Core model**         | Couples metadata to content   | Decouples structure from content |
+| **Hash strength**      | Variable (MD5, SHA1, etc.)    | Strong only (C4/SHA-512)         |
+| **Work without files** | No - files must be present    | Yes - organize before arrival    |
+| **Arbitrary metadata** | Embedded in format            | Just another file in bundle      |
+| **Re-association**     | By path/hash (collision risk) | By ID (mathematically certain)   |
 
 The formats complement each other. MHL couples metadata to content for production documentation. C4M decouples structure from content so you can work with files before they arrive. Use both.
