@@ -355,14 +355,15 @@ func TestLoadBundleAsManifest(t *testing.T) {
 		t.Fatalf("Failed to create bundle: %v", err)
 	}
 
-	// Add multiple chunks with hierarchical structure
+	// Add multiple chunks with hierarchical structure using proper c4m format:
+	// entries use Depth + base names, not path-style names with embedded slashes.
 	chunk1 := NewManifest()
-	chunk1.AddEntry(&Entry{Name: "root.txt", Size: 100, Mode: 0644})
-	chunk1.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir | 0755})
+	chunk1.AddEntry(&Entry{Name: "root.txt", Size: 100, Mode: 0644, Depth: 0})
+	chunk1.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir | 0755, Depth: 0})
 
 	chunk2 := NewManifest()
-	chunk2.AddEntry(&Entry{Name: "dir1/file1.txt", Size: 200, Mode: 0644})
-	chunk2.AddEntry(&Entry{Name: "dir1/file2.txt", Size: 300, Mode: 0644})
+	chunk2.AddEntry(&Entry{Name: "file1.txt", Size: 200, Mode: 0644, Depth: 1})
+	chunk2.AddEntry(&Entry{Name: "file2.txt", Size: 300, Mode: 0644, Depth: 1})
 
 	scan, err := bundle.NewScan(scanPath)
 	if err != nil {
@@ -379,11 +380,11 @@ func TestLoadBundleAsManifest(t *testing.T) {
 	}
 
 	// V2 should merge the chunk manifests and contain the actual file entries
-	expectedFiles := []string{"root.txt", "dir1/", "dir1/file1.txt", "dir1/file2.txt"}
+	expectedNames := []string{"root.txt", "dir1/", "file1.txt", "file2.txt"}
 
-	// Count how many expected files are present
+	// Count how many expected entries are present
 	foundCount := 0
-	for _, expected := range expectedFiles {
+	for _, expected := range expectedNames {
 		for _, entry := range loaded.Entries {
 			if entry.Name == expected {
 				foundCount++
@@ -392,8 +393,11 @@ func TestLoadBundleAsManifest(t *testing.T) {
 		}
 	}
 
-	if foundCount != len(expectedFiles) {
-		t.Errorf("Expected to find %d specific files, found %d", len(expectedFiles), foundCount)
+	if foundCount != len(expectedNames) {
+		t.Errorf("Expected to find %d entries, found %d", len(expectedNames), foundCount)
+		for _, entry := range loaded.Entries {
+			t.Logf("  entry: %q depth=%d", entry.Name, entry.Depth)
+		}
 	}
 }
 

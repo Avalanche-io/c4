@@ -306,18 +306,14 @@ func TestManifestCanonicalize(t *testing.T) {
 	// Canonicalize
 	manifest.Canonicalize()
 
-	// Should no longer have null values
-	if manifest.HasNullValues() {
-		t.Error("Expected manifest to have no null values after canonicalization")
-	}
-
-	// Check that defaults were applied
+	// Check that mode and size defaults were applied
 	entry := manifest.Entries[0]
 	if entry.Mode == 0 {
 		t.Error("Mode should not be 0 after canonicalization")
 	}
-	if entry.Timestamp.Unix() == 0 {
-		t.Error("Timestamp should not be epoch after canonicalization")
+	// Null timestamps stay null after canonicalization (no wall-clock injection)
+	if !entry.Timestamp.Equal(time.Unix(0, 0).UTC()) {
+		t.Error("Null timestamp should stay null after canonicalization")
 	}
 	if entry.Size < 0 {
 		t.Error("Size should not be negative after canonicalization")
