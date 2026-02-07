@@ -80,7 +80,7 @@ func LoadBundleAsManifest(bundlePath string) (*Manifest, error) {
 		}
 		
 		// Parse just the header to get @base if present
-		manifest, err := GenerateFromReader(chunkFile)
+		manifest, err := NewDecoder(chunkFile).Decode()
 		chunkFile.Close()
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse chunk %s: %w", lastChunkID, err)
@@ -106,7 +106,7 @@ func LoadBundleAsManifest(bundlePath string) (*Manifest, error) {
 			return nil, fmt.Errorf("cannot open chunk %s: %w", chunkID, err)
 		}
 		
-		manifest, err := GenerateFromReader(chunkFile)
+		manifest, err := NewDecoder(chunkFile).Decode()
 		chunkFile.Close()
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse chunk %s: %w", chunkID, err)
@@ -199,7 +199,7 @@ func loadCollapsedDirectory(chunkID string, bundlePath string) (*Manifest, error
 			break // Base not found, stop here
 		}
 		
-		manifest, err := GenerateFromReader(chunkFile)
+		manifest, err := NewDecoder(chunkFile).Decode()
 		chunkFile.Close()
 		if err != nil {
 			return nil, err
@@ -220,7 +220,7 @@ func loadCollapsedDirectory(chunkID string, bundlePath string) (*Manifest, error
 			return nil, err
 		}
 		
-		manifest, err := GenerateFromReader(chunkFile)
+		manifest, err := NewDecoder(chunkFile).Decode()
 		chunkFile.Close()
 		if err != nil {
 			return nil, err

@@ -303,7 +303,12 @@ A comprehensive specification has been created detailing the required fixes:
 - Null size: `-`
 - Null C4ID: `-` or omitted
 
-**Validation Levels**:
+**Validation** (current API):
+- `NewValidator(strict).ValidateManifest(r)` - Validate format and field values
+- `HasNullValues()` - Check if manifest has null fields
+- `Canonicalize()` - Apply defaults for mode and size (timestamps stay null)
+
+**Proposed validation levels** (not yet implemented):
 1. `ValidateStructure()` - Check format, allow nulls (for working manifests)
 2. `IsCanonical()` - Check all values explicit (required before C4 ID computation)
 3. `IsReadyForSnapshot()` - Comprehensive check for permanent storage
@@ -312,9 +317,9 @@ A comprehensive specification has been created detailing the required fixes:
 ```
 Working Manifest (may have nulls)
          ↓
-   Canonicalize() with MetadataResolver
+   Canonicalize()
          ↓
-Canonical Manifest (all values explicit)
+Canonical Manifest (mode/size defaults applied, timestamps preserved)
          ↓
    ComputeC4ID() → deterministic C4 ID
 ```

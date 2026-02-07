@@ -896,7 +896,7 @@ func TestSymlinkRangeGrouping(t *testing.T) {
 	}
 }
 
-func TestGenerateFromReader(t *testing.T) {
+func TestNewDecoderDecode(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
@@ -934,9 +934,9 @@ func TestGenerateFromReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateFromReader(strings.NewReader(tt.input))
+			got, err := NewDecoder(strings.NewReader(tt.input)).Decode()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("GenerateFromReader() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("NewDecoder().Decode() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !tt.wantErr && tt.check != nil {

@@ -174,11 +174,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "0 ") {
 		// Null timestamp - use zero value (Unix epoch)
 		timestampStr = "-"
-		if strings.HasPrefix(line, "- ") {
-			remainingLine = line[2:]
-		} else {
-			remainingLine = line[2:]
-		}
+		remainingLine = line[2:]
 	} else if len(line) >= 20 && line[4] == '-' && line[10] == 'T' {
 		// Canonical/RFC3339 timestamp format
 		// Could be:

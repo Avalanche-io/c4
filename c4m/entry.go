@@ -292,7 +292,7 @@ func (e *Entry) HasNullValues() bool {
 func (e *Entry) GetNullFields() []string {
 	var nullFields []string
 
-	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
+	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() && !e.IsDevice() && !e.IsPipe() && !e.IsSocket() {
 		nullFields = append(nullFields, "Mode")
 	}
 	if e.Timestamp.Equal(NullTimestamp) {

@@ -2,7 +2,6 @@ package scan
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -545,8 +544,3 @@ func extractSequencePattern(name string) (string, int) {
 	return pattern, num
 }
 
-// GenerateFromReader creates a manifest by parsing an existing C4M
-func GenerateFromReader(r io.Reader) (*Manifest, error) {
-	decoder := NewDecoder(r)
-	return decoder.Decode()
-}

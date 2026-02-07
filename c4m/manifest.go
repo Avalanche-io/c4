@@ -429,9 +429,10 @@ func (m *Manifest) sortSiblingsHierarchically() {
 
 // propagateMetadata resolves null values in entries by propagating from children.
 // This is used for directory entries to compute size and timestamp from contents.
+// Iterates in reverse so child directories are resolved before their parents.
 func propagateMetadata(entries []*Entry) {
-	// Find directory entries with null values
-	for i := range entries {
+	// Process deepest directories first (reverse order)
+	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
 
 		if entry.IsDir() && entry.HasNullValues() {

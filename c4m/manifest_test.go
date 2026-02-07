@@ -1042,12 +1042,12 @@ func TestPropagateMetadata(t *testing.T) {
 			t.Errorf("subdir timestamp: got %v, want %v", subdir.Timestamp, t1)
 		}
 
-		// root processes before subdir (single-pass), so subdir still has Size -1
-		// calculateDirectorySize skips -1, so root only gets file2's size
-		if root.Size != 200 {
-			t.Errorf("root size: got %d, want 200", root.Size)
+		// With reverse-order iteration, subdir is resolved first,
+		// so root correctly includes subdir's propagated size + file2's size
+		if root.Size != 300 {
+			t.Errorf("root size: got %d, want 300 (subdir=100 + file2=200)", root.Size)
 		}
-		// root timestamp should be t2 (most recent of direct children: subdir has null, file2 has t2)
+		// root timestamp should be t2 (most recent of direct children)
 		if !root.Timestamp.Equal(t2) {
 			t.Errorf("root timestamp: got %v, want %v", root.Timestamp, t2)
 		}
