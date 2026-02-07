@@ -652,16 +652,14 @@ func (v *Validator) detectFormat(line string) {
 		// Check for canonical format (ISO 8601 with Z)
 		if strings.Contains(field, "T") && strings.HasSuffix(field, "Z") {
 			v.isErgonomic = false
-			fmt.Fprintf(os.Stderr, "Validating canonical format C4M manifest\n")
 			return
 		}
-		
+
 		// Check for ergonomic format (month name)
 		months := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 		for _, month := range months {
 			if field == month {
 				v.isErgonomic = true
-				fmt.Fprintf(os.Stderr, "Validating ergonomic format C4M manifest\n")
 				return
 			}
 		}

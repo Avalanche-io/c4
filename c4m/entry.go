@@ -64,7 +64,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	
 	// Format timestamp (handle null value)
 	var timeStr string
-	if e.Timestamp.Unix() == 0 {
+	if e.Timestamp.Equal(NullTimestamp) {
 		timeStr = "-"  // Null timestamp
 	} else {
 		// Canonical format MUST be UTC only
@@ -281,7 +281,7 @@ func (e *Entry) IsSocket() bool {
 func (e *Entry) HasNullValues() bool {
 	// Mode can be 0 for certain file types, so check type
 	hasNullMode := e.Mode == 0 && !e.IsDir() && !e.IsSymlink() && !e.IsDevice() && !e.IsPipe() && !e.IsSocket()
-	hasNullTimestamp := e.Timestamp.Unix() == 0
+	hasNullTimestamp := e.Timestamp.Equal(NullTimestamp)
 	hasNullSize := e.Size < 0
 	// C4ID being nil is OK for empty files or directories without computed IDs yet
 
@@ -295,7 +295,7 @@ func (e *Entry) GetNullFields() []string {
 	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
 		nullFields = append(nullFields, "Mode")
 	}
-	if e.Timestamp.Unix() == 0 {
+	if e.Timestamp.Equal(NullTimestamp) {
 		nullFields = append(nullFields, "Timestamp")
 	}
 	if e.Size < 0 {

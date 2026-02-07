@@ -14,6 +14,9 @@ import (
 // TimestampFormat is the canonical C4M timestamp format (RFC3339 UTC).
 const TimestampFormat = "2006-01-02T15:04:05Z"
 
+// NullTimestamp is the sentinel value for null/unspecified timestamps.
+var NullTimestamp = time.Unix(0, 0).UTC()
+
 // Manifest represents a complete C4M manifest
 type Manifest struct {
 	Version      string
@@ -155,10 +158,7 @@ func (m *Manifest) Canonicalize() {
 			}
 		}
 
-		// Timestamp defaults to current time if still null
-		if entry.Timestamp.Unix() == 0 {
-			entry.Timestamp = time.Now().UTC()
-		}
+		// Null timestamps stay null — they encode as "-"
 
 		// Size defaults
 		if entry.Size < 0 {
@@ -280,14 +280,6 @@ func (m *Manifest) Validate() error {
 		// Validate entry
 		if e.Name == "" {
 			return fmt.Errorf("empty name in entry")
-		}
-		
-		if e.Timestamp.IsZero() {
-			return fmt.Errorf("zero timestamp for %s", e.Name)
-		}
-		
-		if e.Size < 0 {
-			return fmt.Errorf("negative size for %s", e.Name)
 		}
 		
 		// Check for path traversal
@@ -443,7 +435,7 @@ func PropagateMetadata(entries []*Entry) {
 			}
 
 			// Propagate timestamp if null
-			if entry.Timestamp.Unix() == 0 {
+			if entry.Timestamp.Equal(NullTimestamp) {
 				entry.Timestamp = getMostRecentModtime(children)
 			}
 		}
@@ -494,14 +486,14 @@ func getMostRecentModtime(entries []*Entry) time.Time {
 
 	for _, e := range entries {
 		// Skip null timestamps (epoch)
-		if e.Timestamp.Unix() > 0 && e.Timestamp.After(mostRecent) {
+		if !e.Timestamp.Equal(NullTimestamp) && e.Timestamp.After(mostRecent) {
 			mostRecent = e.Timestamp
 		}
 	}
 
-	// If no valid timestamps found, return current time
+	// If no valid timestamps found, return null timestamp (epoch)
 	if mostRecent.IsZero() {
-		return time.Now().UTC()
+		return NullTimestamp
 	}
 
 	return mostRecent

@@ -505,13 +505,13 @@ func TestHandleDirective(t *testing.T) {
 			},
 		},
 		{
-			name:      "expand directive",
+			name:      "expand directive returns error",
 			directive: "@expand c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN",
 			manifest:  &Manifest{},
-			wantErr:   false,
+			wantErr:   true,
 		},
 		{
-			name:      "expand directive missing id",
+			name:      "expand directive without id also returns error",
 			directive: "@expand",
 			manifest:  &Manifest{},
 			wantErr:   true,

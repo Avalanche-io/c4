@@ -622,10 +622,7 @@ func (d *Decoder) handleDirective(m *Manifest, directive string) error {
 		m.Layers = append(m.Layers, m.CurrentLayer)
 
 	case "@expand":
-		if len(parts) < 2 {
-			return fmt.Errorf("@expand requires C4 ID")
-		}
-		// Store expansion reference
+		return fmt.Errorf("@expand directive not yet supported")
 
 	case "@by":
 		if m.CurrentLayer != nil {

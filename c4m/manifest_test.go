@@ -510,26 +510,24 @@ func TestManifestValidate(t *testing.T) {
 			errMsg:  "empty name",
 		},
 		{
-			name: "zero timestamp",
+			name: "null timestamp is valid",
 			manifest: &Manifest{
 				Version: "1.0",
 				Entries: []*Entry{
 					{Name: "file.txt", Size: 100},
 				},
 			},
-			wantErr: true,
-			errMsg:  "zero timestamp",
+			wantErr: false,
 		},
 		{
-			name: "negative size",
+			name: "null size is valid",
 			manifest: &Manifest{
 				Version: "1.0",
 				Entries: []*Entry{
 					{Name: "file.txt", Timestamp: testTime, Size: -1},
 				},
 			},
-			wantErr: true,
-			errMsg:  "negative size",
+			wantErr: false,
 		},
 		{
 			name: "path traversal ../",
@@ -713,23 +711,20 @@ func TestCanonicalize(t *testing.T) {
 		}
 	})
 
-	t.Run("sets default timestamp for null timestamp", func(t *testing.T) {
+	t.Run("null timestamps stay null after canonicalize", func(t *testing.T) {
 		m := NewManifest()
 		m.AddEntry(&Entry{
 			Name:      "file.txt",
 			Size:      100,
-			Timestamp: time.Unix(0, 0), // Null timestamp
+			Timestamp: NullTimestamp,
 			Mode:      0644,
 			C4ID:      c4.Identify(strings.NewReader("test")),
 		})
 
-		before := time.Now().UTC()
 		m.Canonicalize()
-		after := time.Now().UTC()
 
-		ts := m.Entries[0].Timestamp
-		if ts.Before(before) || ts.After(after) {
-			t.Errorf("expected timestamp between %v and %v, got %v", before, after, ts)
+		if !m.Entries[0].Timestamp.Equal(NullTimestamp) {
+			t.Errorf("expected null timestamp to stay null, got %v", m.Entries[0].Timestamp)
 		}
 	})
 
@@ -906,7 +901,6 @@ func TestCalculateDirectorySize(t *testing.T) {
 }
 
 func TestGetMostRecentModtime(t *testing.T) {
-	now := time.Now().UTC()
 	t1 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	t2 := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 	t3 := time.Date(2024, 3, 10, 12, 0, 0, 0, time.UTC)
@@ -915,12 +909,11 @@ func TestGetMostRecentModtime(t *testing.T) {
 		name     string
 		entries  []*Entry
 		expected time.Time
-		isNow    bool // if true, expect current time (can't compare exactly)
 	}{
 		{
-			name:    "empty returns now",
-			entries: []*Entry{},
-			isNow:   true,
+			name:     "empty returns null timestamp",
+			entries:  []*Entry{},
+			expected: NullTimestamp,
 		},
 		{
 			name: "single timestamp",
@@ -948,28 +941,20 @@ func TestGetMostRecentModtime(t *testing.T) {
 			expected: t3,
 		},
 		{
-			name: "all null timestamps returns now",
+			name: "all null timestamps returns null timestamp",
 			entries: []*Entry{
 				{Name: "a.txt", Timestamp: time.Unix(0, 0)},
 				{Name: "b.txt", Timestamp: time.Unix(0, 0)},
 			},
-			isNow: true,
+			expected: NullTimestamp,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := getMostRecentModtime(tt.entries)
-			if tt.isNow {
-				// Check that result is close to now (within 1 second)
-				diff := now.Sub(result)
-				if diff < -time.Second || diff > time.Second {
-					t.Errorf("expected time close to now, got %v (diff: %v)", result, diff)
-				}
-			} else {
-				if !result.Equal(tt.expected) {
-					t.Errorf("got %v, want %v", result, tt.expected)
-				}
+			if !result.Equal(tt.expected) {
+				t.Errorf("got %v, want %v", result, tt.expected)
 			}
 		})
 	}
