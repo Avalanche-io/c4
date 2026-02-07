@@ -85,9 +85,9 @@ func TestParseNullValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manifest, err := GenerateFromReader(strings.NewReader(tt.input))
+			manifest, err := NewDecoder(strings.NewReader(tt.input)).Decode()
 			if err != nil {
-				t.Fatalf("GenerateFromReader() error = %v", err)
+				t.Fatalf("Decode() error = %v", err)
 			}
 
 			if len(manifest.Entries) != 1 {
@@ -218,9 +218,9 @@ func TestNullValueRoundTrip(t *testing.T) {
 	t.Logf("Written manifest:\n%s", buf.String())
 
 	// Parse back
-	parsed, err := GenerateFromReader(strings.NewReader(buf.String()))
+	parsed, err := NewDecoder(strings.NewReader(buf.String())).Decode()
 	if err != nil {
-		t.Fatalf("GenerateFromReader() error = %v", err)
+		t.Fatalf("Decode() error = %v", err)
 	}
 
 	// Verify entries match

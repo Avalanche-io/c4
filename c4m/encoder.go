@@ -202,7 +202,7 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 
 	// Format timestamp (handle null value)
 	var timeStr string
-	if entry.Timestamp.Equal(NullTimestamp) {
+	if entry.Timestamp.Equal(NullTimestamp()) {
 		timeStr = "-                        " // Null timestamp (padded to match typical timestamp width)
 	} else {
 		timeStr = formatTimestampPretty(entry.Timestamp)
@@ -294,9 +294,4 @@ func FormatPretty(src []byte) ([]byte, error) {
 		return nil, err
 	}
 	return MarshalPretty(m)
-}
-
-// Deprecated: Use NewDecoder(r).Decode() directly.
-func GenerateFromReader(r io.Reader) (*Manifest, error) {
-	return NewDecoder(r).Decode()
 }

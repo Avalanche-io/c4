@@ -716,14 +716,14 @@ func TestCanonicalize(t *testing.T) {
 		m.AddEntry(&Entry{
 			Name:      "file.txt",
 			Size:      100,
-			Timestamp: NullTimestamp,
+			Timestamp: NullTimestamp(),
 			Mode:      0644,
 			C4ID:      c4.Identify(strings.NewReader("test")),
 		})
 
 		m.Canonicalize()
 
-		if !m.Entries[0].Timestamp.Equal(NullTimestamp) {
+		if !m.Entries[0].Timestamp.Equal(NullTimestamp()) {
 			t.Errorf("expected null timestamp to stay null, got %v", m.Entries[0].Timestamp)
 		}
 	})
@@ -913,7 +913,7 @@ func TestGetMostRecentModtime(t *testing.T) {
 		{
 			name:     "empty returns null timestamp",
 			entries:  []*Entry{},
-			expected: NullTimestamp,
+			expected: NullTimestamp(),
 		},
 		{
 			name: "single timestamp",
@@ -946,7 +946,7 @@ func TestGetMostRecentModtime(t *testing.T) {
 				{Name: "a.txt", Timestamp: time.Unix(0, 0)},
 				{Name: "b.txt", Timestamp: time.Unix(0, 0)},
 			},
-			expected: NullTimestamp,
+			expected: NullTimestamp(),
 		},
 	}
 

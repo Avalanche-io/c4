@@ -110,9 +110,9 @@ func TestParserRoundTrip(t *testing.T) {
 				}
 
 				// Parse back
-				parsed, err := GenerateFromReader(&buf)
+				parsed, err := NewDecoder(&buf).Decode()
 				if err != nil {
-					t.Fatalf("GenerateFromReader() error = %v", err)
+					t.Fatalf("NewDecoder() error = %v", err)
 				}
 
 				// Compute C4 IDs
@@ -133,9 +133,9 @@ func TestParserRoundTrip(t *testing.T) {
 				}
 
 				// Parse back
-				parsed, err := GenerateFromReader(&buf)
+				parsed, err := NewDecoder(&buf).Decode()
 				if err != nil {
-					t.Fatalf("GenerateFromReader() error = %v", err)
+					t.Fatalf("NewDecoder() error = %v", err)
 				}
 
 				// Compute C4 IDs
@@ -203,7 +203,7 @@ func TestParserErgonomicForms(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manifest, err := GenerateFromReader(strings.NewReader(tt.input))
+			manifest, err := NewDecoder(strings.NewReader(tt.input)).Decode()
 			
 			if tt.expectError {
 				if err == nil {
@@ -213,7 +213,7 @@ func TestParserErgonomicForms(t *testing.T) {
 			}
 			
 			if err != nil {
-				t.Fatalf("GenerateFromReader() error = %v", err)
+				t.Fatalf("NewDecoder() error = %v", err)
 			}
 
 			if len(manifest.Entries) != 1 {
@@ -250,7 +250,7 @@ func TestParserErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GenerateFromReader(strings.NewReader(tt.input))
+			_, err := NewDecoder(strings.NewReader(tt.input)).Decode()
 			
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got none")

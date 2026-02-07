@@ -3336,20 +3336,6 @@ func TestOperationsEdgeCases3(t *testing.T) {
 	})
 }
 
-// TestGenerateFromReaderCoverage tests GenerateFromReader
-func TestGenerateFromReaderCoverage(t *testing.T) {
-	t.Run("GenerateFromReader", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
-		manifest, err := GenerateFromReader(strings.NewReader(input))
-		if err != nil {
-			t.Fatalf("GenerateFromReader failed: %v", err)
-		}
-		if len(manifest.Entries) != 1 {
-			t.Error("Expected 1 entry")
-		}
-	})
-}
-
 // TestFormatSizeCoverage tests size formatting edge cases
 func TestFormatSizeCoverage(t *testing.T) {
 	t.Run("small size pretty format", func(t *testing.T) {

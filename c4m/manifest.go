@@ -14,8 +14,11 @@ import (
 // TimestampFormat is the canonical C4M timestamp format (RFC3339 UTC).
 const TimestampFormat = "2006-01-02T15:04:05Z"
 
-// NullTimestamp is the sentinel value for null/unspecified timestamps.
-var NullTimestamp = time.Unix(0, 0).UTC()
+// nullTimestamp is the internal sentinel for null/unspecified timestamps.
+var nullTimestamp = time.Unix(0, 0).UTC()
+
+// NullTimestamp returns the sentinel value for null/unspecified timestamps (Unix epoch).
+func NullTimestamp() time.Time { return nullTimestamp }
 
 // Manifest represents a complete C4M manifest
 type Manifest struct {
@@ -282,18 +285,18 @@ func (m *Manifest) Validate() error {
 	seen := make(map[string]bool)
 	for _, e := range m.Entries {
 		if seen[e.Name] {
-			return fmt.Errorf("duplicate path: %s", e.Name)
+			return fmt.Errorf("%w: %s", ErrDuplicatePath, e.Name)
 		}
 		seen[e.Name] = true
-		
+
 		// Validate entry
 		if e.Name == "" {
-			return fmt.Errorf("empty name in entry")
+			return fmt.Errorf("%w: empty name", ErrInvalidEntry)
 		}
-		
+
 		// Check for path traversal
 		if strings.Contains(e.Name, "../") || strings.Contains(e.Name, "./") {
-			return fmt.Errorf("path traversal in %s", e.Name)
+			return fmt.Errorf("%w: %s", ErrPathTraversal, e.Name)
 		}
 	}
 
@@ -445,7 +448,7 @@ func propagateMetadata(entries []*Entry) {
 			}
 
 			// Propagate timestamp if null
-			if entry.Timestamp.Equal(NullTimestamp) {
+			if entry.Timestamp.Equal(NullTimestamp()) {
 				entry.Timestamp = getMostRecentModtime(children)
 			}
 		}
@@ -496,14 +499,14 @@ func getMostRecentModtime(entries []*Entry) time.Time {
 
 	for _, e := range entries {
 		// Skip null timestamps (epoch)
-		if !e.Timestamp.Equal(NullTimestamp) && e.Timestamp.After(mostRecent) {
+		if !e.Timestamp.Equal(NullTimestamp()) && e.Timestamp.After(mostRecent) {
 			mostRecent = e.Timestamp
 		}
 	}
 
 	// If no valid timestamps found, return null timestamp (epoch)
 	if mostRecent.IsZero() {
-		return NullTimestamp
+		return NullTimestamp()
 	}
 
 	return mostRecent

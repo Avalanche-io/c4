@@ -66,7 +66,7 @@ func (d *Decoder) Decode() (*Manifest, error) {
 				}
 				continue
 			}
-			return nil, err
+			return nil, fmt.Errorf("%w: %v", ErrInvalidEntry, err)
 		}
 
 		m.Entries = append(m.Entries, entry)
@@ -83,17 +83,17 @@ func (d *Decoder) parseHeader() error {
 	}
 
 	if !strings.HasPrefix(line, "@c4m ") {
-		return fmt.Errorf("invalid header: expected '@c4m X.Y', got %q", line)
+		return fmt.Errorf("%w: expected '@c4m X.Y', got %q", ErrInvalidHeader, line)
 	}
 
 	d.version = strings.TrimPrefix(line, "@c4m ")
 	if d.version == "" {
-		return fmt.Errorf("missing version number")
+		return fmt.Errorf("%w: missing version number", ErrInvalidHeader)
 	}
 
 	// Currently only support version 1.x
 	if !strings.HasPrefix(d.version, "1.") {
-		return fmt.Errorf("unsupported version: %s", d.version)
+		return fmt.Errorf("%w: %s", ErrUnsupportedVersion, d.version)
 	}
 
 	return nil
@@ -145,7 +145,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 		modeStr = line[:10]
 		line = line[11:] // Skip mode and space
 	} else {
-		return nil, fmt.Errorf("line %d: line too short", d.lineNum)
+		return nil, fmt.Errorf("%w: line %d: line too short", ErrInvalidEntry, d.lineNum)
 	}
 
 	// Parse mode (handle null value "-")
@@ -618,7 +618,7 @@ func (d *Decoder) handleDirective(m *Manifest, directive string) error {
 		m.Layers = append(m.Layers, m.currentLayer)
 
 	case "@expand":
-		return fmt.Errorf("@expand directive not yet supported")
+		return fmt.Errorf("%w: @expand directive", ErrNotSupported)
 
 	case "@by":
 		if m.currentLayer != nil {
