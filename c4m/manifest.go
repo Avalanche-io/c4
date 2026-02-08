@@ -193,7 +193,14 @@ func (m *Manifest) Copy() *Manifest {
 
 	if m.DataBlocks != nil {
 		cp.DataBlocks = make([]*DataBlock, len(m.DataBlocks))
-		copy(cp.DataBlocks, m.DataBlocks)
+		for i, db := range m.DataBlocks {
+			blockCopy := *db
+			if db.Content != nil {
+				blockCopy.Content = make([]byte, len(db.Content))
+				copy(blockCopy.Content, db.Content)
+			}
+			cp.DataBlocks[i] = &blockCopy
+		}
 	}
 
 	return cp

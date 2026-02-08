@@ -1069,3 +1069,45 @@ func TestPropagateMetadata(t *testing.T) {
 		propagateMetadata(entries) // Should not panic
 	})
 }
+
+func TestManifest_Copy_DeepCopyDataBlocks(t *testing.T) {
+	// Create a manifest with DataBlocks
+	original := NewManifest()
+	original.AddEntry(&Entry{Name: "file.txt", Size: 100})
+
+	content := []byte("original content")
+	id := c4.Identify(bytes.NewReader(content))
+	original.AddDataBlock(&DataBlock{
+		ID:       id,
+		Content:  content,
+		IsIDList: false,
+	})
+
+	// Copy the manifest
+	cp := original.Copy()
+
+	// Verify the copy has the data block
+	if len(cp.DataBlocks) != 1 {
+		t.Fatalf("expected 1 data block in copy, got %d", len(cp.DataBlocks))
+	}
+
+	// Mutate the original's DataBlock content
+	original.DataBlocks[0].Content[0] = 'X'
+	original.DataBlocks[0].IsIDList = true
+
+	// The copy must be unaffected
+	if cp.DataBlocks[0].Content[0] == 'X' {
+		t.Error("Copy() DataBlock Content shares backing array with original")
+	}
+	if string(cp.DataBlocks[0].Content) != "original content" {
+		t.Errorf("Copy() DataBlock Content = %q, want %q", cp.DataBlocks[0].Content, "original content")
+	}
+	if cp.DataBlocks[0].IsIDList != false {
+		t.Error("Copy() DataBlock fields should not be affected by original mutation")
+	}
+
+	// Verify they are different pointers
+	if cp.DataBlocks[0] == original.DataBlocks[0] {
+		t.Error("Copy() DataBlock pointers should differ")
+	}
+}
