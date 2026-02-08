@@ -143,8 +143,9 @@ func (m *Manifest) ComputeC4ID() c4.ID {
 	return c4.Identify(strings.NewReader(canonicalText))
 }
 
-// Canonicalize resolves all null values in the manifest to explicit values
-// This makes the manifest ready for C4 ID computation
+// Canonicalize resolves all null values in the manifest to explicit values,
+// modifying the receiver in place. This makes the manifest ready for C4 ID
+// computation. Use Copy() first if you need to preserve the original.
 func (m *Manifest) Canonicalize() {
 	// First propagate metadata from children to parents
 	propagateMetadata(m.Entries)
