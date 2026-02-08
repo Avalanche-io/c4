@@ -989,3 +989,53 @@ func TestDataBlockGetIDList(t *testing.T) {
 		}
 	})
 }
+
+func TestDetectSequences_ConvenienceFunction(t *testing.T) {
+	// The package-level DetectSequences function should use minLength=3.
+	// A sequence of exactly 3 files should be collapsed.
+	manifest := NewManifest()
+	for i := 1; i <= 3; i++ {
+		manifest.AddEntry(&Entry{
+			Name:      fmt.Sprintf("shot.%04d.exr", i),
+			Size:      1024,
+			Timestamp: time.Now(),
+			Mode:      0644,
+		})
+	}
+
+	result := DetectSequences(manifest)
+
+	// Should collapse into a single sequence entry
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry (collapsed sequence), got %d", len(result.Entries))
+	}
+	if !result.Entries[0].IsSequence {
+		t.Error("expected entry to be a sequence")
+	}
+	if result.Entries[0].Pattern != "shot.[0001-0003].exr" {
+		t.Errorf("pattern = %q, want %q", result.Entries[0].Pattern, "shot.[0001-0003].exr")
+	}
+
+	// A sequence of only 2 files should NOT be collapsed (minLength=3)
+	manifest2 := NewManifest()
+	for i := 1; i <= 2; i++ {
+		manifest2.AddEntry(&Entry{
+			Name:      fmt.Sprintf("clip.%04d.dpx", i),
+			Size:      512,
+			Timestamp: time.Now(),
+			Mode:      0644,
+		})
+	}
+
+	result2 := DetectSequences(manifest2)
+
+	// Should keep both entries individually (not collapsed)
+	if len(result2.Entries) != 2 {
+		t.Errorf("expected 2 entries (not collapsed), got %d", len(result2.Entries))
+	}
+	for _, e := range result2.Entries {
+		if e.IsSequence {
+			t.Error("2-file group should not be collapsed with default minLength=3")
+		}
+	}
+}
