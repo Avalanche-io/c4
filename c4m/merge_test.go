@@ -1,6 +1,9 @@
 package c4m
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -280,5 +283,83 @@ func TestManifest_Merge_PreservesDataBlocks(t *testing.T) {
 	block := merged.GetDataBlock(metadataID)
 	if block == nil {
 		t.Error("Merge() did not preserve data block")
+	}
+}
+
+// mockSource implements store.Source for testing storeAdapter.
+type mockSource struct {
+	data map[string][]byte // c4 ID string -> manifest bytes
+}
+
+func (m *mockSource) Open(id c4.ID) (io.ReadCloser, error) {
+	data, ok := m.data[id.String()]
+	if !ok {
+		return nil, fmt.Errorf("not found: %s", id)
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func TestFromStore_Success(t *testing.T) {
+	// Encode a valid manifest to bytes
+	manifest := NewBuilder().
+		AddFile("hello.txt", WithSize(5)).
+		MustBuild()
+
+	var buf bytes.Buffer
+	if err := NewEncoder(&buf).Encode(manifest); err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	encoded := buf.Bytes()
+
+	// Compute the ID of the encoded manifest content
+	manifestID := c4.Identify(bytes.NewReader(encoded))
+
+	src := &mockSource{data: map[string][]byte{
+		manifestID.String(): encoded,
+	}}
+
+	getter := FromStore(src)
+	got, err := getter.Get(manifestID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if len(got.Entries) != 1 {
+		t.Errorf("Get() entries = %d, want 1", len(got.Entries))
+	}
+	if got.Entries[0].Name != "hello.txt" {
+		t.Errorf("Get() entry name = %q, want %q", got.Entries[0].Name, "hello.txt")
+	}
+}
+
+func TestFromStore_OpenError(t *testing.T) {
+	src := &mockSource{data: map[string][]byte{}} // empty — all lookups fail
+
+	getter := FromStore(src)
+	missingID := c4.Identify(strings.NewReader("missing"))
+	_, err := getter.Get(missingID)
+	if err == nil {
+		t.Fatal("Get() expected error for missing ID")
+	}
+	if !strings.Contains(err.Error(), "open manifest") {
+		t.Errorf("Get() error = %q, want containing 'open manifest'", err.Error())
+	}
+}
+
+func TestFromStore_DecodeError(t *testing.T) {
+	// Store returns content that is not a valid manifest
+	garbage := []byte("this is not a c4m manifest")
+	garbageID := c4.Identify(bytes.NewReader(garbage))
+
+	src := &mockSource{data: map[string][]byte{
+		garbageID.String(): garbage,
+	}}
+
+	getter := FromStore(src)
+	_, err := getter.Get(garbageID)
+	if err == nil {
+		t.Fatal("Get() expected error for invalid manifest content")
+	}
+	if !strings.Contains(err.Error(), "decode manifest") {
+		t.Errorf("Get() error = %q, want containing 'decode manifest'", err.Error())
 	}
 }
