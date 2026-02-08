@@ -244,3 +244,59 @@ func TestAdversarial_NullFieldCombinations(t *testing.T) {
 		})
 	}
 }
+
+// TestAdversarial_UnterminatedQuotedTarget tests that an unterminated quoted
+// symlink target produces an error rather than a panic.
+func TestAdversarial_UnterminatedQuotedTarget(t *testing.T) {
+	input := "@c4m 1.0\nlrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"unterminated\n"
+	d := NewDecoder(strings.NewReader(input))
+	_, err := d.Decode()
+	if err == nil {
+		t.Fatal("expected error for unterminated quoted target")
+	}
+	if !strings.Contains(err.Error(), "unterminated") {
+		t.Errorf("error = %q, want containing 'unterminated'", err.Error())
+	}
+}
+
+// TestAdversarial_TargetWithNullC4ID tests symlink with null C4 ID marker.
+func TestAdversarial_TargetWithNullC4ID(t *testing.T) {
+	input := "@c4m 1.0\nlrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> /some/target -\n"
+	d := NewDecoder(strings.NewReader(input))
+	m, err := d.Decode()
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(m.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(m.Entries))
+	}
+	e := m.Entries[0]
+	if e.Name != "link" {
+		t.Errorf("Name = %q, want %q", e.Name, "link")
+	}
+	if e.Target != "/some/target" {
+		t.Errorf("Target = %q, want %q", e.Target, "/some/target")
+	}
+	if !e.C4ID.IsNil() {
+		t.Errorf("C4ID should be nil for '-' marker, got %s", e.C4ID)
+	}
+}
+
+// TestAdversarial_QuotedTargetWithEscapes tests a quoted symlink target with
+// escape sequences.
+func TestAdversarial_QuotedTargetWithEscapes(t *testing.T) {
+	input := "@c4m 1.0\nlrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"path with \\\"quotes\\\" and \\\\backslash\"\n"
+	d := NewDecoder(strings.NewReader(input))
+	m, err := d.Decode()
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(m.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(m.Entries))
+	}
+	e := m.Entries[0]
+	wantTarget := `path with "quotes" and \backslash`
+	if e.Target != wantTarget {
+		t.Errorf("Target = %q, want %q", e.Target, wantTarget)
+	}
+}
