@@ -573,7 +573,7 @@ func TestEntriesEqual(t *testing.T) {
 // Resolver Tests (merged from resolver_test.go)
 // ----------------------------------------------------------------------------
 
-// mockStorage implements the Storage interface for testing
+// mockStorage implements store.Source for testing
 type mockStorage struct {
 	manifests map[string]string // C4 ID -> manifest content
 }
@@ -584,7 +584,7 @@ func newMockStorage() *mockStorage {
 	}
 }
 
-func (ms *mockStorage) Get(id c4.ID) (io.ReadCloser, error) {
+func (ms *mockStorage) Open(id c4.ID) (io.ReadCloser, error) {
 	content, ok := ms.manifests[id.String()]
 	if !ok {
 		return nil, fmt.Errorf("manifest not found: %s", id.String())

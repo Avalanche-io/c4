@@ -489,12 +489,12 @@ func TestSequenceExpansionEdgeCases(t *testing.T) {
 	})
 }
 
-// testStorage implements Storage interface for testing (different name to avoid conflict)
+// testStorage implements store.Source for testing (different name to avoid conflict)
 type testStorage struct {
 	data map[string]string
 }
 
-func (m *testStorage) Get(id c4.ID) (io.ReadCloser, error) {
+func (m *testStorage) Open(id c4.ID) (io.ReadCloser, error) {
 	content, ok := m.data[id.String()]
 	if !ok {
 		return nil, os.ErrNotExist
@@ -1134,10 +1134,10 @@ func TestResolverCoverage(t *testing.T) {
 	})
 }
 
-// testErrorStorage is a test storage that always returns errors
+// testErrorStorage is a test store.Source that always returns errors
 type testErrorStorage struct{}
 
-func (s *testErrorStorage) Get(id c4.ID) (io.ReadCloser, error) {
+func (s *testErrorStorage) Open(id c4.ID) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("object not found: %s", id.String())
 }
 
@@ -2494,12 +2494,12 @@ func TestResolverMoreCoverage(t *testing.T) {
 	})
 }
 
-// testCoverageStorage implements Storage for testing
+// testCoverageStorage implements store.Source for testing
 type testCoverageStorage struct {
 	err error
 }
 
-func (s *testCoverageStorage) Get(id c4.ID) (io.ReadCloser, error) {
+func (s *testCoverageStorage) Open(id c4.ID) (io.ReadCloser, error) {
 	return nil, s.err
 }
 

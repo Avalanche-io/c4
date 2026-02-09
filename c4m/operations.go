@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/store"
 )
 
 // Source represents anything that can be converted to a manifest
@@ -261,26 +262,21 @@ func (m *Manifest) FilterByPrefix(prefix string) *Manifest {
 }
 
 // ----------------------------------------------------------------------------
-// Storage and Caching
+// Caching
 // ----------------------------------------------------------------------------
-
-// Storage defines the interface for loading manifests by C4 ID
-type Storage interface {
-	Get(id c4.ID) (io.ReadCloser, error)
-}
 
 // ManifestCache provides cached access to manifests
 type ManifestCache struct {
-	storage Storage
-	cache   map[string]*Manifest
-	mu      sync.RWMutex
+	src   store.Source
+	cache map[string]*Manifest
+	mu    sync.RWMutex
 }
 
 // NewManifestCache creates a new manifest cache
-func NewManifestCache(storage Storage) *ManifestCache {
+func NewManifestCache(src store.Source) *ManifestCache {
 	return &ManifestCache{
-		storage: storage,
-		cache:   make(map[string]*Manifest),
+		src:   src,
+		cache: make(map[string]*Manifest),
 	}
 }
 
@@ -296,8 +292,8 @@ func (mc *ManifestCache) Get(id c4.ID) (*Manifest, error) {
 	}
 	mc.mu.RUnlock()
 
-	// Load from storage
-	reader, err := mc.storage.Get(id)
+	// Load from store
+	reader, err := mc.src.Open(id)
 	if err != nil {
 		return nil, fmt.Errorf("loading manifest: %w", err)
 	}
@@ -340,9 +336,9 @@ type Resolver struct {
 }
 
 // NewResolver creates a new path resolver
-func NewResolver(storage Storage) *Resolver {
+func NewResolver(src store.Source) *Resolver {
 	return &Resolver{
-		cache: NewManifestCache(storage),
+		cache: NewManifestCache(src),
 	}
 }
 
