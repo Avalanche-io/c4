@@ -562,9 +562,9 @@ func TestExpandSequenceEntryWithManifestNilC4ID(t *testing.T) {
 		// C4ID is nil
 	}
 
-	expanded, err := ExpandSequenceEntryWithManifest(entry, manifest)
+	expanded, err := expandSequenceEntryWithManifest(entry, manifest)
 	if err != nil {
-		t.Fatalf("ExpandSequenceEntryWithManifest() error = %v", err)
+		t.Fatalf("expandSequenceEntryWithManifest() error = %v", err)
 	}
 
 	if len(expanded) != 3 {
@@ -585,15 +585,15 @@ func TestExpandSequenceEntryWithManifestNilC4ID(t *testing.T) {
 // ----------------------------------------------------------------------------
 
 func TestIDList(t *testing.T) {
-	t.Run("NewIDList creates empty list", func(t *testing.T) {
-		list := NewIDList()
+	t.Run("newIDList creates empty list", func(t *testing.T) {
+		list := newIDList()
 		if list.Count() != 0 {
 			t.Errorf("expected 0 items, got %d", list.Count())
 		}
 	})
 
 	t.Run("Add and Get", func(t *testing.T) {
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		id2 := c4.Identify(strings.NewReader("test2"))
 
@@ -621,7 +621,7 @@ func TestIDList(t *testing.T) {
 	})
 
 	t.Run("Canonical format", func(t *testing.T) {
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		id2 := c4.Identify(strings.NewReader("test2"))
 
@@ -645,7 +645,7 @@ func TestIDList(t *testing.T) {
 	})
 
 	t.Run("ComputeC4ID", func(t *testing.T) {
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		list.Add(id1)
 
@@ -655,7 +655,7 @@ func TestIDList(t *testing.T) {
 		}
 
 		// Same list should produce same C4 ID
-		list2 := NewIDList()
+		list2 := newIDList()
 		list2.Add(id1)
 		c4id2 := list2.ComputeC4ID()
 		if c4id != c4id2 {
@@ -670,7 +670,7 @@ func TestParseIDList(t *testing.T) {
 		id2 := c4.Identify(strings.NewReader("test2"))
 
 		input := id1.String() + "\n" + id2.String() + "\n"
-		list, err := ParseIDListFromString(input)
+		list, err := parseIDListFromString(input)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -685,7 +685,7 @@ func TestParseIDList(t *testing.T) {
 
 		// Extra whitespace, blank lines
 		input := "\n  " + id1.String() + "  \n\n"
-		list, err := ParseIDListFromString(input)
+		list, err := parseIDListFromString(input)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -697,7 +697,7 @@ func TestParseIDList(t *testing.T) {
 
 	t.Run("invalid ID format", func(t *testing.T) {
 		input := "not-a-valid-c4-id\n"
-		_, err := ParseIDListFromString(input)
+		_, err := parseIDListFromString(input)
 		if err == nil {
 			t.Errorf("expected error for invalid C4 ID")
 		}
@@ -737,7 +737,7 @@ func TestIsIDListContent(t *testing.T) {
 
 func TestDataBlock(t *testing.T) {
 	t.Run("parse ID list data block", func(t *testing.T) {
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		list.Add(id1)
 
@@ -781,7 +781,7 @@ func TestDataBlock(t *testing.T) {
 	})
 
 	t.Run("content hash mismatch", func(t *testing.T) {
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		list.Add(id1)
 
@@ -795,7 +795,7 @@ func TestDataBlock(t *testing.T) {
 	})
 
 	t.Run("GetIDList from block", func(t *testing.T) {
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		list.Add(id1)
 
@@ -807,7 +807,7 @@ func TestDataBlock(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		retrieved, err := block.GetIDList()
+		retrieved, err := block.getIDList()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -820,11 +820,11 @@ func TestDataBlock(t *testing.T) {
 
 func TestFormatDataBlock(t *testing.T) {
 	t.Run("format ID list block", func(t *testing.T) {
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		list.Add(id1)
 
-		block := CreateDataBlockFromIDList(list)
+		block := createDataBlockFromIDList(list)
 		formatted := FormatDataBlock(block)
 
 		if !strings.HasPrefix(formatted, "@data ") {
@@ -838,13 +838,13 @@ func TestFormatDataBlock(t *testing.T) {
 }
 
 func TestCreateDataBlockFromIDList(t *testing.T) {
-	list := NewIDList()
+	list := newIDList()
 	id1 := c4.Identify(strings.NewReader("test1"))
 	id2 := c4.Identify(strings.NewReader("test2"))
 	list.Add(id1)
 	list.Add(id2)
 
-	block := CreateDataBlockFromIDList(list)
+	block := createDataBlockFromIDList(list)
 
 	if !block.IsIDList {
 		t.Errorf("expected IsIDList to be true")
@@ -863,13 +863,13 @@ func TestCreateDataBlockFromIDList(t *testing.T) {
 }
 
 func TestFormatDataBlockIDList(t *testing.T) {
-	list := NewIDList()
+	list := newIDList()
 	id1 := c4.Identify(strings.NewReader("test1"))
 	id2 := c4.Identify(strings.NewReader("test2"))
 	list.Add(id1)
 	list.Add(id2)
 
-	block := CreateDataBlockFromIDList(list)
+	block := createDataBlockFromIDList(list)
 	formatted := FormatDataBlock(block)
 
 	// Should start with @data directive
@@ -954,7 +954,7 @@ func TestDataBlockGetIDList(t *testing.T) {
 			IsIDList: false,
 		}
 
-		_, err := block.GetIDList()
+		_, err := block.getIDList()
 		if err == nil {
 			t.Error("expected error for non-ID list block")
 		}
@@ -965,17 +965,17 @@ func TestDataBlockGetIDList(t *testing.T) {
 
 	t.Run("returns ID list for valid block", func(t *testing.T) {
 		// Create a valid ID list block
-		list := NewIDList()
+		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
 		id2 := c4.Identify(strings.NewReader("test2"))
 		list.Add(id1)
 		list.Add(id2)
 
-		block := CreateDataBlockFromIDList(list)
+		block := createDataBlockFromIDList(list)
 
-		retrieved, err := block.GetIDList()
+		retrieved, err := block.getIDList()
 		if err != nil {
-			t.Fatalf("GetIDList() error = %v", err)
+			t.Fatalf("getIDList() error = %v", err)
 		}
 
 		if retrieved.Count() != 2 {

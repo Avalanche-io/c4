@@ -255,7 +255,7 @@ func (se *SequenceExpander) ExpandManifest(manifest *Manifest) (*Manifest, *Mani
 			expanded.AddEntry(entry)
 
 			// Expand using ID list if available
-			expandedEntries, err := ExpandSequenceEntryWithManifest(entry, manifest)
+			expandedEntries, err := expandSequenceEntryWithManifest(entry, manifest)
 			if err != nil {
 				// Not a valid sequence, keep as-is without expansion
 				continue
@@ -285,10 +285,10 @@ func (se *SequenceExpander) ExpandManifest(manifest *Manifest) (*Manifest, *Mani
 	return expanded, expansions, nil
 }
 
-// ExpandSequenceEntry expands a single sequence entry into individual file entries.
+// expandSequenceEntry expands a single sequence entry into individual file entries.
 // The idList parameter provides individual C4 IDs for each file in order.
 // If idList is nil, the entry's C4ID is used for all expanded files (legacy behavior).
-func ExpandSequenceEntry(entry *Entry, idList *IDList) ([]*Entry, error) {
+func expandSequenceEntry(entry *Entry, idList *idList) ([]*Entry, error) {
 	seq, err := ParseSequence(entry.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse sequence: %w", err)
@@ -326,19 +326,19 @@ func ExpandSequenceEntry(entry *Entry, idList *IDList) ([]*Entry, error) {
 	return entries, nil
 }
 
-// ExpandSequenceEntryWithManifest expands a sequence entry using embedded DataBlocks
-func ExpandSequenceEntryWithManifest(entry *Entry, manifest *Manifest) ([]*Entry, error) {
+// expandSequenceEntryWithManifest expands a sequence entry using embedded DataBlocks
+func expandSequenceEntryWithManifest(entry *Entry, manifest *Manifest) ([]*Entry, error) {
 	// Try to get the ID list from embedded data blocks
-	var idList *IDList
+	var idList *idList
 	if !entry.C4ID.IsNil() {
-		list, err := manifest.GetIDList(entry.C4ID)
+		list, err := manifest.getIDList(entry.C4ID)
 		if err == nil {
 			idList = list
 		}
 		// If not found in manifest, idList remains nil (legacy behavior)
 	}
 
-	return ExpandSequenceEntry(entry, idList)
+	return expandSequenceEntry(entry, idList)
 }
 
 // ----------------------------------------------------------------------------
@@ -450,7 +450,7 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 				var latestTime time.Time
 				var mostRestrictiveMode os.FileMode = 0777 // Start with most permissive
 				var depth int
-				idList := NewIDList()
+				idList := newIDList()
 
 				for i := r.start; i <= r.end; i++ {
 					entry, ok := group.entries[i]
@@ -497,7 +497,7 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 				result.AddEntry(seqEntry)
 
 				// Create and embed the data block for the ID list
-				dataBlock := CreateDataBlockFromIDList(idList)
+				dataBlock := createDataBlockFromIDList(idList)
 				result.AddDataBlock(dataBlock)
 			} else {
 				// Add individual files for small ranges
@@ -572,42 +572,42 @@ func DetectSequences(manifest *Manifest) *Manifest {
 // c4IDPattern matches a valid C4 ID (c4 followed by 88 base58 characters = 90 total)
 var c4IDPattern = regexp.MustCompile(`^c4[1-9A-HJ-NP-Za-km-z]{88}$`)
 
-// IDList represents an ordered list of C4 IDs, typically used for range/sequence files.
+// idList represents an ordered list of C4 IDs, typically used for range/sequence files.
 // The canonical form is one C4 ID per line with trailing newlines.
-type IDList struct {
-	IDs []c4.ID
+type idList struct {
+	ids []c4.ID
 }
 
-// NewIDList creates a new empty ID list
-func NewIDList() *IDList {
-	return &IDList{
-		IDs: make([]c4.ID, 0),
+// newIDList creates a new empty ID list
+func newIDList() *idList {
+	return &idList{
+		ids: make([]c4.ID, 0),
 	}
 }
 
 // Add appends a C4 ID to the list
-func (l *IDList) Add(id c4.ID) {
-	l.IDs = append(l.IDs, id)
+func (l *idList) Add(id c4.ID) {
+	l.ids = append(l.ids, id)
 }
 
 // Count returns the number of IDs in the list
-func (l *IDList) Count() int {
-	return len(l.IDs)
+func (l *idList) Count() int {
+	return len(l.ids)
 }
 
 // Get returns the ID at the given index, or nil ID if out of bounds
-func (l *IDList) Get(index int) c4.ID {
-	if index < 0 || index >= len(l.IDs) {
+func (l *idList) Get(index int) c4.ID {
+	if index < 0 || index >= len(l.ids) {
 		return c4.ID{}
 	}
-	return l.IDs[index]
+	return l.ids[index]
 }
 
 // Canonical returns the canonical form of the ID list as a string.
 // One C4 ID per line, trailing newline on each line.
-func (l *IDList) Canonical() string {
+func (l *idList) Canonical() string {
 	var buf strings.Builder
-	for _, id := range l.IDs {
+	for _, id := range l.ids {
 		buf.WriteString(id.String())
 		buf.WriteByte('\n')
 	}
@@ -615,19 +615,19 @@ func (l *IDList) Canonical() string {
 }
 
 // Bytes returns the canonical form as bytes
-func (l *IDList) Bytes() []byte {
+func (l *idList) Bytes() []byte {
 	return []byte(l.Canonical())
 }
 
 // ComputeC4ID computes the C4 ID of the canonical form of this ID list
-func (l *IDList) ComputeC4ID() c4.ID {
+func (l *idList) ComputeC4ID() c4.ID {
 	return c4.Identify(strings.NewReader(l.Canonical()))
 }
 
-// ParseIDList parses an ID list from a reader.
+// parseIDList parses an ID list from a reader.
 // It is tolerant of whitespace variations but validates that each line is a valid C4 ID.
-func ParseIDList(r io.Reader) (*IDList, error) {
-	list := NewIDList()
+func parseIDList(r io.Reader) (*idList, error) {
+	list := newIDList()
 	scanner := bufio.NewScanner(r)
 
 	lineNum := 0
@@ -661,9 +661,9 @@ func ParseIDList(r io.Reader) (*IDList, error) {
 	return list, nil
 }
 
-// ParseIDListFromString parses an ID list from a string
-func ParseIDListFromString(s string) (*IDList, error) {
-	return ParseIDList(strings.NewReader(s))
+// parseIDListFromString parses an ID list from a string
+func parseIDListFromString(s string) (*idList, error) {
+	return parseIDList(strings.NewReader(s))
 }
 
 // IsIDListContent checks if content appears to be a plain C4 ID list.
@@ -712,7 +712,7 @@ func ParseDataBlock(id c4.ID, content string) (*DataBlock, error) {
 	if IsIDListContent(contentBytes) {
 		block.IsIDList = true
 		// Normalize to canonical form
-		idList, err := ParseIDListFromString(content)
+		idList, err := parseIDListFromString(content)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ID list: %w", err)
 		}
@@ -744,12 +744,12 @@ func ParseDataBlock(id c4.ID, content string) (*DataBlock, error) {
 	return block, nil
 }
 
-// GetIDList returns the content as an IDList if it is one, otherwise error
-func (db *DataBlock) GetIDList() (*IDList, error) {
+// getIDList returns the content as an idList if it is one, otherwise error
+func (db *DataBlock) getIDList() (*idList, error) {
 	if !db.IsIDList {
 		return nil, fmt.Errorf("data block is not an ID list")
 	}
-	return ParseIDList(bytes.NewReader(db.Content))
+	return parseIDList(bytes.NewReader(db.Content))
 }
 
 // FormatDataBlock formats a DataBlock for output in a manifest.
@@ -780,8 +780,8 @@ func FormatDataBlock(block *DataBlock) string {
 	return buf.String()
 }
 
-// CreateDataBlockFromIDList creates a DataBlock from an IDList
-func CreateDataBlockFromIDList(idList *IDList) *DataBlock {
+// createDataBlockFromIDList creates a DataBlock from an idList
+func createDataBlockFromIDList(idList *idList) *DataBlock {
 	content := idList.Bytes()
 	return &DataBlock{
 		ID:       c4.Identify(bytes.NewReader(content)),

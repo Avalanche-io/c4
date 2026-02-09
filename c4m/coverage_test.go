@@ -310,7 +310,7 @@ func TestIDListEdgeCases(t *testing.T) {
 		input := `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 c42222222222222222222222222222222222222222222222222222222222222222222222222222222222222222`
 
-		ids, err := ParseIDList(strings.NewReader(input))
+		ids, err := parseIDList(strings.NewReader(input))
 		if err != nil {
 			t.Fatalf("ParseIDList failed: %v", err)
 		}
@@ -323,7 +323,7 @@ c4222222222222222222222222222222222222222222222222222222222222222222222222222222
 		input := `c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 not-a-valid-id`
 
-		_, err := ParseIDList(strings.NewReader(input))
+		_, err := parseIDList(strings.NewReader(input))
 		if err == nil {
 			t.Error("Expected error for invalid ID")
 		}
@@ -453,9 +453,9 @@ func TestSequenceExpansionEdgeCases(t *testing.T) {
 			C4ID: c4.Identify(strings.NewReader("content3")),
 		})
 
-		expanded, err := ExpandSequenceEntryWithManifest(seqEntry, manifest)
+		expanded, err := expandSequenceEntryWithManifest(seqEntry, manifest)
 		if err != nil {
-			t.Fatalf("ExpandSequenceEntryWithManifest failed: %v", err)
+			t.Fatalf("expandSequenceEntryWithManifest failed: %v", err)
 		}
 
 		if len(expanded) != 3 {
@@ -473,12 +473,12 @@ func TestSequenceExpansionEdgeCases(t *testing.T) {
 		}
 
 		// Create an ID list with 3 IDs
-		idList := NewIDList()
+		idList := newIDList()
 		idList.Add(c4.Identify(strings.NewReader("content1")))
 		idList.Add(c4.Identify(strings.NewReader("content2")))
 		idList.Add(c4.Identify(strings.NewReader("content3")))
 
-		expanded, err := ExpandSequenceEntry(seqEntry, idList)
+		expanded, err := expandSequenceEntry(seqEntry, idList)
 		if err != nil {
 			t.Fatalf("ExpandSequenceEntry failed: %v", err)
 		}
@@ -863,10 +863,10 @@ func TestSequenceExpansionWithManifestCoverage(t *testing.T) {
 		}
 
 		// Regular entries should return unchanged
-		results, err := ExpandSequenceEntryWithManifest(entry, nil)
+		results, err := expandSequenceEntryWithManifest(entry, nil)
 		if err != nil {
 			// If it fails on regular entries, that's okay - just log it
-			t.Logf("ExpandSequenceEntryWithManifest on regular entry: %v", err)
+			t.Logf("expandSequenceEntryWithManifest on regular entry: %v", err)
 		} else if len(results) != 1 {
 			t.Errorf("Expected 1 result, got %d", len(results))
 		}
@@ -895,9 +895,9 @@ func TestSequenceExpansionWithManifestCoverage(t *testing.T) {
 		}
 
 		// With manifest context
-		results, err := ExpandSequenceEntryWithManifest(entry, manifest)
+		results, err := expandSequenceEntryWithManifest(entry, manifest)
 		if err != nil {
-			t.Logf("ExpandSequenceEntryWithManifest with manifest: %v", err)
+			t.Logf("expandSequenceEntryWithManifest with manifest: %v", err)
 		}
 		_ = results // Just exercise the function
 	})
@@ -1146,7 +1146,7 @@ func TestParseIDListCoverage(t *testing.T) {
 	t.Run("parse single ID", func(t *testing.T) {
 		id1 := c4.Identify(strings.NewReader("content1"))
 		input := id1.String() + "\n"
-		idList, err := ParseIDList(strings.NewReader(input))
+		idList, err := parseIDList(strings.NewReader(input))
 		if err != nil {
 			t.Fatalf("ParseIDList failed: %v", err)
 		}
@@ -1159,7 +1159,7 @@ func TestParseIDListCoverage(t *testing.T) {
 		id1 := c4.Identify(strings.NewReader("content1"))
 		id2 := c4.Identify(strings.NewReader("content2"))
 		input := id1.String() + "\n" + id2.String() + "\n"
-		idList, err := ParseIDList(strings.NewReader(input))
+		idList, err := parseIDList(strings.NewReader(input))
 		if err != nil {
 			t.Fatalf("ParseIDList failed: %v", err)
 		}
@@ -1170,7 +1170,7 @@ func TestParseIDListCoverage(t *testing.T) {
 
 	t.Run("parse invalid ID", func(t *testing.T) {
 		input := "not_a_valid_c4_id\n"
-		_, err := ParseIDList(strings.NewReader(input))
+		_, err := parseIDList(strings.NewReader(input))
 		if err == nil {
 			t.Error("Expected error for invalid ID")
 		}
@@ -1644,18 +1644,18 @@ func TestValidatorNameCoverage(t *testing.T) {
 	})
 }
 
-// TestSequenceEntryWithManifestCoverage tests ExpandSequenceEntryWithManifest
+// TestSequenceEntryWithManifestCoverage tests expandSequenceEntryWithManifest
 func TestSequenceEntryWithManifestCoverage(t *testing.T) {
 	t.Run("expand with C4ID and manifest with data block", func(t *testing.T) {
 		// Create ID list
-		idList := NewIDList()
+		idList := newIDList()
 		id1 := c4.Identify(strings.NewReader("content1"))
 		id2 := c4.Identify(strings.NewReader("content2"))
 		idList.Add(id1)
 		idList.Add(id2)
 
 		// Create data block from ID list
-		dataBlock := CreateDataBlockFromIDList(idList)
+		dataBlock := createDataBlockFromIDList(idList)
 
 		// Create manifest with data block
 		manifest := NewManifest()
@@ -1670,9 +1670,9 @@ func TestSequenceEntryWithManifestCoverage(t *testing.T) {
 		}
 
 		// Expand with manifest context
-		results, err := ExpandSequenceEntryWithManifest(entry, manifest)
+		results, err := expandSequenceEntryWithManifest(entry, manifest)
 		if err != nil {
-			t.Logf("ExpandSequenceEntryWithManifest: %v", err)
+			t.Logf("expandSequenceEntryWithManifest: %v", err)
 		}
 		_ = results
 	})
@@ -1685,9 +1685,9 @@ func TestSequenceEntryWithManifestCoverage(t *testing.T) {
 			Size: 100,
 		}
 
-		results, err := ExpandSequenceEntryWithManifest(entry, manifest)
+		results, err := expandSequenceEntryWithManifest(entry, manifest)
 		if err != nil {
-			t.Logf("ExpandSequenceEntryWithManifest with nil C4ID: %v", err)
+			t.Logf("expandSequenceEntryWithManifest with nil C4ID: %v", err)
 		}
 		_ = results
 	})
@@ -1889,12 +1889,12 @@ func TestEncoderDataBlockCoverage(t *testing.T) {
 		manifest := NewManifest()
 
 		// Create ID list
-		idList := NewIDList()
+		idList := newIDList()
 		idList.Add(c4.Identify(strings.NewReader("content1")))
 		idList.Add(c4.Identify(strings.NewReader("content2")))
 
 		// Create and add data block
-		dataBlock := CreateDataBlockFromIDList(idList)
+		dataBlock := createDataBlockFromIDList(idList)
 		manifest.AddDataBlock(dataBlock)
 
 		manifest.AddEntry(&Entry{
@@ -2592,12 +2592,12 @@ func TestParseIDListMoreCoverage(t *testing.T) {
 		id2 := c4.Identify(strings.NewReader("content2"))
 		input := fmt.Sprintf("%s\n%s\n", id1.String(), id2.String())
 
-		list, err := ParseIDList(strings.NewReader(input))
+		list, err := parseIDList(strings.NewReader(input))
 		if err != nil {
 			t.Fatalf("ParseIDList failed: %v", err)
 		}
-		if len(list.IDs) != 2 {
-			t.Errorf("Expected 2 IDs, got %d", len(list.IDs))
+		if len(list.ids) != 2 {
+			t.Errorf("Expected 2 IDs, got %d", len(list.ids))
 		}
 	})
 
@@ -2605,18 +2605,18 @@ func TestParseIDListMoreCoverage(t *testing.T) {
 		id := c4.Identify(strings.NewReader("content"))
 		input := id.String() + "\n"
 
-		list, err := ParseIDList(strings.NewReader(input))
+		list, err := parseIDList(strings.NewReader(input))
 		if err != nil {
 			t.Fatalf("ParseIDList failed: %v", err)
 		}
-		if len(list.IDs) != 1 {
-			t.Errorf("Expected 1 ID, got %d", len(list.IDs))
+		if len(list.ids) != 1 {
+			t.Errorf("Expected 1 ID, got %d", len(list.ids))
 		}
 	})
 
 	t.Run("list with invalid ID", func(t *testing.T) {
 		input := "invalid-id\n"
-		_, err := ParseIDList(strings.NewReader(input))
+		_, err := parseIDList(strings.NewReader(input))
 		if err == nil {
 			t.Error("Expected error for invalid ID")
 		}
@@ -3217,7 +3217,7 @@ func TestParseIDListScannerError(t *testing.T) {
 			data:      []byte("some data that will be cut off"),
 			errorAt:   10,
 		}
-		_, err := ParseIDList(errReader)
+		_, err := parseIDList(errReader)
 		// Scanner should encounter an error
 		if err == nil {
 			t.Log("No error from limited reader, scanner may have buffered all data")
@@ -3827,8 +3827,8 @@ func TestSortingOperations(t *testing.T) {
 	manifest.AddEntry(&Entry{Name: "dir/", Mode: os.ModeDir | 0755})
 	manifest.AddEntry(&Entry{Name: "m.txt", Mode: 0644})
 
-	// Test sortFlat
-	manifest.sortFlat()
+	// Test SortEntries (files before directories at same depth)
+	manifest.SortEntries()
 	if manifest.Entries[0].Name != "a.txt" {
 		t.Errorf("Expected first entry to be a.txt after sort, got %s", manifest.Entries[0].Name)
 	}

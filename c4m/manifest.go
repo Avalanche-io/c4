@@ -63,13 +63,6 @@ func (m *Manifest) AddEntry(e *Entry) {
 	m.invalidateIndex()
 }
 
-// sortFlat sorts entries using flat natural sort (no hierarchy awareness).
-func (m *Manifest) sortFlat() {
-	sort.Slice(m.Entries, func(i, j int) bool {
-		return NaturalLess(m.Entries[i].Name, m.Entries[j].Name)
-	})
-}
-
 // SortEntries sorts all entries in the manifest to ensure correct C4M ordering:
 // files before directories at the same depth level, maintaining parent-child hierarchy.
 func (m *Manifest) SortEntries() {
@@ -326,14 +319,14 @@ func (m *Manifest) GetDataBlock(id c4.ID) *DataBlock {
 	return nil
 }
 
-// GetIDList retrieves an embedded ID list by its C4 ID
+// getIDList retrieves an embedded ID list by its C4 ID
 // Returns nil if not found or if the block is not an ID list
-func (m *Manifest) GetIDList(id c4.ID) (*IDList, error) {
+func (m *Manifest) getIDList(id c4.ID) (*idList, error) {
 	block := m.GetDataBlock(id)
 	if block == nil {
 		return nil, fmt.Errorf("data block not found: %s", id)
 	}
-	return block.GetIDList()
+	return block.getIDList()
 }
 
 // ----------------------------------------------------------------------------

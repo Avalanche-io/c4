@@ -615,14 +615,14 @@ drwxr-xr-x 2025-09-19T12:00:00Z 200 dir/
 
 func TestParseDataBlock(t *testing.T) {
 	// Create a test ID list to embed
-	idList := NewIDList()
+	idList := newIDList()
 	id1 := c4.Identify(strings.NewReader("content1\n"))
 	id2 := c4.Identify(strings.NewReader("content2\n"))
 	idList.Add(id1)
 	idList.Add(id2)
 
 	// Create the data block
-	block := CreateDataBlockFromIDList(idList)
+	block := createDataBlockFromIDList(idList)
 
 	// Build manifest with embedded @data block
 	content := fmt.Sprintf(`@c4m 1.0
@@ -735,16 +735,16 @@ func TestParseTimestamp(t *testing.T) {
 func TestHandleDataBlockConsecutive(t *testing.T) {
 	// Test consecutive @data blocks using valid ID list blocks
 	// Create first ID list
-	list1 := NewIDList()
+	list1 := newIDList()
 	list1.Add(c4.Identify(strings.NewReader("file1")))
 	list1.Add(c4.Identify(strings.NewReader("file2")))
-	block1 := CreateDataBlockFromIDList(list1)
+	block1 := createDataBlockFromIDList(list1)
 
 	// Create second ID list
-	list2 := NewIDList()
+	list2 := newIDList()
 	list2.Add(c4.Identify(strings.NewReader("file3")))
 	list2.Add(c4.Identify(strings.NewReader("file4")))
-	block2 := CreateDataBlockFromIDList(list2)
+	block2 := createDataBlockFromIDList(list2)
 
 	input := fmt.Sprintf("@c4m 1.0\n%s%s", FormatDataBlock(block1), FormatDataBlock(block2))
 

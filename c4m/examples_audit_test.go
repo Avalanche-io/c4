@@ -497,7 +497,7 @@ func TestExamplesAudit(t *testing.T) {
 	runExample(t, "24_data_block", func() *Manifest {
 		m := NewManifest()
 		// Create an ID list data block
-		idList := NewIDList()
+		idList := newIDList()
 		idList.Add(idOf("frame1"))
 		idList.Add(idOf("frame2"))
 		idList.Add(idOf("frame3"))
@@ -514,7 +514,7 @@ func TestExamplesAudit(t *testing.T) {
 			Depth:      0,
 		})
 
-		block := CreateDataBlockFromIDList(idList)
+		block := createDataBlockFromIDList(idList)
 		m.AddDataBlock(block)
 		return m
 	}())

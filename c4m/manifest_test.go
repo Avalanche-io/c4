@@ -52,10 +52,10 @@ func TestManifestSort(t *testing.T) {
 	m.AddEntry(&Entry{Name: "file1.txt"})
 	m.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir})
 	
-	m.sortFlat()
+	m.SortEntries()
 
-	// Check natural sort order - directories come first
-	expected := []string{"dir1/", "file1.txt", "file2.txt", "file10.txt"}
+	// Check natural sort order - files before directories at same depth
+	expected := []string{"file1.txt", "file2.txt", "file10.txt", "dir1/"}
 	for i, e := range m.Entries {
 		if e.Name != expected[i] {
 			t.Errorf("Entry[%d] = %q, want %q", i, e.Name, expected[i])
@@ -644,14 +644,14 @@ func TestManifestGetDataBlock(t *testing.T) {
 
 func TestManifestGetIDList(t *testing.T) {
 	// Create an ID list
-	idList := NewIDList()
+	idList := newIDList()
 	id1 := c4.Identify(strings.NewReader("file1"))
 	id2 := c4.Identify(strings.NewReader("file2"))
 	idList.Add(id1)
 	idList.Add(id2)
 
 	// Create a data block from the ID list
-	block := CreateDataBlockFromIDList(idList)
+	block := createDataBlockFromIDList(idList)
 
 	m := &Manifest{
 		Version:    "1.0",
@@ -659,19 +659,19 @@ func TestManifestGetIDList(t *testing.T) {
 	}
 
 	// Test getting the ID list
-	got, err := m.GetIDList(block.ID)
+	got, err := m.getIDList(block.ID)
 	if err != nil {
-		t.Fatalf("GetIDList() error = %v", err)
+		t.Fatalf("getIDList() error = %v", err)
 	}
 	if got.Count() != 2 {
-		t.Errorf("GetIDList() count = %d, want 2", got.Count())
+		t.Errorf("getIDList() count = %d, want 2", got.Count())
 	}
 
 	// Test not found
 	unknownID := c4.Identify(strings.NewReader("unknown"))
-	_, err = m.GetIDList(unknownID)
+	_, err = m.getIDList(unknownID)
 	if err == nil {
-		t.Error("GetIDList(unknown) should return error")
+		t.Error("getIDList(unknown) should return error")
 	}
 }
 
