@@ -1,11 +1,3 @@
-// Package transform provides efficient algorithms for transforming one filesystem
-// manifest into another with minimum operations.
-//
-// Key features:
-//   - Move/Rename Detection: Uses C4 IDs to detect when files have moved
-//   - Copy Detection: Identifies when same content appears in multiple locations
-//   - Modification Detection: Tracks content changes at the same path
-//   - Operation Optimization: Orders operations for efficiency
 package transform
 
 import (
