@@ -74,8 +74,11 @@ func (e *Encoder) Encode(m *Manifest) error {
 		}
 	}
 
-	// Write entries
+	// Write non-remove entries
 	for _, entry := range m.Entries {
+		if entry.removeLayer {
+			continue
+		}
 		var line string
 		if e.pretty {
 			line = e.formatEntryPretty(entry, maxSize, c4IDColumn)
@@ -91,6 +94,18 @@ func (e *Encoder) Encode(m *Manifest) error {
 	for _, layer := range m.Layers {
 		if err := e.writeLayer(layer); err != nil {
 			return err
+		}
+		// Write remove entries within @remove sections
+		if layer.Type == LayerTypeRemove {
+			for _, entry := range m.Entries {
+				if !entry.removeLayer {
+					continue
+				}
+				line := entry.Format(e.indentWidth, false)
+				if _, err := fmt.Fprintf(e.w, "%s\n", line); err != nil {
+					return err
+				}
+			}
 		}
 	}
 

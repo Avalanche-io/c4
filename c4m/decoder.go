@@ -69,6 +69,9 @@ func (d *Decoder) Decode() (*Manifest, error) {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidEntry, err)
 		}
 
+		if m.currentLayer != nil && m.currentLayer.Type == LayerTypeRemove {
+			entry.removeLayer = true
+		}
 		m.Entries = append(m.Entries, entry)
 	}
 

@@ -252,6 +252,56 @@ func TestEntry_InRemoveLayer(t *testing.T) {
 	}
 }
 
+func TestManifest_Merge_ParsedRemoveLayer(t *testing.T) {
+	ts := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	// Build a base manifest and store it.
+	base := NewBuilder().
+		AddFile("keep.txt", WithSize(100), WithTimestamp(ts)).
+		AddFile("remove.txt", WithSize(200), WithTimestamp(ts)).
+		MustBuild()
+	baseID := base.ComputeC4ID()
+
+	// Build a changeset using the Builder, encode to c4m text, then parse it back.
+	// This tests that the decoder preserves removeLayer on entries in @remove sections.
+	changeset := NewBuilder().
+		WithBase(base).
+		Remove("remove.txt").
+		AddFile("new.txt", WithSize(300), WithTimestamp(ts)).
+		MustBuild()
+
+	data, err := Marshal(changeset)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	parsed, err := Unmarshal(data)
+	if err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	// Verify the parsed manifest has removals.
+	if len(parsed.Removals()) == 0 {
+		t.Fatal("parsed manifest should have removals after round-trip")
+	}
+
+	// Merge the parsed (not builder-created) manifest.
+	source := MapGetter{baseID: base}
+	merged, err := parsed.Merge(source)
+	if err != nil {
+		t.Fatalf("Merge() error = %v", err)
+	}
+
+	if len(merged.Entries) != 2 {
+		t.Errorf("Merge() got %d entries, want 2 (keep.txt + new.txt)", len(merged.Entries))
+	}
+	for _, e := range merged.Entries {
+		if e.Name == "remove.txt" {
+			t.Error("Merge() should have removed remove.txt from parsed changeset")
+		}
+	}
+}
+
 func TestManifest_Merge_PreservesDataBlocks(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
