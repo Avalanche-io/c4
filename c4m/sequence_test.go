@@ -167,6 +167,85 @@ func TestParseSequence(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "adjacent_ranges_merged",
+			pattern: "comp.[0001-0100,0101-0200].exr",
+			want: &Sequence{
+				Prefix:  "comp.",
+				Suffix:  ".exr",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 200, Step: 1},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "three_adjacent_ranges_merged",
+			pattern: "frame.[001-100,101-200,201-300].exr",
+			want: &Sequence{
+				Prefix:  "frame.",
+				Suffix:  ".exr",
+				Padding: 3,
+				Ranges: []Range{
+					{Start: 1, End: 300, Step: 1},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "adjacent_stepped_ranges_merged",
+			pattern: "render.[0001-0099:2,0101-0199:2].png",
+			want: &Sequence{
+				Prefix:  "render.",
+				Suffix:  ".png",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 199, Step: 2},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "different_steps_not_merged",
+			pattern: "render.[0001-0100:1,0101-0200:2].png",
+			want: &Sequence{
+				Prefix:  "render.",
+				Suffix:  ".png",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 100, Step: 1},
+					{Start: 101, End: 200, Step: 2},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "consecutive_singles_merged",
+			pattern: "frame.[005,006,007].exr",
+			want: &Sequence{
+				Prefix:  "frame.",
+				Suffix:  ".exr",
+				Padding: 3,
+				Ranges: []Range{
+					{Start: 5, End: 7, Step: 1},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "unsorted_ranges_normalized",
+			pattern: "frame.[0101-0200,0001-0100].exr",
+			want: &Sequence{
+				Prefix:  "frame.",
+				Suffix:  ".exr",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 200, Step: 1},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name:    "space_in_filename",
 			pattern: `my\ animation.[001-100].png`,
 			want: &Sequence{

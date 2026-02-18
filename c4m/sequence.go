@@ -182,7 +182,29 @@ func ParseSequence(pattern string) (*Sequence, error) {
 		}
 	}
 
+	seq.normalizeRanges()
 	return seq, nil
+}
+
+// normalizeRanges sorts ranges by start value and merges adjacent ranges with
+// the same step. For example, [0001-0100] + [0101-0200] becomes [0001-0200].
+func (s *Sequence) normalizeRanges() {
+	if len(s.Ranges) <= 1 {
+		return
+	}
+	sort.Slice(s.Ranges, func(i, j int) bool {
+		return s.Ranges[i].Start < s.Ranges[j].Start
+	})
+	merged := s.Ranges[:1]
+	for _, next := range s.Ranges[1:] {
+		cur := &merged[len(merged)-1]
+		if next.Step == cur.Step && next.Start == cur.End+cur.Step {
+			cur.End = next.End
+		} else {
+			merged = append(merged, next)
+		}
+	}
+	s.Ranges = merged
 }
 
 // IsSequence checks if a filename pattern contains sequence notation
