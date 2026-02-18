@@ -186,25 +186,183 @@ func ParseSequence(pattern string) (*Sequence, error) {
 	return seq, nil
 }
 
-// normalizeRanges sorts ranges by start value and merges adjacent ranges with
-// the same step. For example, [0001-0100] + [0101-0200] becomes [0001-0200].
+// normalizeRanges reduces an arbitrary set of ranges to canonical form.
+// Any combination of ranges, stepped ranges, and individual frames is expanded
+// to frame numbers, then re-derived as:
+//  1. Maximal contiguous (step=1) runs — always preferred
+//  2. Stepped arithmetic progressions of 3+ remaining frames
+//  3. Individual frames for anything left
+//
+// The result is deterministic, sorted by start value, and minimal.
 func (s *Sequence) normalizeRanges() {
 	if len(s.Ranges) <= 1 {
 		return
 	}
+
+	// Fast path: all step-1 ranges can be merged without expansion.
+	allStep1 := true
+	for _, r := range s.Ranges {
+		if r.Step != 1 {
+			allStep1 = false
+			break
+		}
+	}
+	if allStep1 {
+		s.mergeContiguousRanges()
+		s.collapseSingles()
+		return
+	}
+
+	// General case: expand to frame numbers and re-derive.
+	frames := s.frames()
+	s.Ranges = framesToRanges(frames)
+}
+
+// mergeContiguousRanges is the fast path for all-step-1 ranges:
+// sort by start, merge overlapping or adjacent.
+func (s *Sequence) mergeContiguousRanges() {
 	sort.Slice(s.Ranges, func(i, j int) bool {
 		return s.Ranges[i].Start < s.Ranges[j].Start
 	})
 	merged := s.Ranges[:1]
 	for _, next := range s.Ranges[1:] {
 		cur := &merged[len(merged)-1]
-		if next.Step == cur.Step && next.Start == cur.End+cur.Step {
-			cur.End = next.End
+		if next.Start <= cur.End+1 {
+			if next.End > cur.End {
+				cur.End = next.End
+			}
 		} else {
 			merged = append(merged, next)
 		}
 	}
 	s.Ranges = merged
+}
+
+// collapseSingles finds stepped arithmetic progressions among single-frame
+// ranges left over after contiguous merging. Requires at least 3 frames to
+// form a stepped range.
+func (s *Sequence) collapseSingles() {
+	if len(s.Ranges) < 3 {
+		return
+	}
+
+	var fixed []Range
+	var singles []int
+	for _, r := range s.Ranges {
+		if r.Start == r.End {
+			singles = append(singles, r.Start)
+		} else {
+			fixed = append(fixed, r)
+		}
+	}
+	if len(singles) < 3 {
+		return
+	}
+
+	// Greedy left-to-right stepped detection among sorted singles.
+	var detected []Range
+	i := 0
+	for i < len(singles) {
+		if i+2 < len(singles) {
+			step := singles[i+1] - singles[i]
+			j := i + 2
+			for j < len(singles) && singles[j] == singles[j-1]+step {
+				j++
+			}
+			if j-i >= 3 {
+				detected = append(detected, Range{Start: singles[i], End: singles[j-1], Step: step})
+				i = j
+				continue
+			}
+		}
+		detected = append(detected, Range{Start: singles[i], End: singles[i], Step: 1})
+		i++
+	}
+
+	result := append(fixed, detected...)
+	sort.Slice(result, func(a, b int) bool {
+		return result[a].Start < result[b].Start
+	})
+	s.Ranges = result
+}
+
+// frames expands all ranges to a sorted, deduplicated slice of frame numbers.
+func (s *Sequence) frames() []int {
+	var out []int
+	for _, r := range s.Ranges {
+		step := r.Step
+		if step < 1 {
+			step = 1
+		}
+		for i := r.Start; i <= r.End; i += step {
+			out = append(out, i)
+		}
+	}
+	sort.Ints(out)
+	// Deduplicate in-place.
+	if len(out) > 1 {
+		j := 1
+		for i := 1; i < len(out); i++ {
+			if out[i] != out[i-1] {
+				out[j] = out[i]
+				j++
+			}
+		}
+		out = out[:j]
+	}
+	return out
+}
+
+// framesToRanges converts a sorted, deduplicated slice of frame numbers to
+// canonical Range form.
+func framesToRanges(frames []int) []Range {
+	if len(frames) == 0 {
+		return nil
+	}
+
+	// Phase 1: extract maximal contiguous (step=1) runs.
+	var result []Range
+	var singles []int
+
+	i := 0
+	for i < len(frames) {
+		j := i + 1
+		for j < len(frames) && frames[j] == frames[j-1]+1 {
+			j++
+		}
+		if j-i >= 2 {
+			result = append(result, Range{Start: frames[i], End: frames[j-1], Step: 1})
+		} else {
+			singles = append(singles, frames[i])
+		}
+		i = j
+	}
+
+	// Phase 2: among remaining singletons, find stepped progressions.
+	// Greedy left-to-right: the step is implied by the first two elements.
+	// A stepped range must have at least 3 frames to be worth encoding.
+	i = 0
+	for i < len(singles) {
+		if i+2 < len(singles) {
+			step := singles[i+1] - singles[i]
+			j := i + 2
+			for j < len(singles) && singles[j] == singles[j-1]+step {
+				j++
+			}
+			if j-i >= 3 {
+				result = append(result, Range{Start: singles[i], End: singles[j-1], Step: step})
+				i = j
+				continue
+			}
+		}
+		result = append(result, Range{Start: singles[i], End: singles[i], Step: 1})
+		i++
+	}
+
+	sort.Slice(result, func(a, b int) bool {
+		return result[a].Start < result[b].Start
+	})
+	return result
 }
 
 // IsSequence checks if a filename pattern contains sequence notation

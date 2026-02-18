@@ -159,9 +159,7 @@ func TestParseSequence(t *testing.T) {
 				Padding: 3,
 				Ranges: []Range{
 					{Start: 1, End: 1, Step: 1},
-					{Start: 5, End: 5, Step: 1},
-					{Start: 10, End: 10, Step: 1},
-					{Start: 15, End: 15, Step: 1},
+					{Start: 5, End: 15, Step: 5},
 				},
 			},
 			wantErr: false,
@@ -206,15 +204,16 @@ func TestParseSequence(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "different_steps_not_merged",
+			name:    "different_steps_normalized",
 			pattern: "render.[0001-0100:1,0101-0200:2].png",
+			// Frames: 1..100 + 101,103,...,199. Contiguous: [1-101]. Singles: 103,105,...,199.
 			want: &Sequence{
 				Prefix:  "render.",
 				Suffix:  ".png",
 				Padding: 4,
 				Ranges: []Range{
-					{Start: 1, End: 100, Step: 1},
-					{Start: 101, End: 200, Step: 2},
+					{Start: 1, End: 101, Step: 1},
+					{Start: 103, End: 199, Step: 2},
 				},
 			},
 			wantErr: false,
@@ -281,6 +280,160 @@ func TestParseSequence(t *testing.T) {
 			}
 			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseSequence() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeRanges(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []Range
+		want  []Range
+	}{
+		{
+			name:  "single_range_unchanged",
+			input: []Range{{1, 100, 1}},
+			want:  []Range{{1, 100, 1}},
+		},
+		{
+			name:  "adjacent_step1_merged",
+			input: []Range{{1, 100, 1}, {101, 200, 1}},
+			want:  []Range{{1, 200, 1}},
+		},
+		{
+			name:  "overlapping_ranges_merged",
+			input: []Range{{1, 100, 1}, {50, 150, 1}},
+			want:  []Range{{1, 150, 1}},
+		},
+		{
+			name:  "subsumed_range_absorbed",
+			input: []Range{{1, 100, 1}, {25, 75, 1}},
+			want:  []Range{{1, 100, 1}},
+		},
+		{
+			name:  "gap_preserved",
+			input: []Range{{1, 50, 1}, {75, 100, 1}},
+			want:  []Range{{1, 50, 1}, {75, 100, 1}},
+		},
+		{
+			name:  "unsorted_input_sorted",
+			input: []Range{{100, 200, 1}, {1, 99, 1}},
+			want:  []Range{{1, 200, 1}},
+		},
+		{
+			name:  "singles_to_contiguous",
+			input: []Range{{1, 1, 1}, {2, 2, 1}, {3, 3, 1}, {4, 4, 1}, {5, 5, 1}},
+			want:  []Range{{1, 5, 1}},
+		},
+		{
+			name:  "singles_to_stepped",
+			input: []Range{{2, 2, 1}, {4, 4, 1}, {6, 6, 1}, {8, 8, 1}, {10, 10, 1}},
+			want:  []Range{{2, 10, 2}},
+		},
+		{
+			name:  "mixed_contiguous_and_stepped",
+			input: []Range{{1, 3, 1}, {5, 5, 1}, {7, 7, 1}, {9, 9, 1}},
+			want:  []Range{{1, 3, 1}, {5, 9, 2}},
+		},
+		{
+			name:  "stepped_fill_becomes_contiguous",
+			input: []Range{{1, 9, 2}, {2, 2, 1}, {4, 4, 1}, {6, 6, 1}, {8, 8, 1}},
+			want:  []Range{{1, 9, 1}},
+		},
+		{
+			name:  "three_adjacent_step1",
+			input: []Range{{1, 100, 1}, {101, 200, 1}, {201, 300, 1}},
+			want:  []Range{{1, 300, 1}},
+		},
+		{
+			name:  "random_frames_no_pattern",
+			input: []Range{{3, 3, 1}, {7, 7, 1}, {15, 15, 1}, {22, 22, 1}},
+			want:  []Range{{3, 3, 1}, {7, 7, 1}, {15, 15, 1}, {22, 22, 1}},
+		},
+		{
+			name:  "two_singles_not_stepped",
+			input: []Range{{10, 10, 1}, {20, 20, 1}},
+			want:  []Range{{10, 10, 1}, {20, 20, 1}},
+		},
+		{
+			name:  "three_singles_become_stepped",
+			input: []Range{{10, 10, 1}, {20, 20, 1}, {30, 30, 1}},
+			want:  []Range{{10, 30, 10}},
+		},
+		{
+			name:  "adjacent_stepped_same_step",
+			input: []Range{{1, 9, 2}, {11, 19, 2}},
+			want:  []Range{{1, 19, 2}},
+		},
+		{
+			name:  "contiguous_plus_trailing_singles",
+			input: []Range{{1, 5, 1}, {10, 10, 1}, {20, 20, 1}},
+			want:  []Range{{1, 5, 1}, {10, 10, 1}, {20, 20, 1}},
+		},
+		{
+			name: "contiguous_blocks_between_stepped",
+			input: []Range{
+				{1, 1, 1}, {3, 3, 1}, {5, 5, 1}, {7, 7, 1}, {9, 9, 1},
+				{10, 11, 1},
+			},
+			// Frames: {1,3,5,7,9,10,11}. After mergeContiguous: 9 merges
+			// with [10-11] → [9-11]. Singles: {1,3,5,7} → stepped [1-7:2].
+			want: []Range{{1, 7, 2}, {9, 11, 1}},
+		},
+		{
+			name:  "duplicate_frames_deduplicated",
+			input: []Range{{1, 5, 1}, {3, 7, 1}},
+			want:  []Range{{1, 7, 1}},
+		},
+		{
+			name:  "single_frame",
+			input: []Range{{42, 42, 1}},
+			want:  []Range{{42, 42, 1}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Sequence{Ranges: tt.input}
+			s.normalizeRanges()
+			if !reflect.DeepEqual(s.Ranges, tt.want) {
+				t.Errorf("normalizeRanges() = %v, want %v", s.Ranges, tt.want)
+			}
+			// Idempotency: normalizing again must produce the same result.
+			before := make([]Range, len(s.Ranges))
+			copy(before, s.Ranges)
+			s.normalizeRanges()
+			if !reflect.DeepEqual(s.Ranges, before) {
+				t.Errorf("not idempotent: second normalize = %v, first = %v", s.Ranges, before)
+			}
+		})
+	}
+}
+
+// TestNormalizePreservesFrames verifies that normalization never changes the
+// set of frame numbers a sequence describes.
+func TestNormalizePreservesFrames(t *testing.T) {
+	cases := [][]Range{
+		{{1, 100, 1}, {50, 150, 1}},
+		{{1, 9, 2}, {2, 10, 2}},
+		{{1, 1, 1}, {3, 3, 1}, {5, 5, 1}, {7, 7, 1}, {9, 9, 1}, {10, 11, 1}},
+		{{100, 200, 3}, {1, 50, 1}},
+		{{2, 2, 1}, {4, 4, 1}, {6, 6, 1}, {8, 8, 1}, {10, 10, 1}},
+		{{1, 100, 1}, {101, 200, 2}},
+	}
+
+	for i, input := range cases {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			// Collect frames before normalization.
+			s := &Sequence{Ranges: input}
+			before := s.frames()
+
+			s.normalizeRanges()
+			after := s.frames()
+
+			if !reflect.DeepEqual(before, after) {
+				t.Errorf("frames changed: before=%d frames, after=%d frames", len(before), len(after))
 			}
 		})
 	}
