@@ -63,6 +63,22 @@ func (m *Manifest) AddEntry(e *Entry) {
 	m.invalidateIndex()
 }
 
+// RemoveEntry removes an entry from the manifest by pointer identity.
+func (m *Manifest) RemoveEntry(e *Entry) {
+	for i, existing := range m.Entries {
+		if existing == e {
+			m.Entries = append(m.Entries[:i], m.Entries[i+1:]...)
+			break
+		}
+	}
+	m.invalidateIndex()
+}
+
+// InvalidateIndex forces the tree index to be rebuilt on next access.
+func (m *Manifest) InvalidateIndex() {
+	m.invalidateIndex()
+}
+
 // SortEntries sorts all entries in the manifest to ensure correct C4M ordering:
 // files before directories at the same depth level, maintaining parent-child hierarchy.
 func (m *Manifest) SortEntries() {
