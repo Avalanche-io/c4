@@ -655,6 +655,9 @@ func (d *Decoder) handleDirective(m *Manifest, directive string) error {
 			}
 		}
 
+	case "@intent":
+		m.Intent = true
+
 	case "@end":
 		// End of layer - reset current layer
 		m.currentLayer = nil

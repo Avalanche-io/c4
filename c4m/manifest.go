@@ -29,6 +29,7 @@ type Manifest struct {
 	currentLayer *Layer // Current layer being parsed
 	Data         c4.ID  // Application-specific metadata
 	DataBlocks   []*DataBlock // Embedded @data blocks (for self-contained manifests)
+	Intent       bool         // True if manifest is an @intent c4m
 	index        *treeIndex   // Lazily-built tree index for O(1) navigation
 }
 
@@ -185,6 +186,7 @@ func (m *Manifest) Copy() *Manifest {
 		Version: m.Version,
 		Base:    m.Base,
 		Data:    m.Data,
+		Intent:  m.Intent,
 		Entries: make([]*Entry, len(m.Entries)),
 	}
 

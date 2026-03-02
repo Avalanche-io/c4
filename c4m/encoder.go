@@ -60,6 +60,13 @@ func (e *Encoder) Encode(m *Manifest) error {
 		return err
 	}
 
+	// Write @intent if set
+	if m.Intent {
+		if _, err := fmt.Fprint(e.w, "@intent\n"); err != nil {
+			return err
+		}
+	}
+
 	// Write metadata if present
 	if !m.Data.IsNil() {
 		if _, err := fmt.Fprintf(e.w, "@data %s\n", m.Data); err != nil {
