@@ -396,15 +396,16 @@ c4 checkout <id> ./output          # materialize content locally
 c4 checkout <id> ./output --from home-nas  # fetch from a specific location
 ```
 
-### Location management
+### Establishment and location management
 
 ```
-c4 locations                        # list all locations with status
-c4 location add <name> <address>    # register a new location
-c4 location remove <name>           # unregister a location
-c4 groups                           # list groups
-c4 group create <name> <loc>...     # create a group
-c4 group delete <name>              # delete a group
+c4 mk <name>: <address>            # establish a location for writing
+c4 mk <file>.c4m:                  # establish a capsule for writing
+c4 rm <name>:                      # remove a location
+c4 locations                       # list all locations with status
+c4 groups                          # list groups
+c4 group create <name> <loc>...    # create a group
+c4 group delete <name>             # delete a group
 ```
 
 ### Content location
@@ -657,6 +658,55 @@ c4 ls studio:myfiles.c4m:           # navigates into a remote c4m's virtual cont
 
 The colon means "open the portal." Without it, the capsule is opaque.
 
+### Establishment: `mk` and `rm`
+
+Write access through colon syntax requires prior establishment. This is a
+safety gate, not ceremony.
+
+**The problem:** `c4 cp a.c4m b.c4m` vs `c4 cp a.c4m b.c4m:` — one character.
+Without a safety gate, a trailing colon typo silently changes "copy literal
+file" to "write into namespace." If b.c4m is important, this corrupts it.
+
+**The rule:** Read is implicit. Write requires `mk`.
+
+```
+c4 ls project.c4m:              # works — read-only, safe
+c4 cp project.c4m:renders/ ./   # works — reading from capsule
+c4 cp files/ project.c4m:       # ERROR unless c4 mk project.c4m: was run first
+c4 cp files/ studio:            # ERROR unless c4 mk studio: addr:port was run first
+```
+
+**Why `mk`:** Unix lineage — `mkdir` makes directories, `mkfifo` makes FIFOs,
+`mk` makes colon endpoints. Short, imperative, no ambiguity.
+
+**For capsules:**
+```
+c4 mk project.c4m:              # establish capsule for writing
+c4 cp dailies/ project.c4m:     # now this works
+```
+
+Establishment is local-only (creates a marker alongside the c4m file or in a
+registry). No daemon needed. Establishment persists — you `mk` once.
+
+**For locations:**
+```
+c4 mk studio: cloud.example.com:7433    # establish location for writing
+c4 cp dailies/ studio:                  # now this works
+```
+
+**Teardown is asymmetric:**
+```
+c4 rm studio:                    # removes the location registration
+rm project.c4m                   # OS rm removes the file (and its establishment)
+```
+
+Locations use `c4 rm` because the registration is in c4's registry.
+Capsules use OS `rm` because the file is just a file.
+
+**Same verb, both types.** The colon suffix on `mk` makes both types look the
+same: `c4 mk thing:`. What follows the name distinguishes them — `.c4m` suffix
+means capsule, otherwise location (with address argument).
+
 ### Bidirectional Capture: Writing Into Capsules
 
 The colon syntax is fully symmetric — read and write:
@@ -666,18 +716,22 @@ c4 cp myfiles.c4m: dest/           # Read: content flows OUT of capsule
 c4 cp /path/to/files myfiles.c4m:  # Write: content flows IN, capsule gets built
 ```
 
+Write requires prior establishment: `c4 mk myfiles.c4m:` — this is the safety
+gate that prevents accidental writes from colon typos. Read does not.
+
 This eliminates `c4 scan` as a separate concept. Capturing files IS just `cp`
 into a `c4m:` path.
 
 **Capture examples:**
 ```
-c4 cp dailies/ today.c4m:                  # capture dailies, build capsule
-c4 cp dailies/ today.c4m:renders/          # capture into a subtree
-c4 cp shot_010/ project.c4m:shots/010/     # add to an existing capsule
+c4 mk today.c4m:                          # establish for writing (once)
+c4 cp dailies/ today.c4m:                 # capture dailies, build capsule
+c4 cp dailies/ today.c4m:renders/         # capture into a subtree
+c4 cp shot_010/ project.c4m:shots/010/    # add to an existing capsule (after mk)
 ```
 
-**Create-on-write.** If the target c4m file doesn't exist, `cp` creates it.
-Like how `cp` creates destination files.
+**Create-on-write.** If the target c4m file doesn't exist, `cp` creates it
+(after establishment). Like how `cp` creates destination files.
 
 **Merge semantics.** When writing into an existing capsule:
 - New paths → added
@@ -730,10 +784,10 @@ The `--to` and `--from` flags from push/checkout become unnecessary:
 
 | Flag syntax | Colon syntax |
 |------|------|
-| `c4 push . --to cloud-vm` | `c4 cp . cloud-vm:` |
-| `c4 push . --to archive` | `c4 cp . archive:` |
-| `c4 checkout <id> ./out --from nas` | `c4 cp nas:<path> ./out` |
-| `c4 push . --to alice@example.com:cloud` | `c4 cp . alice@example.com:cloud:` |
+| `c4 push . --to cloud-vm` | `c4 cp . cloud-vm:` (after `c4 mk cloud-vm: addr`) |
+| `c4 push . --to archive` | `c4 cp . archive:` (after `c4 mk archive: addr`) |
+| `c4 checkout <id> ./out --from nas` | `c4 cp nas:<path> ./out` (read — no `mk` needed) |
+| `c4 push . --to alice@example.com:cloud` | `c4 cp . alice@example.com:cloud:` (after `mk`) |
 
 `push` and `checkout` may survive as semantic shortcuts (push = always instant,
 checkout = blocks until content materializes), but `cp` subsumes both.
@@ -780,9 +834,9 @@ should handle. This needs separate design work.
 4. Make bare `c4d` run the daemon (no `serve` subcommand)
 5. Add `c4d info` endpoint (`GET /.c4d/info`)
 6. Add `~/.c4/config.yaml` with locations and groups
-7. Add `c4 location add/remove` and `c4 locations` commands
+7. Add `c4 mk`/`c4 rm` establishment commands and `c4 locations`
 8. Move `push` and `checkout` from c4d to c4
-9. Resolve `--to <name>` via location config (name → address)
+9. Resolve location names via registry (name → address)
 10. Tests: push/checkout via c4 against running c4d, with location names
 
 Steps 1–5 are daemon-only (no c4 client changes). Steps 6–9 are client-only.
