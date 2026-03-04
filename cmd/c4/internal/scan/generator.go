@@ -102,7 +102,10 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	
 	// Sort entries hierarchically (files before directories at each level)
 	manifest.SortEntries()
-	
+
+	// Compute directory sizes from children (OS-reported dir sizes are platform-dependent)
+	PropagateMetadata(manifest.Entries)
+
 	// Detect and group sequences if enabled
 	if g.detectSequences {
 		g.groupSequences(manifest)

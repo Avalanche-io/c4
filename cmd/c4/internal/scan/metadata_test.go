@@ -224,6 +224,41 @@ func TestCalculateDirectorySize(t *testing.T) {
 	}
 }
 
+func TestPropagateMetadataDirectorySizes(t *testing.T) {
+	now := time.Now().UTC()
+	// Simulate sorted manifest: dir/ contains file + subdir/, subdir/ contains file
+	entries := []*Entry{
+		{Name: "dir/", Mode: os.ModeDir | 0755, Timestamp: now, Size: -1, Depth: 0},
+		{Name: "file1.txt", Mode: 0644, Timestamp: now, Size: 100, Depth: 1},
+		{Name: "subdir/", Mode: os.ModeDir | 0755, Timestamp: now, Size: -1, Depth: 1},
+		{Name: "file2.txt", Mode: 0644, Timestamp: now, Size: 200, Depth: 2},
+	}
+
+	PropagateMetadata(entries)
+
+	// subdir/ should be 200 (just file2.txt)
+	if entries[2].Size != 200 {
+		t.Errorf("subdir/ size = %d, want 200", entries[2].Size)
+	}
+	// dir/ should be 100 + 200 = 300 (file1 + subdir's computed size)
+	if entries[0].Size != 300 {
+		t.Errorf("dir/ size = %d, want 300", entries[0].Size)
+	}
+}
+
+func TestNewFileMetadataDirSizeNull(t *testing.T) {
+	// Create a temp directory to get real os.FileInfo
+	dir := t.TempDir()
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := NewFileMetadata(dir, info, 0)
+	if md.Size() != -1 {
+		t.Errorf("NewFileMetadata for dir should set Size=-1, got %d", md.Size())
+	}
+}
+
 func TestGetMostRecentModtime(t *testing.T) {
 	t1 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	t2 := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)

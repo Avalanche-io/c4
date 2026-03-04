@@ -48,10 +48,14 @@ type BasicFileMetadata struct {
 
 // NewFileMetadata creates a new BasicFileMetadata from os.FileInfo
 func NewFileMetadata(path string, info os.FileInfo, depth int) FileMetadata {
+	size := info.Size()
+	if info.IsDir() {
+		size = -1 // Directory sizes are computed from children, not OS metadata
+	}
 	return &BasicFileMetadata{
 		path:    path,
 		name:    info.Name(),
-		size:    info.Size(),
+		size:    size,
 		mode:    info.Mode(),
 		modTime: info.ModTime(),
 		isDir:   info.IsDir(),
@@ -181,23 +185,19 @@ func GetMostRecentModtime(entries []*Entry) time.Time {
 	return mostRecent
 }
 
-// PropagateMetadata resolves null values in entries by propagating from children
-// This is used for directory entries to compute size and timestamp from contents
+// PropagateMetadata resolves null values in entries by propagating from children.
+// Iterates in reverse so deeper directories are resolved before their parents.
 func PropagateMetadata(entries []*Entry) {
-	// Find directory entries with null values
-	for i := range entries {
+	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
 
 		if entry.IsDir() && entry.HasNullValues() {
-			// Get children of this directory
 			children := getDirectoryChildren(entries, entry)
 
-			// Propagate size if null
 			if entry.Size < 0 {
 				entry.Size = CalculateDirectorySize(children)
 			}
 
-			// Propagate timestamp if null
 			if entry.Timestamp.Unix() == 0 {
 				entry.Timestamp = GetMostRecentModtime(children)
 			}

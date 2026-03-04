@@ -390,8 +390,9 @@ func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest,
 			Size:      info.Size(),
 			Name:      entry.Name(),
 		}
-		
+
 		if info.IsDir() {
+			e.Size = -1 // Directory sizes are computed from children, not OS metadata
 			e.Name += "/"
 			// For directories, compute their C4 ID from their manifest
 			subPath := filepath.Join(dirPath, entry.Name())
@@ -413,6 +414,7 @@ func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest,
 	}
 	
 	manifest.SortEntries()
+	scan.PropagateMetadata(manifest.Entries)
 	return manifest, nil
 }
 
