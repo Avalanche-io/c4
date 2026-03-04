@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xtgo/set"
 )
 
 const (
@@ -253,8 +252,17 @@ func (d IDs) Tree() Tree {
 	if !sort.IsSorted(d) {
 		sort.Sort(d)
 	}
-	n := set.Uniq(d)
-	d = d[:n]
+	// Deduplicate sorted slice in-place
+	if len(d) > 1 {
+		j := 1
+		for i := 1; i < len(d); i++ {
+			if d[i] != d[i-1] {
+				d[j] = d[i]
+				j++
+			}
+		}
+		d = d[:j]
+	}
 	t := NewTree(d)
 	t.compute()
 	return t

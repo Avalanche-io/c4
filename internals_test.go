@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/xtgo/set"
 )
 
 // func TestTreeSizes(t *testing.T) {
@@ -24,8 +22,17 @@ func testIDs() IDs {
 		digests[i] = Identify(strings.NewReader(s))
 	}
 	sort.Sort(digests)
-	n := set.Uniq(digests)
-	return digests[:n]
+	if len(digests) > 1 {
+		j := 1
+		for i := 1; i < len(digests); i++ {
+			if digests[i] != digests[i-1] {
+				digests[j] = digests[i]
+				j++
+			}
+		}
+		digests = digests[:j]
+	}
+	return digests
 }
 
 func row(rows [][]byte, i int) []ID {

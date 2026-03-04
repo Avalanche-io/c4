@@ -13,7 +13,6 @@ import (
 	"testing/iotest"
 
 	"github.com/Avalanche-io/c4"
-	"github.com/xtgo/set"
 )
 
 func TestEncoding(t *testing.T) {
@@ -436,8 +435,16 @@ func TestDigestSlice(t *testing.T) {
 	}
 
 	sort.Sort(ids)
-	n := set.Uniq(ids)
-	ids = ids[:n]
+	if len(ids) > 1 {
+		j := 1
+		for i := 1; i < len(ids); i++ {
+			if ids[i] != ids[i-1] {
+				ids[j] = ids[i]
+				j++
+			}
+		}
+		ids = ids[:j]
+	}
 
 	t.Run("Order", func(t *testing.T) {
 		if len(ids) != len(test_vectors) {

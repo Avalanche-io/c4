@@ -8,7 +8,6 @@ require (
 	github.com/absfs/absfs v1.0.0
 	github.com/absfs/memfs v1.0.0
 	github.com/spf13/pflag v1.0.7
-	github.com/xtgo/set v1.0.0
 	github.com/zeebo/xxh3 v1.0.2
 )
 
