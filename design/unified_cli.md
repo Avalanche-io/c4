@@ -550,7 +550,9 @@ argument conventions.
 | Source → Dest | Semantics | Speed |
 |------|-----------|-------|
 | Local → Local | File copy with C4 identity | Normal (bytes move) |
+| Local → Capsule | Capture — build/extend c4m, optionally store in c4d | Fast (hash + write) |
 | Local → Location | Push intent | Instant (description now, bytes later) |
+| Capsule → Local | Materialize — extract described content | Slow (bytes move) |
 | Capsule → Capsule | Manifest editing | Instant (description only) |
 | Capsule → Location | Push described state | Instant |
 | Location → Local | Pull content | Slow (bytes move) |
@@ -655,15 +657,72 @@ c4 ls studio:myfiles.c4m:           # navigates into a remote c4m's virtual cont
 
 The colon means "open the portal." Without it, the capsule is opaque.
 
-### Capsule Immutability
+### Bidirectional Capture: Writing Into Capsules
 
-Capsules are immutable. The colon on the **source** side means "read contents."
-Destinations are always real places — you cannot write into a capsule via colon
-syntax. Capsule transforms (adding/removing entries, changing structure) are a
-separate operation (`c4 union`, `c4 subtract`, etc.), not something `cp` does.
+The colon syntax is fully symmetric — read and write:
 
-This is by design: a capsule is a description, not a container. You read from
-descriptions, you write to places.
+```
+c4 cp myfiles.c4m: dest/           # Read: content flows OUT of capsule
+c4 cp /path/to/files myfiles.c4m:  # Write: content flows IN, capsule gets built
+```
+
+This eliminates `c4 scan` as a separate concept. Capturing files IS just `cp`
+into a `c4m:` path.
+
+**Capture examples:**
+```
+c4 cp dailies/ today.c4m:                  # capture dailies, build capsule
+c4 cp dailies/ today.c4m:renders/          # capture into a subtree
+c4 cp shot_010/ project.c4m:shots/010/     # add to an existing capsule
+```
+
+**Create-on-write.** If the target c4m file doesn't exist, `cp` creates it.
+Like how `cp` creates destination files.
+
+**Merge semantics.** When writing into an existing capsule:
+- New paths → added
+- Existing paths with different content → updated
+- Existing paths with same content → no-op (idempotent)
+
+The c4m file on disk is a **working document** — a mutable workspace for
+building capsules. The C4 ID of any given snapshot is immutable (change the
+file, change the ID), but the file itself evolves. This is the git model:
+working tree is mutable, commits are immutable. Want a clean start? Delete the
+file and rebuild.
+
+**Two modes of operation:**
+- **Local-only (no c4d):** Walks source, hashes files, writes c4m entries.
+  Content stays on disk where it is. The capsule accurately describes the
+  filesystem. This is what `c4 -m .` already does — cp is the universal entry.
+- **With c4d running:** Builds the c4m AND stores content in c4d. Content is
+  now tracked, transferable, and subject to policies.
+
+The capsule is useful either way — it's a description. But to move content to
+other locations, you need c4d.
+
+**Protocol flow for `c4 cp source/ file.c4m:`:**
+1. Walk source directory, hash each file → C4 IDs
+2. Build c4m entries with relative paths
+3. Write (or merge into) c4m file on disk
+4. If c4d running: `PUT /` for each file → store content
+
+**Protocol flow for `c4 cp source/ file.c4m:subdir/`:**
+1. Walk source, hash files → C4 IDs
+2. Read existing file.c4m (if exists)
+3. Add new entries under `subdir/` prefix
+4. Write updated c4m to disk
+5. If c4d running: store new content
+
+### Capsule Identity vs. Capsule Mutability
+
+A capsule's **C4 ID** is immutable — it's a hash of the content. Change the
+file, get a new ID. But the c4m **file** on disk is mutable: you keep adding to
+it with successive `cp` operations. When you push a capsule to a location, you
+push a specific snapshot — THAT snapshot's identity is permanent.
+
+Capsule transforms (`c4 union`, `c4 subtract`) remain the tools for combining
+or diffing capsules structurally. `cp` handles the capture (building from real
+files) and materialization (extracting to real files) directions.
 
 ### Colon Syntax Replaces Flags
 
