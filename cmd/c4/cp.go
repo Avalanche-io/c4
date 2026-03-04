@@ -177,14 +177,15 @@ func cpFileIntoCapsule(filePath string, dst pathspec.PathSpec) {
 		depth = strings.Count(strings.TrimSuffix(dst.SubPath, "/"), "/") + 1
 	}
 
-	manifest.AddEntry(&c4m.Entry{
+	entry := &c4m.Entry{
 		Name:      name,
 		Depth:     depth,
 		Mode:      info.Mode(),
 		Size:      info.Size(),
 		Timestamp: info.ModTime().UTC(),
 		C4ID:      id,
-	})
+	}
+	insertUnderParent(manifest, entry, dst.SubPath)
 
 	manifest.SortEntries()
 	scan.PropagateMetadata(manifest.Entries)
@@ -389,6 +390,42 @@ func loadManifest(path string) (*c4m.Manifest, error) {
 	}
 	defer f.Close()
 	return c4m.NewDecoder(f).Decode()
+}
+
+// insertUnderParent inserts an entry at the correct position in the manifest,
+// adjacent to its parent directory. This prevents sortSiblingsHierarchically
+// from misassigning the entry to the wrong parent.
+func insertUnderParent(manifest *c4m.Manifest, entry *c4m.Entry, subPath string) {
+	if subPath == "" {
+		manifest.AddEntry(entry)
+		return
+	}
+
+	// Find the parent directory entry
+	parentName := filepath.Base(strings.TrimSuffix(subPath, "/")) + "/"
+	parentDepth := entry.Depth - 1
+
+	for i, e := range manifest.Entries {
+		if e.Name == parentName && e.Depth == parentDepth && e.IsDir() {
+			// Found parent — find end of its children
+			insertIdx := i + 1
+			for j := i + 1; j < len(manifest.Entries); j++ {
+				if manifest.Entries[j].Depth <= parentDepth {
+					break
+				}
+				insertIdx = j + 1
+			}
+			// Insert at correct position
+			manifest.Entries = append(manifest.Entries, nil)
+			copy(manifest.Entries[insertIdx+1:], manifest.Entries[insertIdx:])
+			manifest.Entries[insertIdx] = entry
+			manifest.InvalidateIndex()
+			return
+		}
+	}
+
+	// Parent not found — fall back to append
+	manifest.AddEntry(entry)
 }
 
 // ensureParentDirs adds missing parent directory entries with proper depth.
