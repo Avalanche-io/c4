@@ -187,7 +187,7 @@ func (e *Encoder) calculateC4IDColumn(m *Manifest) int {
 		indent := strings.Repeat(" ", entry.Depth*e.indentWidth)
 		modeStr := formatMode(entry.Mode)
 		timeStr := formatTimestampPretty(entry.Timestamp)
-		nameStr := formatName(entry.Name)
+		nameStr := formatName(entry.Name, entry.IsSequence)
 
 		lineLen := len(indent) + len(modeStr) + 1 + len(timeStr) + 1 + maxSizeWidth + 1 + len(nameStr)
 		if entry.Target != "" {
@@ -242,7 +242,7 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 	}
 
 	// Format name (with quotes if needed)
-	nameStr := formatName(entry.Name)
+	nameStr := formatName(entry.Name, entry.IsSequence)
 
 	// Build base line
 	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}

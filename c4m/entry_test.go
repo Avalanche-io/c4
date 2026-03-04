@@ -386,11 +386,13 @@ func TestFormatName(t *testing.T) {
 		{"dir with backslash", `dir\test/`, `"dir\\test/"`},
 		{"dir with newline", "dir\ntest/", `"dir\ntest/"`},
 		{"dir leading space", " dir/", `" dir/"`},
+		{"brackets escaped", "file[1].txt", `file\[1\].txt`},
+		{"brackets with backslash", `file\[1].txt`, `file\\\[1\].txt`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := formatName(tt.filename)
+			got := formatName(tt.filename, false)
 			if got != tt.want {
 				t.Errorf("formatName(%q) = %q, want %q", tt.filename, got, tt.want)
 			}

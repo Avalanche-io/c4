@@ -22,6 +22,7 @@ func TestReadiness(t *testing.T) {
 		t.Run("QuotedRoundTrip", testParserQuotedRoundTrip)
 		t.Run("LeadingSpaceRoundTrip", testParserLeadingSpaceRoundTrip)
 		t.Run("SymlinkSpacesRoundTrip", testParserSymlinkSpacesRoundTrip)
+		t.Run("BracketEscapeRoundTrip", testParserBracketEscapeRoundTrip)
 		t.Run("NaturalSortTextBeforeNumeric", testNaturalSortTextBeforeNumeric)
 		t.Run("NaturalSortASCIIDigitsOnly", testNaturalSortASCIIOnly)
 	})
@@ -154,6 +155,40 @@ func testParserSymlinkSpacesRoundTrip(t *testing.T) {
 	}
 	if m2.Entries[0].Target != "path with spaces/file.txt" {
 		t.Errorf("got target %q, want %q", m2.Entries[0].Target, "path with spaces/file.txt")
+	}
+}
+
+func testParserBracketEscapeRoundTrip(t *testing.T) {
+	ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	id := c4.Identify(strings.NewReader("bracket test"))
+
+	// A filename with literal brackets should NOT be treated as a sequence
+	m := NewManifest()
+	m.Version = "1.0"
+	m.Entries = append(m.Entries, &Entry{
+		Name:      "file[1].txt",
+		Mode:      0644,
+		Timestamp: ts,
+		Size:      100,
+		C4ID:      id,
+	})
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	m2, err := Unmarshal(data)
+	if err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if len(m2.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(m2.Entries))
+	}
+	if m2.Entries[0].Name != "file[1].txt" {
+		t.Errorf("round-trip name: got %q, want %q", m2.Entries[0].Name, "file[1].txt")
+	}
+	if m2.Entries[0].IsSequence {
+		t.Error("escaped brackets should not be detected as sequence")
 	}
 }
 

@@ -222,7 +222,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Timestamp = timestamp
 
 	// Parse remaining fields using character-level parsing
-	size, name, target, id, nameQuoted, err := d.parseEntryFields(remainingLine)
+	size, name, target, id, nameQuoted, hadBracketEsc, err := d.parseEntryFields(remainingLine)
 	if err != nil {
 		return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
 	}
@@ -232,8 +232,8 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Target = target
 	entry.C4ID = id
 
-	// Check for sequence notation (only unquoted names per spec)
-	if !nameQuoted && strings.Contains(entry.Name, "[") && strings.Contains(entry.Name, "]") {
+	// Check for sequence notation (only unquoted names without bracket escapes per spec)
+	if !nameQuoted && !hadBracketEsc && strings.Contains(entry.Name, "[") && strings.Contains(entry.Name, "]") {
 		entry.IsSequence = true
 		entry.Pattern = entry.Name
 	}
@@ -247,7 +247,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 //
 // The expected format is: SIZE NAME [-> TARGET] [C4ID]
 // Where NAME and TARGET may be quoted with backslash escapes.
-func (d *Decoder) parseEntryFields(line string) (size int64, name, target string, id c4.ID, nameQuoted bool, err error) {
+func (d *Decoder) parseEntryFields(line string) (size int64, name, target string, id c4.ID, nameQuoted, hadBracketEsc bool, err error) {
 	pos := 0
 	n := len(line)
 
@@ -256,7 +256,8 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 		pos++
 	}
 	if pos >= n {
-		return 0, "", "", c4.ID{}, false, fmt.Errorf("insufficient fields after timestamp")
+		err = fmt.Errorf("insufficient fields after timestamp")
+		return
 	}
 
 	// 1. Parse size token (digits, commas, or "-")
@@ -270,12 +271,14 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 			pos++
 		}
 		if pos == sizeStart {
-			return 0, "", "", c4.ID{}, false, fmt.Errorf("invalid size at position %d", pos)
+			err = fmt.Errorf("invalid size at position %d", pos)
+			return
 		}
 		sizeStr := strings.ReplaceAll(line[sizeStart:pos], ",", "")
 		size, err = strconv.ParseInt(sizeStr, 10, 64)
 		if err != nil {
-			return 0, "", "", c4.ID{}, false, fmt.Errorf("invalid size %q: %w", line[sizeStart:pos], err)
+			err = fmt.Errorf("invalid size %q: %w", line[sizeStart:pos], err)
+			return
 		}
 	}
 
@@ -284,14 +287,16 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 		pos++
 	}
 	if pos >= n {
-		return 0, "", "", c4.ID{}, false, fmt.Errorf("missing name after size")
+		err = fmt.Errorf("missing name after size")
+		return
 	}
 
 	// 2. Parse name (quoted or unquoted)
 	nameQuoted = pos < n && line[pos] == '"'
-	name, pos, err = d.parseNameOrTarget(line, pos)
+	name, pos, hadBracketEsc, err = d.parseNameOrTarget(line, pos)
 	if err != nil {
-		return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("parsing name: %w", err)
+		err = fmt.Errorf("parsing name: %w", err)
+		return
 	}
 
 	// Skip whitespace
@@ -307,11 +312,13 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 			pos++
 		}
 		if pos >= n {
-			return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("missing symlink target after ->")
+			err = fmt.Errorf("missing symlink target after ->")
+			return
 		}
 		target, pos, err = d.parseTarget(line, pos)
 		if err != nil {
-			return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("parsing symlink target: %w", err)
+			err = fmt.Errorf("parsing symlink target: %w", err)
+			return
 		}
 		// Skip whitespace
 		for pos < n && line[pos] == ' ' {
@@ -328,25 +335,26 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 		} else if strings.HasPrefix(remaining, "c4") {
 			id, err = c4.Parse(remaining)
 			if err != nil {
-				return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("invalid C4 ID %q: %w", remaining, err)
+				err = fmt.Errorf("invalid C4 ID %q: %w", remaining, err)
+				return
 			}
 		}
 	}
 
-	return size, name, target, id, nameQuoted, nil
+	return
 }
 
 // parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
-// Returns the parsed string and the new position after consuming it.
+// Returns the parsed string, new position, whether bracket escapes were found, and error.
 //
 // Quoted names: "..." with \\→\, \"→", \n→newline
-// Unquoted names: read until the boundary is detected:
+// Unquoted names: support \[→[, \]→], \\→\ escape sequences.
 //   - For directory names (trailing /): read until / then stop
 //   - For file names: read until space followed by ->, c4 prefix, or end-of-line
-func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, error) {
+func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, error) {
 	n := len(line)
 	if pos >= n {
-		return "", pos, fmt.Errorf("unexpected end of line")
+		return "", pos, false, fmt.Errorf("unexpected end of line")
 	}
 
 	if line[pos] == '"' {
@@ -371,45 +379,62 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, error) {
 				pos += 2
 			} else if ch == '"' {
 				pos++ // skip closing quote
-				return buf.String(), pos, nil
+				return buf.String(), pos, false, nil
 			} else {
 				buf.WriteByte(ch)
 				pos++
 			}
 		}
-		return "", pos, fmt.Errorf("unterminated quoted name")
+		return "", pos, false, fmt.Errorf("unterminated quoted name")
 	}
 
-	// Unquoted name: scan for boundary
-	start := pos
+	// Unquoted name: scan for boundary, processing escape sequences
+	var buf strings.Builder
+	hadBracketEscapes := false
 	for pos < n {
 		ch := line[pos]
 
+		// Process escape sequences: \[ \] \\
+		if ch == '\\' && pos+1 < n {
+			next := line[pos+1]
+			switch next {
+			case '[', ']':
+				buf.WriteByte(next)
+				hadBracketEscapes = true
+				pos += 2
+				continue
+			case '\\':
+				buf.WriteByte('\\')
+				pos += 2
+				continue
+			}
+		}
+
 		// Directory name ends at / (inclusive)
 		if ch == '/' {
-			pos++ // include the slash
-			return line[start:pos], pos, nil
+			buf.WriteByte('/')
+			pos++
+			return buf.String(), pos, hadBracketEscapes, nil
 		}
 
 		// Check for boundary: space followed by -> or c4 prefix or -
 		if ch == ' ' {
 			rest := line[pos:]
 			if strings.HasPrefix(rest, " -> ") {
-				return line[start:pos], pos, nil
+				return buf.String(), pos, hadBracketEscapes, nil
 			}
 			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
-				return line[start:pos], pos, nil
+				return buf.String(), pos, hadBracketEscapes, nil
 			}
-			// Space followed by "-" and then end-of-line or space (null C4 ID)
 			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
-				return line[start:pos], pos, nil
+				return buf.String(), pos, hadBracketEscapes, nil
 			}
 		}
+		buf.WriteByte(ch)
 		pos++
 	}
 
-	// End of line — the whole remainder is the name
-	return line[start:pos], pos, nil
+	return buf.String(), pos, hadBracketEscapes, nil
 }
 
 // parseTarget parses a symlink target starting at pos.

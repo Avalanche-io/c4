@@ -79,8 +79,8 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 		sizeStr = formatSize(e.Size, displayFormat)
 	}
 	
-	// Format name (with quotes if needed)
-	nameStr := formatName(e.Name)
+	// Format name (with quotes or escape notation if needed)
+	nameStr := formatName(e.Name, e.IsSequence)
 	
 	// Build the line
 	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}
@@ -122,18 +122,18 @@ func (e *Entry) Canonical() string {
 	} else {
 		sizeStr = fmt.Sprintf("%d", e.Size) // No formatting in canonical
 	}
-	nameStr := formatName(e.Name)
+	nameStr := formatName(e.Name, e.IsSequence)
 
 	parts := []string{modeStr, timeStr, sizeStr, nameStr}
 
 	if e.Target != "" {
 		parts = append(parts, "->", formatTarget(e.Target))
 	}
-	
+
 	if !e.C4ID.IsNil() {
 		parts = append(parts, e.C4ID.String())
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
@@ -219,8 +219,10 @@ func formatSize(size int64, displayFormat bool) string {
 	return string(result)
 }
 
-// formatName adds quotes if the name contains special characters
-func formatName(name string) string {
+// formatName adds quotes or escape notation if the name contains special characters.
+// For non-sequence names, brackets are escaped as \[ and \] to prevent
+// them from being interpreted as sequence notation on re-parse.
+func formatName(name string, isSequence bool) string {
 	if strings.HasSuffix(name, "/") {
 		// Directory names: check if quoting is needed
 		base := name[:len(name)-1]
@@ -235,12 +237,42 @@ func formatName(name string) string {
 			needsQuotes = true
 		}
 		if !needsQuotes {
+			// Escape brackets in non-sequence directory names
+			if !isSequence && (strings.ContainsRune(base, '[') || strings.ContainsRune(base, ']')) {
+				escaped := strings.ReplaceAll(base, `\`, `\\`)
+				escaped = strings.ReplaceAll(escaped, "[", `\[`)
+				escaped = strings.ReplaceAll(escaped, "]", `\]`)
+				return escaped + "/"
+			}
 			return name
 		}
 		escaped := strings.ReplaceAll(base, `\`, `\\`)
 		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
 		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 		return fmt.Sprintf(`"%s/"`, escaped)
+	}
+
+	// For non-sequence file names with brackets but no other special chars,
+	// use bracket escape notation instead of quoting
+	if !isSequence && (strings.ContainsRune(name, '[') || strings.ContainsRune(name, ']')) {
+		needsQuotes := false
+		for _, c := range name {
+			if c == ' ' || c == '"' || c == '\n' {
+				needsQuotes = true
+				break
+			}
+		}
+		if name != strings.TrimSpace(name) {
+			needsQuotes = true
+		}
+		if !needsQuotes {
+			// Use escape notation for brackets (no quoting needed)
+			escaped := strings.ReplaceAll(name, `\`, `\\`)
+			escaped = strings.ReplaceAll(escaped, "[", `\[`)
+			escaped = strings.ReplaceAll(escaped, "]", `\]`)
+			return escaped
+		}
+		// Fall through to quoting
 	}
 
 	// For files, check if quoting is needed
