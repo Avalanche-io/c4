@@ -759,3 +759,38 @@ func TestHandleDataBlockConsecutive(t *testing.T) {
 	}
 }
 
+func TestQuotedNameNotSequence(t *testing.T) {
+	// A quoted name containing brackets must NOT be treated as a sequence
+	input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 \"render[v2].exr\"\n"
+	manifest, err := NewDecoder(strings.NewReader(input)).Decode()
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(manifest.Entries) != 1 {
+		t.Fatalf("Expected 1 entry, got %d", len(manifest.Entries))
+	}
+	entry := manifest.Entries[0]
+	if entry.Name != "render[v2].exr" {
+		t.Errorf("Name = %q, want %q", entry.Name, "render[v2].exr")
+	}
+	if entry.IsSequence {
+		t.Error("Quoted name with brackets should not be flagged as sequence")
+	}
+}
+
+func TestUnquotedSequenceStillDetected(t *testing.T) {
+	// An unquoted name with brackets should still be a sequence
+	input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 render.[001-010].exr\n"
+	manifest, err := NewDecoder(strings.NewReader(input)).Decode()
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(manifest.Entries) != 1 {
+		t.Fatalf("Expected 1 entry, got %d", len(manifest.Entries))
+	}
+	entry := manifest.Entries[0]
+	if !entry.IsSequence {
+		t.Error("Unquoted name with brackets should be flagged as sequence")
+	}
+}
+

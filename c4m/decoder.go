@@ -222,7 +222,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Timestamp = timestamp
 
 	// Parse remaining fields using character-level parsing
-	size, name, target, id, err := d.parseEntryFields(remainingLine)
+	size, name, target, id, nameQuoted, err := d.parseEntryFields(remainingLine)
 	if err != nil {
 		return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
 	}
@@ -232,8 +232,8 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Target = target
 	entry.C4ID = id
 
-	// Check for sequence notation
-	if strings.Contains(entry.Name, "[") && strings.Contains(entry.Name, "]") {
+	// Check for sequence notation (only unquoted names per spec)
+	if !nameQuoted && strings.Contains(entry.Name, "[") && strings.Contains(entry.Name, "]") {
 		entry.IsSequence = true
 		entry.Pattern = entry.Name
 	}
@@ -247,7 +247,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 //
 // The expected format is: SIZE NAME [-> TARGET] [C4ID]
 // Where NAME and TARGET may be quoted with backslash escapes.
-func (d *Decoder) parseEntryFields(line string) (size int64, name, target string, id c4.ID, err error) {
+func (d *Decoder) parseEntryFields(line string) (size int64, name, target string, id c4.ID, nameQuoted bool, err error) {
 	pos := 0
 	n := len(line)
 
@@ -256,7 +256,7 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 		pos++
 	}
 	if pos >= n {
-		return 0, "", "", c4.ID{}, fmt.Errorf("insufficient fields after timestamp")
+		return 0, "", "", c4.ID{}, false, fmt.Errorf("insufficient fields after timestamp")
 	}
 
 	// 1. Parse size token (digits, commas, or "-")
@@ -270,12 +270,12 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 			pos++
 		}
 		if pos == sizeStart {
-			return 0, "", "", c4.ID{}, fmt.Errorf("invalid size at position %d", pos)
+			return 0, "", "", c4.ID{}, false, fmt.Errorf("invalid size at position %d", pos)
 		}
 		sizeStr := strings.ReplaceAll(line[sizeStart:pos], ",", "")
 		size, err = strconv.ParseInt(sizeStr, 10, 64)
 		if err != nil {
-			return 0, "", "", c4.ID{}, fmt.Errorf("invalid size %q: %w", line[sizeStart:pos], err)
+			return 0, "", "", c4.ID{}, false, fmt.Errorf("invalid size %q: %w", line[sizeStart:pos], err)
 		}
 	}
 
@@ -284,13 +284,14 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 		pos++
 	}
 	if pos >= n {
-		return 0, "", "", c4.ID{}, fmt.Errorf("missing name after size")
+		return 0, "", "", c4.ID{}, false, fmt.Errorf("missing name after size")
 	}
 
 	// 2. Parse name (quoted or unquoted)
+	nameQuoted = pos < n && line[pos] == '"'
 	name, pos, err = d.parseNameOrTarget(line, pos)
 	if err != nil {
-		return 0, "", "", c4.ID{}, fmt.Errorf("parsing name: %w", err)
+		return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("parsing name: %w", err)
 	}
 
 	// Skip whitespace
@@ -306,11 +307,11 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 			pos++
 		}
 		if pos >= n {
-			return 0, "", "", c4.ID{}, fmt.Errorf("missing symlink target after ->")
+			return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("missing symlink target after ->")
 		}
 		target, pos, err = d.parseTarget(line, pos)
 		if err != nil {
-			return 0, "", "", c4.ID{}, fmt.Errorf("parsing symlink target: %w", err)
+			return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("parsing symlink target: %w", err)
 		}
 		// Skip whitespace
 		for pos < n && line[pos] == ' ' {
@@ -327,12 +328,12 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 		} else if strings.HasPrefix(remaining, "c4") {
 			id, err = c4.Parse(remaining)
 			if err != nil {
-				return 0, "", "", c4.ID{}, fmt.Errorf("invalid C4 ID %q: %w", remaining, err)
+				return 0, "", "", c4.ID{}, nameQuoted, fmt.Errorf("invalid C4 ID %q: %w", remaining, err)
 			}
 		}
 	}
 
-	return size, name, target, id, nil
+	return size, name, target, id, nameQuoted, nil
 }
 
 // parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
