@@ -380,6 +380,12 @@ func TestFormatName(t *testing.T) {
 		{"trailing space", "file.txt ", `"file.txt "`},
 		{"multiple special", `my "special"\file.txt`, `"my \"special\"\\file.txt"`},
 		{"no special chars", "file_test-123.txt", "file_test-123.txt"},
+		{"dir simple", "mydir/", "mydir/"},
+		{"dir with spaces", "my dir/", `"my dir/"`},
+		{"dir with quotes", `dir"test"/`, `"dir\"test\"/"`},
+		{"dir with backslash", `dir\test/`, `"dir\\test/"`},
+		{"dir with newline", "dir\ntest/", `"dir\ntest/"`},
+		{"dir leading space", " dir/", `" dir/"`},
 	}
 
 	for _, tt := range tests {
