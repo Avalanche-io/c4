@@ -140,6 +140,9 @@ func main() {
 		case "fmt":
 			runFmt(os.Args[2:])
 			return
+		case "cp":
+			runCp(os.Args[2:])
+			return
 		case "mk":
 			runMk(os.Args[2:])
 			return

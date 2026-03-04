@@ -1,0 +1,326 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
+)
+
+// runCp implements "c4 cp" — the universal copy verb.
+//
+//	c4 cp source/ project.c4m:          # capture into capsule
+//	c4 cp source/ project.c4m:renders/  # capture into subtree
+//	c4 cp project.c4m: ./output/        # materialize from capsule
+//	c4 cp project.c4m:renders/ ./out/   # materialize subtree
+func runCp(args []string) {
+	if len(args) != 2 {
+		fmt.Fprintf(os.Stderr, "Usage: c4 cp <source> <dest>\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  c4 cp files/ project.c4m:           # capture into capsule\n")
+		fmt.Fprintf(os.Stderr, "  c4 cp files/ project.c4m:renders/   # capture into subtree\n")
+		fmt.Fprintf(os.Stderr, "  c4 cp project.c4m: ./output/        # materialize from capsule\n")
+		fmt.Fprintf(os.Stderr, "  c4 cp project.c4m:renders/ ./out/   # materialize subtree\n")
+		os.Exit(1)
+	}
+
+	isLoc := establish.IsLocationEstablished
+	src, err := pathspec.Parse(args[0], isLoc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing source: %v\n", err)
+		os.Exit(1)
+	}
+	dst, err := pathspec.Parse(args[1], isLoc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing dest: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch {
+	case src.Type == pathspec.Local && dst.Type == pathspec.Capsule:
+		cpLocalToCapsule(src, dst)
+	case src.Type == pathspec.Capsule && dst.Type == pathspec.Local:
+		cpCapsuleToLocal(src, dst)
+	case src.Type == pathspec.Local && dst.Type == pathspec.Local:
+		fmt.Fprintf(os.Stderr, "Error: use OS cp for local-to-local copies\n")
+		os.Exit(1)
+	default:
+		fmt.Fprintf(os.Stderr, "Error: %s → %s not yet supported\n", src.Type, dst.Type)
+		os.Exit(1)
+	}
+}
+
+// cpLocalToCapsule captures local files into a capsule.
+func cpLocalToCapsule(src, dst pathspec.PathSpec) {
+	// Check establishment
+	if !establish.IsCapsuleEstablished(dst.Source) {
+		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
+		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
+		os.Exit(1)
+	}
+
+	// Walk source and build manifest entries
+	info, err := os.Stat(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !info.IsDir() {
+		// Single file capture
+		cpFileIntoCapsule(src.Source, dst)
+		return
+	}
+
+	// Directory capture — use the scan generator
+	gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+	scanned, err := gen.GenerateFromPath(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error scanning %s: %v\n", src.Source, err)
+		os.Exit(1)
+	}
+
+	// Load existing manifest or create new
+	manifest, err := loadOrCreateManifest(dst.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", dst.Source, err)
+		os.Exit(1)
+	}
+
+	// Add/merge entries, adjusting depth for subpath prefix
+	prefix := dst.SubPath
+	prefixDepth := 0
+	if prefix != "" {
+		prefixDepth = strings.Count(strings.TrimSuffix(prefix, "/"), "/") + 1
+		ensureParentDirs(manifest, prefix)
+	}
+
+	added := 0
+	for _, entry := range scanned.Entries {
+		newEntry := *entry // copy
+		newEntry.Depth += prefixDepth
+		manifest.AddEntry(&newEntry)
+		added++
+	}
+
+	manifest.SortEntries()
+	scan.PropagateMetadata(manifest.Entries)
+
+	if err := writeManifest(dst.Source, manifest); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", dst.Source, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("captured %d entries into %s\n", added, dst)
+}
+
+// cpFileIntoCapsule captures a single file into a capsule.
+func cpFileIntoCapsule(filePath string, dst pathspec.PathSpec) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+	id := c4.Identify(f)
+
+	manifest, err := loadOrCreateManifest(dst.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	name := filepath.Base(filePath)
+	depth := 0
+	if dst.SubPath != "" {
+		ensureParentDirs(manifest, dst.SubPath)
+		depth = strings.Count(strings.TrimSuffix(dst.SubPath, "/"), "/") + 1
+	}
+
+	manifest.AddEntry(&c4m.Entry{
+		Name:      name,
+		Depth:     depth,
+		Mode:      info.Mode(),
+		Size:      info.Size(),
+		Timestamp: info.ModTime().UTC(),
+		C4ID:      id,
+	})
+
+	manifest.SortEntries()
+	scan.PropagateMetadata(manifest.Entries)
+
+	if err := writeManifest(dst.Source, manifest); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("captured %s into %s\n", filepath.Base(filePath), dst)
+}
+
+// cpCapsuleToLocal materializes capsule contents to local filesystem.
+func cpCapsuleToLocal(src, dst pathspec.PathSpec) {
+	// Load capsule
+	manifest, err := loadManifest(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", src.Source, err)
+		os.Exit(1)
+	}
+
+	// Reconstruct full paths from depth-based hierarchy
+	type pathEntry struct {
+		fullPath string
+		entry    *c4m.Entry
+	}
+	var resolved []pathEntry
+	var dirStack []string // stack of directory names by depth
+
+	for _, entry := range manifest.Entries {
+		// Trim dirStack to current depth
+		if entry.Depth < len(dirStack) {
+			dirStack = dirStack[:entry.Depth]
+		}
+
+		var fullPath string
+		if len(dirStack) > 0 {
+			fullPath = strings.Join(dirStack, "") + entry.Name
+		} else {
+			fullPath = entry.Name
+		}
+
+		resolved = append(resolved, pathEntry{fullPath: fullPath, entry: entry})
+
+		// If this is a directory, push onto stack for children
+		if entry.IsDir() {
+			for len(dirStack) <= entry.Depth {
+				dirStack = append(dirStack, "")
+			}
+			dirStack[entry.Depth] = entry.Name
+		}
+	}
+
+	// Filter by subpath if specified
+	if src.SubPath != "" {
+		var filtered []pathEntry
+		for _, pe := range resolved {
+			if strings.HasPrefix(pe.fullPath, src.SubPath) {
+				// Strip the prefix for materialization
+				pe.fullPath = strings.TrimPrefix(pe.fullPath, src.SubPath)
+				if pe.fullPath == "" {
+					continue // skip the directory entry itself
+				}
+				filtered = append(filtered, pe)
+			}
+		}
+		resolved = filtered
+	}
+
+	if len(resolved) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: no entries match %s\n", src)
+		os.Exit(1)
+	}
+
+	// Ensure destination directory exists
+	destDir := dst.Source
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", destDir, err)
+		os.Exit(1)
+	}
+
+	// Create directory structure and write placeholder files
+	created := 0
+	for _, pe := range resolved {
+		fullPath := filepath.Join(destDir, pe.fullPath)
+
+		if pe.entry.IsDir() {
+			if err := os.MkdirAll(fullPath, pe.entry.Mode.Perm()|0755); err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating directory %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			created++
+		} else if pe.entry.IsSymlink() {
+			os.Remove(fullPath)
+			if err := os.Symlink(pe.entry.Target, fullPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating symlink %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			created++
+		} else {
+			dir := filepath.Dir(fullPath)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			if err := writeStubFile(fullPath, pe.entry); err != nil {
+				fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			created++
+		}
+	}
+
+	fmt.Printf("materialized %d entries from %s to %s\n", created, src, destDir)
+}
+
+// writeStubFile writes a placeholder file for materialization.
+// Without c4d, we write a stub containing the C4 ID. With c4d,
+// this would fetch the actual content.
+func writeStubFile(path string, entry *c4m.Entry) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm()|0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if !entry.C4ID.IsNil() {
+		// Write C4 ID as content placeholder
+		_, err = fmt.Fprintf(f, "# c4 stub: content available via c4d\n# C4ID: %s\n# Size: %d\n", entry.C4ID, entry.Size)
+	}
+	return err
+}
+
+// loadManifest loads a c4m file, returns error if not found.
+func loadManifest(path string) (*c4m.Manifest, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return c4m.NewDecoder(f).Decode()
+}
+
+// ensureParentDirs adds missing parent directory entries with proper depth.
+func ensureParentDirs(manifest *c4m.Manifest, path string) {
+	parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
+	for i, part := range parts {
+		dirName := part + "/"
+		// Check if this directory already exists at this depth
+		found := false
+		for _, e := range manifest.Entries {
+			if e.Name == dirName && e.Depth == i {
+				found = true
+				break
+			}
+		}
+		if !found {
+			manifest.AddEntry(&c4m.Entry{
+				Name:  dirName,
+				Depth: i,
+				Mode:  os.ModeDir | 0755,
+				Size:  -1,
+			})
+		}
+	}
+}
+
