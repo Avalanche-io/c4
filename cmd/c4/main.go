@@ -90,6 +90,10 @@ Usage:
   c4 subtract <from> <remove>       # Set subtraction
   c4 validate <file|bundle>         # Validate C4M manifest or bundle
   c4 extract <bundle> [output]      # Extract bundle to single C4M file
+  c4 mk <name>.c4m:                 # Establish capsule for writing
+  c4 mk <name>: <host:port>         # Establish location for writing
+  c4 rm <name>:                     # Remove location or capsule establishment
+  c4 mkdir <name>.c4m:<path>/       # Create directory in capsule
 
 Examples:
   c4 file.txt                       # C4 ID of file
@@ -135,6 +139,15 @@ func main() {
 			return
 		case "fmt":
 			runFmt(os.Args[2:])
+			return
+		case "mk":
+			runMk(os.Args[2:])
+			return
+		case "rm":
+			runRm(os.Args[2:])
+			return
+		case "mkdir":
+			runMkdir(os.Args[2:])
 			return
 		}
 	}
