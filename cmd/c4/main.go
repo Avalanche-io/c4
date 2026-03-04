@@ -39,18 +39,9 @@ var (
 	noIDsFlag    bool
 	formatFlag   string
 	progressiveFlag bool
-	slowModeFlag bool  // Development flag for testing progress display
-	
 	// Bundle flags
 	bundleFlag   bool
 	resumeFlag   bool
-	devModeFlag  bool
-
-	// Sequence flags
-	expandSequencesFlag     bool
-	standaloneSequencesFlag bool
-	collapseSequencesFlag   bool
-	minSequenceLengthFlag   int
 
 	// Long-form aliases
 	helpFlag bool
@@ -78,18 +69,10 @@ func init() {
 	flag.BoolVarP(&noIDsFlag, "no-ids", "n", false, "Don't compute C4 IDs (faster)")
 	flag.StringVar(&formatFlag, "format", "c4m", "Output format: c4m, paths, json")
 	flag.BoolVar(&progressiveFlag, "progressive", false, "Progressive scan with interrupt support (Ctrl+T for status on macOS)")
-	flag.BoolVar(&slowModeFlag, "slow", false, "Add artificial delays for testing progress display (dev mode)")
-	
+
 	// Bundle flags
 	flag.BoolVar(&bundleFlag, "bundle", false, "Create/use C4M bundle for unbounded scans")
 	flag.BoolVar(&resumeFlag, "resume", false, "Resume incomplete bundle scan")
-	flag.BoolVar(&devModeFlag, "dev", false, "Use development mode (small chunks)")
-
-	// Sequence flags
-	flag.BoolVar(&expandSequencesFlag, "expand-sequences", false, "Expand sequence notation into individual entries")
-	flag.BoolVar(&standaloneSequencesFlag, "standalone-sequences", false, "Output sequence expansions to separate manifest")
-	flag.BoolVar(&collapseSequencesFlag, "collapse-sequences", false, "Detect and collapse file sequences into notation")
-	flag.IntVar(&minSequenceLengthFlag, "min-sequence", 3, "Minimum number of files to form a sequence")
 
 	// Help flag
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
@@ -269,14 +252,7 @@ func processPath(path string) error {
 }
 
 func runBundleScan(path string) error {
-	// Configure bundle
-	var config *bundle.BundleConfig
-	if devModeFlag {
-		config = bundle.DevBundleConfig()
-		fmt.Fprintln(os.Stderr, "# Using development configuration (small chunks)")
-	} else {
-		config = bundle.DefaultBundleConfig()
-	}
+	config := bundle.DefaultBundleConfig()
 
 	// Use simple CLI with directory-aware chunking
 	cli := bundle.NewSimpleBundleCLI(config, verboseFlag)
@@ -296,10 +272,6 @@ func runProgressiveScan(dirPath string) error {
 	cliOpts = append(cliOpts, scan.WithVerbose(verboseFlag))
 	cliOpts = append(cliOpts, scan.WithProgress(!quietFlag))
 
-	if slowModeFlag {
-		cliOpts = append(cliOpts, scan.WithSlowMode(true))
-	}
-	
 	if followFlag {
 		// Note: progressive scanner doesn't have follow symlinks yet
 		// This would need to be added to the scanner
@@ -313,9 +285,6 @@ func runProgressiveScan(dirPath string) error {
 			fmt.Fprintf(os.Stderr, "# Press Ctrl+T for status update\n")
 		} else {
 			fmt.Fprintf(os.Stderr, "# Send USR1 signal for status: kill -USR1 %d\n", os.Getpid())
-		}
-		if slowModeFlag {
-			fmt.Fprintf(os.Stderr, "# SLOW MODE: Adding artificial delays for testing\n")
 		}
 		fmt.Fprintf(os.Stderr, "#\n")
 	}
@@ -449,31 +418,6 @@ func outputID(id c4.ID, path string) {
 }
 
 func outputManifest(manifest *c4m.Manifest) {
-	// TODO: Sequence collapse/expansion not yet implemented
-	// Apply sequence collapse if requested
-	// if collapseSequencesFlag {
-	// 	manifest = c4m.CollapseToSequences(manifest, minSequenceLengthFlag)
-	// }
-
-	// Apply sequence expansion if requested
-	// if expandSequencesFlag {
-	// 	mode := c4m.SequenceEmbedded
-	// 	if standaloneSequencesFlag {
-	// 		mode = c4m.SequenceStandalone
-	// 	}
-	//
-	// 	expandedManifest, err := c4m.ProcessManifestWithSequences(manifest, mode)
-	// 	if err != nil {
-	// 		fmt.Fprintf(os.Stderr, "Error expanding sequences: %v\n", err)
-	// 	} else {
-	// 		manifest = expandedManifest
-	// 	}
-	// }
-	_ = collapseSequencesFlag
-	_ = expandSequencesFlag
-	_ = minSequenceLengthFlag
-	_ = standaloneSequencesFlag
-
 	switch formatFlag {
 	case "paths":
 		for _, path := range manifest.PathList() {
