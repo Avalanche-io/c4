@@ -341,29 +341,33 @@ func TestManifestCanonicalize(t *testing.T) {
 	// Canonicalize
 	manifest.Canonicalize()
 
-	// Check that mode and size defaults were applied
+	// Null values stay null — they render as "-" in canonical form
 	entry := manifest.Entries[0]
-	if entry.Mode == 0 {
-		t.Error("Mode should not be 0 after canonicalization")
+	if entry.Mode != 0 {
+		t.Errorf("Null mode should stay 0 after canonicalization, got %o", entry.Mode)
 	}
-	// Null timestamps stay null after canonicalization (no wall-clock injection)
 	if !entry.Timestamp.Equal(time.Unix(0, 0).UTC()) {
 		t.Error("Null timestamp should stay null after canonicalization")
 	}
-	if entry.Size < 0 {
-		t.Error("Size should not be negative after canonicalization")
+	if entry.Size != -1 {
+		t.Errorf("Null size should stay -1 after canonicalization, got %d", entry.Size)
+	}
+
+	// Verify canonical form renders null values as "-"
+	canonical := entry.Canonical()
+	if !strings.HasPrefix(canonical, "- - - file.txt") {
+		t.Errorf("Expected canonical to start with '- - - file.txt', got %q", canonical)
 	}
 }
 
 func TestComputeC4IDDeterministic(t *testing.T) {
-	// Create two manifests with same logical content but different null patterns
-
+	// Create two manifests with same content — both should produce same ID
 	m1 := NewManifest()
 	m1.AddEntry(&Entry{
 		Name:      "file.txt",
 		Mode:      0644,
 		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		Size:      -1, // Null
+		Size:      100,
 	})
 
 	m2 := NewManifest()
@@ -371,15 +375,28 @@ func TestComputeC4IDDeterministic(t *testing.T) {
 		Name:      "file.txt",
 		Mode:      0644,
 		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		Size:      0, // Explicit zero
+		Size:      100,
 	})
 
-	// Both should produce same C4 ID after canonicalization
 	id1 := m1.ComputeC4ID()
 	id2 := m2.ComputeC4ID()
 
 	if id1 != id2 {
-		t.Errorf("Same logical content produced different IDs:\n  ID1: %s\n  ID2: %s",
+		t.Errorf("Same content produced different IDs:\n  ID1: %s\n  ID2: %s",
 			id1.String(), id2.String())
+	}
+
+	// Null size (-1) and explicit zero (0) are now semantically different
+	m3 := NewManifest()
+	m3.AddEntry(&Entry{
+		Name:      "file.txt",
+		Mode:      0644,
+		Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Size:      -1, // Null — renders as "-"
+	})
+
+	id3 := m3.ComputeC4ID()
+	if id1 == id3 {
+		t.Error("Null size and explicit size should produce different IDs")
 	}
 }

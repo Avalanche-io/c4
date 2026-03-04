@@ -101,7 +101,13 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 // Canonical returns the canonical form for C4 ID computation
 func (e *Entry) Canonical() string {
 	// No indentation in canonical form
-	modeStr := formatMode(e.Mode)
+	// Null mode renders as "-"
+	var modeStr string
+	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
+		modeStr = "-"
+	} else {
+		modeStr = formatMode(e.Mode)
+	}
 	// Canonical format MUST be UTC only; null timestamps render as "-"
 	var timeStr string
 	if e.Timestamp.Equal(NullTimestamp()) {
@@ -109,7 +115,13 @@ func (e *Entry) Canonical() string {
 	} else {
 		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
 	}
-	sizeStr := fmt.Sprintf("%d", e.Size) // No formatting in canonical
+	// Null size renders as "-"
+	var sizeStr string
+	if e.Size < 0 {
+		sizeStr = "-"
+	} else {
+		sizeStr = fmt.Sprintf("%d", e.Size) // No formatting in canonical
+	}
 	nameStr := formatName(e.Name)
 
 	parts := []string{modeStr, timeStr, sizeStr, nameStr}

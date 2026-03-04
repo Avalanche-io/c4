@@ -262,6 +262,39 @@ func TestEntryCanonical(t *testing.T) {
 			},
 			want: "-rw-r--r-- - 1234 test.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
 		},
+		{
+			name: "null mode renders as dash",
+			entry: &Entry{
+				Mode:      0, // Null mode (not dir or symlink)
+				Timestamp: testTime,
+				Size:      100,
+				Name:      "unknown.bin",
+				C4ID:      testID,
+			},
+			want: "- 2024-01-15T10:30:00Z 100 unknown.bin c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
+		},
+		{
+			name: "null size renders as dash",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: testTime,
+				Size:      -1, // Null size
+				Name:      "partial.txt",
+				C4ID:      testID,
+			},
+			want: "-rw-r--r-- 2024-01-15T10:30:00Z - partial.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
+		},
+		{
+			name: "all null values render as dashes",
+			entry: &Entry{
+				Mode:      0,
+				Timestamp: NullTimestamp(),
+				Size:      -1,
+				Name:      "mystery.dat",
+				C4ID:      testID,
+			},
+			want: "- - - mystery.dat c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
+		},
 	}
 
 	for _, tt := range tests {

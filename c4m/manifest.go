@@ -3,7 +3,6 @@ package c4m
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -157,27 +156,11 @@ func (m *Manifest) ComputeC4ID() c4.ID {
 // modifying the receiver in place. This makes the manifest ready for C4 ID
 // computation. Use Copy() first if you need to preserve the original.
 func (m *Manifest) Canonicalize() {
-	// First propagate metadata from children to parents
+	// Propagate metadata from children to parents (e.g., directory sizes, timestamps)
 	propagateMetadata(m.Entries)
 
-	// Then apply defaults for any remaining null values
-	for _, entry := range m.Entries {
-		// Mode defaults
-		if entry.Mode == 0 {
-			if entry.IsDir() {
-				entry.Mode = 0755 | os.ModeDir
-			} else {
-				entry.Mode = 0644
-			}
-		}
-
-		// Null timestamps stay null — they encode as "-"
-
-		// Size defaults
-		if entry.Size < 0 {
-			entry.Size = 0 // Empty/unknown size
-		}
-	}
+	// Null values stay null — they render as "-" in canonical form.
+	// No default substitution: unknown mode/size/timestamp remain as-is.
 }
 
 // Copy creates a deep copy of the manifest

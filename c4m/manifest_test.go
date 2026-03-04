@@ -676,7 +676,7 @@ func TestManifestGetIDList(t *testing.T) {
 }
 
 func TestCanonicalize(t *testing.T) {
-	t.Run("sets default mode for files", func(t *testing.T) {
+	t.Run("null mode stays null after canonicalize", func(t *testing.T) {
 		m := NewManifest()
 		m.AddEntry(&Entry{
 			Name:      "file.txt",
@@ -688,26 +688,25 @@ func TestCanonicalize(t *testing.T) {
 
 		m.Canonicalize()
 
-		if m.Entries[0].Mode != 0644 {
-			t.Errorf("expected mode 0644, got %o", m.Entries[0].Mode)
+		if m.Entries[0].Mode != 0 {
+			t.Errorf("expected null mode to stay 0, got %o", m.Entries[0].Mode)
 		}
 	})
 
-	t.Run("sets default mode for directories", func(t *testing.T) {
+	t.Run("null dir mode stays null after canonicalize", func(t *testing.T) {
 		m := NewManifest()
 		m.AddEntry(&Entry{
 			Name:      "dir/",
 			Size:      0,
 			Timestamp: time.Now().UTC(),
-			Mode:      0, // Null mode - will be detected as dir from name ending in /
+			Mode:      0, // Null mode
 			C4ID:      c4.ID{},
 		})
 
 		m.Canonicalize()
 
-		expectedMode := os.ModeDir | 0755
-		if m.Entries[0].Mode != expectedMode {
-			t.Errorf("expected mode %o, got %o", expectedMode, m.Entries[0].Mode)
+		if m.Entries[0].Mode != 0 {
+			t.Errorf("expected null mode to stay 0, got %o", m.Entries[0].Mode)
 		}
 	})
 
@@ -728,7 +727,7 @@ func TestCanonicalize(t *testing.T) {
 		}
 	})
 
-	t.Run("sets default size for negative size", func(t *testing.T) {
+	t.Run("null size stays null after canonicalize", func(t *testing.T) {
 		m := NewManifest()
 		m.AddEntry(&Entry{
 			Name:      "file.txt",
@@ -740,8 +739,8 @@ func TestCanonicalize(t *testing.T) {
 
 		m.Canonicalize()
 
-		if m.Entries[0].Size != 0 {
-			t.Errorf("expected size 0, got %d", m.Entries[0].Size)
+		if m.Entries[0].Size != -1 {
+			t.Errorf("expected null size to stay -1, got %d", m.Entries[0].Size)
 		}
 	})
 
