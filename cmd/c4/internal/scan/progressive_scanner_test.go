@@ -95,17 +95,17 @@ func TestProgressiveScanner(t *testing.T) {
 		createTestFiles(t, testDir, []string{
 			"file1.txt:content",
 		})
-		
+
 		scanner := NewProgressiveScanner(testDir)
 		scanner.Start()
-		
-		// Send USR1 signal for status
+
+		// Send platform-appropriate status signal (SIGINFO on macOS, SIGUSR1 on Linux)
 		var statusOutput bytes.Buffer
 		oldStdout := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
-		
-		scanner.signalChan <- syscall.SIGUSR1
+
+		scanner.signalChan <- SIGINFO
 		time.Sleep(200 * time.Millisecond)
 		
 		w.Close()
