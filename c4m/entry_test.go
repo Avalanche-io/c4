@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,6 +251,17 @@ func TestEntryCanonical(t *testing.T) {
 			},
 			want: `-rw-r--r-- 2024-01-15T10:30:00Z 100 "my file.txt"`,
 		},
+		{
+			name: "null timestamp renders as dash",
+			entry: &Entry{
+				Mode:      0644,
+				Timestamp: NullTimestamp(),
+				Size:      1234,
+				Name:      "test.txt",
+				C4ID:      testID,
+			},
+			want: "-rw-r--r-- - 1234 test.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
+		},
 	}
 
 	for _, tt := range tests {
@@ -494,5 +506,43 @@ func TestEntryGetNullFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCanonicalNullTimestampConsistency(t *testing.T) {
+	// Canonical() and Format() must agree on null timestamp rendering.
+	// This was a bug: Format() rendered "-" but Canonical() rendered
+	// "1970-01-01T00:00:00Z", causing C4 ID computation to use a
+	// different value than the display representation.
+	entry := &Entry{
+		Mode:      0644,
+		Timestamp: NullTimestamp(),
+		Size:      100,
+		Name:      "test.txt",
+	}
+
+	canonical := entry.Canonical()
+	formatted := entry.Format(0, false)
+
+	// Both should contain "-" for the timestamp, not epoch
+	if strings.Contains(canonical, "1970") {
+		t.Errorf("Canonical() rendered epoch for null timestamp: %s", canonical)
+	}
+	if strings.Contains(formatted, "1970") {
+		t.Errorf("Format() rendered epoch for null timestamp: %s", formatted)
+	}
+
+	// Since Format(0, false) with depth=0 differs from Canonical() only
+	// in that Format includes null-mode handling, verify timestamp field
+	// specifically. Split on spaces and check field index 1 (timestamp).
+	canonParts := strings.Fields(canonical)
+	formatParts := strings.Fields(formatted)
+	if len(canonParts) < 2 || len(formatParts) < 2 {
+		t.Fatalf("unexpected field count: canonical=%d, format=%d",
+			len(canonParts), len(formatParts))
+	}
+	if canonParts[1] != formatParts[1] {
+		t.Errorf("timestamp field mismatch: Canonical()=%q, Format()=%q",
+			canonParts[1], formatParts[1])
 	}
 }
