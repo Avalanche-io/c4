@@ -222,7 +222,7 @@ func TestCompareIDs(t *testing.T) {
 		{
 			Id_A: c4.Identify(strings.NewReader("Test string")),
 			Id_B: id,
-			Exp:  -1,
+			Exp:  1, // Real ID is greater than nil (zero-valued) ID
 		},
 	} {
 		if test.Id_A.Cmp(test.Id_B) != test.Exp {

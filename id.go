@@ -157,18 +157,15 @@ func (id ID) Digest() []byte {
 // Cmp compares two IDs.
 // There are 3 possible return values.
 //
-// -1 : Argument id is less than calling id.
+// -1 : Calling id is less than argument id.
 //
-//	0 : Argument id and calling id are identical.
+//	0 : Calling id and argument id are identical.
 //
-// +1 : Argument id is greater than calling id.
+// +1 : Calling id is greater than argument id.
 //
 // Comparison is done on the actual numerical value of the ids.
 // Not the string representation.
 func (l ID) Cmp(r ID) int {
-	if r.IsNil() {
-		return -1
-	}
 	return bytes.Compare(l[:], r[:])
 }
 
@@ -205,10 +202,12 @@ func (id ID) Less(idArg ID) bool {
 func (l ID) Sum(r ID) ID {
 	switch bytes.Compare(l[:], r[:]) {
 	case -1:
-		// If the left side is larger then they are already in order, do nothing
-	case 1: // If the right side is larger swap them
+		// Left is smaller, already in order
+	case 1:
+		// Left is larger, swap to maintain canonical order
 		l, r = r, l
-	case 0: // If they are identical return no sum needed, so just return one.
+	case 0:
+		// Identical, no sum needed
 		return l
 	}
 
