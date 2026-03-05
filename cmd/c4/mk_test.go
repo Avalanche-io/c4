@@ -326,6 +326,159 @@ func TestMkdirUsage(t *testing.T) {
 	}
 }
 
+func TestMkdirNestedFailsWithoutParent(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	// mkdir renders/shots/ should fail — renders/ doesn't exist
+	cmd := exec.Command(bin, "mkdir", "project.c4m:renders/shots/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for nested mkdir without -p")
+	}
+	if !strings.Contains(string(out), "does not exist") {
+		t.Errorf("expected 'does not exist' error, got %q", out)
+	}
+}
+
+func TestMkdirNestedWithParentFlag(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	// mkdir -p renders/shots/ should create both directories
+	cmd := exec.Command(bin, "mkdir", "-p", "project.c4m:renders/shots/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mkdir -p: %v\n%s", err, out)
+	}
+
+	// Verify manifest has both directories at correct depths
+	loaded, err := loadManifest(filepath.Join(dir, "project.c4m"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	var foundRenders, foundShots bool
+	for _, e := range loaded.Entries {
+		if e.Name == "renders/" && e.Depth == 0 && e.IsDir() {
+			foundRenders = true
+		}
+		if e.Name == "shots/" && e.Depth == 1 && e.IsDir() {
+			foundShots = true
+		}
+	}
+	if !foundRenders {
+		t.Error("renders/ not found at depth 0")
+	}
+	if !foundShots {
+		t.Error("shots/ not found at depth 1")
+	}
+}
+
+func TestMkdirNestedWithExistingParent(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	// First create renders/
+	cmd := exec.Command(bin, "mkdir", "project.c4m:renders/")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("mkdir renders/: %v\n%s", err, out)
+	}
+
+	// Then mkdir renders/shots/ should succeed (parent exists)
+	cmd = exec.Command(bin, "mkdir", "project.c4m:renders/shots/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mkdir renders/shots/: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "created") {
+		t.Errorf("expected 'created' message, got %q", out)
+	}
+
+	// Verify manifest structure
+	loaded, err := loadManifest(filepath.Join(dir, "project.c4m"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	var foundShots bool
+	for _, e := range loaded.Entries {
+		if e.Name == "shots/" && e.Depth == 1 && e.IsDir() {
+			foundShots = true
+		}
+	}
+	if !foundShots {
+		t.Error("shots/ not found at depth 1")
+	}
+}
+
+func TestMkdirParentFlagIdempotent(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	// First mkdir -p creates directories
+	cmd := exec.Command(bin, "mkdir", "-p", "project.c4m:renders/shots/")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("mkdir -p first: %v\n%s", err, out)
+	}
+
+	// Second mkdir -p reports already exists
+	cmd = exec.Command(bin, "mkdir", "-p", "project.c4m:renders/shots/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mkdir -p second: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "already exists") {
+		t.Errorf("expected 'already exists', got %q", out)
+	}
+}
+
+func TestMkdirDeepNested(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	// mkdir -p a/b/c/ should create 3 levels
+	cmd := exec.Command(bin, "mkdir", "-p", "project.c4m:a/b/c/")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("mkdir -p a/b/c/: %v\n%s", err, out)
+	}
+
+	loaded, err := loadManifest(filepath.Join(dir, "project.c4m"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	expected := map[string]int{"a/": 0, "b/": 1, "c/": 2}
+	for name, depth := range expected {
+		found := false
+		for _, e := range loaded.Entries {
+			if e.Name == name && e.Depth == depth && e.IsDir() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s not found at depth %d", name, depth)
+		}
+	}
+}
+
 // --- mk + mkdir + rm integration test ---
 
 func TestEstablishmentLifecycle(t *testing.T) {
