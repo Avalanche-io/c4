@@ -21,8 +21,9 @@ type Entry struct {
 	Depth     int         // Indentation level
 
 	// For sequences
-	IsSequence bool
-	Pattern    string // Original sequence pattern
+	IsSequence  bool
+	Pattern     string // Original sequence pattern
+	dataBlockID c4.ID  // Reference to embedded @data block (internal use)
 
 	// For layered manifests
 	removeLayer bool // Entry belongs to @remove layer (internal use)

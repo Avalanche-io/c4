@@ -1271,3 +1271,257 @@ func TestDetectSequences_ConvenienceFunction(t *testing.T) {
 		}
 	}
 }
+
+// TestSequenceC4ID_NotIDListHash verifies that a sequence's C4 ID is NOT
+// simply the hash of the ID list (the old, incorrect behavior).
+func TestSequenceC4ID_NotIDListHash(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	manifest := NewManifest()
+	idList := newIDList()
+	for i := 1; i <= 5; i++ {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		idList.Add(id)
+		manifest.AddEntry(&Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		})
+	}
+
+	result := DetectSequences(manifest)
+
+	var seqEntry *Entry
+	for _, e := range result.Entries {
+		if e.IsSequence {
+			seqEntry = e
+			break
+		}
+	}
+	if seqEntry == nil {
+		t.Fatal("no sequence entry found")
+	}
+
+	// The sequence C4 ID must NOT equal the hash of the bare ID list
+	idListC4ID := idList.ComputeC4ID()
+	if seqEntry.C4ID == idListC4ID {
+		t.Errorf("sequence C4 ID should NOT equal the ID list hash, got %s", seqEntry.C4ID)
+	}
+}
+
+// TestSequenceC4ID_MatchesCanonicalManifest verifies that a sequence's C4 ID
+// equals the C4 ID of a canonical manifest built from the member entries.
+func TestSequenceC4ID_MatchesCanonicalManifest(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	manifest := NewManifest()
+	var memberEntries []*Entry
+	for i := 1; i <= 5; i++ {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		}
+		manifest.AddEntry(entry)
+		memberEntries = append(memberEntries, entry)
+	}
+
+	result := DetectSequences(manifest)
+
+	var seqEntry *Entry
+	for _, e := range result.Entries {
+		if e.IsSequence {
+			seqEntry = e
+			break
+		}
+	}
+	if seqEntry == nil {
+		t.Fatal("no sequence entry found")
+	}
+
+	// Build the expected manifest from member entries (same as directory C4 ID computation)
+	expectedManifest := NewManifest()
+	for _, e := range memberEntries {
+		entryCopy := *e
+		entryCopy.Depth = 0
+		expectedManifest.AddEntry(&entryCopy)
+	}
+	expectedC4ID := expectedManifest.ComputeC4ID()
+
+	if seqEntry.C4ID != expectedC4ID {
+		t.Errorf("sequence C4 ID = %s, want %s (canonical manifest ID)", seqEntry.C4ID, expectedC4ID)
+	}
+}
+
+// TestSequenceC4ID_TimestampAffectsID verifies that changing a member's
+// timestamp (but not content) changes the sequence C4 ID.
+func TestSequenceC4ID_TimestampAffectsID(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	altTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	makeManifest := func(ts time.Time) *Manifest {
+		m := NewManifest()
+		for i := 1; i <= 5; i++ {
+			id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+			m.AddEntry(&Entry{
+				Name:      fmt.Sprintf("frame.%04d.exr", i),
+				Size:      1024,
+				Timestamp: ts,
+				Mode:      0644,
+				C4ID:      id,
+			})
+		}
+		return m
+	}
+
+	result1 := DetectSequences(makeManifest(baseTime))
+	result2 := DetectSequences(makeManifest(altTime))
+
+	var id1, id2 c4.ID
+	for _, e := range result1.Entries {
+		if e.IsSequence {
+			id1 = e.C4ID
+		}
+	}
+	for _, e := range result2.Entries {
+		if e.IsSequence {
+			id2 = e.C4ID
+		}
+	}
+
+	if id1.IsNil() || id2.IsNil() {
+		t.Fatal("sequence entries not found")
+	}
+	if id1 == id2 {
+		t.Error("changing member timestamps should change the sequence C4 ID")
+	}
+}
+
+// TestSequenceC4ID_NaturalSortOrder verifies that the sequence C4 ID
+// computation uses natural sort order (frame.0001.exr before frame.0002.exr).
+func TestSequenceC4ID_NaturalSortOrder(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Add entries in reverse order — detection should still produce the same C4 ID
+	manifestForward := NewManifest()
+	manifestReverse := NewManifest()
+
+	for i := 1; i <= 5; i++ {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		}
+		manifestForward.AddEntry(entry)
+	}
+	for i := 5; i >= 1; i-- {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		}
+		manifestReverse.AddEntry(entry)
+	}
+
+	result1 := DetectSequences(manifestForward)
+	result2 := DetectSequences(manifestReverse)
+
+	var id1, id2 c4.ID
+	for _, e := range result1.Entries {
+		if e.IsSequence {
+			id1 = e.C4ID
+		}
+	}
+	for _, e := range result2.Entries {
+		if e.IsSequence {
+			id2 = e.C4ID
+		}
+	}
+
+	if id1.IsNil() || id2.IsNil() {
+		t.Fatal("sequence entries not found")
+	}
+	if id1 != id2 {
+		t.Errorf("insertion order should not affect sequence C4 ID: forward=%s, reverse=%s", id1, id2)
+	}
+}
+
+// TestSequenceC4ID_DataBlockPreserved verifies that the data block is still
+// created and linked for round-tripping, even though the C4 ID computation changed.
+func TestSequenceC4ID_DataBlockPreserved(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	manifest := NewManifest()
+	for i := 1; i <= 3; i++ {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		manifest.AddEntry(&Entry{
+			Name:      fmt.Sprintf("shot.%04d.exr", i),
+			Size:      512,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		})
+	}
+
+	result := DetectSequences(manifest)
+
+	// Should have a data block
+	if len(result.DataBlocks) != 1 {
+		t.Fatalf("expected 1 data block, got %d", len(result.DataBlocks))
+	}
+
+	block := result.DataBlocks[0]
+	if !block.IsIDList {
+		t.Error("data block should be an ID list")
+	}
+
+	// The data block should contain 3 IDs
+	list, err := block.getIDList()
+	if err != nil {
+		t.Fatalf("failed to get ID list from data block: %v", err)
+	}
+	if list.Count() != 3 {
+		t.Errorf("expected 3 IDs in data block, got %d", list.Count())
+	}
+
+	// The sequence entry should have dataBlockID set (for expansion)
+	var seqEntry *Entry
+	for _, e := range result.Entries {
+		if e.IsSequence {
+			seqEntry = e
+			break
+		}
+	}
+	if seqEntry == nil {
+		t.Fatal("no sequence entry found")
+	}
+	if seqEntry.dataBlockID.IsNil() {
+		t.Error("sequence entry should have dataBlockID set")
+	}
+	if seqEntry.dataBlockID != block.ID {
+		t.Errorf("dataBlockID = %s, want %s", seqEntry.dataBlockID, block.ID)
+	}
+
+	// Expansion should still work via dataBlockID
+	expander := NewSequenceExpander(SequenceEmbedded)
+	expanded, _, err := expander.ExpandManifest(result)
+	if err != nil {
+		t.Fatalf("ExpandManifest failed: %v", err)
+	}
+
+	// Should have sequence entry + 3 expanded entries
+	if len(expanded.Entries) != 4 {
+		t.Errorf("expected 4 entries after expansion, got %d", len(expanded.Entries))
+	}
+}

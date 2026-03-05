@@ -508,14 +508,19 @@ func expandSequenceEntry(entry *Entry, idList *idList) ([]*Entry, error) {
 
 // expandSequenceEntryWithManifest expands a sequence entry using embedded DataBlocks
 func expandSequenceEntryWithManifest(entry *Entry, manifest *Manifest) ([]*Entry, error) {
-	// Try to get the ID list from embedded data blocks
+	// Try to get the ID list from embedded data blocks.
+	// Use dataBlockID first (new-style manifests where C4ID is manifest-based),
+	// then fall back to C4ID (legacy manifests where C4ID == dataBlock.ID).
 	var idList *idList
-	if !entry.C4ID.IsNil() {
-		list, err := manifest.getIDList(entry.C4ID)
+	lookupID := entry.dataBlockID
+	if lookupID.IsNil() {
+		lookupID = entry.C4ID
+	}
+	if !lookupID.IsNil() {
+		list, err := manifest.getIDList(lookupID)
 		if err == nil {
 			idList = list
 		}
-		// If not found in manifest, idList remains nil (legacy behavior)
 	}
 
 	return expandSequenceEntry(entry, idList)
@@ -661,23 +666,36 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 				firstEntry := group.entries[r.start]
 				finalMode := (firstEntry.Mode & os.ModeType) | mostRestrictiveMode
 
-				// Compute C4 ID of the ID list
-				idListC4ID := idList.ComputeC4ID()
+				// Build a manifest from the member entries to compute canonical C4 ID.
+				// Sequence C4 IDs are computed like directory C4 IDs: hash of
+				// the canonical c4m representation of the member entries.
+				seqManifest := NewManifest()
+				for i := r.start; i <= r.end; i++ {
+					memberEntry, ok := group.entries[i]
+					if !ok {
+						continue
+					}
+					entryCopy := *memberEntry
+					entryCopy.Depth = 0
+					seqManifest.AddEntry(&entryCopy)
+				}
+				seqC4ID := seqManifest.ComputeC4ID()
+
+				// Create and embed the data block for the ID list (for round-tripping)
+				dataBlock := createDataBlockFromIDList(idList)
 
 				seqEntry := &Entry{
-					Name:       pattern,
-					Mode:       finalMode,
-					Timestamp:  latestTime,
-					Size:       totalSize,
-					C4ID:       idListC4ID,
-					Depth:      depth,
-					IsSequence: true,
-					Pattern:    pattern,
+					Name:        pattern,
+					Mode:        finalMode,
+					Timestamp:   latestTime,
+					Size:        totalSize,
+					C4ID:        seqC4ID,
+					Depth:       depth,
+					IsSequence:  true,
+					Pattern:     pattern,
+					dataBlockID: dataBlock.ID,
 				}
 				result.AddEntry(seqEntry)
-
-				// Create and embed the data block for the ID list
-				dataBlock := createDataBlockFromIDList(idList)
 				result.AddDataBlock(dataBlock)
 			} else {
 				// Add individual files for small ranges
