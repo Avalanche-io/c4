@@ -1,0 +1,79 @@
+version: 2
+
+builds:
+  - id: c4
+    main: ./cmd/c4/
+    binary: c4
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+  - id: c4-mcp
+    main: ./cmd/c4-mcp/
+    binary: c4-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: c4
+    ids:
+      - c4
+    name_template: "c4_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+
+  - id: c4-mcp
+    ids:
+      - c4-mcp
+    name_template: "c4-mcp_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+homebrew_casks:
+  - name: c4
+    ids:
+      - c4
+    repository:
+      owner: Avalanche-io
+      name: homebrew-tap
+    homepage: "https://github.com/Avalanche-io/c4"
+    description: "Universal, content-addressable asset identification"
+
+  - name: c4-mcp
+    ids:
+      - c4-mcp
+    repository:
+      owner: Avalanche-io
+      name: homebrew-tap
+    homepage: "https://github.com/Avalanche-io/c4"
+    description: "MCP server for C4 content-addressable filesystem tools"

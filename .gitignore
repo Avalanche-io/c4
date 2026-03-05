@@ -62,3 +62,4 @@ cmd/c4-mcp/c4-mcp
 # Agent memory
 memory.md
 
+dist/
