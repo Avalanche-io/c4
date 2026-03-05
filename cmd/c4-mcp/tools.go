@@ -25,11 +25,11 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_scan",
-			Description: "Scan a directory and return its c4m file. Computes C4 IDs for all files and builds the hierarchical structure. Respects .gitignore by default.",
+			Description: "Scan a directory and return its c4m file. Computes C4 IDs for all files and builds the hierarchical structure. Scans all files by default (always skips .git/).",
 			InputSchema: obj(
 				prop("path", "string", "Directory path to scan"),
 				optProp("no_ids", "boolean", "Skip C4 ID computation for speed"),
-				optProp("no_gitignore", "boolean", "Include files that would be excluded by .gitignore"),
+				optProp("gitignore", "boolean", "Respect .gitignore files when scanning"),
 				optProp("pretty", "boolean", "Pretty-print with aligned columns"),
 				required("path"),
 			),
@@ -150,7 +150,7 @@ func toolScan(args map[string]any) toolResult {
 		return toolErr("path must be a directory")
 	}
 
-	manifest, err := scanDir(path, !boolean(args, "no_ids"), !boolean(args, "no_gitignore"))
+	manifest, err := scanDir(path, !boolean(args, "no_ids"), boolean(args, "gitignore"))
 	if err != nil {
 		return toolErr(err.Error())
 	}

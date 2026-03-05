@@ -6,6 +6,36 @@ import (
 	"testing"
 )
 
+func TestGeneratorDefaultScansEverything(t *testing.T) {
+	tmpdir := t.TempDir()
+
+	// Create .gitignore excluding *.log files
+	os.WriteFile(filepath.Join(tmpdir, ".gitignore"), []byte("*.log\n"), 0644)
+
+	// Create files
+	os.WriteFile(filepath.Join(tmpdir, "keep.txt"), []byte("keep"), 0644)
+	os.WriteFile(filepath.Join(tmpdir, "error.log"), []byte("error"), 0644)
+
+	// Default behavior: scan everything (ignore .gitignore)
+	g := NewGeneratorWithOptions(WithC4IDs(false))
+	manifest, err := g.GenerateFromPath(tmpdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var names []string
+	for _, e := range manifest.Entries {
+		names = append(names, e.Name)
+	}
+
+	if !containsName(names, "keep.txt") {
+		t.Error("keep.txt should be present")
+	}
+	if !containsName(names, "error.log") {
+		t.Error("error.log should be present by default (gitignore off)")
+	}
+}
+
 func TestGeneratorRespectsGitignore(t *testing.T) {
 	tmpdir := t.TempDir()
 
@@ -17,7 +47,7 @@ func TestGeneratorRespectsGitignore(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpdir, "error.log"), []byte("error"), 0644)
 	os.WriteFile(filepath.Join(tmpdir, "debug.log"), []byte("debug"), 0644)
 
-	g := NewGeneratorWithOptions(WithC4IDs(false))
+	g := NewGeneratorWithOptions(WithC4IDs(false), WithGitignore(true))
 	manifest, err := g.GenerateFromPath(tmpdir)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +86,7 @@ func TestGeneratorNestedGitignore(t *testing.T) {
 	os.WriteFile(filepath.Join(subdir, "debug.log"), []byte("debug"), 0644)
 	os.WriteFile(filepath.Join(subdir, "main.go"), []byte("main"), 0644)
 
-	g := NewGeneratorWithOptions(WithC4IDs(false))
+	g := NewGeneratorWithOptions(WithC4IDs(false), WithGitignore(true))
 	manifest, err := g.GenerateFromPath(tmpdir)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +111,7 @@ func TestGeneratorNestedGitignore(t *testing.T) {
 	}
 }
 
-func TestGeneratorNoGitignore(t *testing.T) {
+func TestGeneratorGitignoreOptIn(t *testing.T) {
 	tmpdir := t.TempDir()
 
 	// Create .gitignore excluding *.log files
@@ -90,7 +120,7 @@ func TestGeneratorNoGitignore(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpdir, "keep.txt"), []byte("keep"), 0644)
 	os.WriteFile(filepath.Join(tmpdir, "error.log"), []byte("error"), 0644)
 
-	// With gitignore disabled, log files should appear
+	// With gitignore explicitly disabled, log files should appear
 	g := NewGeneratorWithOptions(WithC4IDs(false), WithGitignore(false))
 	manifest, err := g.GenerateFromPath(tmpdir)
 	if err != nil {
@@ -120,7 +150,7 @@ func TestGeneratorNegationPattern(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpdir, "important.log"), []byte("keep"), 0644)
 	os.WriteFile(filepath.Join(tmpdir, "readme.md"), []byte("readme"), 0644)
 
-	g := NewGeneratorWithOptions(WithC4IDs(false))
+	g := NewGeneratorWithOptions(WithC4IDs(false), WithGitignore(true))
 	manifest, err := g.GenerateFromPath(tmpdir)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +218,7 @@ func TestGeneratorDirectoryOnlyPattern(t *testing.T) {
 	// Create a file named node_modules (not a directory)
 	os.WriteFile(filepath.Join(tmpdir, "src"), []byte("src"), 0644)
 
-	g := NewGeneratorWithOptions(WithC4IDs(false))
+	g := NewGeneratorWithOptions(WithC4IDs(false), WithGitignore(true))
 	manifest, err := g.GenerateFromPath(tmpdir)
 	if err != nil {
 		t.Fatal(err)

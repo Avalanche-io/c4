@@ -30,7 +30,7 @@ func NewGenerator() *Generator {
 		followSymlinks:   false,
 		includeHidden:    false,
 		detectSequences:  false,
-		respectGitignore: true,
+		respectGitignore: false,
 	}
 }
 

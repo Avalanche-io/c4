@@ -45,7 +45,7 @@ var (
 	resumeFlag   bool
 
 	// Gitignore flag
-	noGitignoreFlag bool
+	gitignoreFlag bool
 
 	// Long-form aliases
 	helpFlag bool
@@ -73,7 +73,7 @@ func init() {
 	flag.BoolVarP(&noIDsFlag, "no-ids", "n", false, "Don't compute C4 IDs (faster)")
 	flag.StringVar(&formatFlag, "format", "c4m", "Output format: c4m, paths, json")
 	flag.BoolVar(&progressiveFlag, "progressive", false, "Progressive scan with interrupt support (Ctrl+T for status on macOS)")
-	flag.BoolVar(&noGitignoreFlag, "no-gitignore", false, "Include files that would be excluded by .gitignore")
+	flag.BoolVarP(&gitignoreFlag, "gitignore", "g", false, "Respect .gitignore files when scanning")
 
 	// Bundle flags
 	flag.BoolVar(&bundleFlag, "bundle", false, "Create/use C4M bundle for unbounded scans")
@@ -324,7 +324,7 @@ func processDirectory(dirPath string) error {
 	opts := []scan.GeneratorOption{
 		scan.WithC4IDs(!noIDsFlag),
 		scan.WithSymlinks(followFlag),
-		scan.WithGitignore(!noGitignoreFlag),
+		scan.WithGitignore(gitignoreFlag),
 	}
 
 	generator := scan.NewGeneratorWithOptions(opts...)
@@ -371,7 +371,7 @@ func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest,
 
 	// Set up gitignore matcher for this directory
 	var gi *gitignore.Matcher
-	if !noGitignoreFlag {
+	if gitignoreFlag {
 		gi = gitignore.New()
 		gi.AddFromFile(filepath.Join(absDir, ".gitignore"), 0)
 	}
@@ -636,7 +636,7 @@ func getSource(path string) c4m.Source {
 		Generator: scan.NewGeneratorWithOptions(
 			scan.WithC4IDs(!noIDsFlag),
 			scan.WithSymlinks(followFlag),
-			scan.WithGitignore(!noGitignoreFlag),
+			scan.WithGitignore(gitignoreFlag),
 		),
 	}
 }
