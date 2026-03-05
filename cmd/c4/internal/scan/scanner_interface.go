@@ -32,6 +32,7 @@ type ScanOptions struct {
 	FollowSymlinks  bool
 	IncludeHidden   bool
 	DetectSequences bool
+	NoGitignore     bool
 	MaxDepth        int
 	Exclude         []string // Patterns to exclude
 }
@@ -117,6 +118,7 @@ func (sf *ScannerFactory) NewFilesystemScanner(path string, opts ScanOptions) Fi
 		WithSymlinks(opts.FollowSymlinks),
 		WithHidden(opts.IncludeHidden),
 		WithSequenceDetection(opts.DetectSequences),
+		WithGitignore(!opts.NoGitignore),
 	)
 	
 	return &generatorAdapter{
@@ -155,11 +157,11 @@ func (ga *generatorAdapter) SetPath(path string) {
 }
 
 func (ga *generatorAdapter) SetOptions(opts ScanOptions) {
-	// Update generator options
 	ga.generator.computeC4IDs = opts.ComputeC4IDs
 	ga.generator.followSymlinks = opts.FollowSymlinks
 	ga.generator.includeHidden = opts.IncludeHidden
 	ga.generator.detectSequences = opts.DetectSequences
+	ga.generator.respectGitignore = !opts.NoGitignore
 }
 
 func (ga *generatorAdapter) SetProgressCallback(func(current, total int64)) {

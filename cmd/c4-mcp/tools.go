@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -24,10 +25,11 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_scan",
-			Description: "Scan a directory and return its c4m file. Computes C4 IDs for all files and builds the hierarchical structure.",
+			Description: "Scan a directory and return its c4m file. Computes C4 IDs for all files and builds the hierarchical structure. Respects .gitignore by default.",
 			InputSchema: obj(
 				prop("path", "string", "Directory path to scan"),
 				optProp("no_ids", "boolean", "Skip C4 ID computation for speed"),
+				optProp("no_gitignore", "boolean", "Include files that would be excluded by .gitignore"),
 				optProp("pretty", "boolean", "Pretty-print with aligned columns"),
 				required("path"),
 			),
@@ -148,7 +150,7 @@ func toolScan(args map[string]any) toolResult {
 		return toolErr("path must be a directory")
 	}
 
-	manifest, err := scanDir(path, !boolean(args, "no_ids"))
+	manifest, err := scanDir(path, !boolean(args, "no_ids"), !boolean(args, "no_gitignore"))
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -392,13 +394,19 @@ func toolValidate(args map[string]any) toolResult {
 
 // --- Directory scanner ---
 
-func scanDir(root string, computeIDs bool) (*c4m.Manifest, error) {
+func scanDir(root string, computeIDs, respectGitignore bool) (*c4m.Manifest, error) {
 	manifest := c4m.NewManifest()
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
 	}
-	if err := walkDir(manifest, absRoot, "", 0, computeIDs); err != nil {
+
+	var gi *gitignoreState
+	if respectGitignore {
+		gi = newGitignoreState(absRoot)
+	}
+
+	if err := walkDir(manifest, absRoot, "", 0, computeIDs, gi); err != nil {
 		return nil, err
 	}
 	manifest.SortEntries()
@@ -406,7 +414,240 @@ func scanDir(root string, computeIDs bool) (*c4m.Manifest, error) {
 	return manifest, nil
 }
 
-func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, computeIDs bool) error {
+// gitignoreState tracks .gitignore rules for the MCP scanner.
+type gitignoreState struct {
+	layers []giLayer
+}
+
+type giLayer struct {
+	basePath string
+	rules    []giRule
+}
+
+type giRule struct {
+	pattern  string
+	negated  bool
+	dirOnly  bool
+	anchored bool
+}
+
+func newGitignoreState(rootDir string) *gitignoreState {
+	gs := &gitignoreState{}
+	gs.loadDir(rootDir)
+	return gs
+}
+
+func (gs *gitignoreState) loadDir(dir string) {
+	path := filepath.Join(dir, ".gitignore")
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	var rules []giRule
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), " \t")
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		var rule giRule
+		if line[0] == '!' {
+			rule.negated = true
+			line = line[1:]
+		}
+		if len(line) > 0 && line[0] == '\\' {
+			line = line[1:]
+		}
+		if strings.HasSuffix(line, "/") {
+			rule.dirOnly = true
+			line = strings.TrimSuffix(line, "/")
+		}
+		if strings.HasPrefix(line, "/") {
+			rule.anchored = true
+			line = line[1:]
+		}
+		if strings.Contains(line, "/") {
+			rule.anchored = true
+		}
+		rule.pattern = line
+		if rule.pattern != "" {
+			rules = append(rules, rule)
+		}
+	}
+	if len(rules) > 0 {
+		gs.layers = append(gs.layers, giLayer{basePath: dir, rules: rules})
+	}
+}
+
+func (gs *gitignoreState) popTo(dir string) {
+	n := 0
+	for _, layer := range gs.layers {
+		if dir == layer.basePath || strings.HasPrefix(dir, layer.basePath+string(filepath.Separator)) {
+			gs.layers[n] = layer
+			n++
+		}
+	}
+	gs.layers = gs.layers[:n]
+}
+
+func (gs *gitignoreState) match(fullPath, name string, isDir bool) bool {
+	ignored := false
+	for _, layer := range gs.layers {
+		rel, err := filepath.Rel(layer.basePath, fullPath)
+		if err != nil {
+			continue
+		}
+		rel = filepath.ToSlash(rel)
+		for _, rule := range layer.rules {
+			if rule.dirOnly && !isDir {
+				continue
+			}
+			if giMatchPattern(rule.pattern, rel, name, rule.anchored) {
+				ignored = !rule.negated
+			}
+		}
+	}
+	return ignored
+}
+
+func giMatchPattern(pattern, rel, name string, anchored bool) bool {
+	if strings.Contains(pattern, "**") {
+		return giMatchDoublestar(pattern, rel)
+	}
+	if anchored {
+		return giMatchGlob(pattern, rel)
+	}
+	if giMatchGlob(pattern, name) {
+		return true
+	}
+	parts := strings.Split(rel, "/")
+	for i := range parts {
+		if giMatchGlob(pattern, strings.Join(parts[i:], "/")) {
+			return true
+		}
+	}
+	return false
+}
+
+func giMatchDoublestar(pattern, path string) bool {
+	parts := strings.SplitN(pattern, "**", 2)
+	prefix := strings.TrimSuffix(parts[0], "/")
+	suffix := ""
+	if len(parts) > 1 {
+		suffix = strings.TrimPrefix(parts[1], "/")
+	}
+	pathParts := strings.Split(path, "/")
+	if prefix == "" && suffix == "" {
+		return true
+	}
+	if prefix == "" {
+		for i := range pathParts {
+			if giMatchGlob(suffix, strings.Join(pathParts[i:], "/")) {
+				return true
+			}
+		}
+		return false
+	}
+	if suffix == "" {
+		for i := 1; i <= len(pathParts); i++ {
+			if giMatchGlob(prefix, strings.Join(pathParts[:i], "/")) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 1; i <= len(pathParts); i++ {
+		if giMatchGlob(prefix, strings.Join(pathParts[:i], "/")) {
+			for j := i; j <= len(pathParts); j++ {
+				if giMatchGlob(suffix, strings.Join(pathParts[j:], "/")) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func giMatchGlob(pattern, str string) bool {
+	for len(pattern) > 0 {
+		switch pattern[0] {
+		case '*':
+			for len(pattern) > 0 && pattern[0] == '*' {
+				pattern = pattern[1:]
+			}
+			if len(pattern) == 0 {
+				return true
+			}
+			for i := 0; i <= len(str); i++ {
+				if giMatchGlob(pattern, str[i:]) {
+					return true
+				}
+			}
+			return false
+		case '?':
+			if len(str) == 0 {
+				return false
+			}
+			pattern = pattern[1:]
+			str = str[1:]
+		case '[':
+			if len(str) == 0 {
+				return false
+			}
+			end := strings.IndexByte(pattern, ']')
+			if end < 0 {
+				if str[0] != pattern[0] {
+					return false
+				}
+				pattern = pattern[1:]
+				str = str[1:]
+				continue
+			}
+			class := pattern[1:end]
+			negate := len(class) > 0 && class[0] == '!'
+			if negate {
+				class = class[1:]
+			}
+			matched := false
+			for i := 0; i < len(class); i++ {
+				if i+2 < len(class) && class[i+1] == '-' {
+					if str[0] >= class[i] && str[0] <= class[i+2] {
+						matched = true
+					}
+					i += 2
+				} else if class[i] == str[0] {
+					matched = true
+				}
+			}
+			if negate {
+				matched = !matched
+			}
+			if !matched {
+				return false
+			}
+			pattern = pattern[end+1:]
+			str = str[1:]
+		case '\\':
+			pattern = pattern[1:]
+			if len(pattern) == 0 || len(str) == 0 || str[0] != pattern[0] {
+				return false
+			}
+			pattern = pattern[1:]
+			str = str[1:]
+		default:
+			if len(str) == 0 || str[0] != pattern[0] {
+				return false
+			}
+			pattern = pattern[1:]
+			str = str[1:]
+		}
+	}
+	return len(str) == 0
+}
+
+func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, computeIDs bool, gi *gitignoreState) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return err
@@ -426,7 +667,7 @@ func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, compute
 			Timestamp: info.ModTime().UTC(),
 		}
 		if computeIDs {
-			if sub, err := scanDir(dirPath, true); err == nil {
+			if sub, err := scanDir(dirPath, true, gi != nil); err == nil {
 				dirEntry.C4ID = sub.ComputeC4ID()
 			}
 		}
@@ -434,18 +675,36 @@ func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, compute
 		childDepth = depth + 1
 	}
 
+	// Load gitignore for this directory
+	if gi != nil {
+		gi.popTo(dirPath)
+		gi.loadDir(dirPath)
+	}
+
 	for _, de := range entries {
 		name := de.Name()
+
+		// Always skip .git directory
+		if name == ".git" {
+			continue
+		}
+
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
 		fullPath := filepath.Join(dirPath, name)
+
+		// Check gitignore
+		if gi != nil && gi.match(fullPath, name, de.IsDir()) {
+			continue
+		}
+
 		info, err := de.Info()
 		if err != nil {
 			continue
 		}
 		if info.IsDir() {
-			if err := walkDir(manifest, fullPath, name, childDepth, computeIDs); err != nil {
+			if err := walkDir(manifest, fullPath, name, childDepth, computeIDs, gi); err != nil {
 				return err
 			}
 			continue
@@ -528,7 +787,7 @@ func cpLocalToCapsule(srcPath, c4mPath, subPath string) toolResult {
 
 	var added int
 	if info.IsDir() {
-		scanned, err := scanDir(srcPath, true)
+		scanned, err := scanDir(srcPath, true, true)
 		if err != nil {
 			return toolErr(err.Error())
 		}
@@ -709,7 +968,7 @@ func toSource(path string) (c4m.Source, error) {
 		}
 		return c4m.ManifestSource{Manifest: manifest}, nil
 	}
-	manifest, err := scanDir(path, true)
+	manifest, err := scanDir(path, true, true)
 	if err != nil {
 		return nil, err
 	}

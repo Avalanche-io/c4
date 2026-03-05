@@ -9,23 +9,28 @@ import (
 	"strings"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/gitignore"
 )
 
 // Generator creates C4M manifests from filesystem paths
 type Generator struct {
-	computeC4IDs   bool
-	followSymlinks bool
-	includeHidden  bool
-	detectSequences bool
+	computeC4IDs     bool
+	followSymlinks   bool
+	includeHidden    bool
+	detectSequences  bool
+	respectGitignore bool
+	gi               *gitignore.Matcher
+	scanRoot         string
 }
 
 // NewGenerator creates a new manifest generator
 func NewGenerator() *Generator {
 	return &Generator{
-		computeC4IDs:    true,
-		followSymlinks:  false,
-		includeHidden:   false,
-		detectSequences: false,
+		computeC4IDs:     true,
+		followSymlinks:   false,
+		includeHidden:    false,
+		detectSequences:  false,
+		respectGitignore: true,
 	}
 }
 
@@ -60,6 +65,13 @@ func WithSequenceDetection(detect bool) GeneratorOption {
 	}
 }
 
+// WithGitignore enables/disables respecting .gitignore files
+func WithGitignore(enable bool) GeneratorOption {
+	return func(g *Generator) {
+		g.respectGitignore = enable
+	}
+}
+
 // NewGeneratorWithOptions creates a generator with options
 func NewGeneratorWithOptions(opts ...GeneratorOption) *Generator {
 	g := NewGenerator()
@@ -67,6 +79,17 @@ func NewGeneratorWithOptions(opts ...GeneratorOption) *Generator {
 		opt(g)
 	}
 	return g
+}
+
+// clone creates a copy with the same settings but fresh state.
+func (g *Generator) clone() *Generator {
+	return &Generator{
+		computeC4IDs:     g.computeC4IDs,
+		followSymlinks:   g.followSymlinks,
+		includeHidden:    g.includeHidden,
+		detectSequences:  g.detectSequences,
+		respectGitignore: g.respectGitignore,
+	}
 }
 
 // GenerateFromPath creates a manifest from a filesystem path
@@ -85,6 +108,13 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
 	
+	// Initialize gitignore matcher for this scan
+	g.scanRoot = absPath
+	if g.respectGitignore && info.IsDir() {
+		g.gi = gitignore.New()
+		g.gi.AddFromFile(filepath.Join(absPath, ".gitignore"), 0)
+	}
+
 	// Generate entries recursively
 	if info.IsDir() {
 		err = g.generateDir(manifest, absPath, "", 0)
@@ -139,7 +169,8 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 		
 		// For directories, compute C4 ID from their recursive manifest
 		if g.computeC4IDs && dirInfo.IsDir() {
-			subManifest, err := g.GenerateFromPath(dirPath)
+			subGen := g.clone()
+			subManifest, err := subGen.GenerateFromPath(dirPath)
 			if err == nil {
 				dirEntry.C4ID = subManifest.ComputeC4ID()
 			}
@@ -150,16 +181,35 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 		childDepth = depth + 1
 	}
 	
+	// Load gitignore rules for this directory (if not root, which was loaded in GenerateFromPath)
+	if g.gi != nil && dirName != "" {
+		depth := depthFromRoot(g.scanRoot, dirPath)
+		g.gi.AddFromFile(filepath.Join(dirPath, ".gitignore"), depth)
+	}
+
 	// Process entries
 	for _, entry := range entries {
 		name := entry.Name()
-		
+
+		// Always skip .git directory
+		if name == ".git" {
+			continue
+		}
+
 		// Skip hidden files if not included
 		if !g.includeHidden && strings.HasPrefix(name, ".") {
 			continue
 		}
-		
+
 		fullPath := filepath.Join(dirPath, name)
+
+		// Check gitignore
+		if g.gi != nil {
+			relPath := relFromRoot(g.scanRoot, fullPath)
+			if g.gi.Match(relPath, entry.IsDir()) {
+				continue
+			}
+		}
 		
 		info, err := entry.Info()
 		if err != nil {
@@ -283,12 +333,7 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 	
 	// If target is a directory, compute its manifest C4 ID
 	if targetInfo.IsDir() {
-		subGen := &Generator{
-			computeC4IDs:    g.computeC4IDs,
-			followSymlinks:  g.followSymlinks,
-			includeHidden:   g.includeHidden,
-			detectSequences: g.detectSequences,
-		}
+		subGen := g.clone()
 		manifest, err := subGen.GenerateFromPath(targetPath)
 		if err != nil {
 			return c4.ID{}
@@ -522,6 +567,22 @@ func (sg *sequenceGroup) toEntry() *Entry {
 	}
 	
 	return entry
+}
+
+func relFromRoot(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return filepath.Base(path)
+	}
+	return filepath.ToSlash(rel)
+}
+
+func depthFromRoot(root, path string) int {
+	rel := relFromRoot(root, path)
+	if rel == "." {
+		return 0
+	}
+	return strings.Count(rel, "/") + 1
 }
 
 // extractSequencePattern extracts the pattern and frame number from a filename

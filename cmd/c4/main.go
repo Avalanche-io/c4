@@ -13,6 +13,7 @@ import (
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/bundle"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/gitignore"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 	flag "github.com/spf13/pflag"
 )
@@ -43,6 +44,9 @@ var (
 	bundleFlag   bool
 	resumeFlag   bool
 
+	// Gitignore flag
+	noGitignoreFlag bool
+
 	// Long-form aliases
 	helpFlag bool
 )
@@ -69,6 +73,7 @@ func init() {
 	flag.BoolVarP(&noIDsFlag, "no-ids", "n", false, "Don't compute C4 IDs (faster)")
 	flag.StringVar(&formatFlag, "format", "c4m", "Output format: c4m, paths, json")
 	flag.BoolVar(&progressiveFlag, "progressive", false, "Progressive scan with interrupt support (Ctrl+T for status on macOS)")
+	flag.BoolVar(&noGitignoreFlag, "no-gitignore", false, "Include files that would be excluded by .gitignore")
 
 	// Bundle flags
 	flag.BoolVar(&bundleFlag, "bundle", false, "Create/use C4M bundle for unbounded scans")
@@ -319,6 +324,7 @@ func processDirectory(dirPath string) error {
 	opts := []scan.GeneratorOption{
 		scan.WithC4IDs(!noIDsFlag),
 		scan.WithSymlinks(followFlag),
+		scan.WithGitignore(!noGitignoreFlag),
 	}
 
 	generator := scan.NewGeneratorWithOptions(opts...)
@@ -357,18 +363,42 @@ func processDirectory(dirPath string) error {
 
 func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest, error) {
 	manifest := c4m.NewManifest()
-	
+
+	absDir, err := filepath.Abs(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set up gitignore matcher for this directory
+	var gi *gitignore.Matcher
+	if !noGitignoreFlag {
+		gi = gitignore.New()
+		gi.AddFromFile(filepath.Join(absDir, ".gitignore"), 0)
+	}
+
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	for _, entry := range entries {
+		name := entry.Name()
+
+		// Always skip .git directory
+		if name == ".git" {
+			continue
+		}
+
+		// Check gitignore
+		if gi != nil && gi.Match(name, entry.IsDir()) {
+			continue
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
-		
+
 		e := &c4m.Entry{
 			Mode:      info.Mode(),
 			Timestamp: info.ModTime().UTC(),
@@ -606,6 +636,7 @@ func getSource(path string) c4m.Source {
 		Generator: scan.NewGeneratorWithOptions(
 			scan.WithC4IDs(!noIDsFlag),
 			scan.WithSymlinks(followFlag),
+			scan.WithGitignore(!noGitignoreFlag),
 		),
 	}
 }
