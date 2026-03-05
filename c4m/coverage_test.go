@@ -344,14 +344,14 @@ not-a-valid-id`
 
 // TestDecoderEdgeCases tests edge cases in the decoder
 func TestDecoderEdgeCases(t *testing.T) {
-	t.Run("CRLF line endings", func(t *testing.T) {
+	t.Run("CRLF line endings rejected", func(t *testing.T) {
 		input := "@c4m 1.0\r\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\r\n"
-		manifest, err := Unmarshal([]byte(input))
-		if err != nil {
-			t.Fatalf("Failed to parse CRLF: %v", err)
+		_, err := Unmarshal([]byte(input))
+		if err == nil {
+			t.Fatal("Expected error for CRLF input, got nil")
 		}
-		if len(manifest.Entries) != 1 {
-			t.Errorf("Expected 1 entry, got %d", len(manifest.Entries))
+		if !strings.Contains(err.Error(), "CR") {
+			t.Errorf("Expected CR-related error, got: %v", err)
 		}
 	})
 

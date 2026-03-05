@@ -1224,7 +1224,7 @@ func TestExamplesAudit_SpecCoverage(t *testing.T) {
 Section: File Structure
   - Mandatory Version Header:        TESTED (decoder.go:parseHeader, tests: multiple)
   - Character Encoding (UTF-8 only):  TESTED (validator.go:validateEntry)
-  - Line Endings (LF only):          PARTIAL (decoder handles CRLF but spec says LF only)
+  - Line Endings (LF only):          TESTED (decoder rejects CR — LF only enforced)
   - Line Format:                     TESTED (decoder.go:parseEntry)
 
 Section: Field Specifications

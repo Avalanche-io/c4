@@ -32,11 +32,11 @@ symlinks. Not implemented. Same decision: remove from spec or implement.
 Spec section "Escaping in Sequence Notation" describes `\[`, `\]`, `\,`, `\-` escaping.
 Not implemented. If sequences stay in 1.0, this escaping must work or be spec'd out.
 
-### 1.4 CRLF handling
+### 1.4 CRLF handling — DECIDED
 
-Spec says "LF only, no CR." Decoder tolerates CRLF. Options:
-- **Spec stays strict, decoder stays tolerant** (be liberal in what you accept)
-- **Validator warns on CRLF** (reasonable middle ground)
+**LF only, everywhere, all platforms, no exceptions.** Decoder rejects any input
+containing CR (0x0D). The spec says "LF only, no CR" and the implementation now
+enforces this strictly — no tolerance, no warnings, just errors.
 
 ### 1.5 Column alignment minimum
 

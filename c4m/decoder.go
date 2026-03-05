@@ -570,9 +570,11 @@ func (d *Decoder) readLine() (string, error) {
 
 	d.lineNum++
 
-	// Trim line ending
+	// Trim line ending — LF only, reject CR
 	line = strings.TrimSuffix(line, "\n")
-	line = strings.TrimSuffix(line, "\r") // handle CRLF
+	if strings.ContainsRune(line, '\r') {
+		return "", fmt.Errorf("line %d: CR (0x0D) not allowed — c4m requires LF-only line endings", d.lineNum)
+	}
 
 	if err == io.EOF && line == "" {
 		return "", io.EOF
