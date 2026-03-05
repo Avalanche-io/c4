@@ -2181,6 +2181,60 @@ func TestValidateNameCoverage(t *testing.T) {
 			t.Error("Expected error for directory name just /")
 		}
 	})
+
+	t.Run("embedded path separator", func(t *testing.T) {
+		input := "@c4m 1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 sub/file.txt\n"
+		v := NewValidator(true)
+		err := v.ValidateManifest(strings.NewReader(input))
+		if err == nil {
+			t.Error("Expected error for embedded path separator")
+		}
+	})
+
+	t.Run("windows backslash in name", func(t *testing.T) {
+		input := "@c4m 1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 sub\\file.txt\n"
+		v := NewValidator(true)
+		err := v.ValidateManifest(strings.NewReader(input))
+		if err == nil {
+			t.Error("Expected error for backslash in name")
+		}
+	})
+
+	t.Run("dot directory", func(t *testing.T) {
+		input := "@c4m 1.0\ndrwxr-xr-x 2025-01-01T00:00:00Z 0 ./\n"
+		v := NewValidator(true)
+		err := v.ValidateManifest(strings.NewReader(input))
+		if err == nil {
+			t.Error("Expected error for dot directory")
+		}
+	})
+
+	t.Run("dotdot directory", func(t *testing.T) {
+		input := "@c4m 1.0\ndrwxr-xr-x 2025-01-01T00:00:00Z 0 ../\n"
+		v := NewValidator(true)
+		err := v.ValidateManifest(strings.NewReader(input))
+		if err == nil {
+			t.Error("Expected error for dotdot directory")
+		}
+	})
+
+	t.Run("dot file", func(t *testing.T) {
+		input := "@c4m 1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 .\n"
+		v := NewValidator(true)
+		err := v.ValidateManifest(strings.NewReader(input))
+		if err == nil {
+			t.Error("Expected error for dot file")
+		}
+	})
+
+	t.Run("dotdot file", func(t *testing.T) {
+		input := "@c4m 1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 ..\n"
+		v := NewValidator(true)
+		err := v.ValidateManifest(strings.NewReader(input))
+		if err == nil {
+			t.Error("Expected error for dotdot file")
+		}
+	})
 }
 
 // TestWriteLayerFullCoverage tests all writeLayer branches

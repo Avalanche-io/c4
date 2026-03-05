@@ -57,10 +57,34 @@ func NewManifest() *Manifest {
 	}
 }
 
-// AddEntry adds an entry to the manifest
+// AddEntry adds an entry to the manifest.
 func (m *Manifest) AddEntry(e *Entry) {
 	m.Entries = append(m.Entries, e)
 	m.invalidateIndex()
+}
+
+// isPathName returns true if name contains any path semantics.
+// A valid c4m entry name is a bare filename optionally followed by a
+// trailing "/" to mark directories. The base name (without trailing slash)
+// must not be empty, must not be "." or "..", and must not contain "/" or
+// "\" or null bytes. This is fully decidable because c4m unifies all
+// paths to Unix-style separators.
+func isPathName(name string) bool {
+	if name == "" {
+		return true
+	}
+	// Strip trailing "/" (directory marker) to get the base name.
+	base := strings.TrimSuffix(name, "/")
+	if base == "" {
+		return true // name was just "/"
+	}
+	if base == "." || base == ".." {
+		return true
+	}
+	if strings.ContainsAny(base, "/\\\x00") {
+		return true
+	}
+	return false
 }
 
 // RemoveEntry removes an entry from the manifest by pointer identity.
@@ -291,13 +315,11 @@ func (m *Manifest) Validate() error {
 		}
 		seen[e.Name] = true
 
-		// Validate entry
+		// Validate entry — name must be a bare filename, never a path
 		if e.Name == "" {
 			return fmt.Errorf("%w: empty name", ErrInvalidEntry)
 		}
-
-		// Check for path traversal
-		if strings.Contains(e.Name, "../") || strings.Contains(e.Name, "./") {
+		if isPathName(e.Name) {
 			return fmt.Errorf("%w: %s", ErrPathTraversal, e.Name)
 		}
 	}

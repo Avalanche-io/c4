@@ -184,7 +184,7 @@ func TestManifestCanonical(t *testing.T) {
 						Mode:      0644,
 						Timestamp: testTime,
 						Size:      200,
-						Name:      "dir1/file2.txt",
+						Name:      "file2.txt",
 						C4ID:      fileID,
 						Depth:     1, // Should be excluded
 					},
@@ -251,20 +251,22 @@ func TestManifestComputeC4ID(t *testing.T) {
 
 func TestManifestGetEntry(t *testing.T) {
 	m := NewManifest()
-	e1 := &Entry{Name: "file1.txt"}
-	e2 := &Entry{Name: "dir1/file2.txt"}
+	e1 := &Entry{Name: "file1.txt", Depth: 0}
+	eDir := &Entry{Name: "dir1/", Depth: 0, Mode: os.ModeDir}
+	e2 := &Entry{Name: "file2.txt", Depth: 1}
 	m.AddEntry(e1)
+	m.AddEntry(eDir)
 	m.AddEntry(e2)
-	
+
 	tests := []struct {
 		path string
 		want *Entry
 	}{
 		{"file1.txt", e1},
-		{"dir1/file2.txt", e2},
+		{"file2.txt", e2},
 		{"nonexistent.txt", nil},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			got := m.GetEntry(tt.path)
@@ -279,23 +281,27 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 	m := NewManifest()
 	e0a := &Entry{Name: "file1.txt", Depth: 0}
 	e0b := &Entry{Name: "file2.txt", Depth: 0}
-	e1a := &Entry{Name: "dir/file3.txt", Depth: 1}
-	e1b := &Entry{Name: "dir/file4.txt", Depth: 1}
-	e2 := &Entry{Name: "dir/sub/file5.txt", Depth: 2}
-	
+	eDir := &Entry{Name: "dir/", Depth: 0, Mode: os.ModeDir}
+	e1a := &Entry{Name: "file3.txt", Depth: 1}
+	e1b := &Entry{Name: "file4.txt", Depth: 1}
+	eSub := &Entry{Name: "sub/", Depth: 1, Mode: os.ModeDir}
+	e2 := &Entry{Name: "file5.txt", Depth: 2}
+
 	m.AddEntry(e0a)
 	m.AddEntry(e0b)
+	m.AddEntry(eDir)
 	m.AddEntry(e1a)
 	m.AddEntry(e1b)
+	m.AddEntry(eSub)
 	m.AddEntry(e2)
 	
 	tests := []struct {
 		depth int
 		want  int
 	}{
-		{0, 2},
-		{1, 2},
-		{2, 1},
+		{0, 3}, // file1.txt, file2.txt, dir/
+		{1, 3}, // file3.txt, file4.txt, sub/
+		{2, 1}, // file5.txt
 		{3, 0},
 	}
 	
@@ -759,7 +765,7 @@ func TestCanonicalize(t *testing.T) {
 
 		// Add child file with real values
 		m.AddEntry(&Entry{
-			Name:      "dir/file.txt",
+			Name:      "file.txt",
 			Size:      100,
 			Timestamp: now,
 			Mode:      0644,

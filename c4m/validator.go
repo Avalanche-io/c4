@@ -252,6 +252,19 @@ func (v *Validator) validateEntry(line string) {
 	// Validate size
 	v.validateSize(size)
 	
+	// Validate raw name field before parsing — catch path separators that
+	// parseNameAndRest would otherwise silently interpret.
+	rawName := strings.Join(fields[nameStart:], " ")
+	if !strings.HasPrefix(mode, "d") && !strings.HasPrefix(mode, "l") {
+		// For files (not directories/symlinks), the name must not contain "/"
+		if strings.Contains(rawName, "/") {
+			v.addError(v.lineNum, 0, "name", fmt.Sprintf("file name contains path separator '/': '%s' — use depth/indentation for hierarchy", rawName), false)
+		}
+	}
+	if strings.Contains(rawName, "\\") {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains backslash: '%s' — backslash is not allowed in c4m names", rawName), false)
+	}
+
 	// Extract name (handle quoted names)
 	name, symTarget, c4id := v.parseNameAndRest(fields[nameStart:])
 	
@@ -411,21 +424,31 @@ func (v *Validator) validateName(name string, depth int) {
 		v.addError(v.lineNum, 0, "name", "name cannot be empty", false)
 		return
 	}
-	
-	// Check for path traversal
-	if strings.Contains(name, "../") || strings.Contains(name, "./") {
-		v.addError(v.lineNum, 0, "name", "path traversal not allowed", false)
+
+	// A c4m entry name is a bare filename, never a path. Strip the
+	// trailing "/" directory marker and validate the base name.
+	base := strings.TrimSuffix(name, "/")
+
+	if base == "" {
+		v.addError(v.lineNum, 0, "name", "name cannot be '/' — the c4m file itself is the root", false)
+		return
 	}
-	
-	// Check for null bytes
-	if strings.Contains(name, "\x00") {
+
+	if base == "." || base == ".." {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("'%s' is a path component, not a valid entry name", name), false)
+		return
+	}
+
+	if strings.Contains(base, "/") {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains path separator '/': '%s' — use depth/indentation for hierarchy", name), false)
+	}
+
+	if strings.Contains(base, "\\") {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains backslash: '%s' — backslash is not allowed in c4m names", name), false)
+	}
+
+	if strings.Contains(base, "\x00") {
 		v.addError(v.lineNum, 0, "name", "null bytes not allowed in names", false)
-	}
-	
-	// Check directory naming
-	isDir := strings.HasSuffix(name, "/")
-	if isDir && len(name) == 1 {
-		v.addError(v.lineNum, 0, "name", "directory name cannot be just '/'", false)
 	}
 }
 

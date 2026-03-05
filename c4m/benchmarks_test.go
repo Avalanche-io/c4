@@ -55,7 +55,8 @@ func BenchmarkHierarchicalSort(b *testing.B) {
 		// Add files in directory
 		for j := 10; j > 0; j-- {
 			manifest.AddEntry(&Entry{
-				Name: fmt.Sprintf("dir%03d/file%02d.txt", i, j),
+				Name:  fmt.Sprintf("file%02d.txt", j),
+				Depth: 1,
 			})
 		}
 	}
@@ -282,7 +283,7 @@ func BenchmarkValidation(b *testing.B) {
 	manifest := NewManifest()
 	for i := 0; i < 1000; i++ {
 		manifest.AddEntry(&Entry{
-			Name:      fmt.Sprintf("dir%03d/file%03d.txt", i/10, i),
+			Name:      fmt.Sprintf("file%03d.txt", i),
 			Size:      1024,
 			Timestamp: time.Now(),
 			Mode:      0644,
