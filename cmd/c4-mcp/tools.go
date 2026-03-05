@@ -63,7 +63,7 @@ func allTools() []toolDef {
 			Name:        "c4_mk",
 			Description: "Establish a c4m file for writing. Creates the .c4m.established marker file that enables write operations.",
 			InputSchema: obj(
-				prop("target", "string", "Capsule path ending with colon (e.g. project.c4m:)"),
+				prop("target", "string", "C4m file path ending with colon (e.g. project.c4m:)"),
 				required("target"),
 			),
 		},
@@ -71,7 +71,7 @@ func allTools() []toolDef {
 			Name:        "c4_mkdir",
 			Description: "Create a directory inside a c4m file. The c4m file must be established first with c4_mk.",
 			InputSchema: obj(
-				prop("path", "string", "Capsule path with directory (e.g. project.c4m:renders/)"),
+				prop("path", "string", "C4m file path with directory (e.g. project.c4m:renders/)"),
 				required("path"),
 			),
 		},
@@ -79,8 +79,8 @@ func allTools() []toolDef {
 			Name:        "c4_cp",
 			Description: "Copy files between local filesystem and c4m files. Capture: local dir -> c4m file. Materialize: c4m file -> local dir.",
 			InputSchema: obj(
-				prop("source", "string", "Source (local path or capsule:subpath)"),
-				prop("dest", "string", "Destination (local path or capsule:subpath)"),
+				prop("source", "string", "Source (local path or file.c4m:subpath)"),
+				prop("dest", "string", "Destination (local path or file.c4m:subpath)"),
 				required("source", "dest"),
 			),
 		},
@@ -307,7 +307,7 @@ func toolMkdir(args map[string]any) toolResult {
 	}
 	c4mPath, subPath := parseColonPath(rawPath)
 	if c4mPath == rawPath || subPath == "" {
-		return toolErr("path must be capsule:directory/ (e.g. project.c4m:renders/)")
+		return toolErr("path must be file.c4m:directory/ (e.g. project.c4m:renders/)")
 	}
 	if !strings.HasSuffix(subPath, "/") {
 		subPath += "/"
@@ -347,7 +347,7 @@ func toolCp(args map[string]any) toolResult {
 	case !srcIsCapsule && !dstIsCapsule:
 		return toolErr("use OS cp for local-to-local copies")
 	default:
-		return toolErr("capsule-to-capsule not yet supported")
+		return toolErr("c4m-to-c4m copy not yet supported")
 	}
 }
 
