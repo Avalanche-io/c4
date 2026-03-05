@@ -52,6 +52,13 @@ coverage.out
 .DS_Store
 Thumbs.db
 
+# MCP server binary
+c4-mcp
+cmd/c4-mcp/c4-mcp
+
+# Docket claims
+.docket-claims/
+
 # Agent memory
 memory.md
 
