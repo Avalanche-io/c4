@@ -355,6 +355,50 @@ func TestDecoderEdgeCases(t *testing.T) {
 		}
 	})
 
+	t.Run("bare CR rejected", func(t *testing.T) {
+		// CR without LF in an entry line
+		input := "@c4m 1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file\r.txt\n"
+		_, err := Unmarshal([]byte(input))
+		if err == nil {
+			t.Fatal("Expected error for bare CR in entry name")
+		}
+		if !strings.Contains(err.Error(), "CR") {
+			t.Errorf("Expected CR-related error, got: %v", err)
+		}
+	})
+
+	t.Run("CR in annotation line rejected", func(t *testing.T) {
+		input := "@c4m 1.0\r"
+		_, err := Unmarshal([]byte(input))
+		if err == nil {
+			t.Fatal("Expected error for CR in annotation line")
+		}
+	})
+
+	t.Run("encoder output is LF only", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "test.txt",
+			Mode:      0644,
+			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			Size:      100,
+		})
+		data, err := Marshal(m)
+		if err != nil {
+			t.Fatalf("Marshal: %v", err)
+		}
+		if strings.ContainsRune(string(data), '\r') {
+			t.Error("canonical output contains CR")
+		}
+		prettyData, err := MarshalPretty(m)
+		if err != nil {
+			t.Fatalf("MarshalPretty: %v", err)
+		}
+		if strings.ContainsRune(string(prettyData), '\r') {
+			t.Error("pretty output contains CR")
+		}
+	})
+
 	t.Run("zero timestamp marker", func(t *testing.T) {
 		input := "@c4m 1.0\n-rw-r--r-- 0 100 file.txt\n"
 		manifest, err := Unmarshal([]byte(input))

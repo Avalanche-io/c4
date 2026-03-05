@@ -942,8 +942,10 @@ type DataBlock struct {
 // ParseDataBlock parses the content of a @data block.
 // It auto-detects whether content is a plain ID list or base64 encoded.
 func ParseDataBlock(id c4.ID, content string) (*DataBlock, error) {
-	// Normalize line endings
-	content = strings.ReplaceAll(content, "\r\n", "\n")
+	// Reject CR — c4m requires LF-only line endings
+	if strings.ContainsRune(content, '\r') {
+		return nil, fmt.Errorf("CR (0x0D) not allowed in @data block — c4m requires LF-only line endings")
+	}
 	contentBytes := []byte(content)
 
 	block := &DataBlock{
@@ -962,9 +964,9 @@ func ParseDataBlock(id c4.ID, content string) (*DataBlock, error) {
 	} else {
 		// Treat as base64 encoded content
 		block.IsIDList = false
-		// Remove whitespace from base64 content
+		// Remove whitespace from base64 content (CR already rejected above)
 		b64Content := strings.Map(func(r rune) rune {
-			if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			if r == ' ' || r == '\n' || r == '\t' {
 				return -1
 			}
 			return r
