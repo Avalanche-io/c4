@@ -1,10 +1,9 @@
 
-# C4 ID - Universally Unique and Consistent Identification
+# C4 - Universal Content Identification
 
-
+[![CI](https://github.com/Avalanche-io/c4/actions/workflows/ci.yml/badge.svg)](https://github.com/Avalanche-io/c4/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Avalanche-io/c4)](https://goreportcard.com/report/github.com/Avalanche-io/c4)
-[![Build Status](https://travis-ci.org/Avalanche-io/c4.svg?branch=master)](https://travis-ci.org/Avalanche-io/c4)
-[![GoDoc](https://godoc.org/github.com/Avalanche-io/c4?status.svg)](https://godoc.org/github.com/avalanche-io/c4)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Avalanche-io/c4.svg)](https://pkg.go.dev/github.com/Avalanche-io/c4)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 ```go
@@ -15,22 +14,30 @@ This is a Go package that implements the C4 ID system **SMPTE standard ST 2114:2
 
 C4 IDs are 90 character long strings suitable for use in filenames, URLs, database fields, or anywhere else that a string identifier might normally be used. In ram C4 IDs are represented in a 64 byte "digest" format.
 
-#### Features
+### Install
 
-- A single C4 id can represent multiple files.
-- C4 ids are unique, random, and unforgeable.
-- C4 ids are identical for the same file in different locations or points in time.
-- A network connection is not required to generate C4 ids.
-- A C4 id can be used in filenames, URLs, json and xml.
-- C4 ids can be selected easily with double click (_a problem for many unique identifiers_).
-- Easily discover C4 ids in arbitrary text with a simple regex `c4[1-9A-HJ-NP-Za-km-z]{88}`
-- Naming files by their C4 id automatically deduplicates them.
-- **[C4M Manifest Format](./c4m)** - Human-readable format for filesystem manifests with C4 IDs.
-  - [User Guide](./c4m/README.md) - Quick start and examples
-  - [Formal Specification](./c4m/SPECIFICATION.md) - C4M v1.0 specification
-  - [Implementation Notes](./c4m/IMPLEMENTATION_NOTES.md) - Edge cases and clarifications
+```bash
+go install github.com/Avalanche-io/c4/cmd/c4@latest
+```
 
-#### Comparison of Encodings
+### Features
+
+- Universally unique, unforgeable identification of any data (SMPTE ST 2114:2017)
+- Single ID represents one file or millions of files
+- Same content always produces the same ID, regardless of location or time
+- Works offline — no network connection required
+- IDs are URL-safe, filename-safe, double-click selectable
+- Regex: `c4[1-9A-HJ-NP-Za-km-z]{88}`
+
+### Capsules (C4M Format)
+
+A **capsule** (`.c4m` file) encapsulates a filesystem — a small, human-readable description that behaves like the full directory without needing the actual file content.
+
+- [User Guide](./c4m/README.md) — Quick start and examples
+- [Specification](./c4m/SPECIFICATION.md) — Formal C4M v1.0 spec
+- [Implementation Notes](./c4m/IMPLEMENTATION_NOTES.md) — Edge cases
+
+### Comparison of Encodings
 
 C4 is the shortest self identifying SHA-512 encoding and is the only standardized encoding.
 To illustrate, the following is the SHA-512 of "foo" in hex, base64 and c4 encodings:
@@ -42,67 +49,57 @@ To illustrate, the following is the SHA-512 of "foo" in hex, base64 and c4 encod
   c4            90:     c43inc2qGhSWQUMRvDMW6GAjJnRFY5sxq399wcUcWLTuPai84A2QWTfYu1gAW8f5FmZFGeYpLsSPyrSUh9Ao3J68Cc
 ```
 
-### Example Usage
+### CLI Usage
+
+```bash
+# Identify a file
+c4 file.txt
+# c43zYcLni5LF9rR4Lg4B8h3Jp8SBwjcnyyeh4bc6gTPHndKuKdjUWx1kJPYhZxYt3zV6tQXpDs2shPsPYjgG81wZM1
+
+# Identify a directory (produces a single C4 ID)
+c4 .
+
+# Generate a capsule (C4M manifest)
+c4 -mr .
+
+# Compare two directories
+c4 diff old/ new/
+
+# Find what's missing
+c4 subtract needed.c4m . > todo.c4m
+
+# Pipe data
+echo "hello" | c4
+```
+
+### Go Library
 
 ```go
-package main
+import "github.com/Avalanche-io/c4"
 
-import (
-  "fmt"
-  "strings"
+// Identify a single block of data
+id := c4.Identify(strings.NewReader("alfa"))
 
-  "github.com/Avalanche-io/c4"
-)
-
-func main() {
-
-  // Generate a C4 ID for any contiguous block of data...
-  id := c4.Identify(strings.NewReader("alfa"))
-  fmt.Println(id)
-  // output: c43zYcLni5LF9rR4Lg4B8h3Jp8SBwjcnyyeh4bc6gTPHndKuKdjUWx1kJPYhZxYt3zV6tQXpDs2shPsPYjgG81wZM1
-
-  // Generate a C4 ID for any number of non-contiguous blocks...
-  var ids c4.IDs
-  var inputs = []string{"alfa", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india"}
-  for _, input := range inputs {
+// Identify a set of blocks (order-independent)
+var ids c4.IDs
+for _, input := range inputs {
     ids = append(ids, c4.Identify(strings.NewReader(input)))
-  }
-  fmt.Println(ids.ID())
-  // output: c435RzTWWsjWD1Fi7dxS3idJ7vFgPVR96oE95RfDDT5ue7hRSPENePDjPDJdnV46g7emDzWK8LzJUjGESMG5qzuXqq
 }
+setID := ids.ID()
 ```
 
 ---
 
-### Releases
-
-Current release: [v0.8.0](https://github.com/Avalanche-io/c4/tree/v0.8.0)
-
 ### Links
 
-Videos:
-  - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU)
-  - [The Magic of C4](https://youtu.be/vzh0JzKhY4o)
-
-[C4 ID Whitepaper](http://www.cccc.io/c4id-whitepaper-u2.pdf)
+- [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU) (video)
+- [The Magic of C4](https://youtu.be/vzh0JzKhY4o) (video)
+- [C4 ID Whitepaper](http://www.cccc.io/c4id-whitepaper-u2.pdf)
 
 ### Contributing
 
-Contributions are welcome. The following are some general guidelines for project organization. If you have questions please open an issue.
-
-The `master` branch holds the current release, and older releases can be found by their version number. The `dev` branch represents the development branch from which bug and feature branches should be taken. Pull requests that are accepted will be merged against the `dev` branch and then pushed to versioned releases as appropriate.
-
-Feature and bug branches should follow the github integrated naming convention.  Features should be given the `new` tag, and bugs the `bug` tag.  Here is an example of checking out a feature branch:
-
-```bash
-> git checkout dev
-Switched to branch 'dev'
-Your branch is up-to-date with 'origin/dev'.
-> git checkout -b new/#99_some_github_issue
-...
-```
-
-If a branch for an issue is already listed in this repository, then check it out and work from it.
+Contributions welcome. Branch from `dev`, submit PRs against `dev`. The `master` branch holds tagged releases.
 
 ### License
-This software is released under the MIT license.  See [LICENSE](./LICENSE) for more information.
+
+MIT. See [LICENSE](./LICENSE).
