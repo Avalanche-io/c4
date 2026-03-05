@@ -70,11 +70,17 @@ While the canonical form is required for C4 ID computation, parsers SHOULD accep
 
 ### Column Alignment Rules
 
-For column-aligned C4 IDs:
-- Start at column 80 by default
-- If the longest line (excluding C4 ID) exceeds column 70, shift to the next 10-column boundary
-- Maintain at least 2 spaces between the rightmost content and the C4 ID column
-- Example column positions: 80, 90, 100, 110, etc.
+**Canonical form** uses no alignment:
+- Single space between every field
+- No padding, no extra whitespace
+- C4 ID immediately follows the last field with exactly one space
+
+**Ergonomic (pretty-print) form** aligns C4 IDs at a consistent column:
+- Default C4 ID column: 80
+- If the longest line (excluding C4 ID) plus 10 exceeds column 80, shift to the next 10-column boundary (90, 100, 110, ...)
+- Minimum 10 spaces between the end of content and the C4 ID
+- Size fields are right-aligned and padded to match the widest size value
+- Comma separators are used for thousands in sizes (e.g., `1,234,567`)
 
 ### Parser Requirements
 
