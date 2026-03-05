@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -14,6 +16,17 @@ import (
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
+
+// c4dClient has proper timeouts: 10s to connect, 30s for response headers,
+// but unlimited time for body transfer (correct for large files).
+var c4dClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 10 * time.Second,
+		}).DialContext,
+		ResponseHeaderTimeout: 30 * time.Second,
+	},
+}
 
 // runCp implements "c4 cp" — the universal copy verb.
 //
@@ -130,12 +143,14 @@ func cpLocalToCapsule(src, dst pathspec.PathSpec) {
 
 	// Push file content to c4d
 	pushed := 0
+	pushFailed := 0
 	filepath.Walk(src.Source, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
 		if err := putToC4d(path); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: c4d push failed for %s: %v\n", filepath.Base(path), err)
+			fmt.Fprintf(os.Stderr, "error: c4d push failed for %s: %v\n", filepath.Base(path), err)
+			pushFailed++
 		} else {
 			pushed++
 		}
@@ -145,6 +160,10 @@ func cpLocalToCapsule(src, dst pathspec.PathSpec) {
 	fmt.Printf("captured %d entries into %s\n", added, dst)
 	if pushed > 0 {
 		fmt.Printf("pushed %d files to c4d\n", pushed)
+	}
+	if pushFailed > 0 {
+		fmt.Fprintf(os.Stderr, "error: %d files not stored in c4d — materialization will fail for unstored content\n", pushFailed)
+		os.Exit(1)
 	}
 }
 
@@ -197,7 +216,9 @@ func cpFileIntoCapsule(filePath string, dst pathspec.PathSpec) {
 
 	// Push file content to c4d
 	if err := putToC4d(filePath); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: c4d push failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: c4d push failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "c4m updated, but content not stored — materialization will fail\n")
+		os.Exit(1)
 	}
 
 	fmt.Printf("captured %s into %s\n", filepath.Base(filePath), dst)
@@ -307,29 +328,35 @@ func cpCapsuleToLocal(src, dst pathspec.PathSpec) {
 	fmt.Printf("materialized %d entries from %s to %s\n", created, src, destDir)
 }
 
-// writeFileContent fetches content from c4d and writes it to path.
-// Falls back to a stub file if c4d is unreachable.
+// writeFileContent fetches content from c4d and streams it to path.
+// Returns an error if content cannot be fetched — never writes stubs.
 func writeFileContent(path string, entry *c4m.Entry) error {
+	if entry.C4ID.IsNil() {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm()|0644)
+		if err != nil {
+			return err
+		}
+		return f.Close()
+	}
+
+	// Fetch from c4d and stream directly to file (no memory buffering)
+	resp, err := c4dClient.Get(c4dAddr() + "/" + entry.C4ID.String())
+	if err != nil {
+		return fmt.Errorf("c4d fetch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("c4d fetch: %s", resp.Status)
+	}
+
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm()|0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	if entry.C4ID.IsNil() {
-		return nil
-	}
-
-	// Try to fetch from c4d
-	data, err := getFromC4d(entry.C4ID)
-	if err == nil {
-		_, err = f.Write(data)
-		return err
-	}
-
-	// Fall back to stub
-	fmt.Fprintf(os.Stderr, "warning: c4d fetch failed for %s, writing stub\n", entry.C4ID)
-	_, err = fmt.Fprintf(f, "# c4 stub: content available via c4d\n# C4ID: %s\n# Size: %d\n", entry.C4ID, entry.Size)
+	_, err = io.Copy(f, resp.Body)
 	return err
 }
 
@@ -356,7 +383,7 @@ func putToC4d(filePath string) error {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c4dClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -366,20 +393,6 @@ func putToC4d(filePath string) error {
 		return fmt.Errorf("c4d PUT: %s", resp.Status)
 	}
 	return nil
-}
-
-// getFromC4d fetches content from c4d by C4 ID.
-func getFromC4d(id c4.ID) ([]byte, error) {
-	resp, err := http.Get(c4dAddr() + "/" + id.String())
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("c4d GET: %s", resp.Status)
-	}
-	return io.ReadAll(resp.Body)
 }
 
 // loadManifest loads a c4m file, returns error if not found.

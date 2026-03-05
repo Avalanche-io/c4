@@ -484,11 +484,12 @@ func TestMkdirDeepNested(t *testing.T) {
 func TestEstablishmentLifecycle(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
+	mockURL := startMockC4d(t)
 
 	runInDir := func(args ...string) ([]byte, error) {
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "C4D_ADDR=http://127.0.0.1:1")
+		cmd.Env = append(os.Environ(), "C4D_ADDR="+mockURL)
 		return cmd.CombinedOutput()
 	}
 

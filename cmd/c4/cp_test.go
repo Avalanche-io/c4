@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Avalanche-io/c4"
@@ -15,6 +17,37 @@ import (
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
+
+// startMockC4d starts a test HTTP server that accepts PUT (store) and GET (retrieve)
+// requests, mimicking c4d's content-addressed storage behavior.
+func startMockC4d(t *testing.T) string {
+	var mu sync.Mutex
+	store := make(map[string][]byte)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			data, _ := io.ReadAll(r.Body)
+			id := c4.Identify(bytes.NewReader(data))
+			mu.Lock()
+			store[id.String()] = data
+			mu.Unlock()
+		case http.MethodGet:
+			key := strings.TrimPrefix(r.URL.Path, "/")
+			mu.Lock()
+			data, ok := store[key]
+			mu.Unlock()
+			if ok {
+				w.Write(data)
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	t.Cleanup(ts.Close)
+	return ts.URL
+}
 
 var testBinaryPath string
 
@@ -275,35 +308,39 @@ func TestPutToC4dError(t *testing.T) {
 	}
 }
 
-func TestGetFromC4d(t *testing.T) {
+func TestWriteFileContentStreams(t *testing.T) {
+	content := "streamed file content"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		// Echo back the requested ID path as content
-		w.Write([]byte("file content for " + r.URL.Path))
+		w.Write([]byte(content))
 	}))
 	defer ts.Close()
 
 	t.Setenv("C4D_ADDR", ts.URL)
 
-	// Use a nil ID to test the basic HTTP flow
-	// getFromC4d uses id.String() — we need a real ID
-	// Instead, test with the server accepting any path
-	// We'll construct a dummy request manually
-	resp, err := http.Get(ts.URL + "/someID")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
+	id := identifyString(content)
+	entry := &c4m.Entry{
+		Name: "out.txt",
+		Mode: 0644,
+		Size: int64(len(content)),
+		C4ID: id,
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want 200", resp.StatusCode)
+	if err := writeFileContent(path, entry); err != nil {
+		t.Fatalf("writeFileContent: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if string(got) != content {
+		t.Errorf("content = %q, want %q", got, content)
 	}
 }
 
-func TestGetFromC4dNotFound(t *testing.T) {
+func TestWriteFileContentFailsOnNotFound(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -311,11 +348,19 @@ func TestGetFromC4dNotFound(t *testing.T) {
 
 	t.Setenv("C4D_ADDR", ts.URL)
 
-	// Use a real C4 ID
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
 	id := identifyString("test content")
-	_, err := getFromC4d(id)
+	entry := &c4m.Entry{
+		Name: "out.txt",
+		Mode: 0644,
+		Size: 12,
+		C4ID: id,
+	}
+
+	err := writeFileContent(path, entry)
 	if err == nil {
-		t.Error("expected error for 404 response")
+		t.Error("expected error for 404 response, got nil")
 	}
 }
 
@@ -499,17 +544,16 @@ func TestCpCapsuleToLocalIntegration(t *testing.T) {
 	}
 }
 
-func TestCpCapsuleToLocalStubFallback(t *testing.T) {
+func TestWriteFileContentErrorsOnFetchFailure(t *testing.T) {
 	dir := t.TempDir()
 
-	// Start a mock c4d that returns errors
+	// Mock c4d that returns 404 for all content
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer ts.Close()
 	t.Setenv("C4D_ADDR", ts.URL)
 
-	// Create a file entry with a non-nil ID
 	fileID := identifyString("some content")
 	entry := &c4m.Entry{
 		Name: "test.txt",
@@ -519,20 +563,12 @@ func TestCpCapsuleToLocalStubFallback(t *testing.T) {
 	}
 
 	outPath := filepath.Join(dir, "test.txt")
-	if err := writeFileContent(outPath, entry); err != nil {
-		t.Fatalf("writeFileContent: %v", err)
+	err := writeFileContent(outPath, entry)
+	if err == nil {
+		t.Fatal("expected error when c4d returns 404, got nil")
 	}
-
-	// Should have written a stub
-	data, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if !strings.Contains(string(data), "c4 stub") {
-		t.Errorf("expected stub content, got %q", data)
-	}
-	if !strings.Contains(string(data), "Size: 12") {
-		t.Errorf("stub should contain size, got %q", data)
+	if !strings.Contains(err.Error(), "c4d fetch") {
+		t.Errorf("error should mention c4d fetch, got: %v", err)
 	}
 }
 
@@ -765,6 +801,7 @@ func TestCpSubprocessNotEstablished(t *testing.T) {
 func TestCpSubprocessCaptureAndMaterialize(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
+	mockURL := startMockC4d(t)
 
 	// Create source files
 	os.MkdirAll(filepath.Join(dir, "src"), 0755)
@@ -773,7 +810,7 @@ func TestCpSubprocessCaptureAndMaterialize(t *testing.T) {
 	runInDir := func(args ...string) ([]byte, error) {
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "C4D_ADDR=http://127.0.0.1:1")
+		cmd.Env = append(os.Environ(), "C4D_ADDR="+mockURL)
 		return cmd.CombinedOutput()
 	}
 
@@ -791,16 +828,16 @@ func TestCpSubprocessCaptureAndMaterialize(t *testing.T) {
 		t.Errorf("expected 'captured' message, got %q", out)
 	}
 
-	// Verify capsule exists and has content
+	// Verify c4m file exists and has content
 	loaded, err := loadManifest(filepath.Join(dir, "test.c4m"))
 	if err != nil {
-		t.Fatalf("load capsule: %v", err)
+		t.Fatalf("load c4m: %v", err)
 	}
 	if len(loaded.Entries) == 0 {
-		t.Error("capsule has no entries after capture")
+		t.Error("c4m has no entries after capture")
 	}
 
-	// Materialize (will write stubs since c4d is unreachable)
+	// Materialize — should produce real content via mock c4d
 	out, err = runInDir("cp", "test.c4m:", "out")
 	if err != nil {
 		t.Fatalf("cp materialize: %v\n%s", err, out)
@@ -809,15 +846,20 @@ func TestCpSubprocessCaptureAndMaterialize(t *testing.T) {
 		t.Errorf("expected 'materialized' message, got %q", out)
 	}
 
-	// File should exist (as stub since c4d is down)
-	if _, err := os.Stat(filepath.Join(dir, "out", "hello.txt")); err != nil {
-		t.Errorf("hello.txt not created: %v", err)
+	// Verify actual file content (not a stub)
+	data, err := os.ReadFile(filepath.Join(dir, "out", "hello.txt"))
+	if err != nil {
+		t.Fatalf("hello.txt not created: %v", err)
+	}
+	if string(data) != "hello world" {
+		t.Errorf("hello.txt content = %q, want %q", data, "hello world")
 	}
 }
 
 func TestCpSubprocessRecursiveFlag(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
+	mockURL := startMockC4d(t)
 
 	// Create nested source
 	os.MkdirAll(filepath.Join(dir, "src", "sub"), 0755)
@@ -827,7 +869,7 @@ func TestCpSubprocessRecursiveFlag(t *testing.T) {
 	runInDir := func(args ...string) ([]byte, error) {
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "C4D_ADDR=http://127.0.0.1:1")
+		cmd.Env = append(os.Environ(), "C4D_ADDR="+mockURL)
 		return cmd.CombinedOutput()
 	}
 
@@ -856,13 +898,14 @@ func TestCpSubprocessRecursiveFlag(t *testing.T) {
 func TestCpSubprocessCaptureSubpath(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
+	mockURL := startMockC4d(t)
 
 	os.WriteFile(filepath.Join(dir, "frame.exr"), []byte("frame data"), 0644)
 
 	runInDir := func(args ...string) ([]byte, error) {
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "C4D_ADDR=http://127.0.0.1:1")
+		cmd.Env = append(os.Environ(), "C4D_ADDR="+mockURL)
 		return cmd.CombinedOutput()
 	}
 
