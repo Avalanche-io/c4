@@ -1314,6 +1314,18 @@ func TestDataBlock(t *testing.T) {
 		}
 	})
 
+	t.Run("CRLF rejected in data block", func(t *testing.T) {
+		id1 := c4.Identify(strings.NewReader("test1"))
+		content := id1.String() + "\r\n"
+		_, err := ParseDataBlock(c4.ID{}, content)
+		if err == nil {
+			t.Fatal("expected error for CRLF in data block")
+		}
+		if !strings.Contains(err.Error(), "CR") {
+			t.Errorf("expected CR error, got: %v", err)
+		}
+	})
+
 	t.Run("GetIDList from block", func(t *testing.T) {
 		list := newIDList()
 		id1 := c4.Identify(strings.NewReader("test1"))
