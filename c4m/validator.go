@@ -269,7 +269,7 @@ func (v *Validator) validateEntry(line string) {
 	name, symTarget, c4id := v.parseNameAndRest(fields[nameStart:])
 	
 	// Update statistics
-	v.updateStats(mode, timestamp, size, name, c4id)
+	v.updateStats(depthLevel, mode, timestamp, size, name, c4id)
 	
 	// Check files-before-directories rule at same depth
 	isDir := strings.HasSuffix(name, "/")
@@ -701,11 +701,10 @@ func (v *Validator) handleDirective(line string) {
 }
 
 // updateStats updates validation statistics based on an entry
-func (v *Validator) updateStats(mode, timestamp, sizeStr, name, c4id string) {
+func (v *Validator) updateStats(depth int, mode, timestamp, sizeStr, name, c4id string) {
 	v.stats.TotalEntries++
-	
+
 	// Track depth
-	depth := v.lastDepth
 	if depth > v.stats.MaxDepth {
 		v.stats.MaxDepth = depth
 	}
