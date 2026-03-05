@@ -1,0 +1,381 @@
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+)
+
+// --- mk subprocess tests ---
+
+func TestMkCapsule(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	cmd := exec.Command(bin, "mk", "test.c4m:")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mk: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "established") {
+		t.Errorf("expected 'established' message, got %q", out)
+	}
+
+	// Verify marker file exists
+	if !establish.IsCapsuleEstablished(filepath.Join(dir, "test.c4m")) {
+		t.Error("capsule not established after mk")
+	}
+}
+
+func TestMkCapsuleIdempotent(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	runMk := func() ([]byte, error) {
+		cmd := exec.Command(bin, "mk", "test.c4m:")
+		cmd.Dir = dir
+		return cmd.CombinedOutput()
+	}
+
+	// First call establishes
+	if out, err := runMk(); err != nil {
+		t.Fatalf("mk first: %v\n%s", err, out)
+	}
+
+	// Second call reports already established (exits 0)
+	out, err := runMk()
+	if err != nil {
+		t.Fatalf("mk second: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "already established") {
+		t.Errorf("expected 'already established', got %q", out)
+	}
+}
+
+func TestMkLocation(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	// Override HOME so location registry is in temp dir
+	cmd := exec.Command(bin, "mk", "studio:", "cloud.example.com:7433")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "HOME="+dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mk location: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "established") {
+		t.Errorf("expected 'established' message, got %q", out)
+	}
+}
+
+func TestMkLocationMissingAddress(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	cmd := exec.Command(bin, "mk", "studio:")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "HOME="+dir)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for location without address")
+	}
+	if !strings.Contains(string(out), "address") {
+		t.Errorf("expected 'address' in error, got %q", out)
+	}
+}
+
+func TestMkNoColonSuffix(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	cmd := exec.Command(bin, "mk", "test.c4m")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for target without colon")
+	}
+	if !strings.Contains(string(out), "colon") {
+		t.Errorf("expected 'colon' in error, got %q", out)
+	}
+}
+
+func TestMkUsage(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	cmd := exec.Command(bin, "mk")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected non-zero exit for no args")
+	}
+	if !strings.Contains(string(out), "Usage") {
+		t.Errorf("expected usage message, got %q", out)
+	}
+}
+
+// --- rm subprocess tests ---
+
+func TestRmCapsule(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	// First establish
+	establish.EstablishCapsule(filepath.Join(dir, "test.c4m"))
+
+	// Then remove
+	cmd := exec.Command(bin, "rm", "test.c4m:")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("rm: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "removed") {
+		t.Errorf("expected 'removed' message, got %q", out)
+	}
+
+	// Verify no longer established
+	if establish.IsCapsuleEstablished(filepath.Join(dir, "test.c4m")) {
+		t.Error("capsule still established after rm")
+	}
+}
+
+func TestRmCapsuleNotEstablished(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	cmd := exec.Command(bin, "rm", "test.c4m:")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for non-established capsule")
+	}
+	if !strings.Contains(string(out), "not established") {
+		t.Errorf("expected 'not established' in error, got %q", out)
+	}
+}
+
+func TestRmLocation(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	// Set HOME to temp dir and establish location
+	os.Setenv("HOME", dir)
+	defer os.Unsetenv("HOME")
+	establish.EstablishLocation("studio", "cloud:7433")
+
+	cmd := exec.Command(bin, "rm", "studio:")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "HOME="+dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("rm location: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "removed") {
+		t.Errorf("expected 'removed' message, got %q", out)
+	}
+}
+
+func TestRmNoColonSuffix(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	cmd := exec.Command(bin, "rm", "test.c4m")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for target without colon")
+	}
+	if !strings.Contains(string(out), "colon") {
+		t.Errorf("expected 'colon' in error, got %q", out)
+	}
+}
+
+func TestRmUsage(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	cmd := exec.Command(bin, "rm")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected non-zero exit for no args")
+	}
+	if !strings.Contains(string(out), "Usage") {
+		t.Errorf("expected usage message, got %q", out)
+	}
+}
+
+// --- mkdir subprocess tests ---
+
+func TestMkdirBasic(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	// Establish capsule first
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	cmd := exec.Command(bin, "mkdir", "project.c4m:renders/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mkdir: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "created") {
+		t.Errorf("expected 'created' message, got %q", out)
+	}
+
+	// Verify directory was added to manifest
+	loaded, err := loadManifest(filepath.Join(dir, "project.c4m"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	found := false
+	for _, e := range loaded.Entries {
+		if e.Name == "renders/" && e.IsDir() {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("renders/ not found in manifest after mkdir")
+	}
+}
+
+func TestMkdirNotEstablished(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	cmd := exec.Command(bin, "mkdir", "project.c4m:renders/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for non-established capsule")
+	}
+	if !strings.Contains(string(out), "not established") {
+		t.Errorf("expected 'not established' error, got %q", out)
+	}
+}
+
+func TestMkdirNoSubpath(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	cmd := exec.Command(bin, "mkdir", "project.c4m:")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for mkdir without subpath")
+	}
+	if !strings.Contains(string(out), "must specify") {
+		t.Errorf("expected 'must specify' error, got %q", out)
+	}
+}
+
+func TestMkdirIdempotent(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+
+	runMkdir := func() ([]byte, error) {
+		cmd := exec.Command(bin, "mkdir", "project.c4m:renders/")
+		cmd.Dir = dir
+		return cmd.CombinedOutput()
+	}
+
+	// First call creates
+	if out, err := runMkdir(); err != nil {
+		t.Fatalf("mkdir first: %v\n%s", err, out)
+	}
+
+	// Second call reports already exists (exits 0)
+	out, err := runMkdir()
+	if err != nil {
+		t.Fatalf("mkdir second: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "already exists") {
+		t.Errorf("expected 'already exists', got %q", out)
+	}
+}
+
+func TestMkdirLocalPath(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	// Should fail because mkdir requires a capsule path
+	cmd := exec.Command(bin, "mkdir", "localdir/")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected error for local path")
+	}
+	if !strings.Contains(string(out), "capsule") {
+		t.Errorf("expected 'capsule' in error, got %q", out)
+	}
+}
+
+func TestMkdirUsage(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	cmd := exec.Command(bin, "mkdir")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected non-zero exit for no args")
+	}
+	if !strings.Contains(string(out), "Usage") {
+		t.Errorf("expected usage message, got %q", out)
+	}
+}
+
+// --- mk + mkdir + rm integration test ---
+
+func TestEstablishmentLifecycle(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	runInDir := func(args ...string) ([]byte, error) {
+		cmd := exec.Command(bin, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "C4D_ADDR=http://127.0.0.1:1")
+		return cmd.CombinedOutput()
+	}
+
+	// 1. mk capsule
+	out, err := runInDir("mk", "project.c4m:")
+	if err != nil {
+		t.Fatalf("mk: %v\n%s", err, out)
+	}
+
+	// 2. mkdir inside capsule
+	out, err = runInDir("mkdir", "project.c4m:renders/")
+	if err != nil {
+		t.Fatalf("mkdir: %v\n%s", err, out)
+	}
+
+	// 3. cp file into capsule
+	os.WriteFile(filepath.Join(dir, "test.txt"), []byte("data"), 0644)
+	out, err = runInDir("cp", "test.txt", "project.c4m:")
+	if err != nil {
+		t.Fatalf("cp: %v\n%s", err, out)
+	}
+
+	// 4. Verify manifest has both entries
+	loaded, err := loadManifest(filepath.Join(dir, "project.c4m"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(loaded.Entries) < 2 {
+		t.Errorf("expected at least 2 entries, got %d", len(loaded.Entries))
+	}
+
+	// 5. rm establishment
+	out, err = runInDir("rm", "project.c4m:")
+	if err != nil {
+		t.Fatalf("rm: %v\n%s", err, out)
+	}
+
+	// 6. cp should now fail (not established)
+	out, err = runInDir("cp", "test.txt", "project.c4m:")
+	if err == nil {
+		t.Error("expected error after rm — capsule should not be established")
+	}
+}
