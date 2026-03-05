@@ -12,15 +12,26 @@ import (
 
 // runMkdir implements "c4 mkdir" — create a directory entry in a capsule.
 //
-//	c4 mkdir project.c4m:renders/
-//	c4 mkdir project.c4m:renders/shots/
+//	c4 mkdir project.c4m:renders/             # create renders/ (parent must exist or be root)
+//	c4 mkdir -p project.c4m:renders/shots/    # create renders/ and shots/ if needed
 func runMkdir(args []string) {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 mkdir <capsule>.c4m:<path>/\n")
+	// Parse -p flag
+	var createParents bool
+	var filtered []string
+	for _, a := range args {
+		if a == "-p" {
+			createParents = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+
+	if len(filtered) != 1 {
+		fmt.Fprintf(os.Stderr, "Usage: c4 mkdir [-p] <capsule>.c4m:<path>/\n")
 		os.Exit(1)
 	}
 
-	spec, err := pathspec.Parse(args[0], establish.IsLocationEstablished)
+	spec, err := pathspec.Parse(filtered[0], establish.IsLocationEstablished)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -56,20 +67,27 @@ func runMkdir(args []string) {
 		os.Exit(1)
 	}
 
-	// Check if directory already exists
-	for _, e := range manifest.Entries {
-		if e.Name == dirPath {
-			fmt.Fprintf(os.Stderr, "%s already exists in %s\n", dirPath, spec.Source)
-			os.Exit(0)
+	// Decompose path into components: "renders/shots/" -> ["renders", "shots"]
+	parts := strings.Split(strings.TrimSuffix(dirPath, "/"), "/")
+
+	var created bool
+	if createParents {
+		// -p mode: create all missing intermediate directories
+		created = mkdirParents(manifest, parts)
+	} else {
+		// Standard mode: parent must already exist
+		var err error
+		created, err = mkdirStrict(manifest, parts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
 	}
 
-	// Add directory entry
-	manifest.AddEntry(&c4m.Entry{
-		Name: dirPath,
-		Mode: os.ModeDir | 0755,
-		Size: -1,
-	})
+	if !created {
+		fmt.Fprintf(os.Stderr, "%s already exists in %s\n", dirPath, spec.Source)
+		os.Exit(0)
+	}
 
 	manifest.SortEntries()
 
@@ -80,6 +98,64 @@ func runMkdir(args []string) {
 	}
 
 	fmt.Printf("created %s:%s\n", spec.Source, dirPath)
+}
+
+// mkdirStrict creates the final directory only if all parents exist.
+// Returns (created, error). created is false if the directory already exists.
+func mkdirStrict(manifest *c4m.Manifest, parts []string) (bool, error) {
+	// Verify all parents exist (all but the last component)
+	for i := 0; i < len(parts)-1; i++ {
+		dirName := parts[i] + "/"
+		if !dirExistsInManifest(manifest, dirName, i) {
+			missing := strings.Join(parts[:i+1], "/") + "/"
+			return false, fmt.Errorf("cannot create directory: %s does not exist (use -p to create parents)", missing)
+		}
+	}
+
+	// Create the final directory if it doesn't exist
+	finalName := parts[len(parts)-1] + "/"
+	finalDepth := len(parts) - 1
+	if dirExistsInManifest(manifest, finalName, finalDepth) {
+		return false, nil
+	}
+
+	manifest.AddEntry(&c4m.Entry{
+		Name:  finalName,
+		Depth: finalDepth,
+		Mode:  os.ModeDir | 0755,
+		Size:  -1,
+	})
+	return true, nil
+}
+
+// mkdirParents creates all missing directories in the path (-p mode).
+// Returns true if any directory was created.
+func mkdirParents(manifest *c4m.Manifest, parts []string) bool {
+	created := false
+	for i, part := range parts {
+		dirName := part + "/"
+		if dirExistsInManifest(manifest, dirName, i) {
+			continue
+		}
+		manifest.AddEntry(&c4m.Entry{
+			Name:  dirName,
+			Depth: i,
+			Mode:  os.ModeDir | 0755,
+			Size:  -1,
+		})
+		created = true
+	}
+	return created
+}
+
+// dirExistsInManifest checks if a directory entry exists at the given depth.
+func dirExistsInManifest(manifest *c4m.Manifest, name string, depth int) bool {
+	for _, e := range manifest.Entries {
+		if e.Name == name && e.Depth == depth && e.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 // loadOrCreateManifest loads a c4m file, or creates a new empty manifest.
