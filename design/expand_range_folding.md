@@ -126,7 +126,16 @@ c4BBB...
 
 In practice, if `@expand` is present, `@data` is redundant (the C4 IDs are extractable from the expanded entries). Implementations should prefer `@expand` when individual metadata matters and `@data` when only C4 IDs are needed.
 
-## 4. Identity Impact
+## 4. Identity Impact — DECIDED: Option A
+
+### Decision
+
+**Option A is correct.** Folded and unfolded forms have different C4 IDs. This was decided by Joshua on 2025-03-05 with the following reasoning:
+
+1. **Folding is lossy.** Individual per-frame metadata (timestamps, sizes) aggregates into a single line. The folded form is a different description than the unfolded form — different text, different identity. Claiming otherwise would be dishonest.
+2. **Once folded, identity is idempotent.** Hydrate (via `@expand`) and re-scan always produces the same folded ID. The round-trip is stable after the first fold.
+3. **If individual per-frame metadata matters, don't fold.** That's what `@expand` and the unfolded form are for. The user chooses the representation that matches their needs.
+4. **Option B is rejected.** It would pretend metadata loss didn't happen, which violates C4's honesty-about-content philosophy.
 
 ### Key Finding: Folding Changes Parent Directory Identity
 
@@ -146,41 +155,17 @@ This is the most critical finding. A directory containing 3 individual files has
 
 These are different texts → different C4 IDs for the parent directory. This means `c4 scan dir/` produces different directory IDs depending on whether sequence detection is enabled.
 
-### The Tension
+### Why This Is Correct
 
-The spec says sequences are "virtual containers" (SPECIFICATION.md line 235: "This treats the sequence as a virtual container of its members"). This implies ranges are structurally significant — like directories, they are containers that participate in identity.
+Ranges ARE containers. The spec says sequences are "virtual containers" (SPECIFICATION.md line 235: "This treats the sequence as a virtual container of its members"). A directory with a range is structurally different from a directory with individual files — because folding is lossy, aggregating per-frame metadata into a single line. Identity reflects structure, and different structures produce different identities.
 
-But from the filesystem perspective, the directory contains 3 files regardless of how we represent them. Folding should be purely presentational — it shouldn't change what the c4m file *means*.
+The "same filesystem → same identity" intuition is misleading here. The c4m file describes the filesystem at a chosen level of detail. Folded and unfolded are two different (both valid) descriptions. Neither is wrong — they capture different amounts of metadata. C4 is honest about what each description contains.
 
-### Two Possible Resolutions
+### Implications
 
-**Option A: Accept structural identity (current behavior)**
-
-Ranges ARE containers. A directory with a range is structurally different from a directory with individual files. Identity reflects structure, not just content.
-
-- Pro: Consistent with current code and spec
-- Pro: Simpler implementation (no expansion during C4 ID computation)
-- Con: `c4 scan dir/` and `c4 scan --no-fold dir/` produce different directory C4 IDs for the same filesystem
-- Con: Violates "same filesystem → same identity" intuition
-
-**Option B: Presentational folding (expand before identity computation)**
-
-When computing a directory's C4 ID, expand all ranges first, then compute from individual entries. This makes folding purely presentational — it never affects identity.
-
-- Pro: `c4 scan dir/` always produces the same directory C4 ID regardless of folding
-- Pro: Matches "c4m describes a filesystem" philosophy
-- Con: Expensive for large ranges (must expand before computing parent ID)
-- Con: Requires changing both spec and code
-- Con: The sequence C4 ID (computed from members) becomes internal-only — never appears in canonical form
-
-**Recommendation: Option B warrants serious consideration** but is a significant change. The current spec explicitly defines sequence C4 IDs and treats them as identity-bearing. Changing this should be a deliberate decision, not a side effect of implementing `@expand`.
-
-### Pragmatic Path Forward
-
-Regardless of which option is chosen:
-1. **Document the behavior clearly.** Users should know that `--fold` vs `--no-fold` affects directory C4 IDs (today).
-2. **`@expand` blocks do NOT affect identity.** The `@expand` section is metadata — it enriches the manifest but doesn't change C4 IDs. Only the range entry line (or individual entry lines) participate in identity computation.
-3. **If Option B is chosen later**, it can be implemented without changing the `@expand` format. The format is orthogonal to the identity model.
+1. **`--fold` vs `--no-fold` produces different directory C4 IDs.** This is expected and correct. Document it clearly so users understand the trade-off.
+2. **`@expand` blocks do NOT affect identity.** The `@expand` section is metadata — it enriches the c4m file but doesn't change C4 IDs. Only the range entry line (or individual entry lines) participate in identity computation.
+3. **Idempotency after folding.** Once a description is folded, it stays stable: fold(expand(fold(entries))) = fold(entries), because `@expand` preserves the exact entries that produced the aggregation.
 
 ## 5. Concrete Test Cases
 
@@ -274,9 +259,9 @@ Add `--expand` flag to `c4 scan`:
 - When `--fold --expand` is active, produce range entries AND `@expand` blocks with full individual entries
 - When `--no-fold` is active, produce individual entries (no ranges, no `@expand`)
 
-### Phase 4: Identity Decision
+### Phase 4: Identity Documentation
 
-Decide between Option A (structural identity) and Option B (presentational folding). This is independent of `@expand` implementation and can be deferred.
+Document that folded and unfolded forms have different C4 IDs (Option A — decided). Update CLI help text and user-facing docs to explain the `--fold`/`--no-fold` trade-off.
 
 ## Open Questions
 
@@ -286,4 +271,4 @@ Decide between Option A (structural identity) and Option B (presentational foldi
 
 3. **Can `@expand` exist without a corresponding range entry?** If so, it would mean "here are entries that COULD be folded but shouldn't be." This is closer to `@nofold` semantics. (Recommended: no — `@expand` always references an existing range.)
 
-4. **Identity resolution timeline.** Option A vs B is a foundational decision that affects all downstream tooling. It should be decided before v1.0 stability guarantees.
+4. ~~**Identity resolution timeline.**~~ **DECIDED.** Option A — folded and unfolded forms have different C4 IDs. Folding is lossy and identity is honest about that.
