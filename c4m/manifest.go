@@ -504,33 +504,36 @@ func getDirectoryChildren(entries []*Entry, dir *Entry) []*Entry {
 	return children
 }
 
-// calculateDirectorySize computes the total size of all entries
-// This is the sum of all file sizes recursively, excluding null sizes
+// calculateDirectorySize computes the total size of direct children.
+// Nil-infectious: if any child has null size (-1), the result is null (-1).
 func calculateDirectorySize(entries []*Entry) int64 {
 	var total int64
 	for _, e := range entries {
-		if e.Size >= 0 { // Skip null sizes (-1)
-			total += e.Size
+		if e.Size < 0 {
+			return -1 // unknown propagates upward
 		}
+		total += e.Size
 	}
 	return total
 }
 
-// getMostRecentModtime finds the most recent modification time among entries
-// Returns current time if no valid timestamps found
+// getMostRecentModtime finds the most recent modification time among entries.
+// Nil-infectious: if any child has a null timestamp, the result is null.
 func getMostRecentModtime(entries []*Entry) time.Time {
 	var mostRecent time.Time
+	null := NullTimestamp()
 
 	for _, e := range entries {
-		// Skip null timestamps (epoch)
-		if !e.Timestamp.Equal(NullTimestamp()) && e.Timestamp.After(mostRecent) {
+		if e.Timestamp.Equal(null) {
+			return null // unknown propagates upward
+		}
+		if e.Timestamp.After(mostRecent) {
 			mostRecent = e.Timestamp
 		}
 	}
 
-	// If no valid timestamps found, return null timestamp (epoch)
 	if mostRecent.IsZero() {
-		return NullTimestamp()
+		return null
 	}
 
 	return mostRecent

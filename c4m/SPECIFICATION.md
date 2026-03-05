@@ -327,8 +327,21 @@ The size field for a directory should represent the **total size of all contents
 - Does not include filesystem metadata overhead
 - Example: A directory containing two 100-byte files shows size 200
 
+#### Nil-Infectious Propagation
+If **any** child entry (file or subdirectory) has a null/unknown size, the parent
+directory's size MUST also be null. Unknown propagates upward — it is "infectious."
+A directory's size is only computable when all descendants have known sizes.
+
+- If a file has null size (-1), its parent directory has null size
+- If a subdirectory has null size (because one of its children has null size),
+  its parent directory also has null size
+- This rule applies recursively to the root
+
+The same rule applies to timestamps: if any child entry has a null/unknown
+timestamp, the parent directory's timestamp MUST also be null.
+
 ### Directory Timestamps
-Directory timestamps come directly from the filesystem's modification time for the directory itself (not derived from contents).
+Directory timestamps come directly from the filesystem's modification time for the directory itself (not derived from contents). When propagated from children (i.e., when the directory has no explicit timestamp), nil-infectious propagation applies: if any child has a null timestamp, the directory's timestamp is null.
 
 ### Computing Directory C4 IDs
 

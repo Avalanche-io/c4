@@ -869,13 +869,13 @@ func TestCalculateDirectorySize(t *testing.T) {
 			expected: 600,
 		},
 		{
-			name: "with null sizes",
+			name: "with null sizes (nil-infectious)",
 			entries: []*Entry{
 				{Name: "a.txt", Size: 100},
 				{Name: "b.txt", Size: -1}, // null
 				{Name: "c.txt", Size: 300},
 			},
-			expected: 400,
+			expected: -1, // any null makes total null
 		},
 		{
 			name: "all null sizes",
@@ -883,7 +883,7 @@ func TestCalculateDirectorySize(t *testing.T) {
 				{Name: "a.txt", Size: -1},
 				{Name: "b.txt", Size: -1},
 			},
-			expected: 0,
+			expected: -1,
 		},
 		{
 			name: "zero size files",
@@ -937,13 +937,13 @@ func TestGetMostRecentModtime(t *testing.T) {
 			expected: t2, // most recent
 		},
 		{
-			name: "with null timestamps",
+			name: "with null timestamps (nil-infectious)",
 			entries: []*Entry{
 				{Name: "a.txt", Timestamp: t1},
 				{Name: "b.txt", Timestamp: time.Unix(0, 0)}, // null (epoch)
 				{Name: "c.txt", Timestamp: t3},
 			},
-			expected: t3,
+			expected: NullTimestamp(), // any null makes result null
 		},
 		{
 			name: "all null timestamps returns null timestamp",
@@ -1072,6 +1072,73 @@ func TestPropagateMetadata(t *testing.T) {
 	t.Run("handles empty entries", func(t *testing.T) {
 		entries := []*Entry{}
 		propagateMetadata(entries) // Should not panic
+	})
+
+	t.Run("nil-infectious size: one child null makes parent null", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: t1, Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
+		file2 := &Entry{Name: "b.txt", Size: -1, Timestamp: t2, Depth: 1} // null size
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		if dir.Size != -1 {
+			t.Errorf("dir size should be null (-1) when child has null size, got %d", dir.Size)
+		}
+	})
+
+	t.Run("nil-infectious timestamp: one child null makes parent null", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: time.Unix(0, 0), Depth: 1} // null timestamp
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		if !dir.Timestamp.Equal(NullTimestamp()) {
+			t.Errorf("dir timestamp should be null when child has null timestamp, got %v", dir.Timestamp)
+		}
+		// Size should still be computed since all child sizes are known
+		if dir.Size != 300 {
+			t.Errorf("dir size should be 300 (size is independent of timestamp), got %d", dir.Size)
+		}
+	})
+
+	t.Run("nil-infectious deep nesting: grandchild null propagates to root", func(t *testing.T) {
+		root := &Entry{Name: "root/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		subdir := &Entry{Name: "sub/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 1}
+		file1 := &Entry{Name: "a.txt", Size: -1, Timestamp: t1, Depth: 2}  // null size in grandchild
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1} // known size at depth 1
+
+		entries := []*Entry{root, subdir, file1, file2}
+		propagateMetadata(entries)
+
+		// subdir gets null size from its child
+		if subdir.Size != -1 {
+			t.Errorf("subdir size should be null (-1), got %d", subdir.Size)
+		}
+		// root gets null size because subdir (a direct child) has null size
+		if root.Size != -1 {
+			t.Errorf("root size should be null (-1) due to grandchild nil propagation, got %d", root.Size)
+		}
+	})
+
+	t.Run("nil-infectious mixed: size null but timestamp known", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: -1, Timestamp: t1, Depth: 1}  // null size, known timestamp
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1} // known size, known timestamp
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		// Size should be null (one child has null size)
+		if dir.Size != -1 {
+			t.Errorf("dir size should be null (-1), got %d", dir.Size)
+		}
+		// Timestamp should be computed (all children have known timestamps)
+		if !dir.Timestamp.Equal(t2) {
+			t.Errorf("dir timestamp should be %v (most recent), got %v", t2, dir.Timestamp)
+		}
 	})
 }
 
