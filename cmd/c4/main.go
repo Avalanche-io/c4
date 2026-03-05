@@ -44,8 +44,10 @@ var (
 	bundleFlag   bool
 	resumeFlag   bool
 
-	// Gitignore flag
-	gitignoreFlag bool
+	// Filtering flags
+	gitignoreFlag    bool
+	excludePatterns  []string
+	excludeFromFiles []string
 
 	// Long-form aliases
 	helpFlag bool
@@ -74,6 +76,8 @@ func init() {
 	flag.StringVar(&formatFlag, "format", "c4m", "Output format: c4m, paths, json")
 	flag.BoolVar(&progressiveFlag, "progressive", false, "Progressive scan with interrupt support (Ctrl+T for status on macOS)")
 	flag.BoolVarP(&gitignoreFlag, "gitignore", "g", false, "Respect .gitignore files when scanning")
+	flag.StringArrayVar(&excludePatterns, "exclude", nil, "Exclude files matching pattern (repeatable)")
+	flag.StringArrayVar(&excludeFromFiles, "exclude-from", nil, "Read exclude patterns from file (repeatable)")
 
 	// Bundle flags
 	flag.BoolVar(&bundleFlag, "bundle", false, "Create/use C4M bundle for unbounded scans")
@@ -111,6 +115,8 @@ Examples:
   c4 --bundle --resume scan.c4m_bundle  # Resume incomplete bundle
   echo "data" | c4                  # C4 ID from piped input
   
+  c4 -mr --exclude '*.tmp' .        # Exclude patterns (repeatable)
+  c4 -mr --exclude-from .c4exclude . # Read exclude patterns from file
   c4 diff old.c4m new.c4m           # Compare two manifests
   c4 subtract needed.c4m . > todo.c4m  # Find missing files
 
@@ -314,6 +320,29 @@ func runProgressiveScan(dirPath string) error {
 	return cli.Run()
 }
 
+// collectExcludePatterns gathers all exclude patterns from --exclude flags
+// and --exclude-from files.
+func collectExcludePatterns() []string {
+	patterns := make([]string, 0, len(excludePatterns))
+	patterns = append(patterns, excludePatterns...)
+	for _, file := range excludeFromFiles {
+		f, err := os.Open(file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: cannot read exclude file %s: %v\n", file, err)
+			continue
+		}
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line != "" && !strings.HasPrefix(line, "#") {
+				patterns = append(patterns, line)
+			}
+		}
+		f.Close()
+	}
+	return patterns
+}
+
 func processDirectory(dirPath string) error {
 	// Check if progressive mode is requested
 	if progressiveFlag {
@@ -325,6 +354,9 @@ func processDirectory(dirPath string) error {
 		scan.WithC4IDs(!noIDsFlag),
 		scan.WithSymlinks(followFlag),
 		scan.WithGitignore(gitignoreFlag),
+	}
+	if patterns := collectExcludePatterns(); len(patterns) > 0 {
+		opts = append(opts, scan.WithExclude(patterns))
 	}
 
 	generator := scan.NewGeneratorWithOptions(opts...)
@@ -392,6 +424,20 @@ func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest,
 		// Check gitignore
 		if gi != nil && gi.Match(name, entry.IsDir()) {
 			continue
+		}
+
+		// Check exclude patterns
+		if patterns := collectExcludePatterns(); len(patterns) > 0 {
+			excluded := false
+			for _, pattern := range patterns {
+				if matched, _ := filepath.Match(pattern, name); matched {
+					excluded = true
+					break
+				}
+			}
+			if excluded {
+				continue
+			}
 		}
 
 		info, err := entry.Info()
@@ -631,13 +677,17 @@ func getSource(path string) c4m.Source {
 	}
 	
 	// Treat as filesystem path
+	opts := []scan.GeneratorOption{
+		scan.WithC4IDs(!noIDsFlag),
+		scan.WithSymlinks(followFlag),
+		scan.WithGitignore(gitignoreFlag),
+	}
+	if patterns := collectExcludePatterns(); len(patterns) > 0 {
+		opts = append(opts, scan.WithExclude(patterns))
+	}
 	return scan.FileSource{
-		Path: path,
-		Generator: scan.NewGeneratorWithOptions(
-			scan.WithC4IDs(!noIDsFlag),
-			scan.WithSymlinks(followFlag),
-			scan.WithGitignore(gitignoreFlag),
-		),
+		Path:      path,
+		Generator: scan.NewGeneratorWithOptions(opts...),
 	}
 }
 

@@ -30,6 +30,7 @@ func allTools() []toolDef {
 				prop("path", "string", "Directory path to scan"),
 				optProp("no_ids", "boolean", "Skip C4 ID computation for speed"),
 				optProp("gitignore", "boolean", "Respect .gitignore files when scanning"),
+				optProp("exclude", "array", "Glob patterns to exclude (e.g. [\"*.tmp\", \"build/\"])"),
 				optProp("pretty", "boolean", "Pretty-print with aligned columns"),
 				required("path"),
 			),
@@ -150,7 +151,7 @@ func toolScan(args map[string]any) toolResult {
 		return toolErr("path must be a directory")
 	}
 
-	manifest, err := scanDir(path, !boolean(args, "no_ids"), boolean(args, "gitignore"))
+	manifest, err := scanDir(path, !boolean(args, "no_ids"), boolean(args, "gitignore"), strSlice(args, "exclude"))
 	if err != nil {
 		return toolErr(err.Error())
 	}
@@ -394,7 +395,7 @@ func toolValidate(args map[string]any) toolResult {
 
 // --- Directory scanner ---
 
-func scanDir(root string, computeIDs, respectGitignore bool) (*c4m.Manifest, error) {
+func scanDir(root string, computeIDs, respectGitignore bool, excludePatterns []string) (*c4m.Manifest, error) {
 	manifest := c4m.NewManifest()
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -406,7 +407,7 @@ func scanDir(root string, computeIDs, respectGitignore bool) (*c4m.Manifest, err
 		gi = newGitignoreState(absRoot)
 	}
 
-	if err := walkDir(manifest, absRoot, "", 0, computeIDs, gi); err != nil {
+	if err := walkDir(manifest, absRoot, "", 0, computeIDs, gi, excludePatterns); err != nil {
 		return nil, err
 	}
 	manifest.SortEntries()
@@ -647,7 +648,7 @@ func giMatchGlob(pattern, str string) bool {
 	return len(str) == 0
 }
 
-func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, computeIDs bool, gi *gitignoreState) error {
+func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, computeIDs bool, gi *gitignoreState, excludePatterns []string) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return err
@@ -667,7 +668,7 @@ func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, compute
 			Timestamp: info.ModTime().UTC(),
 		}
 		if computeIDs {
-			if sub, err := scanDir(dirPath, true, gi != nil); err == nil {
+			if sub, err := scanDir(dirPath, true, gi != nil, excludePatterns); err == nil {
 				dirEntry.C4ID = sub.ComputeC4ID()
 			}
 		}
@@ -699,12 +700,17 @@ func walkDir(manifest *c4m.Manifest, dirPath, dirName string, depth int, compute
 			continue
 		}
 
+		// Check exclude patterns
+		if matchesExclude(name, excludePatterns) {
+			continue
+		}
+
 		info, err := de.Info()
 		if err != nil {
 			continue
 		}
 		if info.IsDir() {
-			if err := walkDir(manifest, fullPath, name, childDepth, computeIDs, gi); err != nil {
+			if err := walkDir(manifest, fullPath, name, childDepth, computeIDs, gi, excludePatterns); err != nil {
 				return err
 			}
 			continue
@@ -787,7 +793,7 @@ func cpLocalToCapsule(srcPath, c4mPath, subPath string) toolResult {
 
 	var added int
 	if info.IsDir() {
-		scanned, err := scanDir(srcPath, true, true)
+		scanned, err := scanDir(srcPath, true, true, nil)
 		if err != nil {
 			return toolErr(err.Error())
 		}
@@ -968,7 +974,7 @@ func toSource(path string) (c4m.Source, error) {
 		}
 		return c4m.ManifestSource{Manifest: manifest}, nil
 	}
-	manifest, err := scanDir(path, true, true)
+	manifest, err := scanDir(path, true, true, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1067,6 +1073,29 @@ func str(args map[string]any, key string) string {
 func boolean(args map[string]any, key string) bool {
 	v, _ := args[key].(bool)
 	return v
+}
+
+func strSlice(args map[string]any, key string) []string {
+	v, ok := args[key].([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(v))
+	for _, item := range v {
+		if s, ok := item.(string); ok {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+func matchesExclude(name string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if matched, _ := filepath.Match(pattern, name); matched {
+			return true
+		}
+	}
+	return false
 }
 
 func toolOK(text string) toolResult {

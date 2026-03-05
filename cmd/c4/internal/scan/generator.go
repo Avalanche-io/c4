@@ -19,6 +19,7 @@ type Generator struct {
 	includeHidden    bool
 	detectSequences  bool
 	respectGitignore bool
+	excludePatterns  []string
 	gi               *gitignore.Matcher
 	scanRoot         string
 }
@@ -72,6 +73,13 @@ func WithGitignore(enable bool) GeneratorOption {
 	}
 }
 
+// WithExclude adds glob patterns to exclude from scanning
+func WithExclude(patterns []string) GeneratorOption {
+	return func(g *Generator) {
+		g.excludePatterns = append(g.excludePatterns, patterns...)
+	}
+}
+
 // NewGeneratorWithOptions creates a generator with options
 func NewGeneratorWithOptions(opts ...GeneratorOption) *Generator {
 	g := NewGenerator()
@@ -83,13 +91,18 @@ func NewGeneratorWithOptions(opts ...GeneratorOption) *Generator {
 
 // clone creates a copy with the same settings but fresh state.
 func (g *Generator) clone() *Generator {
-	return &Generator{
+	clone := &Generator{
 		computeC4IDs:     g.computeC4IDs,
 		followSymlinks:   g.followSymlinks,
 		includeHidden:    g.includeHidden,
 		detectSequences:  g.detectSequences,
 		respectGitignore: g.respectGitignore,
 	}
+	if len(g.excludePatterns) > 0 {
+		clone.excludePatterns = make([]string, len(g.excludePatterns))
+		copy(clone.excludePatterns, g.excludePatterns)
+	}
+	return clone
 }
 
 // GenerateFromPath creates a manifest from a filesystem path
@@ -210,7 +223,15 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 				continue
 			}
 		}
-		
+
+		// Check exclude patterns
+		if len(g.excludePatterns) > 0 {
+			relPath := relFromRoot(g.scanRoot, fullPath)
+			if g.matchExclude(relPath, name, entry.IsDir()) {
+				continue
+			}
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			return fmt.Errorf("failed to get info for %s: %w", fullPath, err)
@@ -567,6 +588,22 @@ func (sg *sequenceGroup) toEntry() *Entry {
 	}
 	
 	return entry
+}
+
+// matchExclude checks if a path matches any exclude pattern.
+// Patterns are matched against both the basename and the relative path from scan root.
+func (g *Generator) matchExclude(relPath, name string, isDir bool) bool {
+	for _, pattern := range g.excludePatterns {
+		// Match against basename
+		if matched, _ := filepath.Match(pattern, name); matched {
+			return true
+		}
+		// Match against relative path
+		if matched, _ := filepath.Match(pattern, relPath); matched {
+			return true
+		}
+	}
+	return false
 }
 
 func relFromRoot(root, path string) string {
