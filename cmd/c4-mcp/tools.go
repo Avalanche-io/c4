@@ -384,7 +384,7 @@ func toolValidate(args map[string]any) toolResult {
 			lines = append(lines, "  "+e.Error())
 		}
 		lines = append(lines, "\nValidation FAILED")
-		return toolResult{Content: []textContent{{Type: "text", Text: strings.Join(lines, "\n")}}, IsError: true}
+		return toolOK(strings.Join(lines, "\n"))
 	}
 	lines = append(lines, "\nValidation PASSED")
 	return toolOK(strings.Join(lines, "\n"))
