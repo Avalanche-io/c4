@@ -22,6 +22,53 @@ var (
 	sequencePattern = regexp.MustCompile(`\[([0-9,\-:]+)\]`)
 )
 
+// unescapeSequenceNotation resolves all backslash escapes defined for
+// unquoted sequence patterns: \ →space, \[→[, \]→], \\→\, \"→", \,→,, \-→-.
+func unescapeSequenceNotation(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case ' ', '[', ']', '\\', '"', ',', '-':
+				buf.WriteByte(s[i+1])
+				i++
+				continue
+			}
+		}
+		buf.WriteByte(s[i])
+	}
+	return buf.String()
+}
+
+// escapeSequenceNotation escapes characters in a sequence prefix or suffix
+// that require backslash escaping per the spec: space, brackets, backslash, quote.
+// Commas and hyphens are not escaped outside range notation (they are unambiguous).
+func escapeSequenceNotation(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			buf.WriteString(`\\`)
+		case ' ':
+			buf.WriteString(`\ `)
+		case '"':
+			buf.WriteString(`\"`)
+		case '[':
+			buf.WriteString(`\[`)
+		case ']':
+			buf.WriteString(`\]`)
+		default:
+			buf.WriteByte(s[i])
+		}
+	}
+	return buf.String()
+}
+
 // ----------------------------------------------------------------------------
 // Sequence Types
 // ----------------------------------------------------------------------------
@@ -105,13 +152,10 @@ func ParseSequence(pattern string) (*Sequence, error) {
 	}
 
 	seq := &Sequence{
-		Prefix: pattern[:matches[0]],
-		Suffix: pattern[matches[1]:],
+		Prefix: unescapeSequenceNotation(pattern[:matches[0]]),
+		Suffix: unescapeSequenceNotation(pattern[matches[1]:]),
 		Ranges: make([]Range, 0),
 	}
-
-	// Handle backslash-space in prefix (for filenames with spaces)
-	seq.Prefix = strings.ReplaceAll(seq.Prefix, `\ `, " ")
 
 	// Extract the range specification
 	rangeSpec := pattern[matches[2]:matches[3]]

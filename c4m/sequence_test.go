@@ -813,6 +813,294 @@ func TestExpandSequenceEntryWithManifestNilC4ID(t *testing.T) {
 
 
 // ----------------------------------------------------------------------------
+// Sequence Escaping Tests
+// ----------------------------------------------------------------------------
+
+func TestUnescapeSequenceNotation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no escapes", "frame.", "frame."},
+		{"backslash space", `my\ animation.`, "my animation."},
+		{"backslash bracket", `file\[test\].`, "file[test]."},
+		{"backslash backslash", `path\\to\\file.`, `path\to\file.`},
+		{"backslash quote", `file\"v2\".`, `file"v2".`},
+		{"backslash comma", `data\,backup.`, "data,backup."},
+		{"backslash hyphen", `file\-name.`, "file-name."},
+		{"multiple escapes", `my\ file\[v2\].`, "my file[v2]."},
+		{"all escapes combined", `a\ b\[c\]d\\e\"f\,g\-h`, `a b[c]d\e"f,g-h`},
+		{"trailing backslash", `file\`, `file\`},
+		{"unknown escape", `file\x.`, `file\x.`},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := unescapeSequenceNotation(tt.input)
+			if got != tt.want {
+				t.Errorf("unescapeSequenceNotation(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEscapeSequenceNotation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no special chars", "frame.", "frame."},
+		{"space", "my animation.", `my\ animation.`},
+		{"brackets", "file[test].", `file\[test\].`},
+		{"backslash", `path\to\file.`, `path\\to\\file.`},
+		{"quote", `file"v2".`, `file\"v2\".`},
+		{"comma not escaped", "data,backup.", "data,backup."},
+		{"hyphen not escaped", "file-name.", "file-name."},
+		{"multiple specials", "my file[v2].", `my\ file\[v2\].`},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := escapeSequenceNotation(tt.input)
+			if got != tt.want {
+				t.Errorf("escapeSequenceNotation(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseSequenceEscaping(t *testing.T) {
+	tests := []struct {
+		name       string
+		pattern    string
+		wantPrefix string
+		wantSuffix string
+		wantErr    bool
+	}{
+		{
+			name:       "space in prefix",
+			pattern:    `my\ animation.[001-100].exr`,
+			wantPrefix: "my animation.",
+			wantSuffix: ".exr",
+		},
+		{
+			name:       "brackets in prefix",
+			pattern:    `file\[test\].[001-010].dat`,
+			wantPrefix: "file[test].",
+			wantSuffix: ".dat",
+		},
+		{
+			name:       "comma in prefix",
+			pattern:    `data\,backup.[01-05].csv`,
+			wantPrefix: "data,backup.",
+			wantSuffix: ".csv",
+		},
+		{
+			name:       "multiple escapes in prefix",
+			pattern:    `my\ file\[v2\].[001-100].exr`,
+			wantPrefix: "my file[v2].",
+			wantSuffix: ".exr",
+		},
+		{
+			name:       "backslash in prefix",
+			pattern:    `path\\to\\file.[001-010].txt`,
+			wantPrefix: `path\to\file.`,
+			wantSuffix: ".txt",
+		},
+		{
+			name:       "escape in suffix",
+			pattern:    `frame.[001-100].my\ suffix`,
+			wantPrefix: "frame.",
+			wantSuffix: ".my suffix",
+		},
+		{
+			name:       "quote in prefix",
+			pattern:    `file\"v2\".[001-010].dat`,
+			wantPrefix: `file"v2".`,
+			wantSuffix: ".dat",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seq, err := ParseSequence(tt.pattern)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseSequence(%q) error = %v, wantErr %v", tt.pattern, err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if seq.Prefix != tt.wantPrefix {
+				t.Errorf("Prefix = %q, want %q", seq.Prefix, tt.wantPrefix)
+			}
+			if seq.Suffix != tt.wantSuffix {
+				t.Errorf("Suffix = %q, want %q", seq.Suffix, tt.wantSuffix)
+			}
+		})
+	}
+}
+
+func TestFormatSequenceName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "plain sequence",
+			in:   "frame.[0001-0100].exr",
+			want: "frame.[0001-0100].exr",
+		},
+		{
+			name: "space in prefix",
+			in:   "my animation.[001-100].exr",
+			want: `my\ animation.[001-100].exr`,
+		},
+		{
+			name: "brackets in prefix",
+			in:   "file[test].[001-010].dat",
+			want: `file\[test\].[001-010].dat`,
+		},
+		{
+			name: "backslash in prefix",
+			in:   `path\to\file.[001-010].txt`,
+			want: `path\\to\\file.[001-010].txt`,
+		},
+		{
+			name: "quote in prefix",
+			in:   `file"v2".[001-010].dat`,
+			want: `file\"v2\".[001-010].dat`,
+		},
+		{
+			name: "space in suffix",
+			in:   "frame.[001-100].my suffix",
+			want: `frame.[001-100].my\ suffix`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatSequenceName(tt.in)
+			if got != tt.want {
+				t.Errorf("formatSequenceName(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSequenceEscapingRoundTrip(t *testing.T) {
+	// Test that sequence names with special characters survive encode→decode round-trip
+	tests := []struct {
+		name    string
+		seqName string
+	}{
+		{"plain", "frame.[0001-0100].exr"},
+		{"space in prefix", "my animation.[001-100].exr"},
+		{"brackets in prefix", "file[test].[001-010].dat"},
+		{"backslash in prefix", `path\to\file.[001-010].txt`},
+		{"quote in prefix", `file"v2".[001-010].dat`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create an entry with the sequence name
+			entry := &Entry{
+				Name:       tt.seqName,
+				Mode:       0644,
+				Timestamp:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				Size:       1024,
+				IsSequence: true,
+				Pattern:    tt.seqName,
+			}
+
+			// Encode to canonical form
+			m := NewManifest()
+			m.AddEntry(entry)
+			data, err := Marshal(m)
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+
+			// Decode back
+			m2, err := Unmarshal(data)
+			if err != nil {
+				t.Fatalf("Unmarshal(%s): %v", string(data), err)
+			}
+
+			if len(m2.Entries) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(m2.Entries))
+			}
+			got := m2.Entries[0]
+			if got.Name != tt.seqName {
+				t.Errorf("round-trip name = %q, want %q", got.Name, tt.seqName)
+			}
+			if !got.IsSequence {
+				t.Errorf("round-trip entry not marked as sequence")
+			}
+		})
+	}
+}
+
+func TestDecoderSequenceEscaping(t *testing.T) {
+	// Test that the decoder correctly handles all escape sequences in unquoted names
+	tests := []struct {
+		name     string
+		line     string
+		wantName string
+		wantSeq  bool
+	}{
+		{
+			name:     "backslash space in sequence",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 my\\ animation.[001-100].exr",
+			wantName: "my animation.[001-100].exr",
+			wantSeq:  true,
+		},
+		{
+			name:     "escaped brackets not sequence",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file\\[123\\].dat",
+			wantName: "file[123].dat",
+			wantSeq:  false,
+		},
+		{
+			name:     "escaped comma",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 data\\,backup.[01-05].csv",
+			wantName: "data,backup.[01-05].csv",
+			wantSeq:  true,
+		},
+		{
+			name:     "escaped hyphen",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file\\-name.[01-05].csv",
+			wantName: "file-name.[01-05].csv",
+			wantSeq:  true,
+		},
+		{
+			name:     "escaped quote",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file\\\"v2\\\".[001-010].dat",
+			wantName: `file"v2".[001-010].dat`,
+			wantSeq:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := "@c4m 1.0\n" + tt.line + "\n"
+			m, err := Unmarshal([]byte(input))
+			if err != nil {
+				t.Fatalf("Unmarshal: %v", err)
+			}
+			if len(m.Entries) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(m.Entries))
+			}
+			entry := m.Entries[0]
+			if entry.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", entry.Name, tt.wantName)
+			}
+			if entry.IsSequence != tt.wantSeq {
+				t.Errorf("IsSequence = %v, want %v", entry.IsSequence, tt.wantSeq)
+			}
+		})
+	}
+}
+
+// ----------------------------------------------------------------------------
 // IDList Tests (merged from idlist_test.go)
 // ----------------------------------------------------------------------------
 

@@ -253,9 +253,15 @@ func formatName(name string, isSequence bool) string {
 		return fmt.Sprintf(`"%s/"`, escaped)
 	}
 
+	// Sequence names must stay unquoted so they are still recognized as
+	// sequences on re-parse. Use backslash-escape notation per spec.
+	if isSequence {
+		return formatSequenceName(name)
+	}
+
 	// For non-sequence file names with brackets but no other special chars,
 	// use bracket escape notation instead of quoting
-	if !isSequence && (strings.ContainsRune(name, '[') || strings.ContainsRune(name, ']')) {
+	if strings.ContainsRune(name, '[') || strings.ContainsRune(name, ']') {
 		needsQuotes := false
 		for _, c := range name {
 			if c == ' ' || c == '"' || c == '\n' {
@@ -300,6 +306,21 @@ func formatName(name string, isSequence bool) string {
 	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 
 	return fmt.Sprintf(`"%s"`, escaped)
+}
+
+// formatSequenceName formats a sequence name using backslash escaping
+// in the prefix and suffix while leaving the range notation untouched.
+func formatSequenceName(name string) string {
+	matches := sequencePattern.FindStringIndex(name)
+	if matches == nil {
+		// No range notation found — shouldn't happen for isSequence entries,
+		// but fall back to returning name as-is
+		return name
+	}
+	prefix := name[:matches[0]]
+	rangePart := name[matches[0]:matches[1]]
+	suffix := name[matches[1]:]
+	return escapeSequenceNotation(prefix) + rangePart + escapeSequenceNotation(suffix)
 }
 
 // formatTarget quotes a symlink target if it contains special characters.

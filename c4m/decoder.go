@@ -222,7 +222,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Timestamp = timestamp
 
 	// Parse remaining fields using character-level parsing
-	size, name, target, id, nameQuoted, hadBracketEsc, err := d.parseEntryFields(remainingLine)
+	size, name, rawName, target, id, nameQuoted, err := d.parseEntryFields(remainingLine)
 	if err != nil {
 		return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
 	}
@@ -232,8 +232,11 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Target = target
 	entry.C4ID = id
 
-	// Check for sequence notation (only unquoted names without bracket escapes per spec)
-	if !nameQuoted && !hadBracketEsc && strings.Contains(entry.Name, "[") && strings.Contains(entry.Name, "]") {
+	// Check for sequence notation: only unquoted names, and check the RAW
+	// name for unescaped brackets forming a valid range pattern.
+	// This correctly handles names like file\[test\].[001-010].dat where
+	// some brackets are escaped (literal) and others form range notation.
+	if !nameQuoted && hasUnescapedSequenceNotation(rawName) {
 		entry.IsSequence = true
 		entry.Pattern = entry.Name
 	}
@@ -247,7 +250,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 //
 // The expected format is: SIZE NAME [-> TARGET] [C4ID]
 // Where NAME and TARGET may be quoted with backslash escapes.
-func (d *Decoder) parseEntryFields(line string) (size int64, name, target string, id c4.ID, nameQuoted, hadBracketEsc bool, err error) {
+func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, target string, id c4.ID, nameQuoted bool, err error) {
 	pos := 0
 	n := len(line)
 
@@ -293,7 +296,9 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 
 	// 2. Parse name (quoted or unquoted)
 	nameQuoted = pos < n && line[pos] == '"'
-	name, pos, hadBracketEsc, err = d.parseNameOrTarget(line, pos)
+	nameStart := pos
+	name, pos, _, err = d.parseNameOrTarget(line, pos)
+	rawName = line[nameStart:pos]
 	if err != nil {
 		err = fmt.Errorf("parsing name: %w", err)
 		return
@@ -345,10 +350,11 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, target string
 }
 
 // parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
-// Returns the parsed string, new position, whether bracket escapes were found, and error.
+// Returns the parsed string, new position, whether unescaped brackets were found
+// (indicating potential sequence notation), and error.
 //
 // Quoted names: "..." with \\→\, \"→", \n→newline
-// Unquoted names: support \[→[, \]→], \\→\ escape sequences.
+// Unquoted names: support \[→[, \]→], \\→\, \ →space, \"→", \,→,, \-→- escapes.
 //   - For directory names (trailing /): read until / then stop
 //   - For file names: read until space followed by ->, c4 prefix, or end-of-line
 func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, error) {
@@ -388,53 +394,79 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 		return "", pos, false, fmt.Errorf("unterminated quoted name")
 	}
 
-	// Unquoted name: scan for boundary, processing escape sequences
+	// Unquoted name: scan for boundary, processing escape sequences.
+	// Track unescaped brackets — their presence indicates potential sequence notation.
+	// Escaped brackets (\[ \]) produce literal brackets that are NOT sequence indicators.
 	var buf strings.Builder
-	hadBracketEscapes := false
+	hasUnescapedBrackets := false
 	for pos < n {
 		ch := line[pos]
 
-		// Process escape sequences: \[ \] \\
+		// Process escape sequences: \[ \] \\ \  \" \, \-
 		if ch == '\\' && pos+1 < n {
 			next := line[pos+1]
 			switch next {
 			case '[', ']':
 				buf.WriteByte(next)
-				hadBracketEscapes = true
 				pos += 2
 				continue
-			case '\\':
-				buf.WriteByte('\\')
+			case '\\', ' ', '"', ',', '-':
+				buf.WriteByte(next)
 				pos += 2
 				continue
 			}
+		}
+
+		if ch == '[' || ch == ']' {
+			hasUnescapedBrackets = true
 		}
 
 		// Directory name ends at / (inclusive)
 		if ch == '/' {
 			buf.WriteByte('/')
 			pos++
-			return buf.String(), pos, hadBracketEscapes, nil
+			return buf.String(), pos, hasUnescapedBrackets, nil
 		}
 
 		// Check for boundary: space followed by -> or c4 prefix or -
 		if ch == ' ' {
 			rest := line[pos:]
 			if strings.HasPrefix(rest, " -> ") {
-				return buf.String(), pos, hadBracketEscapes, nil
+				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
 			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
-				return buf.String(), pos, hadBracketEscapes, nil
+				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
 			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
-				return buf.String(), pos, hadBracketEscapes, nil
+				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
 		}
 		buf.WriteByte(ch)
 		pos++
 	}
 
-	return buf.String(), pos, hadBracketEscapes, nil
+	return buf.String(), pos, hasUnescapedBrackets, nil
+}
+
+// hasUnescapedSequenceNotation checks if raw text contains sequence notation
+// [digits] where the brackets are NOT preceded by a backslash escape.
+// This correctly handles mixed cases like file\[test\].[001-010].dat where
+// some brackets are literal (escaped) and others form range notation.
+func hasUnescapedSequenceNotation(raw string) bool {
+	// Replace all escape sequences with neutral characters so that
+	// escaped brackets don't match the sequence pattern regex.
+	var buf strings.Builder
+	buf.Grow(len(raw))
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == '\\' && i+1 < len(raw) {
+			buf.WriteByte('_')
+			buf.WriteByte('_')
+			i++
+			continue
+		}
+		buf.WriteByte(raw[i])
+	}
+	return sequencePattern.MatchString(buf.String())
 }
 
 // parseTarget parses a symlink target starting at pos.
