@@ -24,7 +24,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_scan",
-			Description: "Scan a directory and return its capsule (c4m manifest). Computes C4 IDs for all files and builds the hierarchical structure.",
+			Description: "Scan a directory and return its c4m file. Computes C4 IDs for all files and builds the hierarchical structure.",
 			InputSchema: obj(
 				prop("path", "string", "Directory path to scan"),
 				optProp("no_ids", "boolean", "Skip C4 ID computation for speed"),
@@ -34,7 +34,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_ls",
-			Description: "List the contents of a capsule (.c4m file). Supports colon syntax for subtree listing (e.g. project.c4m:renders/).",
+			Description: "List the contents of a c4m file. Supports colon syntax for subtree listing (e.g. project.c4m:renders/).",
 			InputSchema: obj(
 				prop("path", "string", "Path to .c4m file, optionally with colon subpath (e.g. project.c4m:renders/)"),
 				optProp("pretty", "boolean", "Pretty-print with aligned columns"),
@@ -43,7 +43,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_diff",
-			Description: "Compare two capsules or directories. Shows added, removed, and modified entries.",
+			Description: "Compare two c4m files or directories. Shows added, removed, and modified entries.",
 			InputSchema: obj(
 				prop("source", "string", "Source path (.c4m file or directory)"),
 				prop("target", "string", "Target path (.c4m file or directory)"),
@@ -52,7 +52,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_search",
-			Description: "Find files by glob pattern within a capsule (.c4m file). Returns matching entries.",
+			Description: "Find files by glob pattern within a c4m file. Returns matching entries.",
 			InputSchema: obj(
 				prop("manifest", "string", "Path to .c4m file"),
 				prop("pattern", "string", "Glob pattern to match (e.g. *.exr, renders/*.png)"),
@@ -61,7 +61,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_mk",
-			Description: "Establish a capsule for writing. Creates the .c4m.established marker file that enables write operations.",
+			Description: "Establish a c4m file for writing. Creates the .c4m.established marker file that enables write operations.",
 			InputSchema: obj(
 				prop("target", "string", "Capsule path ending with colon (e.g. project.c4m:)"),
 				required("target"),
@@ -69,7 +69,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_mkdir",
-			Description: "Create a directory inside a capsule. The capsule must be established first with c4_mk.",
+			Description: "Create a directory inside a c4m file. The c4m file must be established first with c4_mk.",
 			InputSchema: obj(
 				prop("path", "string", "Capsule path with directory (e.g. project.c4m:renders/)"),
 				required("path"),
@@ -77,7 +77,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_cp",
-			Description: "Copy files between local filesystem and capsules. Capture: local dir -> capsule. Materialize: capsule -> local dir.",
+			Description: "Copy files between local filesystem and c4m files. Capture: local dir -> c4m file. Materialize: c4m file -> local dir.",
 			InputSchema: obj(
 				prop("source", "string", "Source (local path or capsule:subpath)"),
 				prop("dest", "string", "Destination (local path or capsule:subpath)"),
@@ -86,7 +86,7 @@ func allTools() []toolDef {
 		},
 		{
 			Name:        "c4_validate",
-			Description: "Validate a capsule (.c4m file) for spec compliance. Reports errors, warnings, and statistics.",
+			Description: "Validate a c4m file for spec compliance. Reports errors, warnings, and statistics.",
 			InputSchema: obj(
 				prop("path", "string", "Path to .c4m file"),
 				required("path"),
@@ -286,7 +286,7 @@ func toolMk(args map[string]any) toolResult {
 	}
 	name := strings.TrimSuffix(target, ":")
 	if !strings.HasSuffix(name, ".c4m") {
-		return toolErr("only capsule establishment supported (name must end with .c4m)")
+		return toolErr("only c4m file establishment supported (name must end with .c4m)")
 	}
 	marker := name + ".established"
 	if _, err := os.Stat(marker); err == nil {
