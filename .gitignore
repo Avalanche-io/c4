@@ -4,6 +4,8 @@
 *.so
 *.exe
 /c4
+c4-arm64
+c4-test
 c4_new
 c4_cli
 cmd/c4/c4
@@ -49,4 +51,7 @@ coverage.out
 # OS files
 .DS_Store
 Thumbs.db
+
+# Agent memory
+memory.md
 
