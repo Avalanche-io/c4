@@ -96,6 +96,11 @@ func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
 		return PathSpec{Type: Local, Source: s}, nil
 	}
 
+	// Strip leading "/" from subpath — everything after the colon
+	// is relative to the root of the capsule/location.
+	// test.c4m:/files/ → SubPath "files/", not "/files/"
+	right = strings.TrimPrefix(right, "/")
+
 	// Rule 4: left side ends with .c4m → capsule
 	if strings.HasSuffix(left, ".c4m") {
 		return PathSpec{Type: Capsule, Source: left, SubPath: right}, nil
