@@ -48,7 +48,7 @@ negotiation you do once and reuse indefinitely.
 same dataset to multiple receivers.
 
 **Response:** That's true in a world where sending a dataset is expensive. When
-sending a description costs 23KB and an email, the behavior changes. You share
+sending a description costs a couple MB and an email, the behavior changes. You share
 descriptions the way you currently share links — casually, to anyone who might
 benefit. The frequency of multi-recipient sharing is low *because* the cost is
 high. In media production specifically, the same plates routinely go to
@@ -93,7 +93,7 @@ an optimization applied after the fact; it's the absence of unnecessary work.
 
 ### 3. Intent is Cheap, Content is Expensive
 
-A 23KB manifest describes 8TB of media. Sharing intent is essentially free.
+A small manifest describes 8TB of media. Sharing intent is essentially free.
 This means you can share descriptions speculatively — "here's what I have, take
 what you want" — without committing resources.
 
@@ -265,7 +265,7 @@ layer and seeing what, if anything, survives.
 The sender describes. The receiver decides. Content follows demand.
 
 This is one additional step compared to "sender sends files." That step costs
-23KB and an email. It buys persistent descriptions, source independence,
+a couple MB and an email. It buys persistent descriptions, source independence,
 receiver autonomy, deduplication before transfer, asynchronous operation, and
 composable project state.
 

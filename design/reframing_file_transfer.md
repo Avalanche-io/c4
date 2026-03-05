@@ -62,7 +62,7 @@ size but the *size of the state description* and the *size of the state
 difference*:
 
 - A state description is O(n) in the number of files but **independent of
-  file sizes**. A 23 KB manifest describes 8 TB of content. The description
+  file sizes**. A small manifest describes 8 TB of content. The description
   is not a compressed version of the content — it is a different kind of
   object entirely, capturing structure and identity without carrying payload.
 
