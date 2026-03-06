@@ -95,6 +95,60 @@ func TestParseLocation(t *testing.T) {
 	}
 }
 
+func TestParseContainer(t *testing.T) {
+	tests := []struct {
+		input   string
+		source  string
+		subpath string
+	}{
+		{"archive.tar:", "archive.tar", ""},
+		{"archive.tar:src/main.go", "archive.tar", "src/main.go"},
+		{"backup.tar.gz:", "backup.tar.gz", ""},
+		{"backup.tar.gz:renders/", "backup.tar.gz", "renders/"},
+		{"data.tgz:", "data.tgz", ""},
+		{"data.tgz:files/", "data.tgz", "files/"},
+		{"archive.tar.bz2:", "archive.tar.bz2", ""},
+		{"archive.tar.xz:", "archive.tar.xz", ""},
+		{"archive.tar.zst:", "archive.tar.zst", ""},
+	}
+	for _, tt := range tests {
+		p, err := Parse(tt.input, knownLocation)
+		if err != nil {
+			t.Errorf("Parse(%q) error: %v", tt.input, err)
+			continue
+		}
+		if p.Type != Container {
+			t.Errorf("Parse(%q).Type = %v, want Container", tt.input, p.Type)
+		}
+		if p.Source != tt.source {
+			t.Errorf("Parse(%q).Source = %q, want %q", tt.input, p.Source, tt.source)
+		}
+		if p.SubPath != tt.subpath {
+			t.Errorf("Parse(%q).SubPath = %q, want %q", tt.input, p.SubPath, tt.subpath)
+		}
+	}
+}
+
+func TestContainerFormat(t *testing.T) {
+	tests := []struct {
+		source string
+		format string
+	}{
+		{"archive.tar", "tar"},
+		{"backup.tar.gz", "gzip"},
+		{"backup.tgz", "gzip"},
+		{"data.tar.bz2", "bzip2"},
+		{"data.tar.xz", "xz"},
+		{"data.tar.zst", "zstd"},
+	}
+	for _, tt := range tests {
+		got := ContainerFormat(tt.source)
+		if got != tt.format {
+			t.Errorf("ContainerFormat(%q) = %q, want %q", tt.source, got, tt.format)
+		}
+	}
+}
+
 func TestParseUnknown(t *testing.T) {
 	_, err := Parse("unknown:", knownLocation)
 	if err == nil {

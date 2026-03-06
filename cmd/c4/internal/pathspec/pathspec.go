@@ -17,9 +17,10 @@ import (
 type Type int
 
 const (
-	Local    Type = iota // Regular filesystem path
-	Capsule              // Path into a .c4m file
-	Location             // Path into a named location
+	Local     Type = iota // Regular filesystem path
+	Capsule               // Path into a .c4m file
+	Location              // Path into a named location
+	Container             // Path into a tar/tgz archive
 )
 
 func (t Type) String() string {
@@ -30,6 +31,8 @@ func (t Type) String() string {
 		return "capsule"
 	case Location:
 		return "location"
+	case Container:
+		return "container"
 	default:
 		return "unknown"
 	}
@@ -106,6 +109,11 @@ func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
 		return PathSpec{Type: Capsule, Source: left, SubPath: right}, nil
 	}
 
+	// Rule 4b: left side ends with a container extension → container
+	if isContainerExt(left) {
+		return PathSpec{Type: Container, Source: left, SubPath: right}, nil
+	}
+
 	// Rule 5: check location registry
 	if isLocation != nil && isLocation(left) {
 		return PathSpec{Type: Location, Source: left, SubPath: right}, nil
@@ -113,6 +121,38 @@ func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
 
 	// Rule 6: unrecognized
 	return PathSpec{}, fmt.Errorf("%q is not a capsule (.c4m) or known location", left)
+}
+
+// containerExts lists recognized archive extensions.
+var containerExts = []string{".tar.zst", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tar"}
+
+// isContainerExt reports whether name ends with a recognized archive extension.
+func isContainerExt(name string) bool {
+	lower := strings.ToLower(name)
+	for _, ext := range containerExts {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// ContainerFormat returns the compression format for a container source path.
+// Returns "tar", "gzip", "bzip2", "xz", or "zstd".
+func ContainerFormat(source string) string {
+	lower := strings.ToLower(source)
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
+		return "gzip"
+	case strings.HasSuffix(lower, ".tar.bz2"):
+		return "bzip2"
+	case strings.HasSuffix(lower, ".tar.xz"):
+		return "xz"
+	case strings.HasSuffix(lower, ".tar.zst"):
+		return "zstd"
+	default:
+		return "tar"
+	}
 }
 
 // MustParse is like Parse but panics on error. For tests only.

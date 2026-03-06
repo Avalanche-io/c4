@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/container"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
@@ -94,6 +95,29 @@ func runLs(args []string) {
 			}
 		}
 
+		if *id {
+			fmt.Println(manifest.ComputeC4ID())
+			return
+		}
+		enc := c4m.NewEncoder(os.Stdout)
+		if *pretty {
+			enc.SetPretty(true)
+		}
+		enc.Encode(manifest)
+
+	case pathspec.Container:
+		manifest, err := container.ReadManifest(spec.Source, pathspec.ContainerFormat(spec.Source))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", spec.Source, err)
+			os.Exit(1)
+		}
+		if spec.SubPath != "" {
+			manifest = filterBySubpath(manifest, spec.SubPath)
+			if len(manifest.Entries) == 0 {
+				fmt.Fprintf(os.Stderr, "Error: no entries match %s\n", target)
+				os.Exit(1)
+			}
+		}
 		if *id {
 			fmt.Println(manifest.ComputeC4ID())
 			return

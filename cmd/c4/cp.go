@@ -1,6 +1,9 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/bzip2"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +15,7 @@ import (
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/container"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
@@ -71,6 +75,10 @@ func runCp(args []string) {
 		cpLocalToCapsule(src, dst)
 	case src.Type == pathspec.Capsule && dst.Type == pathspec.Local:
 		cpCapsuleToLocal(src, dst)
+	case src.Type == pathspec.Local && dst.Type == pathspec.Container:
+		cpLocalToContainer(src, dst)
+	case src.Type == pathspec.Container && dst.Type == pathspec.Local:
+		cpContainerToLocal(src, dst)
 	case src.Type == pathspec.Local && dst.Type == pathspec.Local:
 		fmt.Fprintf(os.Stderr, "Error: use OS cp for local-to-local copies\n")
 		os.Exit(1)
@@ -439,6 +447,144 @@ func insertUnderParent(manifest *c4m.Manifest, entry *c4m.Entry, subPath string)
 
 	// Parent not found — fall back to append
 	manifest.AddEntry(entry)
+}
+
+// cpLocalToContainer creates a tar archive from local files.
+func cpLocalToContainer(src, dst pathspec.PathSpec) {
+	info, err := os.Stat(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if !info.IsDir() {
+		fmt.Fprintf(os.Stderr, "Error: source must be a directory for tar creation\n")
+		os.Exit(1)
+	}
+
+	gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+	manifest, err := gen.GenerateFromPath(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error scanning %s: %v\n", src.Source, err)
+		os.Exit(1)
+	}
+
+	format := pathspec.ContainerFormat(dst.Source)
+	srcDir := src.Source
+	err = container.WriteTar(dst.Source, format, manifest, func(fullPath string, entry *c4m.Entry) (io.ReadCloser, error) {
+		return os.Open(filepath.Join(srcDir, fullPath))
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", dst.Source, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("created %s (%d entries)\n", dst.Source, len(manifest.Entries))
+}
+
+// cpContainerToLocal extracts a tar archive to local filesystem.
+func cpContainerToLocal(src, dst pathspec.PathSpec) {
+	format := pathspec.ContainerFormat(src.Source)
+	manifest, err := container.ReadManifest(src.Source, format)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", src.Source, err)
+		os.Exit(1)
+	}
+
+	destDir := dst.Source
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", destDir, err)
+		os.Exit(1)
+	}
+
+	// Re-open and walk the tar to extract file contents
+	// (We need a second pass because ReadManifest consumed the content for C4 IDs)
+	f, err := os.Open(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	tr, err := openTarReader(f, format)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	created := 0
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading tar: %v\n", err)
+			os.Exit(1)
+		}
+
+		name := filepath.Clean(hdr.Name)
+		if name == "." {
+			continue
+		}
+		fullPath := filepath.Join(destDir, name)
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(fullPath, hdr.FileInfo().Mode().Perm()|0755); err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			created++
+
+		case tar.TypeSymlink:
+			os.Remove(fullPath)
+			if err := os.Symlink(hdr.Linkname, fullPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating symlink %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			created++
+
+		case tar.TypeReg, tar.TypeRegA:
+			dir := filepath.Dir(fullPath)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			outF, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode().Perm()|0644)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			if _, err := io.Copy(outF, tr); err != nil {
+				outF.Close()
+				fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			outF.Close()
+			created++
+		}
+	}
+
+	_ = manifest // used for count only
+	fmt.Printf("extracted %d entries from %s to %s\n", created, src.Source, destDir)
+}
+
+// openTarReader wraps a reader with decompression. Used by cpContainerToLocal.
+func openTarReader(r io.Reader, format string) (*tar.Reader, error) {
+	switch format {
+	case "gzip":
+		gr, err := gzip.NewReader(r)
+		if err != nil {
+			return nil, err
+		}
+		return tar.NewReader(gr), nil
+	case "bzip2":
+		return tar.NewReader(bzip2.NewReader(r)), nil
+	case "tar":
+		return tar.NewReader(r), nil
+	default:
+		return nil, fmt.Errorf("unsupported format: %s", format)
+	}
 }
 
 // ensureParentDirs adds missing parent directory entries with proper depth.

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/container"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 )
@@ -58,6 +59,20 @@ func runCat(args []string) {
 		}
 		defer f.Close()
 		io.Copy(os.Stdout, f)
+
+	case pathspec.Container:
+		if spec.SubPath == "" {
+			fmt.Fprintf(os.Stderr, "Error: c4 cat requires a file path within the archive\n")
+			fmt.Fprintf(os.Stderr, "Usage: c4 cat %s:<path>\n", spec.Source)
+			os.Exit(1)
+		}
+		rc, err := container.CatFile(spec.Source, pathspec.ContainerFormat(spec.Source), spec.SubPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer rc.Close()
+		io.Copy(os.Stdout, rc)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Error: %s not yet supported for cat\n", spec.Type)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/container"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
@@ -269,9 +270,9 @@ func runDiff(args []string) {
 }
 
 // getManifest resolves a path argument to a manifest.
-// Handles: stdin (-), c4m files (colon notation), local filesystem paths.
-func getManifest(path string) *c4m.Manifest {
-	if path == "-" {
+// Handles: stdin (-), managed dirs (:), c4m files, containers, local paths.
+func getManifest(pathArg string) *c4m.Manifest {
+	if pathArg == "-" {
 		manifest, err := c4m.NewDecoder(os.Stdin).Decode()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
@@ -280,7 +281,7 @@ func getManifest(path string) *c4m.Manifest {
 		return manifest
 	}
 
-	spec, err := pathspec.Parse(path, establish.IsLocationEstablished)
+	spec, err := pathspec.Parse(pathArg, establish.IsLocationEstablished)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -291,6 +292,17 @@ func getManifest(path string) *c4m.Manifest {
 		manifest, err := loadManifest(spec.Source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", spec.Source, err)
+			os.Exit(1)
+		}
+		if spec.SubPath != "" {
+			manifest = filterBySubpath(manifest, spec.SubPath)
+		}
+		return manifest
+
+	case pathspec.Container:
+		manifest, err := container.ReadManifest(spec.Source, pathspec.ContainerFormat(spec.Source))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", spec.Source, err)
 			os.Exit(1)
 		}
 		if spec.SubPath != "" {
