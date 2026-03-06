@@ -26,7 +26,7 @@ func TestMkCapsule(t *testing.T) {
 		t.Errorf("expected 'established' message, got %q", out)
 	}
 
-	// Verify marker file exists
+	// Verify capsule is established in central registry
 	if !establish.IsCapsuleEstablished(filepath.Join(dir, "test.c4m")) {
 		t.Error("capsule not established after mk")
 	}
@@ -161,9 +161,8 @@ func TestRmLocation(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	// Set HOME to temp dir and establish location
-	os.Setenv("HOME", dir)
-	defer os.Unsetenv("HOME")
+	// Set HOME to temp dir for this test and establish location
+	t.Setenv("HOME", dir)
 	establish.EstablishLocation("studio", "cloud:7433")
 
 	cmd := exec.Command(bin, "rm", "studio:")

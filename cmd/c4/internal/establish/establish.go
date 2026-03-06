@@ -5,12 +5,13 @@
 // colon typos — a trailing colon shouldn't silently change "copy file"
 // to "write into namespace."
 //
-// Capsule establishment uses a marker file (.c4m.established) alongside
-// the capsule. Location establishment uses a registry directory
-// (~/.c4/locations/).
+// Capsule establishment uses a centralized registry (~/.c4/capsules/).
+// Location establishment uses a registry directory (~/.c4/locations/).
 package establish
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,30 +19,68 @@ import (
 	"time"
 )
 
-// capsuleMarkerSuffix is appended to the c4m filename to mark establishment.
-const capsuleMarkerSuffix = ".established"
+// capsulesDir returns the path to the capsules registry.
+func capsulesDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".c4", "capsules"), nil
+}
+
+// capsuleKey returns a deterministic filename for a c4m path.
+func capsuleKey(c4mPath string) (string, error) {
+	abs, err := filepath.Abs(c4mPath)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256([]byte(abs))
+	return hex.EncodeToString(h[:16]), nil
+}
 
 // IsCapsuleEstablished checks if a capsule file has been established for writing.
 func IsCapsuleEstablished(c4mPath string) bool {
-	_, err := os.Stat(c4mPath + capsuleMarkerSuffix)
+	dir, err := capsulesDir()
+	if err != nil {
+		return false
+	}
+	key, err := capsuleKey(c4mPath)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(dir, key))
 	return err == nil
 }
 
 // EstablishCapsule marks a capsule file as established for writing.
 // The capsule file itself need not exist yet (create-on-write).
 func EstablishCapsule(c4mPath string) error {
-	marker := c4mPath + capsuleMarkerSuffix
-	f, err := os.Create(marker)
+	dir, err := capsulesDir()
 	if err != nil {
-		return fmt.Errorf("establish capsule: %w", err)
+		return err
 	}
-	return f.Close()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create capsules dir: %w", err)
+	}
+	key, err := capsuleKey(c4mPath)
+	if err != nil {
+		return err
+	}
+	abs, _ := filepath.Abs(c4mPath)
+	return os.WriteFile(filepath.Join(dir, key), []byte(abs+"\n"), 0644)
 }
 
 // RemoveCapsuleEstablishment removes the establishment marker.
-// Called implicitly when the capsule file is deleted (OS rm).
 func RemoveCapsuleEstablishment(c4mPath string) error {
-	return os.Remove(c4mPath + capsuleMarkerSuffix)
+	dir, err := capsulesDir()
+	if err != nil {
+		return err
+	}
+	key, err := capsuleKey(c4mPath)
+	if err != nil {
+		return err
+	}
+	return os.Remove(filepath.Join(dir, key))
 }
 
 // LocationEntry holds the connection info for a named location.
@@ -132,7 +171,7 @@ func ListLocations() (map[string]LocationEntry, error) {
 	result := make(map[string]LocationEntry)
 	for _, e := range entries {
 		if e.IsDir() {
-			continue // groups are directories, skip for now
+			continue
 		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {

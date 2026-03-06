@@ -64,6 +64,11 @@ func TestMain(m *testing.M) {
 	}
 	testBinaryPath = bin
 
+	// Set HOME for centralized capsule/location registry (~/.c4/)
+	testHome := filepath.Join(tmpDir, "home")
+	os.MkdirAll(testHome, 0755)
+	os.Setenv("HOME", testHome)
+
 	code := m.Run()
 
 	os.RemoveAll(tmpDir)
