@@ -10,12 +10,10 @@
 //   - Cryptographic content identification via C4 IDs
 //   - Compact representation of media file sequences
 //   - Natural sorting for numbered files
-//   - Layer system for changesets
 //   - Streaming parser support
 //
 // Format example:
 //
-//	@c4m 1.0
 //	drwxr-xr-x 2023-01-01T12:00:00Z 4096 project/
 //	  -rw-r--r-- 2023-01-01T12:00:00Z 1024 README.md c4ABC123...
 //	  -rw-r--r-- 2023-01-01T12:00:00Z 2048 config.json c4DEF456...

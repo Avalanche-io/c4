@@ -107,7 +107,7 @@ func TestResolverCache(t *testing.T) {
 	}
 }
 
-// TestWriteLayer tests encoding manifests with layers
+// TestFormatEntryPretty tests pretty formatting of various entry types
 func TestFormatEntryPretty(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -636,21 +636,21 @@ func TestValidatorAdditionalEdgeCases(t *testing.T) {
 		}
 	})
 
-	t.Run("completely wrong header", func(t *testing.T) {
-		input := "not a valid header\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
+	t.Run("invalid first line", func(t *testing.T) {
+		input := "not a valid entry\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
 		v := NewValidator(true)
 		err := v.ValidateManifest(strings.NewReader(input))
 		if err == nil {
-			t.Error("Expected error for invalid header")
+			t.Error("Expected error for invalid entry")
 		}
 	})
 
-	t.Run("valid entry without header", func(t *testing.T) {
+	t.Run("valid entry", func(t *testing.T) {
 		input := "-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
 		v := NewValidator(true)
 		err := v.ValidateManifest(strings.NewReader(input))
 		if err != nil {
-			t.Errorf("Valid entry without header should pass: %v", err)
+			t.Errorf("Valid entry should pass: %v", err)
 		}
 	})
 
@@ -1093,7 +1093,7 @@ func TestDetectSequencesMoreCases(t *testing.T) {
 	})
 }
 
-// TestHandleDirectiveCoverage tests directive handling
+// TestValidatorTimestampCoverage tests timestamp validation edge cases
 func TestValidatorTimestampCoverage(t *testing.T) {
 	t.Run("null timestamp dash", func(t *testing.T) {
 		input := "-rw-r--r-- - 100 file.txt\n"
@@ -1159,25 +1159,6 @@ func TestValidatorNameCoverage(t *testing.T) {
 		if err == nil {
 			t.Error("Directory name '/' should fail")
 		}
-	})
-}
-
-// TestSequenceEntryWithManifestCoverage tests expandSequenceEntryWithManifest
-func TestHandleDataBlockMoreCases(t *testing.T) {
-	t.Run("decode with data block containing ID list", func(t *testing.T) {
-		// Create ID list content
-		id1 := c4.Identify(strings.NewReader("content1"))
-		id2 := c4.Identify(strings.NewReader("content2"))
-		idListContent := id1.String() + "\n" + id2.String() + "\n"
-		dataBlockID := c4.Identify(strings.NewReader(idListContent))
-
-		// Build manifest with @data block
-		input := fmt.Sprintf("@data %s\n%s-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n", dataBlockID.String(), idListContent)
-		manifest, err := Unmarshal([]byte(input))
-		if err != nil {
-			t.Logf("Unmarshal with data block: %v", err)
-		}
-		_ = manifest
 	})
 }
 
@@ -1375,18 +1356,15 @@ func TestDetectSequencesEdgeCases(t *testing.T) {
 	})
 }
 
-// TestValidatorHeaderEdgeCases tests header validation
+// TestValidatorHeaderEdgeCases tests that directive lines are rejected
 func TestValidatorHeaderEdgeCases(t *testing.T) {
-	t.Run("header with extra whitespace", func(t *testing.T) {
+	t.Run("at-sign directive rejected", func(t *testing.T) {
 		input := "@c4m  1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
 		v := NewValidator(true)
-		_ = v.ValidateManifest(strings.NewReader(input))
-	})
-
-	t.Run("header with version 2.0", func(t *testing.T) {
-		input := "@c4m 2.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
-		v := NewValidator(true)
-		_ = v.ValidateManifest(strings.NewReader(input))
+		err := v.ValidateManifest(strings.NewReader(input))
+		if err == nil {
+			t.Error("Expected error for directive line")
+		}
 	})
 }
 
@@ -1424,7 +1402,7 @@ func TestValidatorNameEmptyCase(t *testing.T) {
 	})
 }
 
-// TestWriteLayerMoreCases tests more layer writing scenarios
+// TestEncodingPrettyMoreCases tests pretty encoding edge cases
 func TestEncodingPrettyMoreCases(t *testing.T) {
 	t.Run("pretty encode large sizes", func(t *testing.T) {
 		manifest := NewManifest()
@@ -1524,30 +1502,15 @@ func TestMarshalUnmarshalRoundtrip(t *testing.T) {
 	})
 }
 
-// TestValidateHeaderCoverage tests validateHeader branches
+// TestValidateHeaderCoverage tests that directive lines are rejected by the validator
 func TestValidateHeaderCoverage(t *testing.T) {
-	t.Run("missing version", func(t *testing.T) {
-		input := "@c4m\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
+	t.Run("at-sign directive rejected", func(t *testing.T) {
+		input := "@c4m 1.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
 		v := NewValidator(true)
 		err := v.ValidateManifest(strings.NewReader(input))
-		// Just exercise the code path
-		_ = err
-	})
-
-	t.Run("invalid version format", func(t *testing.T) {
-		input := "@c4m abc\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
-		v := NewValidator(true)
-		err := v.ValidateManifest(strings.NewReader(input))
-		// Just exercise the code path - may be lenient
-		_ = err
-	})
-
-	t.Run("unsupported version", func(t *testing.T) {
-		input := "@c4m 99.0\n-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n"
-		v := NewValidator(true)
-		err := v.ValidateManifest(strings.NewReader(input))
-		// Exercises version check path
-		_ = err
+		if err == nil {
+			t.Error("Expected error for directive line")
+		}
 	})
 
 	t.Run("empty leading line ignored", func(t *testing.T) {
@@ -1833,7 +1796,7 @@ func TestMarshalErrorPaths(t *testing.T) {
 	})
 }
 
-// TestIntersectAndSubtract tests more operations branches
+// TestEncoderSetIndent tests encoder custom indent
 func TestEncoderSetIndent(t *testing.T) {
 	t.Run("encode with custom indent", func(t *testing.T) {
 		manifest := NewManifest()
