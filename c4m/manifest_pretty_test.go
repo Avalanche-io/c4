@@ -48,7 +48,6 @@ func TestWritePretty(t *testing.T) {
 				},
 			},
 			want: []string{
-				"@c4m 1.0",
 				"-rw-r--r-- Jan 15",                                                 // Timestamp starts with month
 				"       100 a.txt",                                                  // Size padded
 				" 1,234,567 very_long_filename.txt",                                 // Size with commas

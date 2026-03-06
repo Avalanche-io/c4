@@ -11,8 +11,7 @@ import (
 )
 
 func ExampleNewDecoder() {
-	input := `@c4m 1.0
--rw-r--r-- 2025-01-01T12:00:00Z 1024 README.md c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+	input := `-rw-r--r-- 2025-01-01T12:00:00Z 1024 README.md c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 drwxr-xr-x 2025-01-01T12:00:00Z 4096 src/
   -rw-r--r-- 2025-01-01T12:00:00Z 2048 main.go c42222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
 `
@@ -23,10 +22,8 @@ drwxr-xr-x 2025-01-01T12:00:00Z 4096 src/
 		return
 	}
 
-	fmt.Printf("Version: %s\n", manifest.Version)
 	fmt.Printf("Entries: %d\n", len(manifest.Entries))
 	// Output:
-	// Version: 1.0
 	// Entries: 3
 }
 
@@ -45,7 +42,6 @@ func ExampleNewEncoder() {
 		fmt.Println("Error:", err)
 	}
 	// Output:
-	// @c4m 1.0
 	// -rw-r--r-- 2025-01-01T12:00:00Z 13 hello.txt c4278VoUM5dXnzULoTV6JqiyoeyFaL4DZo2oDPTsmDAE4Ki4Uwe8PZyENUh9uBHhWQ5HCvgb72Emg4nSazsTRophmx
 }
 
@@ -90,13 +86,11 @@ func ExampleMarshal() {
 
 	fmt.Print(string(data))
 	// Output:
-	// @c4m 1.0
 	// -rw-r--r-- 2025-01-01T00:00:00Z 100 test.txt
 }
 
 func ExampleUnmarshal() {
-	data := []byte(`@c4m 1.0
--rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt
+	data := []byte(`-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt
 `)
 	manifest, err := c4m.Unmarshal(data)
 	if err != nil {
@@ -113,8 +107,7 @@ func ExampleUnmarshal() {
 
 func ExampleFormat() {
 	// Parse and re-format a manifest
-	input := []byte(`@c4m 1.0
--rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt
+	input := []byte(`-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt
 `)
 	formatted, err := c4m.Format(input)
 	if err != nil {
@@ -124,13 +117,11 @@ func ExampleFormat() {
 
 	fmt.Print(string(formatted))
 	// Output:
-	// @c4m 1.0
 	// -rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt
 }
 
 func ExampleValidator() {
-	input := `@c4m 1.0
--rw-r--r-- 2025-01-01T12:00:00Z 1024 valid.txt c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+	input := `-rw-r--r-- 2025-01-01T12:00:00Z 1024 valid.txt c41111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 `
 	validator := c4m.NewValidator(true)
 	err := validator.ValidateManifest(strings.NewReader(input))

@@ -2,13 +2,11 @@ package scan
 
 import (
 	"github.com/Avalanche-io/c4/c4m"
-	"github.com/Avalanche-io/c4/cmd/c4/internal/bundle"
 )
 
 // Type aliases for c4m types to simplify migration
 type Entry = c4m.Entry
 type Manifest = c4m.Manifest
-type Bundle = bundle.Bundle
 
 // Function aliases
 var NewManifest = c4m.NewManifest

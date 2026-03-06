@@ -8,10 +8,9 @@ import (
 
 // FuzzDecoder feeds random input to the decoder — must not panic.
 func FuzzDecoder(f *testing.F) {
-	f.Add([]byte("@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n"))
-	f.Add([]byte("@c4m 1.0\n"))
+	f.Add([]byte("-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n"))
 	f.Add([]byte(""))
-	f.Add([]byte("@c4m 1.0\n---------- - - \"quoted name\"\n"))
+	f.Add([]byte("---------- - - \"quoted name\"\n"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Must not panic regardless of input
@@ -71,8 +70,7 @@ func FuzzRoundTrip(f *testing.F) {
 
 // FuzzValidator feeds random input to the validator — must not panic.
 func FuzzValidator(f *testing.F) {
-	f.Add("@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n")
-	f.Add("@c4m 1.0\n")
+	f.Add("-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n")
 	f.Add("")
 
 	f.Fuzz(func(t *testing.T, data string) {

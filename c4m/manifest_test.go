@@ -66,7 +66,6 @@ func TestManifestSort(t *testing.T) {
 func TestManifestEncode(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	testID, _ := c4.Parse("c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
-	dataID, _ := c4.Parse("c42j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
 
 	tests := []struct {
 		name     string
@@ -88,25 +87,7 @@ func TestManifestEncode(t *testing.T) {
 					},
 				},
 			},
-			want: "@c4m 1.0\n-rw-r--r-- 2024-01-15T10:30:00Z 100 file1.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
-		},
-		{
-			name: "manifest with metadata",
-			manifest: &Manifest{
-				Version: "1.0",
-				Data:    dataID,
-				Entries: []*Entry{},
-			},
-			want: "@c4m 1.0\n@data c42j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
-		},
-		{
-			name: "manifest with base",
-			manifest: &Manifest{
-				Version: "1.0",
-				Base:    testID,
-				Entries: []*Entry{},
-			},
-			want: "@c4m 1.0\n@base c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
+			want: "-rw-r--r-- 2024-01-15T10:30:00Z 100 file1.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
 		},
 	}
 
@@ -313,152 +294,6 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEncodeLayer(t *testing.T) {
-	tests := []struct {
-		name    string
-		layer   *Layer
-		wantOut []string
-	}{
-		{
-			name: "add layer",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-			},
-			wantOut: []string{"@layer"},
-		},
-		{
-			name: "remove layer",
-			layer: &Layer{
-				Type: LayerTypeRemove,
-			},
-			wantOut: []string{"@remove"},
-		},
-		{
-			name: "layer with by",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				By:   "user@example.com",
-			},
-			wantOut: []string{"@layer", "@by user@example.com"},
-		},
-		{
-			name: "layer with time",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				Time: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			},
-			wantOut: []string{"@layer", "@time 2024-01-01T00:00:00Z"},
-		},
-		{
-			name: "layer with note",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				Note: "Test note",
-			},
-			wantOut: []string{"@layer", "@note Test note"},
-		},
-		{
-			name: "layer with data",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				Data: mustParseC4("c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN"),
-			},
-			wantOut: []string{"@layer", "@data c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN"},
-		},
-		{
-			name: "layer with all fields",
-			layer: &Layer{
-				Type: LayerTypeRemove,
-				By:   "admin@example.com",
-				Time: time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC),
-				Note: "Cleanup old files",
-				Data: mustParseC4("c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN"),
-			},
-			wantOut: []string{
-				"@remove",
-				"@by admin@example.com",
-				"@time 2024-06-15T10:30:00Z",
-				"@note Cleanup old files",
-				"@data c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := &Manifest{
-				Version: "1.0",
-				Layers:  []*Layer{tt.layer},
-			}
-			var buf bytes.Buffer
-
-			err := NewEncoder(&buf).Encode(m)
-			if err != nil {
-				t.Fatalf("Encode() error = %v", err)
-			}
-
-			output := buf.String()
-			for _, want := range tt.wantOut {
-				if !strings.Contains(output, want) {
-					t.Errorf("Output missing %q\nGot:\n%s", want, output)
-				}
-			}
-		})
-	}
-}
-
-func TestManifestWithLayers(t *testing.T) {
-	m := &Manifest{
-		Version: "1.0",
-		Layers: []*Layer{
-			{
-				Type: LayerTypeAdd,
-				By:   "user@example.com",
-			},
-		},
-		Entries: []*Entry{
-			{
-				Mode:      0644,
-				Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-				Size:      100,
-				Name:      "new.txt",
-			},
-		},
-	}
-
-	var buf bytes.Buffer
-	err := NewEncoder(&buf).Encode(m)
-	if err != nil {
-		t.Fatalf("Encode() error = %v", err)
-	}
-	if buf.Len() == 0 {
-		t.Error("Encode() wrote 0 bytes")
-	}
-
-	output := buf.String()
-	expected := []string{
-		"@c4m 1.0",
-		"@layer",
-		"@by user@example.com",
-		"-rw-r--r-- 2024-01-01T00:00:00Z 100 new.txt",
-	}
-	
-	for _, want := range expected {
-		if !strings.Contains(output, want) {
-			t.Errorf("Output missing %q\nGot:\n%s", want, output)
-		}
-	}
-}
-
-// Helper function to parse C4 ID
-func mustParseC4(s string) c4.ID {
-	id, err := c4.Parse(s)
-	if err != nil {
-		panic(err)
-	}
-	return id
 }
 
 func TestManifestValidate(t *testing.T) {

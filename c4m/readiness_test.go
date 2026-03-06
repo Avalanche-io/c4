@@ -288,13 +288,13 @@ func testNoStderrFromValidator(t *testing.T) {
 }
 
 func testExpandReturnsError(t *testing.T) {
-	input := "@c4m 1.0\n@expand patterns.c4m\n"
+	input := "@expand patterns.c4m\n"
 	_, err := Unmarshal([]byte(input))
 	if err == nil {
 		t.Fatal("@expand should return an error")
 	}
-	if !errors.Is(err, ErrNotSupported) {
-		t.Errorf("@expand error should wrap ErrNotSupported, got: %v", err)
+	if !errors.Is(err, ErrInvalidEntry) {
+		t.Errorf("@expand error should wrap ErrInvalidEntry, got: %v", err)
 	}
 }
 
@@ -462,7 +462,6 @@ func testCopyIsDeep(t *testing.T) {
 		Size: 100,
 		C4ID: c4.Identify(strings.NewReader("test")),
 	})
-	m.Layers = append(m.Layers, &Layer{Type: LayerTypeAdd, By: "alice"})
 	m.DataBlocks = append(m.DataBlocks, &DataBlock{
 		ID:      c4.Identify(strings.NewReader("block")),
 		Content: []byte("content"),
@@ -472,14 +471,10 @@ func testCopyIsDeep(t *testing.T) {
 
 	// Mutate original — copy should be unaffected
 	m.Entries[0].Name = "MUTATED"
-	m.Layers[0].By = "MUTATED"
 	m.DataBlocks[0].Content[0] = 'X'
 
 	if cp.Entries[0].Name == "MUTATED" {
 		t.Error("Copy() entries are shallow — mutation propagated")
-	}
-	if cp.Layers[0].By == "MUTATED" {
-		t.Error("Copy() layers are shallow — mutation propagated")
 	}
 	if cp.DataBlocks[0].Content[0] == 'X' {
 		t.Error("Copy() data blocks are shallow — mutation propagated")
@@ -492,12 +487,9 @@ func testSentinelErrors(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"ErrInvalidHeader", ErrInvalidHeader},
-		{"ErrUnsupportedVersion", ErrUnsupportedVersion},
 		{"ErrInvalidEntry", ErrInvalidEntry},
 		{"ErrDuplicatePath", ErrDuplicatePath},
 		{"ErrPathTraversal", ErrPathTraversal},
-		{"ErrNotSupported", ErrNotSupported},
 	}
 	for _, s := range sentinels {
 		if s.err == nil {
@@ -517,7 +509,7 @@ func testREADMEFilesExist(t *testing.T) {
 	// Extract .go filenames from the Package Files section
 	goFiles := []string{
 		"manifest.go", "entry.go", "encoder.go", "decoder.go",
-		"builder.go", "operations.go", "merge.go", "validator.go",
+		"builder.go", "operations.go", "validator.go",
 		"naturalsort.go", "sequence.go",
 	}
 	for _, f := range goFiles {

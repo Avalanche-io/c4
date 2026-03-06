@@ -392,18 +392,13 @@ func TestMarshalUnmarshalPreservesSequenceEscaping(t *testing.T) {
 	}
 }
 
-// TestExpandDirectiveReturnsNotSupported verifies the current state:
-// @expand is recognized but not yet implemented in the decoder.
-func TestExpandDirectiveReturnsNotSupported(t *testing.T) {
+// TestDirectiveLinesRejected verifies that directive lines cause errors.
+func TestDirectiveLinesRejected(t *testing.T) {
 	id := c4.Identify(strings.NewReader("test"))
-	input := fmt.Sprintf("@c4m 1.0\n@expand %s\n", id)
+	input := fmt.Sprintf("@expand %s\n", id)
 	_, err := Unmarshal([]byte(input))
 	if err == nil {
-		t.Fatal("@expand should return an error (not yet implemented)")
-	}
-	if !strings.Contains(err.Error(), "not supported") && !strings.Contains(err.Error(), "NotSupported") {
-		// Accept any error indicating not-supported
-		t.Logf("@expand error (expected): %v", err)
+		t.Fatal("directive lines should return an error")
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
-	"github.com/Avalanche-io/c4/cmd/c4/internal/bundle"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/gitignore"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 	flag "github.com/spf13/pflag"
@@ -40,10 +39,6 @@ var (
 	noIDsFlag    bool
 	formatFlag   string
 	progressiveFlag bool
-	// Bundle flags
-	bundleFlag   bool
-	resumeFlag   bool
-
 	// Filtering flags
 	gitignoreFlag    bool
 	excludePatterns  []string
@@ -79,10 +74,6 @@ func init() {
 	flag.StringArrayVar(&excludePatterns, "exclude", nil, "Exclude files matching pattern (repeatable)")
 	flag.StringArrayVar(&excludeFromFiles, "exclude-from", nil, "Read exclude patterns from file (repeatable)")
 
-	// Bundle flags
-	flag.BoolVar(&bundleFlag, "bundle", false, "Create/use C4M bundle for unbounded scans")
-	flag.BoolVar(&resumeFlag, "resume", false, "Resume incomplete bundle scan")
-
 	// Help flag
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 }
@@ -92,6 +83,7 @@ func usage() {
 
 Usage:
   c4 [options] [path...]           # Generate C4 IDs or manifests
+  c4 version                       # Show c4 and c4d mesh versions
   c4 fmt [options] <file.c4m>       # Format manifest (canonical or ergonomic)
   c4 diff <source> <target>         # Compare manifests or paths
   c4 union <inputs...>              # Combine manifests
@@ -130,23 +122,14 @@ func main() {
 	// Check for operations first
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "version":
+			runVersion(os.Args[2:])
+			return
 		case "diff":
 			runDiff(os.Args[2:])
 			return
-		case "union":
-			runUnion(os.Args[2:])
-			return
-		case "intersect":
-			runIntersect(os.Args[2:])
-			return
-		case "subtract":
-			runSubtract(os.Args[2:])
-			return
 		case "validate":
 			runValidate(os.Args[2:])
-			return
-		case "extract":
-			runExtract(os.Args[2:])
 			return
 		case "fmt":
 			runFmt(os.Args[2:])
@@ -169,7 +152,7 @@ func main() {
 	flag.Parse()
 	
 	if versionFlag {
-		fmt.Printf("c4 version %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
+		runVersion(nil)
 		os.Exit(0)
 	}
 	
@@ -204,35 +187,11 @@ func processStdin() {
 	}
 	
 	input := strings.Join(lines, "\n")
-	if strings.HasPrefix(input, "@c4m ") {
-		// Parse as C4M and compute its ID
-		manifest, err := c4m.NewDecoder(strings.NewReader(input)).Decode()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing C4M: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(manifest.ComputeC4ID())
-	} else {
-		// Compute C4 ID of raw input
-		id := c4.Identify(strings.NewReader(input))
-		fmt.Println(id)
-	}
+	id := c4.Identify(strings.NewReader(input))
+	fmt.Println(id)
 }
 
 func processFiles(paths []string) {
-	// Handle bundle mode specially
-	if bundleFlag {
-		if len(paths) != 1 {
-			fmt.Fprintf(os.Stderr, "Error: bundle mode requires exactly one path\n")
-			os.Exit(1)
-		}
-		if err := runBundleScan(paths[0]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-	
 	for _, path := range paths {
 		if err := processPath(path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", path, err)
@@ -276,19 +235,6 @@ func processPath(path string) error {
 	} else {
 		return processFile(path, info)
 	}
-}
-
-func runBundleScan(path string) error {
-	config := bundle.DefaultBundleConfig()
-
-	// Use simple CLI with directory-aware chunking
-	cli := bundle.NewSimpleBundleCLI(config, verboseFlag)
-
-	// Execute command
-	if resumeFlag {
-		return cli.ResumeBundle(path)
-	}
-	return cli.CreateBundle(path)
 }
 
 func runProgressiveScan(dirPath string) error {
@@ -580,73 +526,6 @@ func runDiff(args []string) {
 	}
 }
 
-func runUnion(args []string) {
-	fs := flag.NewFlagSet("union", flag.ExitOnError)
-	fs.Parse(args)
-	
-	if fs.NArg() < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 union <input1> <input2> [...]\n")
-		os.Exit(1)
-	}
-	
-	var sources []c4m.Source
-	for i := 0; i < fs.NArg(); i++ {
-		sources = append(sources, getSource(fs.Arg(i)))
-	}
-	
-	result, err := c4m.Union(sources...)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	
-	outputManifest(result)
-}
-
-func runIntersect(args []string) {
-	fs := flag.NewFlagSet("intersect", flag.ExitOnError)
-	fs.Parse(args)
-	
-	if fs.NArg() < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 intersect <input1> <input2> [...]\n")
-		os.Exit(1)
-	}
-	
-	var sources []c4m.Source
-	for i := 0; i < fs.NArg(); i++ {
-		sources = append(sources, getSource(fs.Arg(i)))
-	}
-	
-	result, err := c4m.Intersect(sources...)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	
-	outputManifest(result)
-}
-
-func runSubtract(args []string) {
-	fs := flag.NewFlagSet("subtract", flag.ExitOnError)
-	fs.Parse(args)
-	
-	if fs.NArg() != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 subtract <from> <remove>\n")
-		os.Exit(1)
-	}
-	
-	from := getSource(fs.Arg(0))
-	remove := getSource(fs.Arg(1))
-	
-	result, err := c4m.Subtract(from, remove)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	
-	outputManifest(result)
-}
-
 func getSource(path string) c4m.Source {
 	// Check if it's stdin
 	if path == "-" {
@@ -755,9 +634,6 @@ func runValidate(args []string) {
 	if stats.NullSizes > 0 {
 		fmt.Printf("  Null sizes: %d\n", stats.NullSizes)
 	}
-	if stats.Layers > 0 {
-		fmt.Printf("  Layers: %d\n", stats.Layers)
-	}
 	if stats.Chunks > 0 {
 		fmt.Printf("  Chunks referenced: %d\n", stats.Chunks)
 	}
@@ -780,65 +656,6 @@ func runValidate(args []string) {
 	}
 	
 	fmt.Printf("\n✓ Validation passed\n")
-}
-
-func runExtract(args []string) {
-	// Create a flag set for the extract command
-	fs := flag.NewFlagSet("extract", flag.ExitOnError)
-	pretty := fs.Bool("pretty", true, "Pretty-print manifest with aligned columns (default)")
-	canonical := fs.Bool("canonical", false, "Use canonical format instead of pretty format")
-	fs.Parse(args)
-
-	if fs.NArg() < 1 || fs.NArg() > 2 {
-		fmt.Fprintf(os.Stderr, "Error: extract requires a bundle path and optional output file\n")
-		fmt.Fprintf(os.Stderr, "Usage: c4 extract [--canonical] <bundle_dir> [output.c4m]\n")
-		os.Exit(1)
-	}
-
-	// Determine format: canonical takes precedence if specified
-	usePretty := *pretty && !*canonical
-
-	bundlePath := fs.Arg(0)
-
-	// Check if bundle directory exists
-	info, err := os.Stat(bundlePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: cannot access %s: %v\n", bundlePath, err)
-		os.Exit(1)
-	}
-	if !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "Error: bundle path is not a directory\n")
-		os.Exit(1)
-	}
-
-	// Extract to file or stdout
-	if fs.NArg() == 2 {
-		outputPath := fs.Arg(1)
-		fmt.Printf("Extracting bundle to: %s\n", outputPath)
-		// Use the proper @base chain extraction with selected format
-		if usePretty {
-			err = bundle.ExtractBundlePrettyToFile(bundlePath, outputPath)
-		} else {
-			err = bundle.ExtractBundleToFile(bundlePath, outputPath)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("✓ Extraction complete\n")
-	} else {
-		// Extract to stdout
-		// Use the proper @base chain extraction with selected format
-		if usePretty {
-			err = bundle.ExtractBundlePretty(bundlePath, os.Stdout)
-		} else {
-			err = bundle.ExtractBundle(bundlePath, os.Stdout)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-	}
 }
 
 // runFmt formats a C4M manifest file in canonical or ergonomic form.

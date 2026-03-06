@@ -21,33 +21,11 @@ func NullTimestamp() time.Time { return nullTimestamp }
 
 // Manifest represents a complete C4M manifest
 type Manifest struct {
-	Version      string
-	Entries      []*Entry
-	Base         c4.ID // For layered manifests
-	Layers       []*Layer
-	currentLayer *Layer // Current layer being parsed
-	Data         c4.ID  // Application-specific metadata
-	DataBlocks   []*DataBlock // Embedded @data blocks (for self-contained manifests)
-	Intent       bool         // True if manifest is an @intent c4m
-	index        *treeIndex   // Lazily-built tree index for O(1) navigation
+	Version    string
+	Entries    []*Entry
+	DataBlocks []*DataBlock // Embedded data blocks (for sequence ID lists)
+	index      *treeIndex   // Lazily-built tree index for O(1) navigation
 }
-
-// Layer represents a changeset layer
-type Layer struct {
-	Type LayerType
-	By   string
-	Time time.Time
-	Note string
-	Data c4.ID
-}
-
-// LayerType represents the type of layer
-type LayerType int
-
-const (
-	LayerTypeAdd LayerType = iota
-	LayerTypeRemove
-)
 
 // NewManifest creates a new empty manifest
 func NewManifest() *Manifest {
@@ -191,23 +169,12 @@ func (m *Manifest) Canonicalize() {
 func (m *Manifest) Copy() *Manifest {
 	cp := &Manifest{
 		Version: m.Version,
-		Base:    m.Base,
-		Data:    m.Data,
-		Intent:  m.Intent,
 		Entries: make([]*Entry, len(m.Entries)),
 	}
 
 	for i, e := range m.Entries {
 		entryCopy := *e
 		cp.Entries[i] = &entryCopy
-	}
-
-	if m.Layers != nil {
-		cp.Layers = make([]*Layer, len(m.Layers))
-		for i, l := range m.Layers {
-			layerCopy := *l
-			cp.Layers[i] = &layerCopy
-		}
 	}
 
 	if m.DataBlocks != nil {

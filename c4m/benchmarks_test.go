@@ -119,92 +119,6 @@ func BenchmarkDiff(b *testing.B) {
 	}
 }
 
-// BenchmarkUnion tests union operation performance
-func BenchmarkUnion(b *testing.B) {
-	benchmarks := []struct {
-		name     string
-		sets     int
-		sizeEach int
-	}{
-		{"2Sets-100Each", 2, 100},
-		{"3Sets-100Each", 3, 100},
-		{"2Sets-1000Each", 2, 1000},
-		{"5Sets-1000Each", 5, 1000},
-	}
-
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			sources := make([]Source, bm.sets)
-
-			for s := 0; s < bm.sets; s++ {
-				manifest := NewManifest()
-				for i := 0; i < bm.sizeEach; i++ {
-					manifest.AddEntry(&Entry{
-						Name: fmt.Sprintf("set%d_file%06d.txt", s, i),
-						C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d_%d", s, i)))),
-					})
-				}
-				sources[s] = ManifestSource{manifest}
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, _ = Union(sources...)
-			}
-		})
-	}
-}
-
-// BenchmarkIntersect tests intersect operation performance
-func BenchmarkIntersect(b *testing.B) {
-	benchmarks := []struct {
-		name    string
-		size    int
-		overlap int // percentage of overlap
-	}{
-		{"Small-50%Overlap", 100, 50},
-		{"Small-NoOverlap", 100, 0},
-		{"Medium-50%Overlap", 1000, 50},
-		{"Medium-10%Overlap", 1000, 10},
-	}
-
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			// Create first manifest
-			manifest1 := NewManifest()
-			for i := 0; i < bm.size; i++ {
-				manifest1.AddEntry(&Entry{
-					Name: fmt.Sprintf("file%06d.txt", i),
-					C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
-				})
-			}
-
-			// Create second manifest with overlap
-			manifest2 := NewManifest()
-			overlapCount := bm.size * bm.overlap / 100
-			// Add overlapping entries
-			for i := 0; i < overlapCount; i++ {
-				manifest2.AddEntry(&Entry{
-					Name: fmt.Sprintf("file%06d.txt", i),
-					C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
-				})
-			}
-			// Add unique entries
-			for i := bm.size; i < bm.size+(bm.size-overlapCount); i++ {
-				manifest2.AddEntry(&Entry{
-					Name: fmt.Sprintf("file%06d.txt", i),
-					C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
-				})
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, _ = Intersect(ManifestSource{manifest1}, ManifestSource{manifest2})
-			}
-		})
-	}
-}
-
 // BenchmarkParsing tests C4M parsing performance
 func BenchmarkParsing(b *testing.B) {
 	benchmarks := []struct {
@@ -220,7 +134,6 @@ func BenchmarkParsing(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			// Create C4M content
 			var buf bytes.Buffer
-			buf.WriteString("@c4m 1.0\n")
 
 			for i := 0; i < bm.size; i++ {
 				// Write entry

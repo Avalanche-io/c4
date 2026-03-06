@@ -43,7 +43,6 @@ type ValidationStats struct {
 	NewestTime      time.Time
 	NullTimes       int64 // Entries with null timestamps
 	NullSizes       int64 // Entries with null sizes
-	Layers          int64 // Number of @layer directives
 	Chunks          int64 // Number of referenced chunks
 	MaxDepth        int   // Maximum directory depth
 }
@@ -59,7 +58,6 @@ type Validator struct {
 	lastDepth    int
 	depthStack   []string // Track parent directories
 	seenDirAtDepth map[int]bool // Track if we've seen a directory at each depth
-	inLayer      bool // Whether we're in a @layer section
 	stats        ValidationStats
 	isErgonomic  bool // Whether the file uses ergonomic format
 	formatDetected bool // Whether we've detected the format yet
@@ -79,7 +77,8 @@ func NewValidator(strict bool) *Validator {
 	}
 }
 
-// ValidateManifest validates a C4M manifest from a reader
+// ValidateManifest validates a C4M manifest from a reader.
+// The format is entry-only: no header, no directives.
 func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.errors = nil
 	v.warnings = nil
@@ -92,76 +91,44 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.formatDetected = false
 	v.isErgonomic = false
 	v.lastPathAtDepth = make(map[int]string)
-	
+
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB max line
-	
-	// Check first line for version
-	if !scanner.Scan() {
-		v.addError(0, 0, "header", "missing @c4m version header", true)
-		return v.getResult()
-	}
-	
-	v.lineNum = 1
-	firstLine := scanner.Text()
-	if !v.validateHeader(firstLine) {
-		return v.getResult()
-	}
-	
+
 	// Process entries
 	for scanner.Scan() {
 		v.lineNum++
 		line := scanner.Text()
-		
+
 		// Skip empty lines
 		if line == "" {
 			continue
 		}
-		
-		// Handle directives
-		if strings.HasPrefix(line, "@") {
-			v.handleDirective(line)
+
+		// Reject directive lines
+		if strings.HasPrefix(strings.TrimSpace(line), "@") {
+			v.addError(v.lineNum, 0, "directive", fmt.Sprintf("directives not supported: %s", line), false)
 			continue
 		}
-		
+
 		// Detect format on first entry if not yet detected
 		if !v.formatDetected && !strings.HasPrefix(line, "#") {
 			v.detectFormat(line)
 		}
-		
+
 		v.validateEntry(line)
-		
+
 		if v.MaxErrors > 0 && len(v.errors) >= v.MaxErrors {
 			v.addError(v.lineNum, 0, "", fmt.Sprintf("stopping after %d errors", v.MaxErrors), true)
 			break
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		v.addError(v.lineNum, 0, "", fmt.Sprintf("scan error: %v", err), true)
 	}
-	
-	return v.getResult()
-}
 
-func (v *Validator) validateHeader(line string) bool {
-	if !strings.HasPrefix(line, "@c4m ") {
-		v.addError(1, 1, "header", "first line must start with '@c4m '", true)
-		return false
-	}
-	
-	parts := strings.Fields(line)
-	if len(parts) != 2 {
-		v.addError(1, 1, "header", "invalid header format", true)
-		return false
-	}
-	
-	version := parts[1]
-	if version != "1.0" {
-		v.addWarning(1, 6, "version", fmt.Sprintf("unknown version: %s", version))
-	}
-	
-	return true
+	return v.getResult()
 }
 
 func (v *Validator) validateEntry(line string) {
@@ -312,15 +279,10 @@ func (v *Validator) validateEntry(line string) {
 		v.lastPathAtDepth[depthLevel] = v.currentPath
 	}
 
-	// Check for duplicates (unless in a layer which can override)
-	if !v.inLayer {
-		if prevLine, exists := v.seenPaths[v.currentPath]; exists {
-			v.addError(v.lineNum, 0, "duplicate", fmt.Sprintf("duplicate path '%s' (first seen at line %d)", v.currentPath, prevLine), false)
-		} else {
-			v.seenPaths[v.currentPath] = v.lineNum
-		}
+	// Check for duplicates
+	if prevLine, exists := v.seenPaths[v.currentPath]; exists {
+		v.addError(v.lineNum, 0, "duplicate", fmt.Sprintf("duplicate path '%s' (first seen at line %d)", v.currentPath, prevLine), false)
 	} else {
-		// In layers, duplicates override previous entries
 		v.seenPaths[v.currentPath] = v.lineNum
 	}
 	
@@ -687,17 +649,6 @@ func (v *Validator) detectFormat(line string) {
 			}
 		}
 	}
-}
-
-// handleDirective processes @ directives
-func (v *Validator) handleDirective(line string) {
-	if strings.HasPrefix(line, "@layer") {
-		v.inLayer = true
-		v.stats.Layers++
-	} else if strings.HasPrefix(line, "@end") {
-		v.inLayer = false
-	}
-	// Other directives are allowed but not validated in detail
 }
 
 // updateStats updates validation statistics based on an entry

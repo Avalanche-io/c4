@@ -87,17 +87,6 @@ func (mb *ManifestBuilder) BuildFromScanResult(result *ScanResult) *Manifest {
 	return manifest
 }
 
-// BundleScanner is a specialized scanner for creating bundles
-type BundleScanner interface {
-	Scanner
-	
-	// SetBundle sets the bundle to write to
-	SetBundle(bundle *Bundle)
-	
-	// SetChunkSize sets the maximum entries per chunk
-	SetChunkSize(size int)
-}
-
 // WriterScanner can write results directly to an io.Writer
 type WriterScanner interface {
 	Scanner

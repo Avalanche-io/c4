@@ -48,7 +48,6 @@ c4 -m myproject/ | c4
 A C4M manifest is a plain text file with a simple structure:
 
 ```
-@c4m 1.0
 -rw-r--r-- 2024-01-15T10:30:00Z 1234 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB
 drwxr-xr-x 2024-01-15T10:30:00Z 4096 docs/ c43pCP9e69EGD253L3pcwcjvzVFHntBMsC7V12jJz83ptDNUoNAa2k3BiafC6UAUgYkyaGk7Z1cbgPvx9zezLagD9M
 ```
@@ -199,7 +198,6 @@ C4M is part of the C4 reference implementation. We welcome contributions for:
 - `decoder.go` - Decoder with character-level parser, timestamp/mode parsing
 - `builder.go` - Fluent manifest builder API
 - `operations.go` - Diff, Union, Intersect, Subtract, Resolver, ManifestCache
-- `merge.go` - Layer merge operations
 - `validator.go` - Streaming validator with configurable strictness
 - `naturalsort.go` - Natural sort (text before numeric, ASCII digits only)
 - `sequence.go` - Media file sequence detection and compression

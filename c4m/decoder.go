@@ -16,7 +16,6 @@ import (
 type Decoder struct {
 	reader      *bufio.Reader
 	lineNum     int
-	version     string
 	indentWidth int // detected indent width
 }
 
@@ -28,20 +27,11 @@ func NewDecoder(r io.Reader) *Decoder {
 	}
 }
 
-// Version returns the parsed manifest version.
-// This is only valid after Decode() has been called.
-func (d *Decoder) Version() string {
-	return d.version
-}
-
 // Decode reads and decodes a manifest from the input stream.
+// The format is entry-only: no @c4m header, no directives.
 func (d *Decoder) Decode() (*Manifest, error) {
-	if err := d.parseHeader(); err != nil {
-		return nil, err
-	}
-
 	m := &Manifest{
-		Version: d.version,
+		Version: "1.0",
 		Entries: make([]*Entry, 0),
 	}
 
@@ -51,55 +41,15 @@ func (d *Decoder) Decode() (*Manifest, error) {
 			if err == io.EOF {
 				break
 			}
-			if dirErr, ok := err.(*directiveError); ok {
-				directive := dirErr.directive
-				// Check for @data which requires special multi-line handling
-				if strings.HasPrefix(directive, "@data ") {
-					if err := d.handleDataBlock(m, directive); err != nil {
-						return nil, err
-					}
-					continue
-				}
-				// Handle other directives
-				if err := d.handleDirective(m, directive); err != nil {
-					return nil, err
-				}
-				continue
-			}
 			return nil, fmt.Errorf("%w: %v", ErrInvalidEntry, err)
 		}
-
-		if m.currentLayer != nil && m.currentLayer.Type == LayerTypeRemove {
-			entry.removeLayer = true
+		if entry == nil {
+			continue // blank line
 		}
 		m.Entries = append(m.Entries, entry)
 	}
 
 	return m, nil
-}
-
-// parseHeader reads and validates the version header
-func (d *Decoder) parseHeader() error {
-	line, err := d.readLine()
-	if err != nil {
-		return fmt.Errorf("failed to read header: %w", err)
-	}
-
-	if !strings.HasPrefix(line, "@c4m ") {
-		return fmt.Errorf("%w: expected '@c4m X.Y', got %q", ErrInvalidHeader, line)
-	}
-
-	d.version = strings.TrimPrefix(line, "@c4m ")
-	if d.version == "" {
-		return fmt.Errorf("%w: missing version number", ErrInvalidHeader)
-	}
-
-	// Currently only support version 1.x
-	if !strings.HasPrefix(d.version, "1.") {
-		return fmt.Errorf("%w: %s", ErrUnsupportedVersion, d.version)
-	}
-
-	return nil
 }
 
 // parseEntry parses a single manifest entry
@@ -109,9 +59,14 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 		return nil, err
 	}
 
-	// Handle directives
-	if strings.HasPrefix(line, "@") {
-		return nil, &directiveError{directive: line}
+	// Skip blank lines
+	if strings.TrimSpace(line) == "" {
+		return nil, nil
+	}
+
+	// Reject directive lines
+	if strings.HasPrefix(strings.TrimSpace(line), "@") {
+		return nil, fmt.Errorf("directives not supported (line %d): %s", d.lineNum, line)
 	}
 
 	// Detect indentation
@@ -531,68 +486,6 @@ func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 	return line[start:pos], pos, nil
 }
 
-// handleDataBlock reads and parses a @data block
-func (d *Decoder) handleDataBlock(m *Manifest, directive string) error {
-	// Parse the C4 ID from the directive
-	parts := strings.Fields(directive)
-	if len(parts) < 2 {
-		return fmt.Errorf("@data requires C4 ID")
-	}
-
-	id, err := c4.Parse(parts[1])
-	if err != nil {
-		return fmt.Errorf("invalid @data C4 ID: %w", err)
-	}
-
-	// Read content until next @ directive or EOF
-	var content strings.Builder
-	for {
-		line, err := d.readLine()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-
-		// Check for next directive (but not lines that start with @ inside content)
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "@") && len(trimmed) > 1 {
-			// This is a new directive
-			if strings.HasPrefix(trimmed, "@data ") {
-				// Parse the accumulated content first
-				block, parseErr := ParseDataBlock(id, content.String())
-				if parseErr != nil {
-					return fmt.Errorf("failed to parse @data block: %w", parseErr)
-				}
-				m.AddDataBlock(block)
-				// Handle the new @data directive
-				return d.handleDataBlock(m, trimmed)
-			}
-			// Parse the accumulated content
-			block, parseErr := ParseDataBlock(id, content.String())
-			if parseErr != nil {
-				return fmt.Errorf("failed to parse @data block: %w", parseErr)
-			}
-			m.AddDataBlock(block)
-			// Handle the other directive
-			return d.handleDirective(m, trimmed)
-		}
-
-		content.WriteString(line)
-		content.WriteByte('\n')
-	}
-
-	// Parse the accumulated content
-	block, err := ParseDataBlock(id, content.String())
-	if err != nil {
-		return fmt.Errorf("failed to parse @data block: %w", err)
-	}
-	m.AddDataBlock(block)
-
-	return nil
-}
-
 // readLine reads a line from the input
 func (d *Decoder) readLine() (string, error) {
 	line, err := d.reader.ReadString('\n')
@@ -652,78 +545,6 @@ func parseTimestamp(s string) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("cannot parse timestamp %q", s)
-}
-
-// handleDirective processes @ directives
-func (d *Decoder) handleDirective(m *Manifest, directive string) error {
-	parts := strings.Fields(directive)
-	if len(parts) == 0 {
-		return nil
-	}
-
-	switch parts[0] {
-	case "@base":
-		if len(parts) < 2 {
-			return fmt.Errorf("@base requires C4 ID")
-		}
-		id, err := c4.Parse(parts[1])
-		if err != nil {
-			return fmt.Errorf("invalid base C4 ID: %w", err)
-		}
-		m.Base = id
-
-	case "@layer":
-		m.currentLayer = &Layer{Type: LayerTypeAdd}
-		m.Layers = append(m.Layers, m.currentLayer)
-
-	case "@remove":
-		m.currentLayer = &Layer{Type: LayerTypeRemove}
-		m.Layers = append(m.Layers, m.currentLayer)
-
-	case "@expand":
-		return fmt.Errorf("%w: @expand directive", ErrNotSupported)
-
-	case "@by":
-		if m.currentLayer != nil {
-			m.currentLayer.By = strings.Join(parts[1:], " ")
-		}
-
-	case "@time":
-		if m.currentLayer != nil && len(parts) > 1 {
-			t, err := time.Parse(time.RFC3339, parts[1])
-			if err != nil {
-				return fmt.Errorf("invalid @time: %w", err)
-			}
-			m.currentLayer.Time = t
-		}
-
-	case "@note":
-		if m.currentLayer != nil {
-			m.currentLayer.Note = strings.Join(parts[1:], " ")
-		}
-
-	case "@data":
-		if len(parts) > 1 {
-			id, err := c4.Parse(parts[1])
-			if err != nil {
-				return fmt.Errorf("invalid @data C4 ID: %w", err)
-			}
-			if m.currentLayer != nil {
-				m.currentLayer.Data = id
-			} else {
-				m.Data = id
-			}
-		}
-
-	case "@intent":
-		m.Intent = true
-
-	case "@end":
-		// End of layer - reset current layer
-		m.currentLayer = nil
-	}
-
-	return nil
 }
 
 // parseMode converts a mode string to os.FileMode
@@ -807,11 +628,3 @@ func parseMode(s string) (os.FileMode, error) {
 	return mode, nil
 }
 
-// directiveError indicates a directive was encountered during parsing
-type directiveError struct {
-	directive string
-}
-
-func (e *directiveError) Error() string {
-	return fmt.Sprintf("directive: %s", e.directive)
-}

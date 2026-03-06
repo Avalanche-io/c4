@@ -32,48 +32,44 @@ func TestValidateManifest(t *testing.T) {
 	}{
 		{
 			name: "valid manifest",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  false,
 			wantErr: false,
 		},
 		{
-			name: "missing header",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-`,
-			strict:  false,
-			wantErr: true,
-		},
-		{
 			name: "invalid C4 ID",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt invalid-c4-id
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt invalid-c4-id
 `,
 			strict:  true,
 			wantErr: true,
 		},
 		{
 			name: "directory entry with size",
-			content: `@c4m 1.0
-drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
+			content: `drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 `,
 			strict:  false,
 			wantErr: false,
 		},
 		{
-			name: "with @base",
-			content: `@c4m 1.0
-@base c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			name: "directive rejected",
+			content: `@base c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  false,
-			wantErr: false,
+			wantErr: true,
+		},
+		{
+			name: "c4m header rejected",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`,
+			strict:  false,
+			wantErr: true,
 		},
 		{
 			name: "duplicate filenames in strict mode",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 200 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  true,
@@ -81,8 +77,7 @@ drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 		},
 		{
 			name: "unsorted entries in strict mode",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  true,
@@ -143,8 +138,7 @@ func TestValidatorSortCheck(t *testing.T) {
 	strictValidator := NewValidator(true)
 
 	// Properly sorted manifest
-	sortedContent := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	sortedContent := `-rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 b.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
@@ -154,8 +148,7 @@ func TestValidatorSortCheck(t *testing.T) {
 	}
 
 	// Unsorted manifest
-	unsortedContent := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	unsortedContent := `-rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
@@ -170,8 +163,7 @@ func TestValidatorDuplicates(t *testing.T) {
 	strictValidator := NewValidator(true)
 
 	// Test manifest with duplicates
-	withDupsContent := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	withDupsContent := `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 200 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
@@ -180,16 +172,15 @@ func TestValidatorDuplicates(t *testing.T) {
 		t.Error("Strict validation should fail for duplicate entries")
 	}
 
-	// Check that duplicates are tracked
-	if strictValidator.seenPaths["test.txt"] != 2 {
-		t.Errorf("Expected 2 occurrences of test.txt, got %d", strictValidator.seenPaths["test.txt"])
+	// Check that the duplicate was detected (seenPaths stores line number of first occurrence)
+	if _, exists := strictValidator.seenPaths["test.txt"]; !exists {
+		t.Error("Expected test.txt to be tracked in seenPaths")
 	}
 }
 
 func TestValidationReport(t *testing.T) {
 	// Create a manifest with various issues
-	content := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	content := `-rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
@@ -215,25 +206,16 @@ func TestValidationReport(t *testing.T) {
 }
 
 func TestGetErrorsAndWarnings(t *testing.T) {
-	// Create a manifest that generates a warning (unknown version)
-	content := `@c4m 2.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	// A valid manifest should produce no errors
+	content := `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
 	validator := NewValidator(false)
 	validator.ValidateManifest(strings.NewReader(content))
 
-	// GetErrors returns the errors slice (may be nil if no errors)
 	errors := validator.GetErrors()
-	// This manifest is valid but has a version warning, so no errors
 	if len(errors) != 0 {
 		t.Errorf("Expected no errors, got %d", len(errors))
-	}
-
-	// GetWarnings should return warnings slice (version 2.0 generates a warning)
-	warnings := validator.GetWarnings()
-	if len(warnings) == 0 {
-		t.Error("Expected warning for unknown version 2.0")
 	}
 
 	// Test manifest with actual errors
@@ -243,6 +225,17 @@ func TestGetErrorsAndWarnings(t *testing.T) {
 	errors2 := validator2.GetErrors()
 	if len(errors2) == 0 {
 		t.Error("Expected errors for invalid manifest")
+	}
+
+	// Directives produce errors, not warnings
+	directiveContent := `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`
+	validator3 := NewValidator(false)
+	validator3.ValidateManifest(strings.NewReader(directiveContent))
+	errors3 := validator3.GetErrors()
+	if len(errors3) == 0 {
+		t.Error("Expected errors for directive line")
 	}
 }
 
@@ -307,8 +300,7 @@ func TestValidateFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	manifestPath := filepath.Join(tmpDir, "test.c4m")
 
-	content := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	content := `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 	if err := os.WriteFile(manifestPath, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to write test manifest: %v", err)
@@ -341,15 +333,13 @@ func TestDetectFormat(t *testing.T) {
 	}{
 		{
 			name: "canonical format",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			wantErgo: false,
 		},
 		{
 			name: "ergonomic format with month",
-			content: `@c4m 1.0
--rw-r--r-- Jan 15 2025 100 test.txt
+			content: `-rw-r--r-- Jan 15 2025 100 test.txt
 `,
 			wantErgo: true,
 		},
@@ -366,54 +356,6 @@ func TestDetectFormat(t *testing.T) {
 	}
 }
 
-func TestValidatorHandleDirective(t *testing.T) {
-	tests := []struct {
-		name       string
-		content    string
-		wantLayers int64
-	}{
-		{
-			name: "with layer directive",
-			content: `@c4m 1.0
-@layer test
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-@end
-`,
-			wantLayers: 1,
-		},
-		{
-			name: "multiple layers",
-			content: `@c4m 1.0
-@layer first
--rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-@end
-@layer second
--rw-r--r-- 2025-09-19T12:00:00Z 100 b.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-@end
-`,
-			wantLayers: 2,
-		},
-		{
-			name: "no layers",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-`,
-			wantLayers: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			validator := NewValidator(false)
-			validator.ValidateManifest(strings.NewReader(tt.content))
-			stats := validator.GetStats()
-			if stats.Layers != tt.wantLayers {
-				t.Errorf("Layers = %d, want %d", stats.Layers, tt.wantLayers)
-			}
-		})
-	}
-}
-
 func TestValidateC4ID(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -423,40 +365,35 @@ func TestValidateC4ID(t *testing.T) {
 	}{
 		{
 			name: "valid C4 ID",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  true,
 			wantErr: false,
 		},
 		{
 			name: "missing C4 ID is allowed",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt
 `,
 			strict:  true,
 			wantErr: false,
 		},
 		{
 			name: "invalid C4 ID format",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4invalid
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4invalid
 `,
 			strict:  true,
 			wantErr: true,
 		},
 		{
 			name: "C4 ID too short",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4abc
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4abc
 `,
 			strict:  true,
 			wantErr: true,
 		},
 		{
 			name: "directory without C4 ID is ok",
-			content: `@c4m 1.0
-drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
+			content: `drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 `,
 			strict:  true,
 			wantErr: false,

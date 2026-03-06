@@ -39,6 +39,7 @@ func (e *Encoder) SetIndent(width int) *Encoder {
 }
 
 // Encode writes the manifest to the encoder's output stream.
+// Output is entry-only: no header, no directives.
 func (e *Encoder) Encode(m *Manifest) error {
 	// Ensure entries are properly sorted before output
 	m.SortEntries()
@@ -55,37 +56,8 @@ func (e *Encoder) Encode(m *Manifest) error {
 		c4IDColumn = e.calculateC4IDColumn(m)
 	}
 
-	// Write header
-	if _, err := fmt.Fprintf(e.w, "@c4m %s\n", m.Version); err != nil {
-		return err
-	}
-
-	// Write @intent if set
-	if m.Intent {
-		if _, err := fmt.Fprint(e.w, "@intent\n"); err != nil {
-			return err
-		}
-	}
-
-	// Write metadata if present
-	if !m.Data.IsNil() {
-		if _, err := fmt.Fprintf(e.w, "@data %s\n", m.Data); err != nil {
-			return err
-		}
-	}
-
-	// Write base if present
-	if !m.Base.IsNil() {
-		if _, err := fmt.Fprintf(e.w, "@base %s\n", m.Base); err != nil {
-			return err
-		}
-	}
-
-	// Write non-remove entries
+	// Write entries
 	for _, entry := range m.Entries {
-		if entry.removeLayer {
-			continue
-		}
 		var line string
 		if e.pretty {
 			line = e.formatEntryPretty(entry, maxSize, c4IDColumn)
@@ -93,76 +65,6 @@ func (e *Encoder) Encode(m *Manifest) error {
 			line = entry.Format(e.indentWidth, false)
 		}
 		if _, err := fmt.Fprintf(e.w, "%s\n", line); err != nil {
-			return err
-		}
-	}
-
-	// Write layers
-	for _, layer := range m.Layers {
-		if err := e.writeLayer(layer); err != nil {
-			return err
-		}
-		// Write remove entries within @remove sections
-		if layer.Type == LayerTypeRemove {
-			for _, entry := range m.Entries {
-				if !entry.removeLayer {
-					continue
-				}
-				line := entry.Format(e.indentWidth, false)
-				if _, err := fmt.Fprintf(e.w, "%s\n", line); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// Write embedded data blocks
-	for _, block := range m.DataBlocks {
-		formatted := FormatDataBlock(block)
-		if _, err := fmt.Fprint(e.w, formatted); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// writeLayer writes a layer section
-func (e *Encoder) writeLayer(layer *Layer) error {
-	// Write layer type
-	var layerType string
-	switch layer.Type {
-	case LayerTypeAdd:
-		layerType = "@layer"
-	case LayerTypeRemove:
-		layerType = "@remove"
-	}
-
-	if _, err := fmt.Fprintf(e.w, "%s\n", layerType); err != nil {
-		return err
-	}
-
-	// Write metadata
-	if layer.By != "" {
-		if _, err := fmt.Fprintf(e.w, "@by %s\n", layer.By); err != nil {
-			return err
-		}
-	}
-
-	if !layer.Time.IsZero() {
-		if _, err := fmt.Fprintf(e.w, "@time %s\n", layer.Time.Format(TimestampFormat)); err != nil {
-			return err
-		}
-	}
-
-	if layer.Note != "" {
-		if _, err := fmt.Fprintf(e.w, "@note %s\n", layer.Note); err != nil {
-			return err
-		}
-	}
-
-	if !layer.Data.IsNil() {
-		if _, err := fmt.Fprintf(e.w, "@data %s\n", layer.Data); err != nil {
 			return err
 		}
 	}

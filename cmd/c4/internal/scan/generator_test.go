@@ -904,13 +904,9 @@ func TestNewDecoderDecode(t *testing.T) {
 		check   func(t *testing.T, m *Manifest)
 	}{
 		{
-			name: "valid manifest",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt`,
+			name:  "valid manifest",
+			input: `-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt`,
 			check: func(t *testing.T, m *Manifest) {
-				if m.Version != "1.0" {
-					t.Errorf("Version = %q, want 1.0", m.Version)
-				}
 				if len(m.Entries) != 1 {
 					t.Errorf("Entries = %d, want 1", len(m.Entries))
 				}
@@ -922,8 +918,8 @@ func TestNewDecoderDecode(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "empty manifest",
-			input: `@c4m 1.0`,
+			name:  "empty manifest",
+			input: ``,
 			check: func(t *testing.T, m *Manifest) {
 				if len(m.Entries) != 0 {
 					t.Errorf("Entries = %d, want 0", len(m.Entries))

@@ -159,43 +159,37 @@ func TestParserErgonomicForms(t *testing.T) {
 	}{
 		{
 			name: "size with commas",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-15T10:30:00Z 1,234,567 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- 2024-01-15T10:30:00Z 1,234,567 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   1234567,
 		},
 		{
 			name: "pretty timestamp with timezone",
-			input: `@c4m 1.0
--rw-r--r-- Jan 15 10:30:00 2024 UTC 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- Jan 15 10:30:00 2024 UTC 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
 			name: "pretty timestamp with local timezone",
-			input: `@c4m 1.0
--rw-r--r-- Sep  1 12:30:00 2024 CDT 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- Sep  1 12:30:00 2024 CDT 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
 			name: "size with spaces (padding)",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-15T10:30:00Z       100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- 2024-01-15T10:30:00Z       100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
 			name: "column-aligned C4 ID",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-15T10:30:00Z 100 file.txt                                        c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- 2024-01-15T10:30:00Z 100 file.txt                                        c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
 			name: "large number with commas",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-15T10:30:00Z 10,485,760 bigfile.bin c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- 2024-01-15T10:30:00Z 10,485,760 bigfile.bin c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   10485760,
 		},
@@ -227,84 +221,6 @@ func TestParserErgonomicForms(t *testing.T) {
 	}
 }
 
-func TestIntentRoundTrip(t *testing.T) {
-	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-	testID, _ := c4.Parse("c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
-
-	m := &Manifest{
-		Version: "1.0",
-		Intent:  true,
-		Entries: []*Entry{
-			{
-				Mode:      0644,
-				Timestamp: testTime,
-				Size:      42,
-				Name:      "main.c4i",
-				C4ID:      testID,
-				Depth:     0,
-			},
-		},
-	}
-
-	// Encode
-	var buf bytes.Buffer
-	if err := NewEncoder(&buf).Encode(m); err != nil {
-		t.Fatalf("Encode error: %v", err)
-	}
-
-	encoded := buf.String()
-
-	// Verify @intent appears after @c4m header
-	lines := strings.Split(encoded, "\n")
-	if len(lines) < 3 {
-		t.Fatalf("Expected at least 3 lines, got %d", len(lines))
-	}
-	if lines[0] != "@c4m 1.0" {
-		t.Errorf("First line: got %q, want %q", lines[0], "@c4m 1.0")
-	}
-	if lines[1] != "@intent" {
-		t.Errorf("Second line: got %q, want %q", lines[1], "@intent")
-	}
-
-	// Decode back
-	decoded, err := NewDecoder(strings.NewReader(encoded)).Decode()
-	if err != nil {
-		t.Fatalf("Decode error: %v", err)
-	}
-
-	if !decoded.Intent {
-		t.Error("Expected Intent=true after round-trip")
-	}
-	if len(decoded.Entries) != 1 {
-		t.Fatalf("Expected 1 entry, got %d", len(decoded.Entries))
-	}
-	if decoded.Entries[0].Name != "main.c4i" {
-		t.Errorf("Entry name: got %q, want %q", decoded.Entries[0].Name, "main.c4i")
-	}
-
-	// Verify non-intent manifest doesn't emit @intent
-	m2 := &Manifest{
-		Version: "1.0",
-		Entries: []*Entry{
-			{
-				Mode:      0644,
-				Timestamp: testTime,
-				Size:      100,
-				Name:      "file.txt",
-				C4ID:      testID,
-				Depth:     0,
-			},
-		},
-	}
-	var buf2 bytes.Buffer
-	if err := NewEncoder(&buf2).Encode(m2); err != nil {
-		t.Fatalf("Encode error: %v", err)
-	}
-	if strings.Contains(buf2.String(), "@intent") {
-		t.Error("Non-intent manifest should not contain @intent")
-	}
-}
-
 func TestParserErrorHandling(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -313,15 +229,13 @@ func TestParserErrorHandling(t *testing.T) {
 		errorMsg    string
 	}{
 		{
-			name: "invalid size (not a number after comma removal)",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-15T10:30:00Z abc,def file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "invalid size (not a number after comma removal)",
+			input:       `-rw-r--r-- 2024-01-15T10:30:00Z abc,def file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: true,
 		},
 		{
-			name: "valid manifest should not error",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-15T10:30:00Z 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "valid manifest should not error",
+			input:       `-rw-r--r-- 2024-01-15T10:30:00Z 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 		},
 	}

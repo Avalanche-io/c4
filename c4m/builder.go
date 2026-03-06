@@ -1,8 +1,6 @@
 package c4m
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -12,14 +10,9 @@ import (
 
 // ManifestBuilder provides a fluent API for building manifests with correct hierarchy
 type ManifestBuilder struct {
-	manifest  *Manifest
-	base      *Manifest  // For existence validation (optional)
-	removals  []string   // Queued removal paths
-	layerBy   string     // Optional author
-	layerNote string     // Optional note
-	layerTime time.Time  // Optional timestamp
-	errs      []error    // Accumulated validation errors
-	warnings  []string   // Non-fatal warnings
+	manifest *Manifest
+	errs     []error  // Accumulated validation errors
+	warnings []string // Non-fatal warnings
 }
 
 // NewBuilder creates a new ManifestBuilder for constructing manifests
@@ -34,53 +27,6 @@ func (m *Manifest) Builder() *ManifestBuilder {
 	return &ManifestBuilder{
 		manifest: m,
 	}
-}
-
-// WithBase sets the base manifest for validation and sets the Base ID
-func (b *ManifestBuilder) WithBase(base *Manifest) *ManifestBuilder {
-	b.base = base
-	b.manifest.Base = base.ComputeC4ID()
-	return b
-}
-
-// WithBaseID sets only the base ID (no validation possible)
-func (b *ManifestBuilder) WithBaseID(id c4.ID) *ManifestBuilder {
-	b.manifest.Base = id
-	return b
-}
-
-// Remove queues a path for removal from the base manifest
-func (b *ManifestBuilder) Remove(path string) *ManifestBuilder {
-	b.removals = append(b.removals, path)
-	return b
-}
-
-// RemoveDir queues a directory and all its contents for removal
-func (b *ManifestBuilder) RemoveDir(path string) *ManifestBuilder {
-	// Ensure trailing slash for directories
-	if !strings.HasSuffix(path, "/") {
-		path += "/"
-	}
-	b.removals = append(b.removals, path)
-	return b
-}
-
-// By sets the author for the layer metadata
-func (b *ManifestBuilder) By(author string) *ManifestBuilder {
-	b.layerBy = author
-	return b
-}
-
-// Note sets the note for the layer metadata
-func (b *ManifestBuilder) Note(note string) *ManifestBuilder {
-	b.layerNote = note
-	return b
-}
-
-// At sets the timestamp for the layer metadata
-func (b *ManifestBuilder) At(timestamp time.Time) *ManifestBuilder {
-	b.layerTime = timestamp
-	return b
 }
 
 // AddFile adds a file entry at the root level (depth 0)
@@ -123,45 +69,8 @@ func (b *ManifestBuilder) AddDir(name string, opts ...EntryOption) *DirBuilder {
 // Build constructs the manifest and returns any validation errors
 // The manifest is always returned, even if there are errors
 func (b *ManifestBuilder) Build() (*Manifest, error) {
-	// Validate removals if possible
-	if len(b.removals) > 0 {
-		if b.base == nil && b.manifest.Base.IsNil() {
-			b.errs = append(b.errs, fmt.Errorf("removals without base manifest"))
-		} else if b.base == nil {
-			// Only have ID, cannot validate - this is OK, just a warning
-			b.warnings = append(b.warnings, "cannot validate removals: base manifest not loaded")
-		} else {
-			// Can validate against base
-			for _, path := range b.removals {
-				if b.base.GetEntry(path) == nil {
-					b.errs = append(b.errs, fmt.Errorf("remove %q: not found in base", path))
-				}
-			}
-		}
-
-		// Create @remove layer (always, even with errors)
-		layer := &Layer{
-			Type: LayerTypeRemove,
-			By:   b.layerBy,
-			Time: b.layerTime,
-			Note: b.layerNote,
-		}
-		b.manifest.Layers = append(b.manifest.Layers, layer)
-
-		// Add removal entries to the manifest's remove list
-		for _, path := range b.removals {
-			// Add as entry with special handling for remove layer
-			b.manifest.AddEntry(&Entry{
-				Name:        path,
-				Depth:       0,
-				removeLayer: true, // Mark as belonging to remove layer
-			})
-		}
-	}
-
-	// Return manifest with any errors
 	if len(b.errs) > 0 {
-		return b.manifest, errors.Join(b.errs...)
+		return b.manifest, b.errs[0]
 	}
 	return b.manifest, nil
 }

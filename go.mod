@@ -14,4 +14,5 @@ require (
 require (
 	github.com/absfs/inode v1.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

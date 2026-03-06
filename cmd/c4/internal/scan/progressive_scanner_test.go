@@ -146,8 +146,8 @@ func TestProgressiveScanner(t *testing.T) {
 		}
 		
 		output := buf.String()
-		if !strings.Contains(output, "@c4m") {
-			t.Error("Output missing C4M header")
+		if len(output) == 0 {
+			t.Error("Output is empty")
 		}
 		
 		scanner.Stop()
@@ -221,12 +221,8 @@ func TestProgressiveCLI(t *testing.T) {
 			t.Errorf("CLI run failed: %v", err)
 		}
 		
-		// Check output
+		// Check output contains entries
 		manifest := output.String()
-		if !strings.Contains(manifest, "@c4m") {
-			t.Error("Output missing manifest header")
-		}
-		
 		if !strings.Contains(manifest, "file1.txt") {
 			t.Error("Output missing file1.txt")
 		}

@@ -1,7 +1,6 @@
 package c4m
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -84,14 +83,14 @@ func TestExamplesAudit(t *testing.T) {
 	// BASIC CASES
 	// =========================================================================
 
-	// 1. Minimal valid manifest (header + one file)
+	// 1. Minimal valid manifest (one file)
 	runExample(t, "01_minimal_manifest", func() *Manifest {
 		return NewBuilder().
 			AddFile("hello.txt", WithSize(13), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("hello world\n"))).
 			MustBuild()
 	}())
 
-	// 2. Empty manifest (header only, no entries)
+	// 2. Empty manifest (no entries)
 	runExample(t, "02_empty_manifest", func() *Manifest {
 		return NewManifest()
 	}())
@@ -417,164 +416,6 @@ func TestExamplesAudit(t *testing.T) {
 	}())
 
 	// =========================================================================
-	// DIRECTIVES
-	// =========================================================================
-
-	// 20. @base directive
-	runExample(t, "20_base_directive", func() *Manifest {
-		base := NewBuilder().
-			AddFile("original.txt", WithSize(100), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("original"))).
-			MustBuild()
-
-		m := NewManifest()
-		m.Base = base.ComputeC4ID()
-		m.AddEntry(&Entry{
-			Name:      "added.txt",
-			Mode:      0644,
-			Timestamp: ts2,
-			Size:      200,
-			C4ID:      idOf("added"),
-			Depth:     0,
-		})
-		return m
-	}())
-
-	// 21. @layer add
-	runExample(t, "21_layer_add", func() *Manifest {
-		m := NewManifest()
-		m.Base = idOf("some base manifest content")
-		m.AddEntry(&Entry{
-			Name:      "existing.txt",
-			Mode:      0644,
-			Timestamp: ts,
-			Size:      100,
-			C4ID:      idOf("existing"),
-			Depth:     0,
-		})
-		m.Layers = append(m.Layers, &Layer{
-			Type: LayerTypeAdd,
-			By:   "Jane Smith",
-			Time: ts2,
-			Note: "Adding security update",
-		})
-		return m
-	}())
-
-	// 22. @layer remove with @remove entries
-	runExample(t, "22_layer_remove", func() *Manifest {
-		m := NewManifest()
-		m.Base = idOf("base for removal")
-		m.Layers = append(m.Layers, &Layer{
-			Type: LayerTypeRemove,
-			By:   "Admin",
-			Time: ts3,
-			Note: "Removing deprecated files",
-		})
-		return m
-	}())
-
-	// 23. @by, @time, @note metadata
-	runExample(t, "23_metadata_directives", func() *Manifest {
-		m := NewManifest()
-		m.AddEntry(&Entry{
-			Name:      "main.c",
-			Mode:      0644,
-			Timestamp: ts,
-			Size:      4096,
-			C4ID:      idOf("main.c source"),
-			Depth:     0,
-		})
-		m.Layers = append(m.Layers, &Layer{
-			Type: LayerTypeAdd,
-			By:   "Joshua Kolden",
-			Time: ts2,
-			Note: "Performance optimization pass",
-		})
-		return m
-	}())
-
-	// 24. @data block with embedded content
-	runExample(t, "24_data_block", func() *Manifest {
-		m := NewManifest()
-		// Create an ID list data block
-		idList := newIDList()
-		idList.Add(idOf("frame1"))
-		idList.Add(idOf("frame2"))
-		idList.Add(idOf("frame3"))
-
-		seqC4ID := idList.ComputeC4ID()
-		m.AddEntry(&Entry{
-			Name:       "seq.[001-003].exr",
-			Mode:       0644,
-			Timestamp:  ts,
-			Size:       3000,
-			C4ID:       seqC4ID,
-			IsSequence: true,
-			Pattern:    "seq.[001-003].exr",
-			Depth:      0,
-		})
-
-		block := createDataBlockFromIDList(idList)
-		m.AddDataBlock(block)
-		return m
-	}())
-
-	// 25. @end directive (tested implicitly via layer encoding)
-	runExample(t, "25_end_directive", func() *Manifest {
-		m := NewManifest()
-		m.AddEntry(&Entry{
-			Name:      "before.txt",
-			Mode:      0644,
-			Timestamp: ts,
-			Size:      50,
-			C4ID:      idOf("before"),
-			Depth:     0,
-		})
-		m.Layers = append(m.Layers, &Layer{
-			Type: LayerTypeAdd,
-			By:   "Editor",
-			Note: "Layer section",
-		})
-		// After @end, more entries in the default layer would follow
-		// The encoder doesn't explicitly emit @end, but the spec supports it
-		return m
-	}())
-
-	// 26. Multiple layers
-	runExample(t, "26_multiple_layers", func() *Manifest {
-		m := NewManifest()
-		m.Base = idOf("original base")
-		m.AddEntry(&Entry{
-			Name:      "core.txt",
-			Mode:      0644,
-			Timestamp: ts,
-			Size:      100,
-			Depth:     0,
-		})
-		m.Layers = append(m.Layers,
-			&Layer{
-				Type: LayerTypeAdd,
-				By:   "Developer 1",
-				Time: ts,
-				Note: "First layer of changes",
-			},
-			&Layer{
-				Type: LayerTypeRemove,
-				By:   "Developer 2",
-				Time: ts2,
-				Note: "Cleanup old files",
-			},
-			&Layer{
-				Type: LayerTypeAdd,
-				By:   "Developer 3",
-				Time: ts3,
-				Note: "New feature additions",
-			},
-		)
-		return m
-	}())
-
-	// =========================================================================
 	// EDGE CASES
 	// =========================================================================
 
@@ -727,7 +568,7 @@ func TestExamplesAudit(t *testing.T) {
 func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 	// Test: single-dash null mode decoding
 	t.Run("single_dash_null_mode", func(t *testing.T) {
-		input := "@c4m 1.0\n- 2024-06-15T14:30:00Z 100 file.txt\n"
+		input := "- 2024-06-15T14:30:00Z 100 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -743,7 +584,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: ten-dash null mode decoding
 	t.Run("ten_dash_null_mode", func(t *testing.T) {
-		input := "@c4m 1.0\n---------- 2024-06-15T14:30:00Z 100 file.txt\n"
+		input := "---------- 2024-06-15T14:30:00Z 100 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -755,7 +596,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: timestamp "0" as null
 	t.Run("zero_timestamp_null", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 0 100 file.txt\n"
+		input := "-rw-r--r-- 0 100 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -767,7 +608,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: timestamp "-" as null
 	t.Run("dash_timestamp_null", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- - 100 file.txt\n"
+		input := "-rw-r--r-- - 100 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -779,7 +620,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: size "-" as null
 	t.Run("dash_size_null", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z - file.txt\n"
+		input := "-rw-r--r-- 2024-01-01T00:00:00Z - file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -791,7 +632,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: C4 ID "-" as null
 	t.Run("dash_c4id_null", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -\n"
+		input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -803,7 +644,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: comma-separated sizes (ergonomic)
 	t.Run("comma_separated_size", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 1,234,567 file.txt\n"
+		input := "-rw-r--r-- 2024-01-01T00:00:00Z 1,234,567 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -815,7 +656,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: timezone offset timestamp (ergonomic)
 	t.Run("timezone_offset_timestamp", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T10:00:00-08:00 100 file.txt\n"
+		input := "-rw-r--r-- 2024-01-01T10:00:00-08:00 100 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -829,7 +670,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 
 	// Test: quoted filename with spaces
 	t.Run("quoted_filename_spaces", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 \"my file.txt\"\n"
+		input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 \"my file.txt\"\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -842,7 +683,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 	// Test: symlink entry
 	t.Run("symlink_entry", func(t *testing.T) {
 		id := c4.Identify(strings.NewReader("target"))
-		input := fmt.Sprintf("@c4m 1.0\nlrwxrwxrwx 2024-01-01T00:00:00Z 0 link.txt -> target.txt %s\n", id)
+		input := fmt.Sprintf("lrwxrwxrwx 2024-01-01T00:00:00Z 0 link.txt -> target.txt %s\n", id)
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -859,75 +700,9 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 		}
 	})
 
-	// Test: @base directive parsing
-	t.Run("base_directive", func(t *testing.T) {
-		baseID := c4.Identify(strings.NewReader("base content"))
-		input := fmt.Sprintf("@c4m 1.0\n@base %s\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n", baseID)
-		m, err := Unmarshal([]byte(input))
-		if err != nil {
-			t.Fatalf("Unmarshal error: %v", err)
-		}
-		if m.Base != baseID {
-			t.Errorf("expected base %s, got %s", baseID, m.Base)
-		}
-	})
-
-	// Test: @layer directive parsing
-	t.Run("layer_directive", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n@layer\n@by Author Name\n@time 2024-06-01T12:00:00Z\n@note A note here\n"
-		m, err := Unmarshal([]byte(input))
-		if err != nil {
-			t.Fatalf("Unmarshal error: %v", err)
-		}
-		if len(m.Layers) != 1 {
-			t.Fatalf("expected 1 layer, got %d", len(m.Layers))
-		}
-		layer := m.Layers[0]
-		if layer.Type != LayerTypeAdd {
-			t.Errorf("expected LayerTypeAdd, got %v", layer.Type)
-		}
-		if layer.By != "Author Name" {
-			t.Errorf("expected By 'Author Name', got %q", layer.By)
-		}
-		if layer.Note != "A note here" {
-			t.Errorf("expected Note 'A note here', got %q", layer.Note)
-		}
-	})
-
-	// Test: @remove directive parsing
-	t.Run("remove_directive", func(t *testing.T) {
-		input := "@c4m 1.0\n@remove\n@by Cleaner\n@note Cleanup\n"
-		m, err := Unmarshal([]byte(input))
-		if err != nil {
-			t.Fatalf("Unmarshal error: %v", err)
-		}
-		if len(m.Layers) != 1 {
-			t.Fatalf("expected 1 layer, got %d", len(m.Layers))
-		}
-		if m.Layers[0].Type != LayerTypeRemove {
-			t.Errorf("expected LayerTypeRemove")
-		}
-	})
-
-	// Test: @end directive parsing
-	t.Run("end_directive", func(t *testing.T) {
-		input := "@c4m 1.0\n@layer\n@by Editor\n@end\n-rw-r--r-- 2024-01-01T00:00:00Z 100 default.txt\n"
-		m, err := Unmarshal([]byte(input))
-		if err != nil {
-			t.Fatalf("Unmarshal error: %v", err)
-		}
-		// After @end, the current layer should be nil (reset)
-		if m.currentLayer != nil {
-			t.Error("expected CurrentLayer to be nil after @end")
-		}
-		if len(m.Entries) != 1 {
-			t.Fatalf("expected 1 entry after @end, got %d", len(m.Entries))
-		}
-	})
-
 	// Test: padded (right-aligned) size field
 	t.Run("padded_size_field", func(t *testing.T) {
-		input := "@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z       100 file.txt\n"
+		input := "-rw-r--r-- 2024-01-01T00:00:00Z       100 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -940,7 +715,7 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 	// Test: column-aligned C4 ID (extra spaces before C4 ID)
 	t.Run("column_aligned_c4id", func(t *testing.T) {
 		id := c4.Identify(strings.NewReader("content"))
-		input := fmt.Sprintf("@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt          %s\n", id)
+		input := fmt.Sprintf("-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt          %s\n", id)
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
@@ -950,29 +725,14 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 		}
 	})
 
-	// Test: unsupported version
-	t.Run("unsupported_version", func(t *testing.T) {
-		input := "@c4m 2.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n"
-		_, err := Unmarshal([]byte(input))
-		if err == nil {
-			t.Error("expected error for unsupported version 2.0")
-		}
-	})
-
-	// Test: missing header
-	t.Run("missing_header", func(t *testing.T) {
-		input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n"
-		_, err := Unmarshal([]byte(input))
-		if err == nil {
-			t.Error("expected error for missing header")
-		}
-	})
-
-	// Test: empty input
+	// Test: empty input returns empty manifest
 	t.Run("empty_input", func(t *testing.T) {
-		_, err := Unmarshal([]byte(""))
-		if err == nil {
-			t.Error("expected error for empty input")
+		m, err := Unmarshal([]byte(""))
+		if err != nil {
+			t.Errorf("empty input should return empty manifest, got error: %v", err)
+		}
+		if m != nil && len(m.Entries) != 0 {
+			t.Errorf("expected 0 entries, got %d", len(m.Entries))
 		}
 	})
 }
@@ -1085,7 +845,7 @@ func TestExamplesAudit_EncoderOutputFormat(t *testing.T) {
 		}
 		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 		// In canonical form, C4 IDs should follow immediately after name with single space
-		for _, line := range lines[1:] { // Skip header
+		for _, line := range lines {
 			// Check no double spaces (except for entries without C4 IDs)
 			fields := strings.Fields(line)
 			reconstructed := strings.Join(fields, " ")
@@ -1111,7 +871,7 @@ func TestExamplesAudit_EncoderOutputFormat(t *testing.T) {
 		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 		// Find C4 ID positions in pretty output - they should be at the same column
 		var c4Positions []int
-		for _, line := range lines[1:] {
+		for _, line := range lines {
 			idx := strings.Index(line, "c4")
 			if idx >= 0 {
 				c4Positions = append(c4Positions, idx)
@@ -1193,26 +953,6 @@ func TestExamplesAudit_EncoderOutputFormat(t *testing.T) {
 		}
 	})
 
-	// Test: @by value quoting -- spec says @by followed by rest-of-line
-	t.Run("by_value_with_spaces", func(t *testing.T) {
-		m := NewManifest()
-		m.Layers = append(m.Layers, &Layer{
-			Type: LayerTypeAdd,
-			By:   "Jane Smith-Doe",
-			Note: "Multi word note with special chars: <>&",
-		})
-
-		var buf bytes.Buffer
-		err := NewEncoder(&buf).Encode(m)
-		if err != nil {
-			t.Fatal(err)
-		}
-		output := buf.String()
-		t.Logf("Layer metadata output:\n%s", output)
-		if !strings.Contains(output, "@by Jane Smith-Doe") {
-			t.Errorf("expected @by value to include spaces")
-		}
-	})
 }
 
 // TestExamplesAudit_SpecCoverage documents which spec sections have corresponding tests.
@@ -1222,7 +962,6 @@ func TestExamplesAudit_SpecCoverage(t *testing.T) {
 === SPEC COVERAGE AUDIT ===
 
 Section: File Structure
-  - Mandatory Version Header:        TESTED (decoder.go:parseHeader, tests: multiple)
   - Character Encoding (UTF-8 only):  TESTED (validator.go:validateEntry)
   - Line Endings (LF only):          TESTED (decoder rejects CR — LF only enforced)
   - Line Format:                     TESTED (decoder.go:parseEntry)
@@ -1278,17 +1017,7 @@ Section: Media File Sequences
   - Directory sequences:             NOT TESTED explicitly
   - Sequence C4 IDs:                 TESTED (sequence.go)
 
-Section: Layer System
-  - @base:                           TESTED (decoder.go, builder.go)
-  - @remove:                         TESTED (decoder.go, builder.go)
-  - @layer:                          TESTED (decoder.go, builder.go)
-  - @expand:                         PARTIAL (decoder accepts but stores nothing)
-  - @end:                            TESTED (decoder.go)
-
-Section: Metadata Keywords
-  - @by:                             TESTED (decoder.go, encoder.go)
-  - @time:                           TESTED (decoder.go, encoder.go)
-  - @note:                           TESTED (decoder.go, encoder.go)
+Section: Data Blocks
   - @data:                           TESTED (decoder.go, sequence.go)
 
 Section: Directory C4 IDs
@@ -1303,7 +1032,6 @@ Section: Null Values
   - Null C4 ID ("-" or omitted):      TESTED
 
 Section: Validation Requirements
-  - Version verification:            TESTED
   - UTF-8 validation:                TESTED (validator.go)
   - Path traversal check:            TESTED (validator.go)
   - Control characters:              TESTED (validator.go)

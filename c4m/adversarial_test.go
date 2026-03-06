@@ -5,36 +5,37 @@ import (
 	"testing"
 )
 
-// TestAdversarial_MalformedHeaders tests decoder robustness against invalid headers.
-func TestAdversarial_MalformedHeaders(t *testing.T) {
+// TestAdversarial_MalformedInputs tests decoder robustness against invalid inputs.
+func TestAdversarial_MalformedInputs(t *testing.T) {
 	cases := []struct {
-		name  string
-		input string
+		name    string
+		input   string
+		wantErr bool
 	}{
-		{"empty input", ""},
-		{"no header", "-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n"},
-		{"wrong prefix", "@c5m 1.0\n"},
-		{"no version", "@c4m \n"},
-		{"unsupported version", "@c4m 2.0\n"},
-		{"partial header", "@c4m"},
-		{"header with garbage", "@c4m 1.0 extra stuff\n"},
-		{"null bytes in header", "@c4m\x001.0\n"},
-		{"just newlines", "\n\n\n"},
-		{"binary garbage", "\x00\xff\xfe\xfd\n"},
+		{"empty input", "", false},
+		{"just newlines", "\n\n\n", false},
+		{"binary garbage", "\x00\xff\xfe\xfd\n", true},
+		{"directive line rejected", "@c4m 1.0\n", true},
+		{"at-sign prefix rejected", "@anything\n", true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			d := NewDecoder(strings.NewReader(tc.input))
 			// Must not panic
-			d.Decode()
+			_, err := d.Decode()
+			if tc.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
 		})
 	}
 }
 
 // TestAdversarial_CorruptEntries tests decoder robustness against malformed entry lines.
 func TestAdversarial_CorruptEntries(t *testing.T) {
-	header := "@c4m 1.0\n"
 	cases := []struct {
 		name  string
 		entry string
@@ -62,7 +63,7 @@ func TestAdversarial_CorruptEntries(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			input := header + tc.entry + "\n"
+			input := tc.entry + "\n"
 			d := NewDecoder(strings.NewReader(input))
 			// Must not panic — errors are acceptable
 			d.Decode()
@@ -73,7 +74,6 @@ func TestAdversarial_CorruptEntries(t *testing.T) {
 // TestAdversarial_DeepNesting tests that deeply indented entries don't cause problems.
 func TestAdversarial_DeepNesting(t *testing.T) {
 	var b strings.Builder
-	b.WriteString("@c4m 1.0\n")
 	for i := 0; i < 100; i++ {
 		indent := strings.Repeat("  ", i)
 		b.WriteString(indent)
@@ -92,7 +92,6 @@ func TestAdversarial_DeepNesting(t *testing.T) {
 // TestAdversarial_LargeManifest tests a manifest with many entries.
 func TestAdversarial_LargeManifest(t *testing.T) {
 	var b strings.Builder
-	b.WriteString("@c4m 1.0\n")
 	for i := 0; i < 10000; i++ {
 		b.WriteString("-rw-r--r-- 2024-01-01T00:00:00Z 100 file_")
 		b.WriteString(strings.Repeat("x", 10))
@@ -110,9 +109,8 @@ func TestAdversarial_LargeManifest(t *testing.T) {
 
 // TestAdversarial_LongNames tests entries with very long filenames.
 func TestAdversarial_LongNames(t *testing.T) {
-	header := "@c4m 1.0\n"
 	longName := strings.Repeat("a", 4096)
-	input := header + "-rw-r--r-- 2024-01-01T00:00:00Z 100 " + longName + "\n"
+	input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 " + longName + "\n"
 	d := NewDecoder(strings.NewReader(input))
 	m, err := d.Decode()
 	if err != nil {
@@ -125,7 +123,6 @@ func TestAdversarial_LongNames(t *testing.T) {
 
 // TestAdversarial_QuotedNameEdgeCases tests tricky quoting scenarios.
 func TestAdversarial_QuotedNameEdgeCases(t *testing.T) {
-	header := "@c4m 1.0\n"
 	cases := []struct {
 		name     string
 		entry    string
@@ -165,7 +162,7 @@ func TestAdversarial_QuotedNameEdgeCases(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			input := header + tc.entry + "\n"
+			input := tc.entry + "\n"
 			d := NewDecoder(strings.NewReader(input))
 			m, err := d.Decode()
 			if err != nil {
@@ -181,34 +178,9 @@ func TestAdversarial_QuotedNameEdgeCases(t *testing.T) {
 	}
 }
 
-// TestAdversarial_DirectiveBombardment tests many directives in sequence.
-func TestAdversarial_DirectiveBombardment(t *testing.T) {
-	var b strings.Builder
-	b.WriteString("@c4m 1.0\n")
-	b.WriteString("@layer\n")
-	b.WriteString("@by test user\n")
-	b.WriteString("@note some note\n")
-	b.WriteString("@time 2024-01-01T00:00:00Z\n")
-	b.WriteString("-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n")
-	b.WriteString("@end\n")
-	b.WriteString("@layer\n")
-	b.WriteString("@end\n")
-	b.WriteString("@remove\n")
-	b.WriteString("@end\n")
-
-	d := NewDecoder(strings.NewReader(b.String()))
-	m, err := d.Decode()
-	if err != nil {
-		t.Fatalf("directive bombardment decode failed: %v", err)
-	}
-	if len(m.Layers) != 3 {
-		t.Errorf("expected 3 layers, got %d", len(m.Layers))
-	}
-}
-
 // TestAdversarial_RepeatedUnmarshal tests that Unmarshal doesn't leak state between calls.
 func TestAdversarial_RepeatedUnmarshal(t *testing.T) {
-	input := []byte("@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n")
+	input := []byte("-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt\n")
 	for i := 0; i < 100; i++ {
 		m, err := Unmarshal(input)
 		if err != nil {
@@ -222,7 +194,6 @@ func TestAdversarial_RepeatedUnmarshal(t *testing.T) {
 
 // TestAdversarial_NullFieldCombinations tests all combinations of null fields.
 func TestAdversarial_NullFieldCombinations(t *testing.T) {
-	header := "@c4m 1.0\n"
 	cases := []struct {
 		name  string
 		entry string
@@ -237,7 +208,7 @@ func TestAdversarial_NullFieldCombinations(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			input := header + tc.entry + "\n"
+			input := tc.entry + "\n"
 			d := NewDecoder(strings.NewReader(input))
 			// Must not panic — errors are acceptable for invalid combos
 			d.Decode()
@@ -248,7 +219,7 @@ func TestAdversarial_NullFieldCombinations(t *testing.T) {
 // TestAdversarial_UnterminatedQuotedTarget tests that an unterminated quoted
 // symlink target produces an error rather than a panic.
 func TestAdversarial_UnterminatedQuotedTarget(t *testing.T) {
-	input := "@c4m 1.0\nlrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"unterminated\n"
+	input := "lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"unterminated\n"
 	d := NewDecoder(strings.NewReader(input))
 	_, err := d.Decode()
 	if err == nil {
@@ -261,7 +232,7 @@ func TestAdversarial_UnterminatedQuotedTarget(t *testing.T) {
 
 // TestAdversarial_TargetWithNullC4ID tests symlink with null C4 ID marker.
 func TestAdversarial_TargetWithNullC4ID(t *testing.T) {
-	input := "@c4m 1.0\nlrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> /some/target -\n"
+	input := "lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> /some/target -\n"
 	d := NewDecoder(strings.NewReader(input))
 	m, err := d.Decode()
 	if err != nil {
@@ -285,7 +256,7 @@ func TestAdversarial_TargetWithNullC4ID(t *testing.T) {
 // TestAdversarial_QuotedTargetWithEscapes tests a quoted symlink target with
 // escape sequences.
 func TestAdversarial_QuotedTargetWithEscapes(t *testing.T) {
-	input := "@c4m 1.0\nlrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"path with \\\"quotes\\\" and \\\\backslash\"\n"
+	input := "lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"path with \\\"quotes\\\" and \\\\backslash\"\n"
 	d := NewDecoder(strings.NewReader(input))
 	m, err := d.Decode()
 	if err != nil {
