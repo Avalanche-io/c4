@@ -120,10 +120,11 @@ func mkdirStrict(manifest *c4m.Manifest, parts []string) (bool, error) {
 	}
 
 	manifest.AddEntry(&c4m.Entry{
-		Name:  finalName,
-		Depth: finalDepth,
-		Mode:  os.ModeDir | 0755,
-		Size:  -1,
+		Name:      finalName,
+		Depth:     finalDepth,
+		Mode:      os.ModeDir | 0755,
+		Timestamp: c4m.NullTimestamp(),
+		Size:      -1,
 	})
 	return true, nil
 }
@@ -138,10 +139,11 @@ func mkdirParents(manifest *c4m.Manifest, parts []string) bool {
 			continue
 		}
 		manifest.AddEntry(&c4m.Entry{
-			Name:  dirName,
-			Depth: i,
-			Mode:  os.ModeDir | 0755,
-			Size:  -1,
+			Name:      dirName,
+			Depth:     i,
+			Mode:      os.ModeDir | 0755,
+			Timestamp: c4m.NullTimestamp(),
+			Size:      -1,
 		})
 		created = true
 	}

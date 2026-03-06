@@ -456,10 +456,11 @@ func ensureParentDirs(manifest *c4m.Manifest, path string) {
 		}
 		if !found {
 			manifest.AddEntry(&c4m.Entry{
-				Name:  dirName,
-				Depth: i,
-				Mode:  os.ModeDir | 0755,
-				Size:  -1,
+				Name:      dirName,
+				Depth:     i,
+				Mode:      os.ModeDir | 0755,
+				Timestamp: c4m.NullTimestamp(),
+				Size:      -1,
 			})
 		}
 	}

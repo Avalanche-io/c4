@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 	flag "github.com/spf13/pflag"
 )
@@ -41,6 +42,8 @@ Usage:
   c4 cat <target>                  # Output content bytes to stdout
   c4 diff <source> <target>        # Compare manifests or paths
   c4 cp <source> <dest>            # Copy between local, c4m, locations
+  c4 mv <source> <dest>            # Move/rename within c4m file
+  c4 ln [-s] <source> <dest>      # Link (hard or symbolic) in c4m
   c4 mk <name>: [address]          # Establish for writing
   c4 rm <name>:                    # Remove establishment
   c4 mkdir [-p] <target>           # Create directory in c4m file
@@ -91,6 +94,12 @@ func main() {
 			return
 		case "mkdir":
 			runMkdir(os.Args[2:])
+			return
+		case "mv":
+			runMv(os.Args[2:])
+			return
+		case "ln":
+			runLn(os.Args[2:])
 			return
 		}
 	}
@@ -255,7 +264,7 @@ func runDiff(args []string) {
 }
 
 func getSource(path string) c4m.Source {
-	// Check if it's stdin
+	// Stdin: read c4m from pipe
 	if path == "-" {
 		manifest, err := c4m.NewDecoder(os.Stdin).Decode()
 		if err != nil {
@@ -265,21 +274,30 @@ func getSource(path string) c4m.Source {
 		return c4m.ManifestSource{Manifest: manifest}
 	}
 
-	// Check if it's a C4M file
-	if strings.HasSuffix(path, ".c4m") {
-		file, err := os.Open(path)
-		if err == nil {
-			defer file.Close()
-			manifest, err := c4m.NewDecoder(file).Decode()
-			if err == nil {
-				return c4m.ManifestSource{Manifest: manifest}
-			}
-		}
+	// Try pathspec parsing for colon notation
+	spec, err := pathspec.Parse(path, establish.IsLocationEstablished)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Treat as filesystem path
-	return scan.FileSource{
-		Path:      path,
-		Generator: scan.NewGeneratorWithOptions(scan.WithC4IDs(true)),
+	switch spec.Type {
+	case pathspec.Capsule:
+		manifest, err := loadManifest(spec.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", spec.Source, err)
+			os.Exit(1)
+		}
+		if spec.SubPath != "" {
+			manifest = filterBySubpath(manifest, spec.SubPath)
+		}
+		return c4m.ManifestSource{Manifest: manifest}
+
+	default:
+		// Local filesystem path
+		return scan.FileSource{
+			Path:      spec.Source,
+			Generator: scan.NewGeneratorWithOptions(scan.WithC4IDs(true)),
+		}
 	}
 }
