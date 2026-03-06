@@ -5,8 +5,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
 
 // runMk implements "c4 mk" — establish a capsule or location for writing.
@@ -107,20 +110,80 @@ func runMk(args []string) {
 	}
 }
 
-// runRm implements "c4 rm" — remove a location registration.
-// Capsules are removed with OS rm (which implicitly removes establishment).
+// runRm implements "c4 rm" — remove entries, registrations, or tracking.
 //
-//	c4 rm studio:
+//	c4 rm studio:                   # remove location
+//	c4 rm project.c4m:              # remove capsule establishment
+//	c4 rm project.c4m:renders/old/  # remove entry from c4m
+//	c4 rm :                         # stop tracking, remove history
+//	c4 rm :~.ignore/data/           # remove ignore pattern
+//	c4 rm :~tagname                 # remove tag
 func runRm(args []string) {
 	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 rm <name>:    # remove location\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 rm <target>\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  c4 rm studio:                  # remove location\n")
+		fmt.Fprintf(os.Stderr, "  c4 rm project.c4m:renders/     # remove entry from c4m\n")
+		fmt.Fprintf(os.Stderr, "  c4 rm :                        # stop tracking\n")
+		fmt.Fprintf(os.Stderr, "  c4 rm :~.ignore/data/          # remove ignore pattern\n")
+		fmt.Fprintf(os.Stderr, "  c4 rm :~tagname                # remove tag\n")
 		os.Exit(1)
 	}
 
 	target := args[0]
 
-	// Bare colon = tear down managed directory
-	if target == ":" {
+	spec, err := pathspec.Parse(target, establish.IsLocationEstablished)
+	if err != nil {
+		// Fall back to legacy colon-suffix handling for bare "name:"
+		if strings.HasSuffix(target, ":") {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch spec.Type {
+	case pathspec.Managed:
+		rmManaged(spec)
+
+	case pathspec.Capsule:
+		if spec.SubPath != "" {
+			rmCapsuleEntry(spec)
+		} else {
+			// Bare c4m: → remove establishment
+			if !establish.IsCapsuleEstablished(spec.Source) {
+				fmt.Fprintf(os.Stderr, "%s: is not established\n", spec.Source)
+				os.Exit(1)
+			}
+			if err := establish.RemoveCapsuleEstablishment(spec.Source); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("removed establishment for %s:\n", spec.Source)
+		}
+
+	case pathspec.Location:
+		if !establish.IsLocationEstablished(spec.Source) {
+			fmt.Fprintf(os.Stderr, "%s is not a known location\n", spec.Source)
+			os.Exit(1)
+		}
+		if err := establish.RemoveLocation(spec.Source); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("removed %s:\n", spec.Source)
+
+	default:
+		fmt.Fprintf(os.Stderr, "Error: c4 rm does not support %s paths\n", spec.Type)
+		os.Exit(1)
+	}
+}
+
+// rmManaged handles c4 rm for managed directory targets.
+func rmManaged(spec pathspec.PathSpec) {
+	// Bare : → tear down tracking
+	if spec.SubPath == "" {
 		if !managed.IsManaged(".") {
 			fmt.Fprintf(os.Stderr, "Error: not a managed directory\n")
 			os.Exit(1)
@@ -138,34 +201,119 @@ func runRm(args []string) {
 		return
 	}
 
-	if !strings.HasSuffix(target, ":") {
-		fmt.Fprintf(os.Stderr, "Error: target must end with colon (e.g. studio: or :)\n")
+	// :~.ignore/pattern → remove ignore pattern
+	if strings.HasPrefix(spec.SubPath, "~.ignore/") {
+		pattern := strings.TrimPrefix(spec.SubPath, "~.ignore/")
+		d, err := managed.Open(".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := d.RemoveIgnorePattern(pattern); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("removed ignore pattern: %s\n", pattern)
+		return
+	}
+
+	// :~tagname → remove tag
+	if strings.HasPrefix(spec.SubPath, "~") {
+		tagName := spec.SubPath[1:]
+		d, err := managed.Open(".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := d.RemoveTag(tagName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("removed tag :~%s\n", tagName)
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Error: c4 rm :%s not supported\n", spec.SubPath)
+	os.Exit(1)
+}
+
+// rmCapsuleEntry removes an entry from a c4m file.
+func rmCapsuleEntry(spec pathspec.PathSpec) {
+	if !establish.IsCapsuleEstablished(spec.Source) {
+		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", spec.Source)
+		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", spec.Source)
 		os.Exit(1)
 	}
 
-	name := strings.TrimSuffix(target, ":")
-
-	if strings.HasSuffix(name, ".c4m") {
-		// Capsule — remove establishment marker only
-		if !establish.IsCapsuleEstablished(name) {
-			fmt.Fprintf(os.Stderr, "%s is not established\n", target)
-			os.Exit(1)
-		}
-		if err := establish.RemoveCapsuleEstablishment(name); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("removed establishment for %s\n", target)
-	} else {
-		// Location
-		if !establish.IsLocationEstablished(name) {
-			fmt.Fprintf(os.Stderr, "%s is not a known location\n", target)
-			os.Exit(1)
-		}
-		if err := establish.RemoveLocation(name); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("removed %s\n", target)
+	manifest, err := loadManifest(spec.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
+
+	entry := findEntry(manifest, spec.SubPath)
+	if entry == nil {
+		fmt.Fprintf(os.Stderr, "Error: %s not found in %s\n", spec.SubPath, spec.Source)
+		os.Exit(1)
+	}
+
+	// Remove the entry (and children if directory)
+	removed := removeEntry(manifest, spec.SubPath)
+
+	manifest.SortEntries()
+	scan.PropagateMetadata(manifest.Entries)
+
+	if err := writeManifest(spec.Source, manifest); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("removed %d entries from %s:\n", removed, spec.Source)
+}
+
+// removeEntry removes an entry (and its children if a directory) from a manifest.
+// Returns the number of entries removed.
+func removeEntry(manifest *c4m.Manifest, subPath string) int {
+	// Resolve full paths to find the target and its children
+	var dirStack []string
+	type indexedPath struct {
+		index    int
+		fullPath string
+	}
+	var resolved []indexedPath
+
+	for i, entry := range manifest.Entries {
+		if entry.Depth < len(dirStack) {
+			dirStack = dirStack[:entry.Depth]
+		}
+		var fullPath string
+		if len(dirStack) > 0 {
+			fullPath = strings.Join(dirStack, "") + entry.Name
+		} else {
+			fullPath = entry.Name
+		}
+		resolved = append(resolved, indexedPath{index: i, fullPath: fullPath})
+		if entry.IsDir() {
+			for len(dirStack) <= entry.Depth {
+				dirStack = append(dirStack, "")
+			}
+			dirStack[entry.Depth] = entry.Name
+		}
+	}
+
+	// Find indices to remove: the entry itself plus any children (prefix match)
+	var toRemove []int
+	for _, rp := range resolved {
+		if rp.fullPath == subPath || strings.HasPrefix(rp.fullPath, subPath) {
+			toRemove = append(toRemove, rp.index)
+		}
+	}
+
+	// Remove in reverse order to preserve indices
+	for i := len(toRemove) - 1; i >= 0; i-- {
+		idx := toRemove[i]
+		manifest.Entries = append(manifest.Entries[:idx], manifest.Entries[idx+1:]...)
+	}
+	manifest.InvalidateIndex()
+
+	return len(toRemove)
 }

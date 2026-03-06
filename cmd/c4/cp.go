@@ -82,6 +82,13 @@ func runCp(args []string) {
 		os.Exit(1)
 	}
 
+	// Resolve managed source to a manifest-backed capsule-like operation
+	if src.Type == pathspec.Managed {
+		manifest := getManagedManifest(src.SubPath)
+		cpManifestToTarget(manifest, dst)
+		return
+	}
+
 	switch {
 	case src.Type == pathspec.Local && dst.Type == pathspec.Capsule:
 		cpLocalToCapsule(src, dst)
@@ -100,6 +107,73 @@ func runCp(args []string) {
 		os.Exit(1)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: %s → %s not yet supported\n", src.Type, dst.Type)
+		os.Exit(1)
+	}
+}
+
+// cpManifestToTarget copies a resolved manifest to the destination.
+// Used when the source is a managed directory (: notation).
+func cpManifestToTarget(manifest *c4m.Manifest, dst pathspec.PathSpec) {
+	switch dst.Type {
+	case pathspec.Capsule:
+		if !establish.IsCapsuleEstablished(dst.Source) {
+			fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
+			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
+			os.Exit(1)
+		}
+		existing, err := loadOrCreateManifest(dst.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		prefix := dst.SubPath
+		prefixDepth := 0
+		if prefix != "" {
+			prefixDepth = strings.Count(strings.TrimSuffix(prefix, "/"), "/") + 1
+			ensureParentDirs(existing, prefix)
+		}
+		for _, entry := range manifest.Entries {
+			e := *entry
+			e.Depth += prefixDepth
+			existing.AddEntry(&e)
+		}
+		existing.SortEntries()
+		scan.PropagateMetadata(existing.Entries)
+		if err := writeManifest(dst.Source, existing); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("exported %d entries to %s\n", len(manifest.Entries), dst)
+
+	case pathspec.Container:
+		format := pathspec.ContainerFormat(dst.Source)
+		err := container.WriteTar(dst.Source, format, manifest, func(fullPath string, entry *c4m.Entry) (io.ReadCloser, error) {
+			// Try local file first (managed dir tracks local files)
+			if f, err := os.Open(fullPath); err == nil {
+				return f, nil
+			}
+			if entry.C4ID.IsNil() {
+				return io.NopCloser(strings.NewReader("")), nil
+			}
+			// Fall back to c4d
+			resp, err := c4dClient.Get(c4dAddr() + "/" + entry.C4ID.String())
+			if err != nil {
+				return nil, fmt.Errorf("c4d fetch: %w", err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				return nil, fmt.Errorf("c4d: %s for %s", resp.Status, entry.C4ID)
+			}
+			return resp.Body, nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", dst.Source, err)
+			os.Exit(1)
+		}
+		fmt.Printf("exported managed state → %s (%d entries)\n", dst.Source, len(manifest.Entries))
+
+	default:
+		fmt.Fprintf(os.Stderr, "Error: managed → %s not yet supported\n", dst.Type)
 		os.Exit(1)
 	}
 }

@@ -185,8 +185,8 @@ func TestRmNoColonSuffix(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for target without colon")
 	}
-	if !strings.Contains(string(out), "colon") {
-		t.Errorf("expected 'colon' in error, got %q", out)
+	if !strings.Contains(string(out), "local") {
+		t.Errorf("expected 'local' in error, got %q", out)
 	}
 }
 
