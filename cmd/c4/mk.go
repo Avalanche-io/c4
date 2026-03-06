@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
 )
 
 // runMk implements "c4 mk" — establish a capsule or location for writing.
@@ -22,9 +23,50 @@ func runMk(args []string) {
 
 	target := args[0]
 
+	// Bare colon = managed directory
+	if target == ":" {
+		// Collect --exclude flags
+		var excludes []string
+		for i := 1; i < len(args); i++ {
+			if args[i] == "--exclude" && i+1 < len(args) {
+				excludes = append(excludes, args[i+1])
+				i++
+			}
+		}
+
+		if managed.IsManaged(".") {
+			if len(excludes) > 0 {
+				d, err := managed.Open(".")
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					os.Exit(1)
+				}
+				if err := d.AddIgnorePatterns(excludes); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					os.Exit(1)
+				}
+				fmt.Println("added exclude patterns")
+			} else {
+				fmt.Fprintf(os.Stderr, ": already established\n")
+			}
+			os.Exit(0)
+		}
+
+		d, err := managed.Init(".", excludes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		n, _ := d.HistoryLen()
+		m, _ := d.Current()
+		fmt.Printf("established : (%d entries, snapshot 0)\n", len(m.Entries))
+		_ = n
+		return
+	}
+
 	// Must end with colon
 	if !strings.HasSuffix(target, ":") {
-		fmt.Fprintf(os.Stderr, "Error: target must end with colon (e.g. project.c4m: or studio:)\n")
+		fmt.Fprintf(os.Stderr, "Error: target must end with colon (e.g. project.c4m: or studio: or :)\n")
 		os.Exit(1)
 	}
 
@@ -76,8 +118,28 @@ func runRm(args []string) {
 	}
 
 	target := args[0]
+
+	// Bare colon = tear down managed directory
+	if target == ":" {
+		if !managed.IsManaged(".") {
+			fmt.Fprintf(os.Stderr, "Error: not a managed directory\n")
+			os.Exit(1)
+		}
+		d, err := managed.Open(".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := d.Teardown(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("removed tracking for :")
+		return
+	}
+
 	if !strings.HasSuffix(target, ":") {
-		fmt.Fprintf(os.Stderr, "Error: target must end with colon (e.g. studio:)\n")
+		fmt.Fprintf(os.Stderr, "Error: target must end with colon (e.g. studio: or :)\n")
 		os.Exit(1)
 	}
 

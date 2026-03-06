@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 	flag "github.com/spf13/pflag"
@@ -44,6 +46,12 @@ func runLs(args []string) {
 	}
 
 	target := fs.Arg(0)
+
+	// Handle managed directory notation (:, :~, :~N, :~name, :~.ignore)
+	if target == ":" || strings.HasPrefix(target, ":~") {
+		lsManaged(target, *id, *pretty)
+		return
+	}
 
 	spec, err := pathspec.Parse(target, establish.IsLocationEstablished)
 	if err != nil {
@@ -100,6 +108,78 @@ func runLs(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %s not yet supported for ls\n", spec.Type)
 		os.Exit(1)
 	}
+}
+
+// lsManaged handles c4 ls with managed directory notation.
+func lsManaged(target string, idOnly, pretty bool) {
+	d, err := managed.Open(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	var manifest *c4m.Manifest
+
+	switch {
+	case target == ":":
+		// Current managed state
+		manifest, err = d.Current()
+
+	case target == ":~":
+		// List snapshot history
+		entries, herr := d.History()
+		if herr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", herr)
+			os.Exit(1)
+		}
+		for _, e := range entries {
+			fmt.Printf("%d/ %s\n", e.Index, e.ID)
+		}
+		return
+
+	case target == ":~.ignore":
+		// List ignore patterns
+		patterns, perr := d.IgnorePatterns()
+		if perr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", perr)
+			os.Exit(1)
+		}
+		if len(patterns) == 0 {
+			return
+		}
+		for _, p := range patterns {
+			fmt.Printf("- - - %s -\n", p)
+		}
+		return
+
+	default:
+		// :~N or :~name
+		ref := strings.TrimPrefix(target, ":~")
+
+		// Try as number first
+		if n, nerr := strconv.Atoi(ref); nerr == nil {
+			manifest, err = d.GetSnapshot(n)
+		} else {
+			// Try as tag name
+			manifest, err = d.GetTag(ref)
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if idOnly {
+		fmt.Println(manifest.ComputeC4ID())
+		return
+	}
+
+	enc := c4m.NewEncoder(os.Stdout)
+	if pretty {
+		enc.SetPretty(true)
+	}
+	enc.Encode(manifest)
 }
 
 // filterBySubpath filters a manifest to entries under the given subpath,

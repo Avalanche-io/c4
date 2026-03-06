@@ -44,9 +44,13 @@ Usage:
   c4 cp <source> <dest>            # Copy between local, c4m, locations
   c4 mv <source> <dest>            # Move/rename within c4m file
   c4 ln [-s] <source> <dest>      # Link (hard or symbolic) in c4m
-  c4 mk <name>: [address]          # Establish for writing
-  c4 rm <name>:                    # Remove establishment
+  c4 mk <target>: [address]         # Establish for writing (c4m, location, or :)
+  c4 rm <target>:                  # Remove establishment or entries
   c4 mkdir [-p] <target>           # Create directory in c4m file
+  c4 patch <target> <source>       # Apply c4m patch or target state
+  c4 undo :                        # Revert last operation on managed dir
+  c4 redo :                        # Re-apply undone operation
+  c4 unrm :                        # List/recover removed items
 
 Examples:
   c4 file.txt                      # c4m entry for file
@@ -100,6 +104,18 @@ func main() {
 			return
 		case "ln":
 			runLn(os.Args[2:])
+			return
+		case "patch":
+			runPatch(os.Args[2:])
+			return
+		case "undo":
+			runUndo(os.Args[2:])
+			return
+		case "redo":
+			runRedo(os.Args[2:])
+			return
+		case "unrm":
+			runUnrm(os.Args[2:])
 			return
 		}
 	}
