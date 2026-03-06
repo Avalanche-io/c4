@@ -236,11 +236,13 @@ func outputManifest(manifest *c4m.Manifest) {
 
 func runDiff(args []string) {
 	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	pretty := fs.BoolP("pretty", "p", false, "Pretty-print c4m")
+	id := fs.BoolP("id", "i", false, "Output bare C4 ID of diff result")
 	empty := fs.Bool("empty", false, "Exit 0 if empty, 1 if content")
 	fs.Parse(args)
 
 	if fs.NArg() != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 diff <source> <target>\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 diff [-p] <source> <target>\n")
 		os.Exit(1)
 	}
 
@@ -257,6 +259,14 @@ func runDiff(args []string) {
 		}
 	}
 
+	if *id {
+		if result.IsEmpty() {
+			return
+		}
+		fmt.Println(result.NewID)
+		return
+	}
+
 	if result.IsEmpty() {
 		return
 	}
@@ -265,7 +275,7 @@ func runDiff(args []string) {
 	fmt.Println(result.OldID)
 
 	enc := c4m.NewEncoder(os.Stdout)
-	if prettyFlag {
+	if *pretty {
 		enc.SetPretty(true)
 	}
 	enc.Encode(result.Patch)
