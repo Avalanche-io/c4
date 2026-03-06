@@ -5,10 +5,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"strconv"
+	"strings"
+
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/container"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 	flag "github.com/spf13/pflag"
@@ -310,6 +314,9 @@ func getManifest(pathArg string) *c4m.Manifest {
 		}
 		return manifest
 
+	case pathspec.Managed:
+		return getManagedManifest(spec.SubPath)
+
 	default:
 		// Local filesystem path — scan it
 		gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
@@ -320,4 +327,48 @@ func getManifest(pathArg string) *c4m.Manifest {
 		}
 		return manifest
 	}
+}
+
+// getManagedManifest resolves a managed directory reference (:, :~1, :~name).
+func getManagedManifest(subPath string) *c4m.Manifest {
+	d, err := managed.Open(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	var manifest *c4m.Manifest
+
+	switch {
+	case subPath == "":
+		// : → current managed state
+		manifest, err = d.Current()
+
+	case subPath == "~":
+		// :~ → snapshot history (not a manifest, error)
+		fmt.Fprintf(os.Stderr, "Error: :~ (history list) is not valid as a manifest source; use c4 ls :~\n")
+		os.Exit(1)
+
+	case strings.HasPrefix(subPath, "~"):
+		// :~N or :~name
+		ref := subPath[1:]
+		if n, nerr := strconv.Atoi(ref); nerr == nil {
+			manifest, err = d.GetSnapshot(n)
+		} else {
+			manifest, err = d.GetTag(ref)
+		}
+
+	default:
+		// :path/ → subpath within current managed state
+		manifest, err = d.Current()
+		if err == nil && subPath != "" {
+			manifest = filterBySubpath(manifest, subPath)
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	return manifest
 }

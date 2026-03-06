@@ -21,6 +21,7 @@ const (
 	Capsule               // Path into a .c4m file
 	Location              // Path into a named location
 	Container             // Path into a tar/tgz archive
+	Managed               // Managed directory (bare colon)
 )
 
 func (t Type) String() string {
@@ -33,6 +34,8 @@ func (t Type) String() string {
 		return "location"
 	case Container:
 		return "container"
+	case Managed:
+		return "managed"
 	default:
 		return "unknown"
 	}
@@ -61,6 +64,8 @@ func (p PathSpec) String() string {
 			return p.Source + ":"
 		}
 		return p.Source + ":" + p.SubPath
+	case Managed:
+		return ":" + p.SubPath
 	default:
 		return p.Source
 	}
@@ -93,6 +98,11 @@ func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
 
 	left := s[:colonIdx]
 	right := s[colonIdx+1:]
+
+	// Rule 2b: bare colon or :~ prefix → managed directory
+	if left == "" {
+		return PathSpec{Type: Managed, SubPath: right}, nil
+	}
 
 	// Rule 3: left side contains / → local
 	if strings.Contains(left, "/") {

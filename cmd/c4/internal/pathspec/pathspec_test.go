@@ -204,6 +204,34 @@ func TestIsRoot(t *testing.T) {
 	}
 }
 
+func TestParseManaged(t *testing.T) {
+	tests := []struct {
+		input   string
+		subpath string
+	}{
+		{":", ""},
+		{":~", "~"},
+		{":~1", "~1"},
+		{":~release-v1", "~release-v1"},
+		{":~.ignore", "~.ignore"},
+		{":renders/", "renders/"},
+		{":src/main.go", "src/main.go"},
+	}
+	for _, tt := range tests {
+		p, err := Parse(tt.input, knownLocation)
+		if err != nil {
+			t.Errorf("Parse(%q) error: %v", tt.input, err)
+			continue
+		}
+		if p.Type != Managed {
+			t.Errorf("Parse(%q).Type = %v, want Managed", tt.input, p.Type)
+		}
+		if p.SubPath != tt.subpath {
+			t.Errorf("Parse(%q).SubPath = %q, want %q", tt.input, p.SubPath, tt.subpath)
+		}
+	}
+}
+
 func TestRoundTrip(t *testing.T) {
 	inputs := []string{
 		"file.txt",
@@ -211,6 +239,10 @@ func TestRoundTrip(t *testing.T) {
 		"project.c4m:renders/",
 		"studio:",
 		"studio:project/renders/",
+		":",
+		":~1",
+		":~release-v1",
+		":renders/",
 	}
 	for _, input := range inputs {
 		p, err := Parse(input, knownLocation)
