@@ -48,12 +48,6 @@ func runLs(args []string) {
 
 	target := fs.Arg(0)
 
-	// Handle managed directory notation (:, :~, :~N, :~name, :~.ignore)
-	if target == ":" || strings.HasPrefix(target, ":~") {
-		lsManaged(target, *id, *pretty)
-		return
-	}
-
 	spec, err := pathspec.Parse(target, establish.IsLocationEstablished)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -61,6 +55,10 @@ func runLs(args []string) {
 	}
 
 	switch spec.Type {
+	case pathspec.Managed:
+		lsManaged(target, *id, *pretty)
+		return
+
 	case pathspec.Local:
 		// Local path — scan it
 		gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
