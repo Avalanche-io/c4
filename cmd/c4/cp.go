@@ -58,6 +58,18 @@ func runCp(args []string) {
 		os.Exit(1)
 	}
 
+	// Handle stdin pipe: c4 cp - <dest>
+	if args[0] == "-" {
+		isLoc := establish.IsLocationEstablished
+		dst, err := pathspec.Parse(args[1], isLoc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing dest: %v\n", err)
+			os.Exit(1)
+		}
+		cpStdinToTarget(dst)
+		return
+	}
+
 	isLoc := establish.IsLocationEstablished
 	src, err := pathspec.Parse(args[0], isLoc)
 	if err != nil {
@@ -79,6 +91,10 @@ func runCp(args []string) {
 		cpLocalToContainer(src, dst)
 	case src.Type == pathspec.Container && dst.Type == pathspec.Local:
 		cpContainerToLocal(src, dst)
+	case src.Type == pathspec.Capsule && dst.Type == pathspec.Container:
+		cpCapsuleToContainer(src, dst)
+	case src.Type == pathspec.Container && dst.Type == pathspec.Capsule:
+		cpContainerToCapsule(src, dst)
 	case src.Type == pathspec.Local && dst.Type == pathspec.Local:
 		fmt.Fprintf(os.Stderr, "Error: use OS cp for local-to-local copies\n")
 		os.Exit(1)
@@ -449,6 +465,138 @@ func insertUnderParent(manifest *c4m.Manifest, entry *c4m.Entry, subPath string)
 	manifest.AddEntry(entry)
 }
 
+// cpStdinToTarget reads c4m from stdin and copies local files to the target.
+// This enables: c4 . | grep '\.go$' | c4 cp - project.tar:
+func cpStdinToTarget(dst pathspec.PathSpec) {
+	manifest, err := c4m.NewDecoder(os.Stdin).Decode()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch dst.Type {
+	case pathspec.Container:
+		// Build C4 ID → local path index for resolving content.
+		// Piped c4m may lose directory context (e.g., grep strips parent entries),
+		// so we resolve files by content identity rather than path.
+		idIndex := buildLocalIDIndex(".")
+
+		format := pathspec.ContainerFormat(dst.Source)
+		err = container.WriteTar(dst.Source, format, manifest, func(fullPath string, entry *c4m.Entry) (io.ReadCloser, error) {
+			// First try the manifest path directly
+			if f, err := os.Open(fullPath); err == nil {
+				return f, nil
+			}
+			// Fall back to C4 ID lookup (handles filtered/reordered stdin)
+			if !entry.C4ID.IsNil() {
+				if localPath, ok := idIndex[entry.C4ID.String()]; ok {
+					return os.Open(localPath)
+				}
+			}
+			return nil, fmt.Errorf("cannot find local file for %s (C4 ID %s)", fullPath, entry.C4ID)
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", dst.Source, err)
+			os.Exit(1)
+		}
+		fmt.Printf("created %s (%d entries from stdin)\n", dst.Source, len(manifest.Entries))
+
+	case pathspec.Capsule:
+		if !establish.IsCapsuleEstablished(dst.Source) {
+			fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
+			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
+			os.Exit(1)
+		}
+		existing, err := loadOrCreateManifest(dst.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		for _, entry := range manifest.Entries {
+			existing.AddEntry(entry)
+		}
+		existing.SortEntries()
+		scan.PropagateMetadata(existing.Entries)
+		if err := writeManifest(dst.Source, existing); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("captured %d entries from stdin into %s:\n", len(manifest.Entries), dst.Source)
+
+	default:
+		fmt.Fprintf(os.Stderr, "Error: stdin (-) → %s not supported\n", dst.Type)
+		os.Exit(1)
+	}
+}
+
+// cpCapsuleToContainer exports c4m contents as a tar archive.
+// Content bytes are fetched from c4d.
+func cpCapsuleToContainer(src, dst pathspec.PathSpec) {
+	manifest, err := loadManifest(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", src.Source, err)
+		os.Exit(1)
+	}
+	if src.SubPath != "" {
+		manifest = filterBySubpath(manifest, src.SubPath)
+	}
+
+	format := pathspec.ContainerFormat(dst.Source)
+	err = container.WriteTar(dst.Source, format, manifest, func(fullPath string, entry *c4m.Entry) (io.ReadCloser, error) {
+		if entry.C4ID.IsNil() {
+			return io.NopCloser(strings.NewReader("")), nil
+		}
+		resp, err := c4dClient.Get(c4dAddr() + "/" + entry.C4ID.String())
+		if err != nil {
+			return nil, fmt.Errorf("c4d fetch: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("c4d: %s for %s", resp.Status, entry.C4ID)
+		}
+		return resp.Body, nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", dst.Source, err)
+		os.Exit(1)
+	}
+	fmt.Printf("exported %s → %s (%d entries)\n", src.Source, dst.Source, len(manifest.Entries))
+}
+
+// cpContainerToCapsule imports tar contents into a c4m file.
+func cpContainerToCapsule(src, dst pathspec.PathSpec) {
+	if !establish.IsCapsuleEstablished(dst.Source) {
+		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
+		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
+		os.Exit(1)
+	}
+
+	format := pathspec.ContainerFormat(src.Source)
+	tarManifest, err := container.ReadManifest(src.Source, format)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", src.Source, err)
+		os.Exit(1)
+	}
+
+	manifest, err := loadOrCreateManifest(dst.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, entry := range tarManifest.Entries {
+		manifest.AddEntry(entry)
+	}
+	manifest.SortEntries()
+	scan.PropagateMetadata(manifest.Entries)
+
+	if err := writeManifest(dst.Source, manifest); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("imported %s → %s: (%d entries)\n", src.Source, dst.Source, len(tarManifest.Entries))
+}
+
 // cpLocalToContainer creates a tar archive from local files.
 func cpLocalToContainer(src, dst pathspec.PathSpec) {
 	info, err := os.Stat(src.Source)
@@ -585,6 +733,26 @@ func openTarReader(r io.Reader, format string) (*tar.Reader, error) {
 	default:
 		return nil, fmt.Errorf("unsupported format: %s", format)
 	}
+}
+
+// buildLocalIDIndex scans the local directory and builds a map from C4 ID string to local file path.
+// Used for resolving piped c4m entries that may have lost directory context.
+func buildLocalIDIndex(root string) map[string]string {
+	idx := make(map[string]string)
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !info.Mode().IsRegular() {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		id := c4.Identify(f)
+		f.Close()
+		idx[id.String()] = path
+		return nil
+	})
+	return idx
 }
 
 // ensureParentDirs adds missing parent directory entries with proper depth.
