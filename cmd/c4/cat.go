@@ -74,6 +74,9 @@ func runCat(args []string) {
 		defer rc.Close()
 		io.Copy(os.Stdout, rc)
 
+	case pathspec.Managed:
+		catFromManaged(spec.SubPath)
+
 	default:
 		fmt.Fprintf(os.Stderr, "Error: %s not yet supported for cat\n", spec.Type)
 		os.Exit(1)
@@ -122,6 +125,44 @@ func catFromC4d(idStr string) {
 	}
 
 	io.Copy(os.Stdout, resp.Body)
+}
+
+// catFromManaged outputs content from a managed directory reference.
+// SubPath format: "~release-v1/config.yaml" or "src/main.go" or empty.
+func catFromManaged(subPath string) {
+	if subPath == "" {
+		fmt.Fprintf(os.Stderr, "Error: c4 cat requires a file path within the managed directory\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 cat :<path> or c4 cat :~<ref>/<path>\n")
+		os.Exit(1)
+	}
+
+	// Get the manifest for the managed reference
+	manifest := getManagedManifest(subPath)
+
+	// For managed subpaths like :~release-v1/config.yaml, the getManagedManifest
+	// handles the ~ref part and returns a filtered manifest. But for cat we need
+	// a specific file's content, not a manifest listing.
+	// If the manifest was filtered by subpath (via getManagedManifest), the entry
+	// should be at depth 0 as a single file.
+	if len(manifest.Entries) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: %s not found in managed directory\n", subPath)
+		os.Exit(1)
+	}
+
+	// Find the leaf file entry
+	for _, entry := range manifest.Entries {
+		if entry.IsDir() {
+			continue
+		}
+		if entry.C4ID.IsNil() {
+			return // empty or nil-ID file
+		}
+		catFromC4d(entry.C4ID.String())
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Error: %s is a directory, use c4 ls\n", subPath)
+	os.Exit(1)
 }
 
 // catFromCapsule extracts a file's content from a c4m file via c4d.
