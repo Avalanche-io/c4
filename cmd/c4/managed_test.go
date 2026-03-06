@@ -269,3 +269,43 @@ func TestManagedLsIdFlag(t *testing.T) {
 		t.Errorf("expected 90-char C4 ID, got %d chars: %s", len(id), id)
 	}
 }
+
+func TestManagedLnTag(t *testing.T) {
+	bin := buildC4(t)
+	dir := setupManagedTestDir(t)
+
+	// Initialize managed directory
+	runC4(t, bin, dir, "mk", ":")
+
+	// Create a second snapshot by modifying a file and patching
+	os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new content\n"), 0644)
+	runC4(t, bin, dir, "patch", ":", ".")
+
+	// Tag snapshot 1 (the initial state) as "baseline"
+	out, err := runC4(t, bin, dir, "ln", ":~1", ":~baseline")
+	if err != nil {
+		t.Fatalf("c4 ln :~1 :~baseline failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "tagged") {
+		t.Errorf("expected 'tagged' in output, got: %s", out)
+	}
+
+	// Verify the tag is browsable via ls
+	out, err = runC4(t, bin, dir, "ls", ":~baseline")
+	if err != nil {
+		t.Fatalf("c4 ls :~baseline failed: %v\n%s", err, out)
+	}
+
+	// The tagged snapshot should match snapshot 1's ID
+	tagID, err := runC4(t, bin, dir, "ls", "-i", ":~baseline")
+	if err != nil {
+		t.Fatalf("c4 ls -i :~baseline failed: %v\n%s", err, tagID)
+	}
+	snapID, err := runC4(t, bin, dir, "ls", "-i", ":~1")
+	if err != nil {
+		t.Fatalf("c4 ls -i :~1 failed: %v\n%s", err, snapID)
+	}
+	if strings.TrimSpace(tagID) != strings.TrimSpace(snapID) {
+		t.Errorf("tag ID %s != snapshot 1 ID %s", strings.TrimSpace(tagID), strings.TrimSpace(snapID))
+	}
+}

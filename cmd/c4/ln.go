@@ -3,18 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
 
-// runLn implements "c4 ln" — create links in a c4m file.
+// runLn implements "c4 ln" — create links in a c4m file or managed directory.
 //
 //	c4 ln project.c4m:master.exr project.c4m:backup.exr     # hard link
 //	c4 ln -s ../shared/config.yaml project.c4m:config.yaml   # symlink
+//	c4 ln :~2 :~release-v1                                   # tag snapshot
 func runLn(args []string) {
 	// Check for -s flag (symlink)
 	var symlink bool
@@ -27,11 +30,66 @@ func runLn(args []string) {
 		}
 	}
 
+	// Check for managed directory tag creation: c4 ln :~N :~name
+	if !symlink && len(filtered) == 2 {
+		isLoc := establish.IsLocationEstablished
+		src, serr := pathspec.Parse(filtered[0], isLoc)
+		dst, derr := pathspec.Parse(filtered[1], isLoc)
+		if serr == nil && derr == nil && src.Type == pathspec.Managed && dst.Type == pathspec.Managed {
+			if strings.HasPrefix(src.SubPath, "~") && strings.HasPrefix(dst.SubPath, "~") {
+				lnTag(src.SubPath[1:], dst.SubPath[1:])
+				return
+			}
+		}
+	}
+
 	if symlink {
 		lnSymlink(filtered)
 	} else {
 		lnHard(filtered)
 	}
+}
+
+// lnTag creates a named tag for a managed directory snapshot.
+// srcRef is the snapshot reference (a number like "2"), dstRef is the tag name.
+func lnTag(srcRef, dstRef string) {
+	if srcRef == "" || dstRef == "" {
+		fmt.Fprintf(os.Stderr, "Usage: c4 ln :~<snapshot> :~<tag-name>\n")
+		fmt.Fprintf(os.Stderr, "\nExample:\n")
+		fmt.Fprintf(os.Stderr, "  c4 ln :~2 :~release-v1\n")
+		os.Exit(1)
+	}
+
+	n, err := strconv.Atoi(srcRef)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: source must be a snapshot number, got %q\n", srcRef)
+		os.Exit(1)
+	}
+
+	d, err := managed.Open(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	history, err := d.History()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if n < 0 || n >= len(history) {
+		fmt.Fprintf(os.Stderr, "Error: snapshot ~%d does not exist (history has %d entries)\n", n, len(history))
+		os.Exit(1)
+	}
+
+	c4id := history[n].ID
+	if err := d.SetTag(dstRef, c4id); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("tagged :~%d → :~%s\n", n, dstRef)
 }
 
 // lnSymlink creates a symbolic link entry in a c4m file.
