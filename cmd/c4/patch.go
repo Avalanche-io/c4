@@ -20,8 +20,9 @@ import (
 func runPatch(args []string) {
 	if len(args) != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 patch <target> <source>\n")
-		fmt.Fprintf(os.Stderr, "  c4 patch : changes.c4m    # apply changes (tracked)\n")
-		fmt.Fprintf(os.Stderr, "  c4 patch : .              # re-sync from disk\n")
+		fmt.Fprintf(os.Stderr, "  c4 patch project.c4m: changes.c4m  # patch a c4m file\n")
+		fmt.Fprintf(os.Stderr, "  c4 patch : changes.c4m             # apply changes (tracked)\n")
+		fmt.Fprintf(os.Stderr, "  c4 patch : .                       # re-sync from disk\n")
 		os.Exit(1)
 	}
 
@@ -40,12 +41,63 @@ func runPatch(args []string) {
 		os.Exit(1)
 	}
 	if spec.Type != pathspec.Capsule {
-		fmt.Fprintf(os.Stderr, "Error: patch target must be : or a c4m file\n")
+		fmt.Fprintf(os.Stderr, "Error: patch target must be : or a c4m file (with colon)\n")
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, "Error: c4m file patching not yet implemented\n")
-	os.Exit(1)
+	patchC4mFile(spec.Source, source)
+}
+
+// patchC4mFile applies a source to a c4m file.
+// Auto-detects: plain c4m = target state mode, patch with page boundaries = delta mode.
+func patchC4mFile(c4mPath, source string) {
+	// Load the base c4m file
+	base, err := loadManifest(c4mPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", c4mPath, err)
+		os.Exit(1)
+	}
+
+	// Load the source
+	var sourceManifest *c4m.Manifest
+	if source == "-" {
+		sourceManifest, err = c4m.NewDecoder(os.Stdin).Decode()
+	} else if strings.HasSuffix(source, ".c4m") {
+		sourceManifest, err = loadManifest(source)
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: source must be a .c4m file or -\n")
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading source: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Apply: use PatchDiff to compute delta, then ApplyPatch
+	// This handles both target-state and delta modes uniformly:
+	// target-state input produces a patch that converges to the desired state
+	patch := c4m.PatchDiff(base, sourceManifest)
+	if patch.IsEmpty() {
+		fmt.Fprintf(os.Stderr, "no changes\n")
+		return
+	}
+
+	result := c4m.ApplyPatch(base, patch.Patch)
+
+	// Write result back to the c4m file
+	f, err := os.Create(c4mPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", c4mPath, err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	if err := c4m.NewEncoder(f).Encode(result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "patched %s (%d entries)\n", c4mPath, len(result.Entries))
 }
 
 // patchManaged applies a source to the managed directory.
@@ -57,12 +109,8 @@ func patchManaged(source string) {
 		os.Exit(1)
 	}
 
-	// Load the source manifest
-	var sourceManifest *c4m.Manifest
-
 	if source == "." {
 		// Re-sync: scan the live disk and make that the new state
-		// This captures filesystem changes made outside c4
 		id, err := d.Snapshot()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -73,21 +121,18 @@ func patchManaged(source string) {
 		return
 	}
 
-	// Load from file
+	// Load source manifest
+	var sourceManifest *c4m.Manifest
 	if strings.HasSuffix(source, ".c4m") {
 		sourceManifest, err = loadManifest(source)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", source, err)
-			os.Exit(1)
-		}
 	} else if source == "-" {
 		sourceManifest, err = c4m.NewDecoder(os.Stdin).Decode()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-			os.Exit(1)
-		}
 	} else {
 		fmt.Fprintf(os.Stderr, "Error: source must be a .c4m file, -, or .\n")
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading source: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -98,11 +143,21 @@ func patchManaged(source string) {
 		os.Exit(1)
 	}
 
-	// For now, we record the desired state as the new snapshot.
-	// Full filesystem materialization (creating/moving actual files) is a
-	// future implementation that requires c4d content resolution.
-	// The managed directory's tracked state converges to the source manifest.
-	_ = sourceManifest
+	// Get current managed state and apply patch
+	current, err := d.Current()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading managed state: %v\n", err)
+		os.Exit(1)
+	}
+
+	patch := c4m.PatchDiff(current, sourceManifest)
+	if patch.IsEmpty() {
+		fmt.Fprintf(os.Stderr, "no changes\n")
+		return
+	}
+
+	result := c4m.ApplyPatch(current, patch.Patch)
+	_ = result
 
 	fmt.Printf("patched : (tracked, undoable)\n")
 }

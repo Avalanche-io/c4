@@ -381,6 +381,414 @@ func TestEntriesEqual(t *testing.T) {
 		})
 	}
 }
+
+// ----------------------------------------------------------------------------
+// PatchDiff Tests
+// ----------------------------------------------------------------------------
+
+func makeDir(name string, id c4.ID, depth int) *Entry {
+	return &Entry{
+		Name:      name,
+		Mode:      os.ModeDir | 0755,
+		Timestamp: time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC),
+		Size:      -1,
+		C4ID:      id,
+		Depth:     depth,
+	}
+}
+
+func makeFile(name string, content string, depth int) *Entry {
+	return &Entry{
+		Name:      name,
+		Mode:      0644,
+		Timestamp: time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC),
+		Size:      int64(len(content)),
+		C4ID:      c4.Identify(strings.NewReader(content)),
+		Depth:     depth,
+	}
+}
+
+func TestPatchDiffIdentical(t *testing.T) {
+	m := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeFile("b.txt", "bbb", 0),
+	}}
+	result := PatchDiff(m, m)
+	if !result.IsEmpty() {
+		t.Errorf("expected empty patch for identical manifests, got %d entries", len(result.Patch.Entries))
+	}
+}
+
+func TestPatchDiffAddition(t *testing.T) {
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+	}}
+	new := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeFile("b.txt", "bbb", 0),
+	}}
+	result := PatchDiff(old, new)
+	if result.IsEmpty() {
+		t.Fatal("expected non-empty patch")
+	}
+	if len(result.Patch.Entries) != 1 {
+		t.Fatalf("expected 1 patch entry, got %d", len(result.Patch.Entries))
+	}
+	if result.Patch.Entries[0].Name != "b.txt" {
+		t.Errorf("expected addition of b.txt, got %s", result.Patch.Entries[0].Name)
+	}
+}
+
+func TestPatchDiffRemoval(t *testing.T) {
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeFile("b.txt", "bbb", 0),
+	}}
+	new := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+	}}
+	result := PatchDiff(old, new)
+	if len(result.Patch.Entries) != 1 {
+		t.Fatalf("expected 1 patch entry (removal), got %d", len(result.Patch.Entries))
+	}
+	// Removal re-emits the old entry
+	if result.Patch.Entries[0].Name != "b.txt" {
+		t.Errorf("expected removal of b.txt, got %s", result.Patch.Entries[0].Name)
+	}
+	if result.Patch.Entries[0].C4ID != c4.Identify(strings.NewReader("bbb")) {
+		t.Error("removal entry should have the OLD C4 ID")
+	}
+}
+
+func TestPatchDiffModification(t *testing.T) {
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "old content", 0),
+	}}
+	new := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "new content", 0),
+	}}
+	result := PatchDiff(old, new)
+	if len(result.Patch.Entries) != 1 {
+		t.Fatalf("expected 1 patch entry (modification), got %d", len(result.Patch.Entries))
+	}
+	// Modification emits the NEW entry (clobber)
+	if result.Patch.Entries[0].C4ID != c4.Identify(strings.NewReader("new content")) {
+		t.Error("modification entry should have the NEW C4 ID")
+	}
+}
+
+func TestPatchDiffNested(t *testing.T) {
+	// Old: src/ contains main.go and util.go
+	srcOldID := c4.Identify(strings.NewReader("src-old"))
+	old := &Manifest{Entries: []*Entry{
+		makeFile("README.md", "readme", 0),
+		makeDir("src/", srcOldID, 0),
+		makeFile("main.go", "main-old", 1),
+		makeFile("util.go", "util", 1),
+	}}
+
+	// New: src/ contains main.go (modified) and util.go (unchanged)
+	srcNewID := c4.Identify(strings.NewReader("src-new"))
+	new := &Manifest{Entries: []*Entry{
+		makeFile("README.md", "readme", 0),
+		makeDir("src/", srcNewID, 0),
+		makeFile("main.go", "main-new", 1),
+		makeFile("util.go", "util", 1),
+	}}
+
+	result := PatchDiff(old, new)
+
+	// Should emit: src/ (new ID) then main.go (new content)
+	// README.md is unchanged (same C4 ID), util.go is unchanged
+	if len(result.Patch.Entries) != 2 {
+		t.Fatalf("expected 2 patch entries (dir + modified file), got %d", len(result.Patch.Entries))
+	}
+
+	if result.Patch.Entries[0].Name != "src/" {
+		t.Errorf("first entry should be src/, got %s", result.Patch.Entries[0].Name)
+	}
+	if result.Patch.Entries[0].Depth != 0 {
+		t.Errorf("src/ should be at depth 0, got %d", result.Patch.Entries[0].Depth)
+	}
+
+	if result.Patch.Entries[1].Name != "main.go" {
+		t.Errorf("second entry should be main.go, got %s", result.Patch.Entries[1].Name)
+	}
+	if result.Patch.Entries[1].Depth != 1 {
+		t.Errorf("main.go should be at depth 1, got %d", result.Patch.Entries[1].Depth)
+	}
+}
+
+func TestPatchDiffSkipsIdenticalSubtrees(t *testing.T) {
+	// Both manifests have the same src/ directory (same C4 ID)
+	srcID := c4.Identify(strings.NewReader("src-shared"))
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeDir("src/", srcID, 0),
+		makeFile("main.go", "main", 1),
+		makeFile("util.go", "util", 1),
+	}}
+	new := &Manifest{Entries: []*Entry{
+		makeFile("b.txt", "bbb", 0),
+		makeDir("src/", srcID, 0),
+		makeFile("main.go", "main", 1),
+		makeFile("util.go", "util", 1),
+	}}
+
+	result := PatchDiff(old, new)
+
+	// Should emit: a.txt (removal) and b.txt (addition)
+	// src/ is skipped entirely (same C4 ID)
+	if len(result.Patch.Entries) != 2 {
+		t.Fatalf("expected 2 patch entries, got %d", len(result.Patch.Entries))
+	}
+
+	names := map[string]bool{}
+	for _, e := range result.Patch.Entries {
+		names[e.Name] = true
+	}
+	if !names["a.txt"] || !names["b.txt"] {
+		t.Errorf("expected a.txt and b.txt in patch, got %v", names)
+	}
+}
+
+func TestPatchDiffAddedDirectory(t *testing.T) {
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+	}}
+
+	newDirID := c4.Identify(strings.NewReader("newdir"))
+	new := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeDir("docs/", newDirID, 0),
+		makeFile("README.md", "readme", 1),
+		makeFile("guide.md", "guide", 1),
+	}}
+
+	result := PatchDiff(old, new)
+
+	// Should emit: docs/ + README.md + guide.md (dir + full subtree)
+	if len(result.Patch.Entries) != 3 {
+		t.Fatalf("expected 3 patch entries (dir + 2 files), got %d", len(result.Patch.Entries))
+	}
+
+	if result.Patch.Entries[0].Name != "docs/" {
+		t.Errorf("first entry should be docs/, got %s", result.Patch.Entries[0].Name)
+	}
+	if result.Patch.Entries[0].Depth != 0 {
+		t.Errorf("docs/ should be at depth 0")
+	}
+	// Children should be at depth 1
+	for _, e := range result.Patch.Entries[1:] {
+		if e.Depth != 1 {
+			t.Errorf("child %s should be at depth 1, got %d", e.Name, e.Depth)
+		}
+	}
+}
+
+func TestPatchDiffPageBoundaries(t *testing.T) {
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+	}}
+	new := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa-new", 0),
+	}}
+
+	result := PatchDiff(old, new)
+
+	// OldID and NewID should be different (content changed)
+	if result.OldID == result.NewID {
+		t.Error("OldID and NewID should differ for modified manifest")
+	}
+
+	// Both should be non-nil
+	if result.OldID.IsNil() || result.NewID.IsNil() {
+		t.Error("page boundary IDs should not be nil")
+	}
+}
+
+func TestPatchDiffFilesBeforeDirs(t *testing.T) {
+	dirID := c4.Identify(strings.NewReader("dir"))
+	old := &Manifest{Entries: []*Entry{}}
+	new := &Manifest{Entries: []*Entry{
+		makeFile("z.txt", "zzz", 0),
+		makeDir("a-dir/", dirID, 0),
+		makeFile("a.txt", "aaa", 0),
+	}}
+
+	result := PatchDiff(old, new)
+
+	// Files should come before directories in patch output
+	if len(result.Patch.Entries) < 3 {
+		t.Fatalf("expected at least 3 entries, got %d", len(result.Patch.Entries))
+	}
+
+	// First two should be files, last should be directory
+	if result.Patch.Entries[0].IsDir() || result.Patch.Entries[1].IsDir() {
+		t.Error("files should appear before directories in patch")
+	}
+	if !result.Patch.Entries[2].IsDir() {
+		t.Error("directory should appear after files in patch")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// ApplyPatch Tests
+// ----------------------------------------------------------------------------
+
+func TestApplyPatchRoundTrip(t *testing.T) {
+	// Verify: ApplyPatch(base, PatchDiff(base, target).Patch) == target
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeFile("b.txt", "bbb", 0),
+		makeFile("c.txt", "ccc", 0),
+	}}
+	target := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa-new", 0),
+		makeFile("c.txt", "ccc", 0),
+		makeFile("d.txt", "ddd", 0),
+	}}
+
+	patch := PatchDiff(old, target)
+	result := ApplyPatch(old, patch.Patch)
+
+	// Result should match target
+	if len(result.Entries) != len(target.Entries) {
+		t.Fatalf("expected %d entries, got %d", len(target.Entries), len(result.Entries))
+	}
+
+	for i, e := range result.Entries {
+		te := target.Entries[i]
+		if e.Name != te.Name {
+			t.Errorf("entry %d: name %q != %q", i, e.Name, te.Name)
+		}
+		if e.C4ID != te.C4ID {
+			t.Errorf("entry %d (%s): C4 ID mismatch", i, e.Name)
+		}
+	}
+}
+
+func TestApplyPatchNestedRoundTrip(t *testing.T) {
+	srcOldID := c4.Identify(strings.NewReader("src-old"))
+	srcNewID := c4.Identify(strings.NewReader("src-new"))
+
+	old := &Manifest{Entries: []*Entry{
+		makeFile("README.md", "readme", 0),
+		makeDir("src/", srcOldID, 0),
+		makeFile("main.go", "main-old", 1),
+		makeFile("util.go", "util", 1),
+	}}
+
+	target := &Manifest{Entries: []*Entry{
+		makeFile("README.md", "readme", 0),
+		makeDir("src/", srcNewID, 0),
+		makeFile("main.go", "main-new", 1),
+		makeFile("util.go", "util", 1),
+	}}
+
+	patch := PatchDiff(old, target)
+	result := ApplyPatch(old, patch.Patch)
+
+	// Should have same entries as target
+	if len(result.Entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(result.Entries))
+	}
+
+	// Find main.go in result
+	var mainEntry *Entry
+	for _, e := range result.Entries {
+		if e.Name == "main.go" {
+			mainEntry = e
+			break
+		}
+	}
+	if mainEntry == nil {
+		t.Fatal("main.go not found in result")
+	}
+	if mainEntry.C4ID != c4.Identify(strings.NewReader("main-new")) {
+		t.Error("main.go should have the new C4 ID after patch")
+	}
+
+	// util.go should be unchanged
+	var utilEntry *Entry
+	for _, e := range result.Entries {
+		if e.Name == "util.go" {
+			utilEntry = e
+			break
+		}
+	}
+	if utilEntry == nil {
+		t.Fatal("util.go not found in result")
+	}
+	if utilEntry.C4ID != c4.Identify(strings.NewReader("util")) {
+		t.Error("util.go should be unchanged after patch")
+	}
+}
+
+func TestApplyPatchDirectoryRemoval(t *testing.T) {
+	dirID := c4.Identify(strings.NewReader("dir"))
+
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeDir("docs/", dirID, 0),
+		makeFile("readme.md", "readme", 1),
+		makeFile("guide.md", "guide", 1),
+	}}
+
+	target := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+	}}
+
+	patch := PatchDiff(old, target)
+	result := ApplyPatch(old, patch.Patch)
+
+	// Should only have a.txt
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry after removing docs/, got %d", len(result.Entries))
+	}
+	if result.Entries[0].Name != "a.txt" {
+		t.Errorf("expected a.txt, got %s", result.Entries[0].Name)
+	}
+}
+
+func TestApplyPatchDirectoryAddition(t *testing.T) {
+	dirID := c4.Identify(strings.NewReader("newdir"))
+
+	old := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+	}}
+
+	target := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeDir("docs/", dirID, 0),
+		makeFile("readme.md", "readme", 1),
+	}}
+
+	patch := PatchDiff(old, target)
+	result := ApplyPatch(old, patch.Patch)
+
+	// Should have a.txt + docs/ + readme.md
+	if len(result.Entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(result.Entries))
+	}
+}
+
+func TestApplyPatchEmptyPatch(t *testing.T) {
+	m := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+	}}
+
+	patch := PatchDiff(m, m)
+	if !patch.IsEmpty() {
+		t.Fatal("expected empty patch for identical manifests")
+	}
+
+	result := ApplyPatch(m, patch.Patch)
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Resolver Tests (merged from resolver_test.go)
 // ----------------------------------------------------------------------------

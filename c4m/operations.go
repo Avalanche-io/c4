@@ -28,64 +28,301 @@ func (ms ManifestSource) ToManifest() (*Manifest, error) {
 	return ms.Manifest, nil
 }
 
-// Diff compares two sources and returns a manifest of differences
+// PatchResult contains the output of a patch-format diff.
+type PatchResult struct {
+	Patch *Manifest // Entries constituting the patch delta
+	OldID c4.ID     // C4 ID of the old state (prior page boundary)
+	NewID c4.ID     // C4 ID of the new state (closing page boundary)
+}
+
+// IsEmpty returns true if there are no differences.
+func (pr *PatchResult) IsEmpty() bool {
+	return len(pr.Patch.Entries) == 0
+}
+
+// PatchDiff compares old and new manifests and produces a patch-format diff.
+// The result contains only changed entries with proper nesting. Subtrees with
+// matching C4 IDs are skipped entirely — for a million-file tree where one
+// file changed, this touches only entries along the path to that file.
+//
+// Patch entry semantics (applied against the old state):
+//   - Addition: entry exists only in new → emitted as-is
+//   - Removal: entry exists only in old → re-emitted (exact duplicate = removal)
+//   - Modification: same name, different C4 ID → new entry emitted (clobber)
+//   - Directory with changes: new dir entry emitted (updated C4 ID), children recursed
+func PatchDiff(old, new *Manifest) *PatchResult {
+	oldIdx := old.ensureIndex()
+	newIdx := new.ensureIndex()
+
+	var entries []*Entry
+	diffTree(old, new, oldIdx.root, newIdx.root, 0, &entries)
+
+	patch := NewManifest()
+	patch.Entries = entries
+
+	return &PatchResult{
+		Patch: patch,
+		OldID: old.ComputeC4ID(),
+		NewID: new.ComputeC4ID(),
+	}
+}
+
+// diffTree recursively compares children at a given depth, emitting patch entries.
+func diffTree(old, new *Manifest, oldChildren, newChildren []*Entry, depth int, result *[]*Entry) {
+	oldByName := make(map[string]*Entry, len(oldChildren))
+	for _, e := range oldChildren {
+		oldByName[e.Name] = e
+	}
+	newByName := make(map[string]*Entry, len(newChildren))
+	for _, e := range newChildren {
+		newByName[e.Name] = e
+	}
+
+	names := diffUnionNames(oldByName, newByName)
+
+	for _, name := range names {
+		oldEntry := oldByName[name]
+		newEntry := newByName[name]
+
+		if newEntry != nil && oldEntry == nil {
+			// Addition — emit new entry and full subtree
+			*result = append(*result, entryAtDepth(newEntry, depth))
+			if newEntry.IsDir() {
+				emitSubtree(new, newEntry, depth+1, result)
+			}
+			continue
+		}
+
+		if oldEntry != nil && newEntry == nil {
+			// Removal — re-emit old entry (exact duplicate signals removal)
+			*result = append(*result, entryAtDepth(oldEntry, depth))
+			continue
+		}
+
+		// Both exist — compare C4 IDs
+		if !oldEntry.C4ID.IsNil() && !newEntry.C4ID.IsNil() && oldEntry.C4ID == newEntry.C4ID {
+			// Same C4 ID — skip entire subtree
+			continue
+		}
+
+		if oldEntry.IsDir() && newEntry.IsDir() {
+			// Both directories, different content — emit new dir entry and recurse
+			*result = append(*result, entryAtDepth(newEntry, depth))
+			diffTree(old, new, old.Children(oldEntry), new.Children(newEntry), depth+1, result)
+		} else {
+			// File modified or type changed — emit new entry (clobber)
+			*result = append(*result, entryAtDepth(newEntry, depth))
+		}
+	}
+}
+
+// entryAtDepth returns a copy of src with the given depth.
+func entryAtDepth(src *Entry, depth int) *Entry {
+	e := *src
+	e.Depth = depth
+	return &e
+}
+
+// emitSubtree recursively emits all children of a directory.
+func emitSubtree(m *Manifest, dir *Entry, depth int, result *[]*Entry) {
+	for _, child := range m.Children(dir) {
+		*result = append(*result, entryAtDepth(child, depth))
+		if child.IsDir() {
+			emitSubtree(m, child, depth+1, result)
+		}
+	}
+}
+
+// diffUnionNames returns the sorted union of entry names from both maps.
+// Sort order: files before directories, then lexicographic within each group.
+func diffUnionNames(a, b map[string]*Entry) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	for name := range a {
+		seen[name] = true
+	}
+	for name := range b {
+		seen[name] = true
+	}
+
+	var files, dirs []string
+	for name := range seen {
+		// Check if it's a directory in either manifest
+		isDir := false
+		if e, ok := a[name]; ok && e.IsDir() {
+			isDir = true
+		}
+		if e, ok := b[name]; ok && e.IsDir() {
+			isDir = true
+		}
+		if isDir {
+			dirs = append(dirs, name)
+		} else {
+			files = append(files, name)
+		}
+	}
+
+	sort.Strings(files)
+	sort.Strings(dirs)
+	return append(files, dirs...)
+}
+
+// ApplyPatch applies patch entries to a base manifest, producing the result.
+// Patch entry semantics (matching by path):
+//   - Exact duplicate of a base entry → removal (entry and children deleted)
+//   - Same path, different content → clobber (replace entry, recurse for dirs)
+//   - New path → addition
+func ApplyPatch(base, patch *Manifest) *Manifest {
+	baseTree := buildPatchTree(base)
+	patchTree := buildPatchTree(patch)
+	applyPatchTree(baseTree, patchTree)
+
+	var entries []*Entry
+	flattenPatchTree(baseTree, 0, &entries)
+
+	result := NewManifest()
+	result.Entries = entries
+	result.SortEntries()
+	return result
+}
+
+// patchNode is a tree node for patch application.
+type patchNode struct {
+	entry    *Entry
+	children map[string]*patchNode
+}
+
+// buildPatchTree builds a tree from a manifest's flat entry list.
+func buildPatchTree(m *Manifest) *patchNode {
+	root := &patchNode{children: make(map[string]*patchNode)}
+	stack := make([]*patchNode, 1)
+	stack[0] = root
+
+	for _, e := range m.Entries {
+		if e.Depth+1 < len(stack) {
+			stack = stack[:e.Depth+1]
+		}
+		parent := stack[e.Depth]
+
+		node := &patchNode{entry: e, children: make(map[string]*patchNode)}
+		parent.children[e.Name] = node
+
+		if e.IsDir() {
+			for len(stack) <= e.Depth+1 {
+				stack = append(stack, nil)
+			}
+			stack[e.Depth+1] = node
+		}
+	}
+	return root
+}
+
+// applyPatchTree recursively applies patch changes to a base tree.
+func applyPatchTree(base, patch *patchNode) {
+	for name, pNode := range patch.children {
+		bNode, exists := base.children[name]
+
+		if !exists {
+			// Addition — graft entire subtree
+			base.children[name] = pNode
+			continue
+		}
+
+		// Check if exact match (removal)
+		if entriesIdentical(bNode.entry, pNode.entry) {
+			delete(base.children, name)
+			continue
+		}
+
+		// Clobber — replace entry
+		bNode.entry = pNode.entry
+
+		// For directories, recurse to apply child-level changes
+		if bNode.entry.IsDir() && pNode.entry.IsDir() {
+			applyPatchTree(bNode, pNode)
+		}
+	}
+}
+
+// entriesIdentical checks if two entries are exactly the same
+// (same mode, timestamp, size, name, C4 ID, target). Used to detect removals.
+func entriesIdentical(a, b *Entry) bool {
+	return a.Name == b.Name &&
+		a.Mode == b.Mode &&
+		a.Timestamp.Equal(b.Timestamp) &&
+		a.Size == b.Size &&
+		a.C4ID == b.C4ID &&
+		a.Target == b.Target
+}
+
+// flattenPatchTree converts a tree back to a flat entry list.
+func flattenPatchTree(node *patchNode, depth int, result *[]*Entry) {
+	for _, child := range node.children {
+		e := *child.entry
+		e.Depth = depth
+		*result = append(*result, &e)
+		if child.entry.IsDir() {
+			flattenPatchTree(child, depth+1, result)
+		}
+	}
+}
+
+// Diff compares two sources and returns a categorized diff result.
+// For patch-format output, prefer PatchDiff which produces properly
+// nested entries suitable for direct serialization.
 func Diff(a, b Source) (*DiffResult, error) {
 	manifestA, err := a.ToManifest()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest A: %w", err)
 	}
-	
+
 	manifestB, err := b.ToManifest()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest B: %w", err)
 	}
-	
+
 	result := &DiffResult{
 		Added:    NewManifest(),
 		Removed:  NewManifest(),
 		Modified: NewManifest(),
 		Same:     NewManifest(),
 	}
-	
+
 	// Build maps for efficient lookup
 	aMap := make(map[string]*Entry)
 	for _, entry := range manifestA.Entries {
 		aMap[entry.Name] = entry
 	}
-	
+
 	bMap := make(map[string]*Entry)
 	for _, entry := range manifestB.Entries {
 		bMap[entry.Name] = entry
 	}
-	
+
 	// Check entries in A
 	for name, entryA := range aMap {
 		if entryB, exists := bMap[name]; exists {
-			// Entry exists in both
 			if entriesEqual(entryA, entryB) {
 				result.Same.AddEntry(entryA)
 			} else {
 				result.Modified.AddEntry(entryB)
 			}
 		} else {
-			// Entry only in A (removed from B's perspective)
 			result.Removed.AddEntry(entryA)
 		}
 	}
-	
+
 	// Check entries only in B (added)
 	for name, entryB := range bMap {
 		if _, exists := aMap[name]; !exists {
 			result.Added.AddEntry(entryB)
 		}
 	}
-	
-	// Sort all results
+
 	result.Added.SortEntries()
 	result.Removed.SortEntries()
 	result.Modified.SortEntries()
 	result.Same.SortEntries()
-	
+
 	return result, nil
 }
 
@@ -99,29 +336,27 @@ type DiffResult struct {
 
 // IsEmpty returns true if there are no differences
 func (dr *DiffResult) IsEmpty() bool {
-	return len(dr.Added.Entries) == 0 && 
-	       len(dr.Removed.Entries) == 0 && 
-	       len(dr.Modified.Entries) == 0
+	return len(dr.Added.Entries) == 0 &&
+		len(dr.Removed.Entries) == 0 &&
+		len(dr.Modified.Entries) == 0
 }
 
 // entriesEqual compares two entries for equality
 func entriesEqual(a, b *Entry) bool {
-	// Entries must have the same name to be equal
 	if a.Name != b.Name {
 		return false
 	}
-	
+
 	// Compare C4 IDs if both present
 	if !a.C4ID.IsNil() && !b.C4ID.IsNil() {
-		return a.C4ID.String() == b.C4ID.String() &&
-		       a.Mode == b.Mode
+		return a.C4ID == b.C4ID && a.Mode == b.Mode
 	}
-	
+
 	// Otherwise compare all attributes
 	return a.Mode == b.Mode &&
-	       a.Size == b.Size &&
-	       a.Timestamp.Equal(b.Timestamp) &&
-	       a.Target == b.Target
+		a.Size == b.Size &&
+		a.Timestamp.Equal(b.Timestamp) &&
+		a.Target == b.Target
 }
 
 // PathList returns just the paths from a manifest

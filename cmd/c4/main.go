@@ -239,14 +239,10 @@ func runDiff(args []string) {
 		os.Exit(1)
 	}
 
-	source := getSource(fs.Arg(0))
-	target := getSource(fs.Arg(1))
+	oldManifest := getManifest(fs.Arg(0))
+	newManifest := getManifest(fs.Arg(1))
 
-	result, err := c4m.Diff(source, target)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	result := c4m.PatchDiff(oldManifest, newManifest)
 
 	if *empty {
 		if result.IsEmpty() {
@@ -256,41 +252,34 @@ func runDiff(args []string) {
 		}
 	}
 
-	// Output diff results
-	if len(result.Added.Entries) > 0 {
-		fmt.Println("# Added:")
-		for _, e := range result.Added.Entries {
-			fmt.Printf("+ %s\n", e.Name)
-		}
+	if result.IsEmpty() {
+		return
 	}
 
-	if len(result.Removed.Entries) > 0 {
-		fmt.Println("# Removed:")
-		for _, e := range result.Removed.Entries {
-			fmt.Printf("- %s\n", e.Name)
-		}
-	}
+	// Output patch format: prior C4 ID → patch entries → new C4 ID
+	fmt.Println(result.OldID)
 
-	if len(result.Modified.Entries) > 0 {
-		fmt.Println("# Modified:")
-		for _, e := range result.Modified.Entries {
-			fmt.Printf("M %s\n", e.Name)
-		}
+	enc := c4m.NewEncoder(os.Stdout)
+	if prettyFlag {
+		enc.SetPretty(true)
 	}
+	enc.Encode(result.Patch)
+
+	fmt.Println(result.NewID)
 }
 
-func getSource(path string) c4m.Source {
-	// Stdin: read c4m from pipe
+// getManifest resolves a path argument to a manifest.
+// Handles: stdin (-), c4m files (colon notation), local filesystem paths.
+func getManifest(path string) *c4m.Manifest {
 	if path == "-" {
 		manifest, err := c4m.NewDecoder(os.Stdin).Decode()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
 			os.Exit(1)
 		}
-		return c4m.ManifestSource{Manifest: manifest}
+		return manifest
 	}
 
-	// Try pathspec parsing for colon notation
 	spec, err := pathspec.Parse(path, establish.IsLocationEstablished)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -307,13 +296,16 @@ func getSource(path string) c4m.Source {
 		if spec.SubPath != "" {
 			manifest = filterBySubpath(manifest, spec.SubPath)
 		}
-		return c4m.ManifestSource{Manifest: manifest}
+		return manifest
 
 	default:
-		// Local filesystem path
-		return scan.FileSource{
-			Path:      spec.Source,
-			Generator: scan.NewGeneratorWithOptions(scan.WithC4IDs(true)),
+		// Local filesystem path — scan it
+		gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+		manifest, err := gen.GenerateFromPath(spec.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error scanning %s: %v\n", spec.Source, err)
+			os.Exit(1)
 		}
+		return manifest
 	}
 }
