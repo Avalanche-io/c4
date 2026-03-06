@@ -552,16 +552,17 @@ func expandSequenceEntry(entry *Entry, idList *idList) ([]*Entry, error) {
 
 // expandSequenceEntryWithManifest expands a sequence entry using embedded DataBlocks
 func expandSequenceEntryWithManifest(entry *Entry, manifest *Manifest) ([]*Entry, error) {
-	// Try to get the ID list from embedded data blocks.
-	// Use dataBlockID first (new-style manifests where C4ID is manifest-based),
-	// then fall back to C4ID (legacy manifests where C4ID == dataBlock.ID).
+	// The sequence C4 ID IS the ID list hash (bare concatenation of frame IDs).
+	// Look up by C4ID first, then dataBlockID for compatibility.
 	var idList *idList
-	lookupID := entry.dataBlockID
-	if lookupID.IsNil() {
-		lookupID = entry.C4ID
+	if !entry.C4ID.IsNil() {
+		list, err := manifest.getIDList(entry.C4ID)
+		if err == nil {
+			idList = list
+		}
 	}
-	if !lookupID.IsNil() {
-		list, err := manifest.getIDList(lookupID)
+	if idList == nil && !entry.dataBlockID.IsNil() {
+		list, err := manifest.getIDList(entry.dataBlockID)
 		if err == nil {
 			idList = list
 		}
@@ -680,6 +681,7 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 				var mostRestrictiveMode os.FileMode = 0777 // Start with most permissive
 				var depth int
 				idList := newIDList()
+				hasNilID := false
 
 				for i := r.start; i <= r.end; i++ {
 					entry, ok := group.entries[i]
@@ -699,6 +701,9 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 						mostRestrictiveMode = entryPerms
 					}
 
+					if entry.C4ID.IsNil() && entry.Mode&os.ModeSymlink == 0 {
+						hasNilID = true
+					}
 					idList.Add(entry.C4ID)
 
 					if i == r.start {
@@ -706,26 +711,28 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 					}
 				}
 
+				// A range cannot be folded if any frame has a nil C4 ID.
+				// The range's identity IS the ordered list of frame identities.
+				if hasNilID {
+					for i := r.start; i <= r.end; i++ {
+						if entry, ok := group.entries[i]; ok {
+							result.AddEntry(entry)
+						}
+					}
+					continue
+				}
+
 				// Get file type from first entry
 				firstEntry := group.entries[r.start]
 				finalMode := (firstEntry.Mode & os.ModeType) | mostRestrictiveMode
 
-				// Build a manifest from the member entries to compute canonical C4 ID.
-				// Sequence C4 IDs are computed like directory C4 IDs: hash of
-				// the canonical c4m representation of the member entries.
-				seqManifest := NewManifest()
-				for i := r.start; i <= r.end; i++ {
-					memberEntry, ok := group.entries[i]
-					if !ok {
-						continue
-					}
-					entryCopy := *memberEntry
-					entryCopy.Depth = 0
-					seqManifest.AddEntry(&entryCopy)
-				}
-				seqC4ID := seqManifest.ComputeC4ID()
+				// Sequence C4 ID = hash of bare C4 IDs concatenated in range order.
+				// No metadata (timestamps, sizes, modes) affects the sequence identity.
+				// Only the content identity of each frame matters.
+				seqC4ID := idList.ComputeC4ID()
 
-				// Create and embed the data block for the ID list (for round-tripping)
+				// The data block content is the same bare concatenation,
+				// so its C4 ID equals the sequence C4 ID.
 				dataBlock := createDataBlockFromIDList(idList)
 
 				seqEntry := &Entry{
@@ -846,12 +853,13 @@ func (l *idList) Get(index int) c4.ID {
 }
 
 // Canonical returns the canonical form of the ID list as a string.
-// One C4 ID per line, trailing newline on each line.
+// Bare C4 IDs concatenated with no delimiters, newlines, or separators.
+// Each C4 ID is exactly 90 characters, so the result is self-framing.
 func (l *idList) Canonical() string {
 	var buf strings.Builder
+	buf.Grow(len(l.ids) * 90)
 	for _, id := range l.ids {
 		buf.WriteString(id.String())
-		buf.WriteByte('\n')
 	}
 	return buf.String()
 }
@@ -867,11 +875,38 @@ func (l *idList) ComputeC4ID() c4.ID {
 }
 
 // parseIDList parses an ID list from a reader.
-// It is tolerant of whitespace variations but validates that each line is a valid C4 ID.
+// Supports both bare concatenation (90-char chunks, no separators) and
+// newline-separated formats.
 func parseIDList(r io.Reader) (*idList, error) {
-	list := newIDList()
-	scanner := bufio.NewScanner(r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ID list: %w", err)
+	}
 
+	content := string(data)
+
+	// Try bare concatenation first: length must be a positive multiple of 90,
+	// and every 90-char chunk must be a valid C4 ID.
+	trimmed := strings.TrimSpace(content)
+	if len(trimmed) > 0 && len(trimmed)%90 == 0 && !strings.ContainsAny(trimmed, " \t\n") {
+		list := newIDList()
+		for i := 0; i < len(trimmed); i += 90 {
+			chunk := trimmed[i : i+90]
+			id, err := c4.Parse(chunk)
+			if err != nil {
+				// Not bare concatenation, fall through to line-based
+				break
+			}
+			list.Add(id)
+		}
+		if list.Count() == len(trimmed)/90 {
+			return list, nil
+		}
+	}
+
+	// Fall back to line-based parsing
+	list := newIDList()
+	scanner := bufio.NewScanner(strings.NewReader(content))
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
@@ -911,9 +946,24 @@ func parseIDListFromString(s string) (*idList, error) {
 // IsIDListContent checks if content appears to be a plain C4 ID list.
 // Returns true if every non-empty line matches the C4 ID pattern.
 func IsIDListContent(content []byte) bool {
-	scanner := bufio.NewScanner(bytes.NewReader(content))
-	hasContent := false
+	s := strings.TrimSpace(string(content))
+	if len(s) == 0 {
+		return false
+	}
 
+	// Check bare concatenation: multiple of 90 chars, no whitespace
+	if len(s)%90 == 0 && !strings.ContainsAny(s, " \t\n") {
+		for i := 0; i < len(s); i += 90 {
+			if !c4IDPattern.MatchString(s[i : i+90]) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Check line-based format
+	scanner := bufio.NewScanner(strings.NewReader(s))
+	hasContent := false
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -924,7 +974,6 @@ func IsIDListContent(content []byte) bool {
 			return false
 		}
 	}
-
 	return hasContent
 }
 
@@ -955,12 +1004,7 @@ func ParseDataBlock(id c4.ID, content string) (*DataBlock, error) {
 	// Check if content is plain ID list
 	if IsIDListContent(contentBytes) {
 		block.IsIDList = true
-		// Normalize to canonical form
-		idList, err := parseIDListFromString(content)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ID list: %w", err)
-		}
-		block.Content = idList.Bytes()
+		block.Content = contentBytes
 	} else {
 		// Treat as base64 encoded content
 		block.IsIDList = false

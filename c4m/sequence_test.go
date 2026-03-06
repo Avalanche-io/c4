@@ -3,6 +3,7 @@ package c4m
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -22,6 +23,7 @@ func TestSequenceDetector(t *testing.T) {
 			Size:      1024,
 			Timestamp: time.Now(),
 			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader(fmt.Sprintf("frame-content-%d", i))),
 		})
 	}
 
@@ -31,6 +33,7 @@ func TestSequenceDetector(t *testing.T) {
 		Size:      100,
 		Timestamp: time.Now(),
 		Mode:      0644,
+		C4ID:      c4.Identify(strings.NewReader("readme-content")),
 	})
 
 	// Detect sequences
@@ -1150,17 +1153,15 @@ func TestIDList(t *testing.T) {
 
 		canonical := list.Canonical()
 
-		// Should have trailing newline on each line
-		lines := strings.Split(strings.TrimSuffix(canonical, "\n"), "\n")
-		if len(lines) != 2 {
-			t.Errorf("expected 2 lines, got %d", len(lines))
+		// Bare concatenation: no newlines, no separators
+		expected := id1.String() + id2.String()
+		if canonical != expected {
+			t.Errorf("canonical = %q, want %q", canonical, expected)
 		}
 
-		if lines[0] != id1.String() {
-			t.Errorf("expected %s, got %s", id1.String(), lines[0])
-		}
-		if lines[1] != id2.String() {
-			t.Errorf("expected %s, got %s", id2.String(), lines[1])
+		// Length should be 90 * count
+		if len(canonical) != 180 {
+			t.Errorf("expected length 180, got %d", len(canonical))
 		}
 	})
 
@@ -1532,6 +1533,7 @@ func TestDetectSequences_ConvenienceFunction(t *testing.T) {
 			Size:      1024,
 			Timestamp: time.Now(),
 			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader(fmt.Sprintf("shot-content-%d", i))),
 		})
 	}
 
@@ -1556,6 +1558,7 @@ func TestDetectSequences_ConvenienceFunction(t *testing.T) {
 			Size:      512,
 			Timestamp: time.Now(),
 			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader(fmt.Sprintf("clip-content-%d", i))),
 		})
 	}
 
@@ -1574,7 +1577,7 @@ func TestDetectSequences_ConvenienceFunction(t *testing.T) {
 
 // TestSequenceC4ID_NotIDListHash verifies that a sequence's C4 ID is NOT
 // simply the hash of the ID list (the old, incorrect behavior).
-func TestSequenceC4ID_NotIDListHash(t *testing.T) {
+func TestSequenceC4ID_EqualsIDListHash(t *testing.T) {
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	manifest := NewManifest()
@@ -1604,16 +1607,16 @@ func TestSequenceC4ID_NotIDListHash(t *testing.T) {
 		t.Fatal("no sequence entry found")
 	}
 
-	// The sequence C4 ID must NOT equal the hash of the bare ID list
+	// Sequence C4 ID = hash of bare C4 IDs concatenated in range order
 	idListC4ID := idList.ComputeC4ID()
-	if seqEntry.C4ID == idListC4ID {
-		t.Errorf("sequence C4 ID should NOT equal the ID list hash, got %s", seqEntry.C4ID)
+	if seqEntry.C4ID != idListC4ID {
+		t.Errorf("sequence C4 ID = %s, want %s (ID list hash)", seqEntry.C4ID, idListC4ID)
 	}
 }
 
-// TestSequenceC4ID_MatchesCanonicalManifest verifies that a sequence's C4 ID
-// equals the C4 ID of a canonical manifest built from the member entries.
-func TestSequenceC4ID_MatchesCanonicalManifest(t *testing.T) {
+// TestSequenceC4ID_NotCanonicalManifest verifies that a sequence's C4 ID
+// does NOT equal a canonical manifest of members — it equals the bare ID list hash.
+func TestSequenceC4ID_NotCanonicalManifest(t *testing.T) {
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	manifest := NewManifest()
@@ -1644,43 +1647,44 @@ func TestSequenceC4ID_MatchesCanonicalManifest(t *testing.T) {
 		t.Fatal("no sequence entry found")
 	}
 
-	// Build the expected manifest from member entries (same as directory C4 ID computation)
-	expectedManifest := NewManifest()
+	// The manifest-based C4 ID should differ from the bare ID list hash
+	manifestID := NewManifest()
 	for _, e := range memberEntries {
 		entryCopy := *e
 		entryCopy.Depth = 0
-		expectedManifest.AddEntry(&entryCopy)
+		manifestID.AddEntry(&entryCopy)
 	}
-	expectedC4ID := expectedManifest.ComputeC4ID()
+	manifestC4ID := manifestID.ComputeC4ID()
 
-	if seqEntry.C4ID != expectedC4ID {
-		t.Errorf("sequence C4 ID = %s, want %s (canonical manifest ID)", seqEntry.C4ID, expectedC4ID)
+	if seqEntry.C4ID == manifestC4ID {
+		t.Error("sequence C4 ID should NOT equal canonical manifest ID — it should equal the bare ID list hash")
 	}
 }
 
-// TestSequenceC4ID_TimestampAffectsID verifies that changing a member's
-// timestamp (but not content) changes the sequence C4 ID.
-func TestSequenceC4ID_TimestampAffectsID(t *testing.T) {
+// TestSequenceC4ID_MetadataDoesNotAffectID verifies that changing a member's
+// metadata (timestamp, size, mode) does NOT change the sequence C4 ID.
+// Sequence identity depends only on content identity of each frame.
+func TestSequenceC4ID_MetadataDoesNotAffectID(t *testing.T) {
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	altTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 
-	makeManifest := func(ts time.Time) *Manifest {
+	makeManifest := func(ts time.Time, size int64, mode os.FileMode) *Manifest {
 		m := NewManifest()
 		for i := 1; i <= 5; i++ {
 			id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
 			m.AddEntry(&Entry{
 				Name:      fmt.Sprintf("frame.%04d.exr", i),
-				Size:      1024,
+				Size:      size,
 				Timestamp: ts,
-				Mode:      0644,
+				Mode:      mode,
 				C4ID:      id,
 			})
 		}
 		return m
 	}
 
-	result1 := DetectSequences(makeManifest(baseTime))
-	result2 := DetectSequences(makeManifest(altTime))
+	result1 := DetectSequences(makeManifest(baseTime, 1024, 0644))
+	result2 := DetectSequences(makeManifest(altTime, 2048, 0755))
 
 	var id1, id2 c4.ID
 	for _, e := range result1.Entries {
@@ -1697,8 +1701,8 @@ func TestSequenceC4ID_TimestampAffectsID(t *testing.T) {
 	if id1.IsNil() || id2.IsNil() {
 		t.Fatal("sequence entries not found")
 	}
-	if id1 == id2 {
-		t.Error("changing member timestamps should change the sequence C4 ID")
+	if id1 != id2 {
+		t.Errorf("metadata should not affect sequence C4 ID: got %s vs %s", id1, id2)
 	}
 }
 
@@ -1823,5 +1827,41 @@ func TestSequenceC4ID_DataBlockPreserved(t *testing.T) {
 	// Should have sequence entry + 3 expanded entries
 	if len(expanded.Entries) != 4 {
 		t.Errorf("expected 4 entries after expansion, got %d", len(expanded.Entries))
+	}
+}
+
+// TestSequenceC4ID_NilIDPreventsFolding verifies that sequences with any
+// nil C4 ID frames are not folded into ranges.
+func TestSequenceC4ID_NilIDPreventsFolding(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	manifest := NewManifest()
+	for i := 1; i <= 5; i++ {
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+		}
+		// Give all frames a C4 ID except frame 3
+		if i != 3 {
+			entry.C4ID = c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		}
+		manifest.AddEntry(entry)
+	}
+
+	result := DetectSequences(manifest)
+
+	// No sequence entries should be created — nil C4 ID breaks the chain
+	for _, e := range result.Entries {
+		if e.IsSequence {
+			t.Error("should not fold range when a frame has nil C4 ID")
+			break
+		}
+	}
+
+	// All 5 individual entries should be preserved
+	if len(result.Entries) != 5 {
+		t.Errorf("expected 5 individual entries, got %d", len(result.Entries))
 	}
 }

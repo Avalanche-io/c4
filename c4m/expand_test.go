@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -200,7 +201,7 @@ func TestSymlinkRangeUniformTarget(t *testing.T) {
 			Target:    fmt.Sprintf("/cache/source.%04d.exr", i),
 			Size:      0,
 			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			Mode:      0120000 | 0777, // symlink
+			Mode:      os.ModeSymlink | 0777,
 		})
 	}
 
@@ -403,23 +404,22 @@ func TestDirectiveLinesRejected(t *testing.T) {
 }
 
 // TestFoldedSequenceHasCorrectC4ID verifies that the sequence C4 ID
-// equals the hash of a canonical manifest built from member entries.
+// equals the hash of the bare C4 ID concatenation of frame IDs in range order.
 func TestFoldedSequenceHasCorrectC4ID(t *testing.T) {
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	manifest := NewManifest()
-	var members []*Entry
+	idList := newIDList()
 	for i := 1; i <= 3; i++ {
 		id := c4.Identify(strings.NewReader(fmt.Sprintf("data-%d", i)))
-		entry := &Entry{
+		manifest.AddEntry(&Entry{
 			Name:      fmt.Sprintf("render.%04d.png", i),
 			Size:      2048,
 			Timestamp: baseTime,
 			Mode:      0644,
 			C4ID:      id,
-		}
-		manifest.AddEntry(entry)
-		members = append(members, entry)
+		})
+		idList.Add(id)
 	}
 
 	folded := DetectSequences(manifest)
@@ -435,16 +435,9 @@ func TestFoldedSequenceHasCorrectC4ID(t *testing.T) {
 		t.Fatal("no sequence entry found")
 	}
 
-	// Build expected canonical manifest from members
-	expected := NewManifest()
-	for _, m := range members {
-		cp := *m
-		cp.Depth = 0
-		expected.AddEntry(&cp)
-	}
-	expectedID := expected.ComputeC4ID()
-
+	// Sequence C4 ID = hash of bare C4 IDs concatenated in range order
+	expectedID := idList.ComputeC4ID()
 	if seqEntry.C4ID != expectedID {
-		t.Errorf("sequence C4 ID = %s, want %s (canonical manifest of members)", seqEntry.C4ID, expectedID)
+		t.Errorf("sequence C4 ID = %s, want %s (bare ID list hash)", seqEntry.C4ID, expectedID)
 	}
 }
