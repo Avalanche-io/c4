@@ -1,18 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
-	"github.com/Avalanche-io/c4/cmd/c4/internal/gitignore"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 	flag "github.com/spf13/pflag"
 )
@@ -20,61 +15,19 @@ import (
 const version = "1.0.0"
 
 var (
-	// Core flags
-	versionFlag  bool
-	manifestFlag bool
-	recursiveFlag bool
-	
-	// Output flags
-	verboseFlag  bool
-	quietFlag    bool
-	absoluteFlag bool
-	pathsFlag    bool
-	emptyFlag    bool
-	prettyFlag   bool
-	
-	// Behavior flags
-	followFlag   bool
-	depthFlag    int
-	noIDsFlag    bool
-	formatFlag   string
-	progressiveFlag bool
-	// Filtering flags
-	gitignoreFlag    bool
-	excludePatterns  []string
-	excludeFromFiles []string
-
-	// Long-form aliases
-	helpFlag bool
+	// Global flags
+	versionFlag bool
+	idFlag      bool
+	prettyFlag  bool
+	helpFlag    bool
 )
 
 func init() {
 	flag.Usage = usage
-	
-	// Core flags
-	flag.BoolVarP(&versionFlag, "version", "", false, "Show version information")
-	flag.BoolVarP(&manifestFlag, "manifest", "m", false, "Output C4M manifest format")
-	flag.BoolVarP(&recursiveFlag, "recursive", "r", false, "Process recursively")
-	
-	// Output flags
-	flag.BoolVarP(&verboseFlag, "verbose", "v", false, "Verbose output")
-	flag.BoolVarP(&quietFlag, "quiet", "q", false, "Quiet mode")
-	flag.BoolVarP(&absoluteFlag, "absolute", "a", false, "Use absolute paths")
-	flag.BoolVarP(&pathsFlag, "paths", "p", false, "Output paths only")
-	flag.BoolVar(&emptyFlag, "empty", false, "Exit 0 if empty, 1 if content")
-	flag.BoolVar(&prettyFlag, "pretty", false, "Pretty-print manifest with aligned columns and formatted sizes")
-	
-	// Behavior flags
-	flag.BoolVarP(&followFlag, "follow", "L", false, "Follow symbolic links")
-	flag.IntVarP(&depthFlag, "depth", "d", -1, "Max depth for recursive processing")
-	flag.BoolVarP(&noIDsFlag, "no-ids", "n", false, "Don't compute C4 IDs (faster)")
-	flag.StringVar(&formatFlag, "format", "c4m", "Output format: c4m, paths, json")
-	flag.BoolVar(&progressiveFlag, "progressive", false, "Progressive scan with interrupt support (Ctrl+T for status on macOS)")
-	flag.BoolVarP(&gitignoreFlag, "gitignore", "g", false, "Respect .gitignore files when scanning")
-	flag.StringArrayVar(&excludePatterns, "exclude", nil, "Exclude files matching pattern (repeatable)")
-	flag.StringArrayVar(&excludeFromFiles, "exclude-from", nil, "Read exclude patterns from file (repeatable)")
 
-	// Help flag
+	flag.BoolVarP(&versionFlag, "version", "", false, "Show version information")
+	flag.BoolVarP(&idFlag, "id", "i", false, "Output bare C4 ID(s) instead of c4m")
+	flag.BoolVarP(&prettyFlag, "pretty", "p", false, "Pretty-print c4m with aligned columns")
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 }
 
@@ -82,35 +35,28 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `c4 - Content-addressable identification using C4 IDs
 
 Usage:
-  c4 [options] [path...]           # Generate C4 IDs or manifests
+  c4 [options] [path...]           # Identify files or directories
   c4 version                       # Show c4 and c4d mesh versions
-  c4 fmt [options] <file.c4m>       # Format manifest (canonical or ergonomic)
-  c4 diff <source> <target>         # Compare manifests or paths
-  c4 union <inputs...>              # Combine manifests
-  c4 intersect <inputs...>          # Find common elements
-  c4 subtract <from> <remove>       # Set subtraction
-  c4 validate <file|bundle>         # Validate C4M manifest or bundle
-  c4 extract <bundle> [output]      # Extract bundle to single C4M file
-  c4 mk <name>.c4m:                 # Establish capsule for writing
-  c4 mk <name>: <host:port>         # Establish location for writing
-  c4 rm <name>:                     # Remove location or capsule establishment
-  c4 mkdir <name>.c4m:<path>/       # Create directory in capsule
+  c4 ls <target>                   # List contents via colon notation
+  c4 cat <target>                  # Output content bytes to stdout
+  c4 diff <source> <target>        # Compare manifests or paths
+  c4 cp <source> <dest>            # Copy between local, c4m, locations
+  c4 mk <name>: [address]          # Establish for writing
+  c4 rm <name>:                    # Remove establishment
+  c4 mkdir [-p] <target>           # Create directory in c4m file
 
 Examples:
-  c4 file.txt                       # C4 ID of file
-  c4 .                              # C4 ID of directory (from canonical C4M)
-  c4 -m .                           # Show C4M manifest (one level)
-  c4 -mr .                          # Show full recursive C4M
-  c4 -m --pretty .                  # Pretty-print manifest with aligned columns
-  c4 --progressive .                # Progressive scan (Ctrl+C stop, Ctrl+T status on macOS)
-  c4 --bundle /path                 # Create bundle for unbounded scan
-  c4 --bundle --resume scan.c4m_bundle  # Resume incomplete bundle
-  echo "data" | c4                  # C4 ID from piped input
-  
-  c4 -mr --exclude '*.tmp' .        # Exclude patterns (repeatable)
-  c4 -mr --exclude-from .c4exclude . # Read exclude patterns from file
-  c4 diff old.c4m new.c4m           # Compare two manifests
-  c4 subtract needed.c4m . > todo.c4m  # Find missing files
+  c4 file.txt                      # c4m entry for file
+  c4 myproject/                    # Full recursive c4m listing
+  c4 -i file.txt                   # Bare C4 ID of file
+  c4 -i myproject/                 # Bare C4 ID of directory
+  echo "data" | c4                 # Bare C4 ID from stdin
+  c4 -p myproject/                 # Pretty-print c4m listing
+  c4 ls project.c4m:               # List c4m file contents
+  c4 ls project.c4m:renders/       # List subtree
+  c4 cat project.c4m:README.md     # File content from c4m to stdout
+  c4 cat c4abc...                  # Content by C4 ID from c4d
+  c4 diff old.c4m new.c4m          # Compare two manifests
 
 Options:
 `)
@@ -119,20 +65,20 @@ Options:
 }
 
 func main() {
-	// Check for operations first
+	// Check for subcommands first
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version":
 			runVersion(os.Args[2:])
 			return
+		case "ls":
+			runLs(os.Args[2:])
+			return
+		case "cat":
+			runCat(os.Args[2:])
+			return
 		case "diff":
 			runDiff(os.Args[2:])
-			return
-		case "validate":
-			runValidate(os.Args[2:])
-			return
-		case "fmt":
-			runFmt(os.Args[2:])
 			return
 		case "cp":
 			runCp(os.Args[2:])
@@ -148,26 +94,24 @@ func main() {
 			return
 		}
 	}
-	
+
 	flag.Parse()
-	
+
 	if versionFlag {
 		runVersion(nil)
 		os.Exit(0)
 	}
-	
+
 	if helpFlag {
 		flag.Usage()
 		os.Exit(0)
 	}
-	
+
 	paths := flag.Args()
-	
+
 	if len(paths) == 0 {
-		// Read from stdin
 		processStdin()
 	} else {
-		// Process files/directories
 		processFiles(paths)
 	}
 }
@@ -178,16 +122,8 @@ func processStdin() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	
-	// Check if stdin is C4M format
-	scanner := bufio.NewScanner(os.Stdin)
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	
-	input := strings.Join(lines, "\n")
-	id := c4.Identify(strings.NewReader(input))
+
+	id := c4.Identify(os.Stdin)
 	fmt.Println(id)
 }
 
@@ -201,228 +137,31 @@ func processFiles(paths []string) {
 }
 
 func processPath(path string) error {
-	// Check if path is a C4M file
-	if strings.HasSuffix(path, ".c4m") {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			// It's a C4M file, compute its C4 ID as a file
-			file, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-			
-			if manifestFlag {
-				// Output the manifest contents
-				_, err = io.Copy(os.Stdout, file)
-				return err
-			} else {
-				// Output the C4 ID of the file
-				id := c4.Identify(file)
-				outputID(id, path)
-				return nil
-			}
-		}
-	}
-	
-	// Regular file/directory processing
 	info, err := os.Lstat(path)
 	if err != nil {
 		return err
 	}
-	
+
 	if info.IsDir() {
 		return processDirectory(path)
-	} else {
-		return processFile(path, info)
 	}
-}
-
-func runProgressiveScan(dirPath string) error {
-	// Create CLI options based on flags
-	var cliOpts []scan.CLIOption
-
-	cliOpts = append(cliOpts, scan.WithOutput(os.Stdout, os.Stderr))
-	cliOpts = append(cliOpts, scan.WithVerbose(verboseFlag))
-	cliOpts = append(cliOpts, scan.WithProgress(!quietFlag))
-
-	if followFlag {
-		// Note: progressive scanner doesn't have follow symlinks yet
-		// This would need to be added to the scanner
-	}
-	
-	// Show instructions
-	if !quietFlag {
-		fmt.Fprintf(os.Stderr, "# Starting progressive scan of: %s\n", dirPath)
-		fmt.Fprintf(os.Stderr, "# Press Ctrl+C to stop and output results\n")
-		if runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" || runtime.GOOS == "openbsd" {
-			fmt.Fprintf(os.Stderr, "# Press Ctrl+T for status update\n")
-		} else {
-			fmt.Fprintf(os.Stderr, "# Send USR1 signal for status: kill -USR1 %d\n", os.Getpid())
-		}
-		fmt.Fprintf(os.Stderr, "#\n")
-	}
-	
-	cli := scan.NewProgressiveCLI(dirPath, cliOpts...)
-	return cli.Run()
-}
-
-// collectExcludePatterns gathers all exclude patterns from --exclude flags
-// and --exclude-from files.
-func collectExcludePatterns() []string {
-	patterns := make([]string, 0, len(excludePatterns))
-	patterns = append(patterns, excludePatterns...)
-	for _, file := range excludeFromFiles {
-		f, err := os.Open(file)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: cannot read exclude file %s: %v\n", file, err)
-			continue
-		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line != "" && !strings.HasPrefix(line, "#") {
-				patterns = append(patterns, line)
-			}
-		}
-		f.Close()
-	}
-	return patterns
+	return processFile(path, info)
 }
 
 func processDirectory(dirPath string) error {
-	// Check if progressive mode is requested
-	if progressiveFlag {
-		return runProgressiveScan(dirPath)
+	gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+	manifest, err := gen.GenerateFromPath(dirPath)
+	if err != nil {
+		return err
 	}
 
-	// Generate manifest for the directory
-	opts := []scan.GeneratorOption{
-		scan.WithC4IDs(!noIDsFlag),
-		scan.WithSymlinks(followFlag),
-		scan.WithGitignore(gitignoreFlag),
-	}
-	if patterns := collectExcludePatterns(); len(patterns) > 0 {
-		opts = append(opts, scan.WithExclude(patterns))
+	if idFlag {
+		fmt.Println(manifest.ComputeC4ID())
+		return nil
 	}
 
-	generator := scan.NewGeneratorWithOptions(opts...)
-	
-	// For directories, we need different behavior based on flags
-	if manifestFlag {
-		// Output the manifest
-		if recursiveFlag {
-			// Full recursive manifest
-			manifest, err := generator.GenerateFromPath(dirPath)
-			if err != nil {
-				return err
-			}
-			outputManifest(manifest)
-		} else {
-			// One level only
-			manifest, err := generateOneLevel(dirPath, generator)
-			if err != nil {
-				return err
-			}
-			outputManifest(manifest)
-		}
-	} else {
-		// Output the C4 ID of the directory (from its canonical C4M)
-		// Use one-level manifest with subdirectory C4 IDs
-		manifest, err := generateOneLevel(dirPath, generator)
-		if err != nil {
-			return err
-		}
-		id := manifest.ComputeC4ID()
-		outputID(id, dirPath)
-	}
-	
+	outputManifest(manifest)
 	return nil
-}
-
-func generateOneLevel(dirPath string, generator *scan.Generator) (*c4m.Manifest, error) {
-	manifest := c4m.NewManifest()
-
-	absDir, err := filepath.Abs(dirPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Set up gitignore matcher for this directory
-	var gi *gitignore.Matcher
-	if gitignoreFlag {
-		gi = gitignore.New()
-		gi.AddFromFile(filepath.Join(absDir, ".gitignore"), 0)
-	}
-
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-
-		// Always skip .git directory
-		if name == ".git" {
-			continue
-		}
-
-		// Check gitignore
-		if gi != nil && gi.Match(name, entry.IsDir()) {
-			continue
-		}
-
-		// Check exclude patterns
-		if patterns := collectExcludePatterns(); len(patterns) > 0 {
-			excluded := false
-			for _, pattern := range patterns {
-				if matched, _ := filepath.Match(pattern, name); matched {
-					excluded = true
-					break
-				}
-			}
-			if excluded {
-				continue
-			}
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		e := &c4m.Entry{
-			Mode:      info.Mode(),
-			Timestamp: info.ModTime().UTC(),
-			Size:      info.Size(),
-			Name:      entry.Name(),
-		}
-
-		if info.IsDir() {
-			e.Size = -1 // Directory sizes are computed from children, not OS metadata
-			e.Name += "/"
-			// For directories, compute their C4 ID from their manifest
-			subPath := filepath.Join(dirPath, entry.Name())
-			subManifest, err := generator.GenerateFromPath(subPath)
-			if err == nil {
-				e.C4ID = subManifest.ComputeC4ID()
-			}
-		} else if !noIDsFlag && info.Mode().IsRegular() {
-			// Compute file C4 ID
-			filePath := filepath.Join(dirPath, entry.Name())
-			file, err := os.Open(filePath)
-			if err == nil {
-				e.C4ID = c4.Identify(file)
-				file.Close()
-			}
-		}
-		
-		manifest.AddEntry(e)
-	}
-	
-	manifest.SortEntries()
-	scan.PropagateMetadata(manifest.Entries)
-	return manifest, nil
 }
 
 func processFile(path string, info os.FileInfo) error {
@@ -431,78 +170,67 @@ func processFile(path string, info os.FileInfo) error {
 		return err
 	}
 	defer file.Close()
-	
+
 	id := c4.Identify(file)
-	outputID(id, path)
-	
+
+	if idFlag {
+		fmt.Println(id)
+		return nil
+	}
+
+	// Output as c4m entry line
+	entry := &c4m.Entry{
+		Mode:      info.Mode(),
+		Timestamp: info.ModTime().UTC(),
+		Size:      info.Size(),
+		Name:      filepath.Base(path),
+		C4ID:      id,
+	}
+
+	m := c4m.NewManifest()
+	m.AddEntry(entry)
+
+	outputManifest(m)
 	return nil
 }
 
-func outputID(id c4.ID, path string) {
-	displayPath := path
-	if absoluteFlag {
-		if absPath, err := filepath.Abs(path); err == nil {
-			displayPath = absPath
-		}
-	}
-	
-	if quietFlag || (pathsFlag && len(flag.Args()) == 1) {
-		fmt.Println(id)
-	} else if verboseFlag || len(flag.Args()) > 1 {
-		fmt.Printf("%s %s\n", id, displayPath)
-	} else {
-		fmt.Println(id)
-	}
-}
-
 func outputManifest(manifest *c4m.Manifest) {
-	switch formatFlag {
-	case "paths":
-		for _, path := range manifest.PathList() {
-			fmt.Println(path)
-		}
-	case "c4m":
-		if prettyFlag {
-			c4m.NewEncoder(os.Stdout).SetPretty(true).Encode(manifest)
-		} else {
-			c4m.NewEncoder(os.Stdout).Encode(manifest)
-		}
-	default:
-		if prettyFlag {
-			c4m.NewEncoder(os.Stdout).SetPretty(true).Encode(manifest)
-		} else {
-			c4m.NewEncoder(os.Stdout).Encode(manifest)
-		}
+	enc := c4m.NewEncoder(os.Stdout)
+	if prettyFlag {
+		enc.SetPretty(true)
 	}
+	enc.Encode(manifest)
 }
 
 // Operation handlers
+
 func runDiff(args []string) {
 	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	empty := fs.Bool("empty", false, "Exit 0 if empty, 1 if content")
 	fs.Parse(args)
-	
+
 	if fs.NArg() != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 diff <source> <target>\n")
 		os.Exit(1)
 	}
-	
+
 	source := getSource(fs.Arg(0))
 	target := getSource(fs.Arg(1))
-	
+
 	result, err := c4m.Diff(source, target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	
-	if emptyFlag {
+
+	if *empty {
 		if result.IsEmpty() {
 			os.Exit(0)
 		} else {
 			os.Exit(1)
 		}
 	}
-	
+
 	// Output diff results
 	if len(result.Added.Entries) > 0 {
 		fmt.Println("# Added:")
@@ -510,14 +238,14 @@ func runDiff(args []string) {
 			fmt.Printf("+ %s\n", e.Name)
 		}
 	}
-	
+
 	if len(result.Removed.Entries) > 0 {
 		fmt.Println("# Removed:")
 		for _, e := range result.Removed.Entries {
 			fmt.Printf("- %s\n", e.Name)
 		}
 	}
-	
+
 	if len(result.Modified.Entries) > 0 {
 		fmt.Println("# Modified:")
 		for _, e := range result.Modified.Entries {
@@ -529,20 +257,14 @@ func runDiff(args []string) {
 func getSource(path string) c4m.Source {
 	// Check if it's stdin
 	if path == "-" {
-		scanner := bufio.NewScanner(os.Stdin)
-		var lines []string
-		for scanner.Scan() {
-			lines = append(lines, scanner.Text())
-		}
-		input := strings.Join(lines, "\n")
-		manifest, err := c4m.NewDecoder(strings.NewReader(input)).Decode()
+		manifest, err := c4m.NewDecoder(os.Stdin).Decode()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
 			os.Exit(1)
 		}
 		return c4m.ManifestSource{Manifest: manifest}
 	}
-	
+
 	// Check if it's a C4M file
 	if strings.HasSuffix(path, ".c4m") {
 		file, err := os.Open(path)
@@ -554,233 +276,10 @@ func getSource(path string) c4m.Source {
 			}
 		}
 	}
-	
+
 	// Treat as filesystem path
-	opts := []scan.GeneratorOption{
-		scan.WithC4IDs(!noIDsFlag),
-		scan.WithSymlinks(followFlag),
-		scan.WithGitignore(gitignoreFlag),
-	}
-	if patterns := collectExcludePatterns(); len(patterns) > 0 {
-		opts = append(opts, scan.WithExclude(patterns))
-	}
 	return scan.FileSource{
 		Path:      path,
-		Generator: scan.NewGeneratorWithOptions(opts...),
-	}
-}
-
-func runValidate(args []string) {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Error: validate requires exactly one argument\n")
-		fmt.Fprintf(os.Stderr, "Usage: c4 validate <file.c4m | bundle_dir>\n")
-		os.Exit(1)
-	}
-	
-	path := args[0]
-	strict := true // Always strict validation
-	
-	// Create validator
-	validator := c4m.NewValidator(strict)
-	
-	// Check if it's a bundle directory
-	info, err := os.Stat(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: cannot access %s: %v\n", path, err)
-		os.Exit(1)
-	}
-	
-	var validationErr error
-	if info.IsDir() {
-		// Bundle validation not yet implemented
-		fmt.Fprintf(os.Stderr, "Error: bundle validation not yet implemented, please specify a .c4m manifest file\n")
-		os.Exit(1)
-	}
-
-	// Validate as manifest file
-	fmt.Printf("Validating manifest: %s\n", path)
-	file, err := os.Open(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: cannot open file: %v\n", err)
-		os.Exit(1)
-	}
-	defer file.Close()
-	validationErr = validator.ValidateManifest(file)
-	
-	// Report results
-	errors := validator.GetErrors()
-	warnings := validator.GetWarnings()
-	stats := validator.GetStats()
-	
-	// Display statistics
-	fmt.Printf("\nStatistics:\n")
-	fmt.Printf("  Total entries in manifests: %d\n", stats.TotalEntries)
-	fmt.Printf("  Files: %d\n", stats.Files)
-	fmt.Printf("  Directories: %d\n", stats.Directories)
-	fmt.Printf("  Symlinks: %d\n", stats.Symlinks)
-	if stats.SpecialFiles > 0 {
-		fmt.Printf("  Special files: %d\n", stats.SpecialFiles)
-	}
-	fmt.Printf("  Total size: %d bytes\n", stats.TotalSize)
-	if !stats.OldestTime.IsZero() {
-		fmt.Printf("  Oldest: %s\n", stats.OldestTime.Format(time.RFC3339))
-	}
-	if !stats.NewestTime.IsZero() {
-		fmt.Printf("  Newest: %s\n", stats.NewestTime.Format(time.RFC3339))
-	}
-	if stats.NullTimes > 0 {
-		fmt.Printf("  Null timestamps: %d\n", stats.NullTimes)
-	}
-	if stats.NullSizes > 0 {
-		fmt.Printf("  Null sizes: %d\n", stats.NullSizes)
-	}
-	if stats.Chunks > 0 {
-		fmt.Printf("  Chunks referenced: %d\n", stats.Chunks)
-	}
-	fmt.Printf("  Max depth: %d\n", stats.MaxDepth)
-	
-	if len(warnings) > 0 {
-		fmt.Printf("\nWarnings (%d):\n", len(warnings))
-		for _, w := range warnings {
-			fmt.Printf("  %s\n", w.Error())
-		}
-	}
-	
-	if validationErr != nil {
-		fmt.Printf("\nErrors (%d):\n", len(errors))
-		for _, e := range errors {
-			fmt.Printf("  %s\n", e.Error())
-		}
-		fmt.Printf("\n✗ Validation failed\n")
-		os.Exit(1)
-	}
-	
-	fmt.Printf("\n✓ Validation passed\n")
-}
-
-// runFmt formats a C4M manifest file in canonical or ergonomic form.
-func runFmt(args []string) {
-	fs := flag.NewFlagSet("fmt", flag.ExitOnError)
-	canonical := fs.Bool("canonical", false, "Use canonical format (default is ergonomic/pretty)")
-	write := fs.BoolP("write", "w", false, "Write result to source file instead of stdout")
-	diff := fs.BoolP("diff", "d", false, "Display diff instead of rewriting file")
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, `c4 fmt - Format C4M manifest files
-
-Usage:
-  c4 fmt [options] <file.c4m>       # Format a manifest file
-  cat manifest.c4m | c4 fmt         # Format from stdin
-
-Options:
-`)
-		fs.PrintDefaults()
-		fmt.Fprintf(os.Stderr, `
-Examples:
-  c4 fmt manifest.c4m               # Pretty-print to stdout
-  c4 fmt --canonical manifest.c4m   # Canonical form to stdout
-  c4 fmt -w manifest.c4m            # Format file in place
-  c4 fmt -d manifest.c4m            # Show what would change
-`)
-	}
-	fs.Parse(args)
-
-	var input []byte
-	var inputPath string
-	var err error
-
-	if fs.NArg() == 0 {
-		// Read from stdin
-		stat, _ := os.Stdin.Stat()
-		if (stat.Mode() & os.ModeCharDevice) != 0 {
-			fs.Usage()
-			os.Exit(1)
-		}
-		input, err = io.ReadAll(os.Stdin)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		// Read from file
-		inputPath = fs.Arg(0)
-		input, err = os.ReadFile(inputPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", inputPath, err)
-			os.Exit(1)
-		}
-	}
-
-	// Format the manifest
-	var output []byte
-	if *canonical {
-		output, err = c4m.Format(input)
-	} else {
-		output, err = c4m.FormatPretty(input)
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Handle output mode
-	if *diff {
-		// Show diff
-		if string(input) == string(output) {
-			// No changes
-			os.Exit(0)
-		}
-		// Simple diff output - show before/after
-		fmt.Fprintf(os.Stderr, "--- %s (original)\n", inputPath)
-		fmt.Fprintf(os.Stderr, "+++ %s (formatted)\n", inputPath)
-		showSimpleDiff(input, output)
-		os.Exit(1) // Exit with 1 to indicate differences found
-	} else if *write {
-		if inputPath == "" {
-			fmt.Fprintf(os.Stderr, "Error: cannot use -w with stdin input\n")
-			os.Exit(1)
-		}
-		// Check if content changed
-		if string(input) == string(output) {
-			// No changes needed
-			os.Exit(0)
-		}
-		// Write back to file
-		if err := os.WriteFile(inputPath, output, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", inputPath, err)
-			os.Exit(1)
-		}
-	} else {
-		// Write to stdout
-		os.Stdout.Write(output)
-	}
-}
-
-// showSimpleDiff displays a simple line-by-line diff
-func showSimpleDiff(original, formatted []byte) {
-	origLines := strings.Split(string(original), "\n")
-	fmtLines := strings.Split(string(formatted), "\n")
-
-	maxLines := len(origLines)
-	if len(fmtLines) > maxLines {
-		maxLines = len(fmtLines)
-	}
-
-	for i := 0; i < maxLines; i++ {
-		var origLine, fmtLine string
-		if i < len(origLines) {
-			origLine = origLines[i]
-		}
-		if i < len(fmtLines) {
-			fmtLine = fmtLines[i]
-		}
-
-		if origLine != fmtLine {
-			if origLine != "" {
-				fmt.Printf("-%s\n", origLine)
-			}
-			if fmtLine != "" {
-				fmt.Printf("+%s\n", fmtLine)
-			}
-		}
+		Generator: scan.NewGeneratorWithOptions(scan.WithC4IDs(true)),
 	}
 }
