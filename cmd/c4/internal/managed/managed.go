@@ -25,6 +25,38 @@ import (
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
 
+// atomicWriteFile writes data to path atomically via temp file + fsync + rename.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp.*")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
+}
+
 const metaDir = ".c4"
 
 // Dir represents a c4-managed directory.
@@ -102,7 +134,7 @@ func Init(path string, excludePatterns []string) (*Dir, error) {
 	}
 
 	// Clear redo stack
-	if err := os.WriteFile(filepath.Join(d.meta, "redo"), nil, 0644); err != nil {
+	if err := atomicWriteFile(filepath.Join(d.meta, "redo"), nil, 0644); err != nil {
 		return nil, fmt.Errorf("write redo: %w", err)
 	}
 
@@ -149,7 +181,7 @@ func (d *Dir) Snapshot() (c4.ID, error) {
 	}
 
 	// Clear redo stack — new change detaches forward history
-	if err := os.WriteFile(filepath.Join(d.meta, "redo"), nil, 0644); err != nil {
+	if err := atomicWriteFile(filepath.Join(d.meta, "redo"), nil, 0644); err != nil {
 		return c4.ID{}, fmt.Errorf("clear redo: %w", err)
 	}
 
@@ -271,7 +303,7 @@ func (d *Dir) SetTag(name, c4id string) error {
 	if _, err := os.Stat(snapPath); err != nil {
 		return fmt.Errorf("snapshot %s does not exist", c4id)
 	}
-	return os.WriteFile(filepath.Join(d.meta, "tags", name), []byte(c4id+"\n"), 0644)
+	return atomicWriteFile(filepath.Join(d.meta, "tags", name), []byte(c4id+"\n"), 0644)
 }
 
 // RemoveTag removes a named tag.
@@ -366,7 +398,7 @@ func (d *Dir) storeSnapshot(manifest *c4m.Manifest) (c4.ID, error) {
 	if _, err := os.Stat(snapPath); err == nil {
 		return id, nil // already stored (idempotent)
 	}
-	if err := os.WriteFile(snapPath, data, 0644); err != nil {
+	if err := atomicWriteFile(snapPath, data, 0644); err != nil {
 		return c4.ID{}, fmt.Errorf("write snapshot: %w", err)
 	}
 	return id, nil
@@ -417,7 +449,7 @@ func (d *Dir) writeIDList(path string, ids []string) error {
 	if len(ids) > 0 {
 		content = strings.Join(ids, "\n") + "\n"
 	}
-	return os.WriteFile(path, []byte(content), 0644)
+	return atomicWriteFile(path, []byte(content), 0644)
 }
 
 func (d *Dir) readIgnorePatterns() ([]string, error) {
@@ -440,5 +472,5 @@ func (d *Dir) writeIgnore(patterns []string) error {
 	if len(patterns) > 0 {
 		content = strings.Join(patterns, "\n") + "\n"
 	}
-	return os.WriteFile(filepath.Join(d.meta, "ignore"), []byte(content), 0644)
+	return atomicWriteFile(filepath.Join(d.meta, "ignore"), []byte(content), 0644)
 }

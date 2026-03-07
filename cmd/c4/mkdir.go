@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Avalanche-io/c4/c4m"
@@ -204,12 +206,33 @@ func loadOrCreateManifest(path string) (*c4m.Manifest, error) {
 	return c4m.NewDecoder(f).Decode()
 }
 
-// writeManifest writes a manifest to a c4m file.
+// writeManifest writes a manifest to a c4m file atomically.
 func writeManifest(path string, m *c4m.Manifest) error {
-	f, err := os.Create(path)
+	var buf bytes.Buffer
+	if err := c4m.NewEncoder(&buf).Encode(m); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp.*")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return c4m.NewEncoder(f).Encode(m)
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }

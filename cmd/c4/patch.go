@@ -93,15 +93,8 @@ func patchC4mFile(c4mPath, source string) {
 	result := c4m.ApplyPatch(base, patch.Patch)
 
 	// Write result back to the c4m file
-	f, err := os.Create(c4mPath)
-	if err != nil {
+	if err := writeManifest(c4mPath, result); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", c4mPath, err)
-		os.Exit(1)
-	}
-	defer f.Close()
-
-	if err := c4m.NewEncoder(f).Encode(result); err != nil {
-		fmt.Fprintf(os.Stderr, "Error encoding: %v\n", err)
 		os.Exit(1)
 	}
 
