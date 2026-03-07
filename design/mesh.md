@@ -1,291 +1,417 @@
-# Mesh: Multi-Node Content Distribution
+# Mesh: Content-Addressed Cache Peering
 
-## The Model
+## The Physics
 
-Every c4d node is sovereign. It manages its own store, its own
-namespace, its own retention. Nodes connect to other nodes to
-exchange content — but no node controls another.
+Every c4d node is a content-addressed cache. It stores blobs by
+C4 ID and maps human-readable paths to those IDs via namespace.
+A single node is already a complete system — it identifies,
+stores, describes, and serves content.
 
-A mesh is not a hierarchy. It's a set of nodes that can reach each
-other. A single user might have three nodes (laptop, NAS, cloud).
-A team might share a cloud node while each member also has local
-nodes. An organization might have dozens. The topology is whatever
-the user builds — star, chain, full mesh, or something ad hoc.
+The mesh is what happens when nodes can find each other. Not a
+protocol built on top, not a layer added alongside — an emergent
+property of content-addressed caches that can talk.
 
-The primitives are simple:
-- **Locations**: a named reference to a remote c4d endpoint
-- **Push**: send content from here to there
-- **Pull**: fetch content from there to here
-- **Sync**: bidirectional — push what they're missing, pull what
-  we're missing
+Two operations make a mesh:
+- **Share descriptions** (propagate c4m files between namespaces)
+- **Materialize content** (ensure blobs exist where they're needed)
 
-Everything else — backup, sharing, collaboration, cloud relay — is
-a pattern built from these primitives.
+Everything else — relay, sync, backup, archive, sneakernet,
+multi-site collaboration — is a pattern built from these two
+operations plus discovery and policy.
 
-## User Scenarios
+## Five Orthogonal Concerns
 
-### Solo user, two machines
+### Identity
 
-Alice has a laptop and a NAS. She wants her c4m files backed up.
+Your TLS cert says who you are. It's self-verifying — signed by
+a CA the other party trusts. No accounts, no tokens, no
+passwords. A studio issues certs to its people. A family signs
+their own. Avalanche.io runs a CA for strangers.
 
-```
-# On laptop: establish the NAS as a location
-c4 mk nas: nas.local:7433
+Identity is not an address. "Sarah" is Sarah regardless of which
+network she's on. "Unit-3" is Unit-3 whether it's in the studio
+or on location in Morocco.
 
-# Push a project to the NAS
-c4 cp project.c4m: nas:
+### Discovery
 
-# Later, on a different machine, pull it back
-c4 cp nas:project.c4m local.c4m:
-```
+Discovery resolves identity to network address. Three mechanisms,
+same identity model:
 
-Both nodes have mTLS certs from the same CA. No accounts, no cloud,
-no subscription. This is the OSS baseline — two c4d instances
-talking to each other.
-
-### Solo user, cloud relay
-
-Bob wants his content accessible from anywhere without running a
-server at home.
+**LAN (zero-config):** Every c4d broadcasts `_c4d._tcp` via
+mDNS. Identity from the TLS cert in the service record. `c4 find`
+shows who's on the local network. No configuration. No internet.
 
 ```
-# Authenticate with Avalanche.io
-c4 login
-
-# His cloud node is automatically available as a location
-c4 cp project.c4m: cloud:
-
-# From another device, after login
-c4 cp cloud:project.c4m local.c4m:
+c4 find
+  nas           (josh@home)        nas.local:7433
+  sarah-laptop  (sarah@home)       10.0.1.42:7433
+  desktop       (josh@home)        10.0.1.10:7433
 ```
 
-`c4 login` establishes a cloud-hosted c4d node as the user's
-default remote. The cloud node is just another c4d — same protocol,
-same namespace model. The only difference is Avalanche.io manages
-the infrastructure and the identity.
+**Mesh (peer announcement):** When c4d starts, it announces
+itself to configured peers — "I'm Sarah, I'm currently at this
+address." Peers remember. When you send to Sarah, your node asks
+its peers until someone knows where she is. She moved to hotel
+WiFi? Her node re-announced. The mesh tracks her.
 
-### Sending content to someone
+**Directory (Avalanche.io):** For strangers. c4d registers with
+the directory on startup. You look up sarah@example.com and get
+her current endpoint. This is the only mechanism that requires
+accounts.
 
-Alice wants to send dailies to Bob.
+All three resolve identity to address. Once resolved, it's
+HTTPS + mTLS. The protocol doesn't care how you found the node.
 
-```
-# Alice sends
-c4 cp dailies.c4m: bob@example.com:
+### Description
 
-# Bob receives (checks inbox)
-c4 ls inbox:
-c4 cp inbox:dailies.c4m local-dailies.c4m:
-```
+c4m files describe content. A c4m file is simultaneously:
 
-The relay handles delivery. Alice's content is pushed to the relay,
-placed in Bob's inbox namespace path, and Bob pulls it. Both Alice
-and Bob need Avalanche.io accounts (the relay must know both
-identities).
+- A filesystem description (structure, names, sizes, identities)
+- A shipping manifest (what's in this bundle)
+- A sync diff (compare two c4m IDs — same means in sync)
+- A transfer list (walk entries to find what blobs are needed)
+- A verification checklist (recompute C4 IDs on arrival)
 
-### Team with shared storage
+The c4m travels independently of the content it describes.
+It's small (KB-MB for projects with TB of content). It can go
+through any channel — HTTPS, email, git, QR code, written on a
+shipping label. Once the receiver has the c4m, they have complete
+knowledge of the content without having a single byte of it.
 
-A VFX team shares a cloud node for their project.
+This is the separation: **knowing about data and having data are
+different things.** The c4m is the knowing. The blobs are the
+having.
 
-```
-# Team admin creates a shared location
-c4 mk vfx-project: cloud.avalanche.io:7433
+### Policy
 
-# Each team member establishes it
-c4 mk vfx-project: cloud.avalanche.io:7433
+Rules about what content should be where, and when.
 
-# Anyone can push/pull
-c4 cp shots.c4m: vfx-project:
-c4 cp vfx-project:shots.c4m local-shots.c4m:
-```
-
-The shared node has access control — who can read, who can write,
-managed through the Avalanche.io team admin. The c4d on the shared
-node enforces permissions via mTLS identity.
-
-### Organization with local + remote
-
-A studio has on-prem storage for active work, cloud for archive and
-remote access.
+**Sync:** "This directory stays in sync with these nodes."
+Declared once, fulfilled automatically on every mutation.
 
 ```
-# Local high-speed node
-c4 mk render-farm: render.internal:7433
+# Sync this managed directory to NAS and desktop
+c4 mk : --sync nas: desktop:
 
-# Cloud archive
-c4 mk archive: cloud.avalanche.io:7433
-
-# Sync between them
-c4 cp render-farm:finished/ archive:
+# Every c4 cp, c4 ln, etc. now propagates to sync targets
 ```
 
-Each node has its own retention policy. The render farm might have
-aggressive TTLs (clean up after 14 days). The archive keeps
-everything. Content flows between them via push/pull.
+**Materialization:** "When a c4m appears in this namespace path,
+ensure all referenced blobs exist locally." Eager (for backup) or
+lazy (for thin mirrors). Per-path configuration on each node.
+
+**Migration:** "Content not accessed in 30 days moves to cold
+storage." "Finished renders go to archive within 24 hours." "Raw
+footage stays on-prem, proxies go to cloud." Event-driven rules
+responding to namespace changes.
+
+**Retention:** TTL-bearing paths, pressure-curve reclamation,
+purgatory. Already implemented. Content-addressed caches need
+cache eviction policy.
+
+### Transport
+
+How bytes actually move. Pluggable. Orthogonal to everything else.
+
+**HTTPS:** The default. c4d already serves blobs via GET and
+accepts them via PUT. Works for any size over any network.
+
+**Bundle (sneakernet):** When the network is too slow or doesn't
+exist. Export a c4m and all referenced blobs to a portable
+directory. Ship the drive. Import at the destination.
+
+```
+# Export
+c4 bundle project.c4m: /mnt/shuttle-drive/
+
+# Ship the drive. Import at destination.
+c4 import /mnt/shuttle-drive/
+```
+
+The c4m IS the shipping manifest. Self-describing.
+Self-verifying. If the drive is damaged, the c4m tells you
+exactly what's missing. Incremental shipments deduplicate
+automatically — CAS means you never import the same blob twice.
+
+**Multi-band:** A single transfer uses multiple channels
+simultaneously. Small blobs over the internet, large blobs on a
+shuttle drive, mid-size via dedicated link. The c4m is the
+coordination point — each band chips away at the set of missing
+blobs. Any band can fulfill any blob. Deduplication is automatic.
+
+**Third-party transports:** Aspera, satellite, dedicated fiber.
+The mesh doesn't care how bytes arrive. A blob is a blob. Verify
+the C4 ID on receipt. Done.
+
+## Scenarios
+
+### Personal mesh
+
+Josh has a laptop, desktop, and NAS at home. All three run c4d
+with certs from a self-signed home CA. They discover each other
+via mDNS.
+
+```
+# On laptop — NAS and desktop appear automatically
+c4 find
+  nas       (josh@home)    nas.local:7433
+  desktop   (josh@home)    desktop.local:7433
+
+# Sync a project directory across all machines
+c4 mk : --sync nas: desktop:
+
+# Every change propagates. Content materializes on each node.
+```
+
+No accounts. No cloud. No configuration beyond the initial CA
+setup. The mesh is three caches that know about each other.
+
+### Sending to a person
+
+Sarah is traveling for business. Josh wants to send her project
+files. Sarah's laptop is on hotel WiFi in Tokyo. Her c4d
+announced itself to the home NAS (a shared mesh peer) when she
+connected.
+
+```
+# Josh's node resolves "sarah" through the mesh
+c4 cp dailies.c4m: sarah:
+
+# Sarah's node got the c4m instantly (small).
+# Blobs materialize as she accesses them, or eagerly if
+# her node's policy says so.
+```
+
+If Sarah walks into the same room as Josh, mDNS finds her
+directly — no mesh resolution needed. If she's offline, the c4m
+queues on the shared peer (the NAS, a cloud node) and delivers
+when she reconnects. The transport adapts; the intent is the same.
+
+### Studio on an isolated network
+
+An MPAA-compliant studio. Air-gapped network. No internet. Named
+production units, editorial bays, vendor workstations.
+
+```
+# Studio CA issues certs to every node before deployment
+# mDNS discovery — no internet, no directory, no accounts
+
+c4 find
+  editorial     (editorial@studio)     10.42.1.5:7433
+  unit-3        (unit-3@studio)        10.42.1.30:7433
+  color-suite   (color@studio)         10.42.1.40:7433
+  vendor-weta   (vendor@weta)          10.42.2.5:7433
+
+# Send plates from unit-3 to editorial
+c4 cp plates.c4m: editorial:incoming/
+
+# Vendor on location delivers VFX shots
+c4 cp shots.c4m: unit-3:vendor-delivery/
+```
+
+The vendor has a cert signed by the studio CA (provisioned before
+going on location). Everything works via mDNS + mTLS on the
+isolated LAN. Same protocol as the cloud mesh. No internet
+required at any point.
+
+### Vendor exchange without network
+
+The vendor's workstations aren't on the studio network at all.
+Different building, different security zone. Content moves via
+shuttle drive.
+
+```
+# Studio bundles plates for vendor
+c4 bundle plates.c4m: /mnt/shuttle-drive/
+
+# Drive walks across the lot
+
+# Vendor imports
+c4 import /mnt/shuttle-drive/
+
+# Vendor works, bundles results
+c4 bundle shots.c4m: /mnt/shuttle-drive/
+
+# Drive walks back
+
+# Studio imports, verifies every blob against the c4m
+c4 import /mnt/shuttle-drive/
+```
+
+The c4m is the chain of custody document. Human-readable — you
+can open it and see exactly what was shipped. Self-verifying —
+every blob's identity is checked on import. If something was
+corrupted in transit, you know which files and you can re-ship
+only those.
+
+### Multi-site production
+
+Vancouver does editorial, London does VFX, Mumbai does
+compositing. Each site has a local c4d cluster for high-speed
+access. A cloud node coordinates.
+
+```
+# Each site's c4d peers with the coordination node
+# Content materializes locally on first access (caching)
+# Subsequent access is local-speed
+
+# Vancouver pushes editorial cuts
+c4 cp edit-v42.c4m: production:editorial/
+
+# London's node sees the namespace update, lazily materializes
+# the blobs it needs for VFX work
+
+# Mumbai pulls only the compositing layers
+c4 cp production:editorial/edit-v42.c4m comp-work.c4m:
+```
+
+Each site is a localized cache. The c4m (description) propagates
+instantly. Blobs materialize where they're accessed. A blob
+pulled once in London stays cached in London — everyone at that
+site gets local-speed access from then on.
+
+Large initial syncs might go multi-band: first batch on shuttle
+drives, incremental updates over the wire.
+
+### Cross-organization collaboration
+
+Studio A works with Studio B. Different CAs, different meshes.
+They set up a shared relay — a c4d that trusts both CAs.
+
+```
+# Shared relay trusts Studio-A-CA and Studio-B-CA
+# Both studios establish it as a location
+
+c4 mk partner-exchange: relay.example.com:7433
+
+# Studio A pushes
+c4 cp deliverables.c4m: partner-exchange:to-studio-b/
+
+# Studio B pulls
+c4 cp partner-exchange:to-studio-b/deliverables.c4m local.c4m:
+```
+
+The relay is not special software. It's a standard c4d configured
+to trust multiple CAs. Anyone can run one. Avalanche.io runs a
+managed one for convenience.
 
 ## Design Decisions
 
-### Transfer Model: Push Intent, Pull Content
+### Push Intent, Pull Content
 
-Content transfer follows a two-phase model:
+Content transfer is two phases:
 
-1. **Push intent**: Register the c4m reference in the remote
-   namespace. This is fast — just the c4m file itself (small) and
-   a namespace PUT.
+1. **Push intent:** Register the c4m in the remote namespace.
+   Fast — just the c4m file (small) and a namespace PUT.
 
-2. **Pull content**: Blobs are fetched on demand when the remote
-   node (or a client of it) actually accesses them. The remote
-   becomes a "thin" mirror that fills in content as needed.
+2. **Pull content:** Blobs materialize on demand or by policy.
+   The remote can serve the c4m immediately. Blobs follow.
 
-Eager transfer is an optimization on top of this. After pushing
-the c4m reference, the sender can proactively push blobs the
-remote doesn't have. A batch `POST /has` endpoint (send a list
-of C4 IDs, get back the missing set) collapses discovery to one
-round-trip. But the baseline is: intent is pushed, content is
-pulled.
+`c4 cp project.c4m: nas:` means: the NAS knows about this
+project right now. The NAS has the complete description. Blobs
+materialize based on the NAS's policy — eagerly for backup,
+lazily for thin mirrors.
 
-This means `c4 cp project.c4m: nas:` registers the c4m on the
-NAS immediately. The NAS can serve the c4m to clients right away.
-Blob fetches happen lazily or are backfilled eagerly — either
-way, the namespace is live instantly.
+### Content Resolution Cascade
 
-### Relay: Just Another Node
+When a c4d needs a blob it doesn't have locally:
 
-A relay is not a special service. It's a c4d instance that
-accepts content on behalf of a recipient.
+1. Check local store
+2. Check peers (in priority order)
+3. Return to client (or 404 if nobody has it)
 
-Bob can run his own c4d on AWS with S3 storage. Alice sends
-content to Bob by pushing to Bob's relay. Avalanche.io's relay
-is the same thing — just managed infrastructure so users don't
-have to provision their own.
+This is a content-addressed cache hierarchy. Local store is L1.
+LAN peers are L2. Remote peers are L3. On a miss, go up the
+chain. Any copy is identical (content-addressed), so any source
+is as good as any other.
 
-This keeps the protocol uniform. Every relay speaks the same c4d
-API. The only difference is who operates the infrastructure and
-who manages the identity/CA.
+For large blobs, multiple peers can serve different byte ranges
+simultaneously. For urgent transfers, ask all peers in parallel
+and take the first response. The resolver strategy is policy.
 
-### Shared Locations: Just a Location
+### Efficient Sync via c4m Hierarchy
 
-A shared location is not a special namespace concept. It's a
-location that multiple users have established.
+At petabyte scale, you can't enumerate all blobs. But you can
+compare namespace entries. Two nodes with the same c4m ID for a
+path are in sync — done. Different IDs? Diff the c4m files
+(a few MB of manifest, not TB of content) to find the delta.
 
-```
-# Everyone on the team establishes the same location
-c4 mk OurShare: shared.example.com:7433
+For nested c4m files (c4m referencing other c4m files), this
+becomes a Merkle-tree walk: top-level changed → which sub-c4m
+changed → expand only those → find the exact delta. The c4m
+hierarchy IS the efficient sync protocol.
 
-# Browse it
-c4 ls OurShare:/path
+A batch `POST /has` endpoint (send a list of C4 IDs, get back the
+missing set) collapses blob-level discovery to one round-trip.
 
-# Push to it
-c4 cp shots.c4m: OurShare:renders/shots.c4m
-```
+### The Relay Is Just a Node
 
-The remote c4d handles access control — who can read, who can
-write, to which paths. The namespace on the shared node is just
-a namespace. Paths are caller-specified, not auto-scoped by
-identity (though the remote node may enforce path restrictions
-based on the caller's mTLS identity).
+A relay is a c4d that accepts content on behalf of others. Bob
+runs his own on AWS with S3 storage. Alice pushes to Bob's relay.
+Avalanche.io's relay is the same thing — managed infrastructure.
 
-### Identity and Authentication
-
-**Self-hosted mesh:** Sign and accept your own certs. A team or
-studio runs its own CA, issues certs to members, and all nodes
-in the mesh trust that CA. This is the fully self-hosted model —
-no external dependencies.
-
-**Avalanche.io CA:** For collaborating with strangers or avoiding
-the overhead of running your own CA. `c4 login` provisions a
-client cert signed by the Avalanche.io CA. Nodes that trust the
-Avalanche.io CA can authenticate any logged-in user.
-
-**CA hierarchy:** Studios, vendors, and distributed teams can
-build CA hierarchies. A studio CA signs sub-CAs for departments
-or vendor relationships. On-location and internet-limited teams
-can use pre-provisioned certs without live CA access.
-
-**Cross-org federation:** Node A trusts CA-1, Node B trusts CA-2.
-They can't talk directly. A relay that trusts both CAs bridges
-them. This is how sending to external recipients works.
-
-Token-based authentication may be added as a lighter-weight
-option for cases where mTLS cert management is too heavy. The
-mTLS model remains the foundation.
+The protocol is uniform. Every relay speaks the c4d API. The only
+difference is who operates it.
 
 ### OSS vs Paid: Self-Hostable Everything
 
-Everything is self-hostable. The protocol is open. A self-hosted
-mesh with its own CA has every capability — relay, shared
-locations, team access control, cross-node sync.
-
-The paid service is convenience, not lock-in:
+Everything is self-hostable. A self-hosted mesh with its own CA
+has every capability — relay, shared locations, discovery, sync,
+bundle/import, multi-band transfer.
 
 **OSS (free, self-hosted):**
-- c4 CLI (all local operations)
-- c4d (run your own nodes, relay, shared locations)
-- Node-to-node push/pull (direct mTLS)
-- All retention features
-- All c4m operations
+- c4 CLI, c4d (full mesh node)
+- mDNS discovery
+- Peer announcement
+- mTLS with self-signed CA
+- All sync, retention, bundle, import operations
 - Full mesh topology
 
-**Avalanche.io subscription:**
-- Cloud-hosted c4d nodes (managed storage + compute)
-- `c4 login` (managed identity, no CA to run)
+**Avalanche.io (managed convenience):**
+- Cloud-hosted c4d nodes
+- Managed CA (no PKI to run)
+- Directory discovery (find anyone by email)
 - Managed relay (no server to provision)
-- Team admin UI (shared locations, access control)
-- Cross-org federation (managed CA bridging)
+- Team admin UI
 
-The analogy: Git is self-hostable, Docker is self-hostable,
-websites are self-hostable. And all of those are easier to set up
-than a secure, reliable c4d + relay + identity system. The value
-is that you don't have to build and maintain that infrastructure
-yourself, while never feeling locked into a platform. Good will
-towards the community.
-
-### Transfer Priorities and Bandwidth
-
-When syncing large amounts of content, how is bandwidth managed?
-
-- Priority queue: user-initiated transfers before background sync
-- Bandwidth limits: configurable per-location
-- Resume: interrupted transfers pick up where they left off
-- Deduplication: CAS means the same blob is never sent twice across
-  any path in the mesh
-
-### Conflict Resolution
-
-c4m files are content-addressed. Two different modifications produce
-two different c4m IDs. There's no conflict at the storage level —
-both versions exist. The question is which one the namespace points
-to.
-
-Current model: last-writer-wins (simplest). CAS with If-Match
-(optimistic concurrency) is already implemented in the c4d API.
-Fork detection (both versions preserved, user resolves) is a
-future option if needed.
+Git is self-hostable. Docker is self-hostable. Websites are
+self-hostable. All of those are easier to set up than a secure,
+reliable c4d mesh. The value of the paid service is not having to
+build and maintain that infrastructure — while never feeling
+locked into a platform.
 
 ## What Needs to Be Built
 
-### Protocol Layer
-- Batch `POST /has` endpoint (check many IDs in one request)
-- Transfer manager (queue, prioritize, resume transfers)
-- c4m-aware transfer (walk c4m, diff against remote, send missing)
+### Discovery
+- mDNS/Bonjour advertisement (`_c4d._tcp` service type)
+- `c4 find` (scan LAN for c4d nodes)
+- Peer announcement (c4d → peer "I'm online at this address")
+- Peer resolution (c4 → peer "where is Sarah?")
+- Directory registration/lookup (Avalanche.io integration)
 
-### Identity Layer
-- `c4 login` (OAuth flow with Avalanche.io, provisions client cert)
-- Token refresh / cert rotation
-- Logout / revocation
+### Content Resolution
+- Peer list configuration in c4d
+- Blob fallback (local miss → ask peers)
+- Batch `POST /has` endpoint
+- Parallel/cascading resolver strategies
 
-### Relay Layer
-- Inbox model (sender pushes, recipient pulls)
-- Delivery notifications (long-poll or webhook)
-- Cross-org bridging (relay trusts multiple CAs)
+### Sync
+- `--sync` flag on `c4 mk :` (declare sync targets)
+- Mutation propagation (push c4m to sync targets after CLI ops)
+- c4m diff for incremental sync
 
-### Team Layer
-- Shared location creation and membership
-- Access control (read/write/admin per path)
-- Team billing integration
+### Bundle/Import
+- `c4 bundle` (export c4m + referenced blobs to directory)
+- `c4 import` (ingest blobs + register c4m from directory)
+- Verification on import (recompute C4 IDs)
+- Incremental bundle (only export what destination is missing)
 
-### CLI Commands
-- `c4 cp source: dest:` (remote-to-remote, remote-to-local, local-to-remote)
-- `c4 sync location:` (bidirectional sync)
-- `c4 login` / `c4 logout`
+### Remote Operations
+- `c4 cp` to/from remote locations (HTTPS client)
 - `c4 ls location:` (list remote namespace)
-- `c4 send file.c4m: user@example.com` (relay delivery)
+- `c4 cp location:path local.c4m:` (pull)
+
+### Identity
+- `c4 login` (provision cert from Avalanche.io CA)
+- `c4 logout` (revoke cert)
+- Self-signed CA setup tooling
