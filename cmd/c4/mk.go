@@ -127,9 +127,9 @@ func runMk(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		// Register in c4d namespace (best-effort)
 		if err := registerNamespacePath(name); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: namespace registration: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
 		msg := fmt.Sprintf("established %s", target)
 		if expiresAt != nil {
@@ -213,8 +213,10 @@ func runRm(args []string) {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
-			// Unregister from c4d namespace (best-effort)
-			unregisterNamespacePath(spec.Source)
+			if err := unregisterNamespacePath(spec.Source); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
 			fmt.Printf("removed establishment for %s:\n", spec.Source)
 		}
 

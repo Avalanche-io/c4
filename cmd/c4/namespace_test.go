@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -53,13 +55,30 @@ func TestNamespacePath(t *testing.T) {
 	}
 }
 
-func TestRegisterNamespacePathNoC4d(t *testing.T) {
-	// With no c4d running and no TLS config, registration should be a no-op
+func TestC4dConfigured(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// No config → not configured
+	if c4dConfigured() {
+		t.Error("should not be configured without config.yaml")
+	}
+
+	// Create config → configured
+	os.MkdirAll(filepath.Join(home, ".c4d"), 0755)
+	os.WriteFile(filepath.Join(home, ".c4d", "config.yaml"), []byte("listen: :7433\n"), 0644)
+
+	if !c4dConfigured() {
+		t.Error("should be configured with config.yaml present")
+	}
+}
+
+func TestRegisterLocalOnlyMode(t *testing.T) {
+	// No c4d config → local-only mode → registration is a no-op
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("C4D_ADDR", "http://localhost:1") // unreachable
 
 	err := registerNamespacePath("/tmp/nonexistent.c4m")
 	if err != nil {
-		t.Errorf("registerNamespacePath should be nil when c4d unreachable, got: %v", err)
+		t.Errorf("local-only mode should return nil, got: %v", err)
 	}
 }

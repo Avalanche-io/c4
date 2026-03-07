@@ -266,7 +266,7 @@ func writeManifest(path string, m *c4m.Manifest) error {
 		os.Remove(tmp.Name())
 		return err
 	}
-	// Update c4d namespace registration (best-effort)
-	registerNamespacePath(path)
-	return nil
+	// Update c4d namespace registration (local write succeeded; registration
+	// is required in backing-store mode, no-op in local-only mode)
+	return registerNamespacePath(path)
 }
