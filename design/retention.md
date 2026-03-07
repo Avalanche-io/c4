@@ -108,22 +108,26 @@ These blobs enter purgatory directly — no user action needed.
 
 ## TTL-Bearing Paths
 
-Any established path can carry a TTL. There is no system-defined
-"trash" concept — if a user wants a trash folder, they create one:
+A TTL-bearing path is a directory with a retention policy — like a
+trash can that auto-empties. The directory itself is permanent.
+Entries placed under it automatically expire after the configured
+duration. There is no system-defined "trash" concept — if a user
+wants a trash folder, they create one:
 
 ```
-c4 mk my-trash.c4m: --retain 30d    # user's trash, 30-day TTL
-c4 mk builds: --retain 14d          # build artifacts, 14-day TTL
-c4 mk tmp: --retain 7d              # temp workspace, 7-day TTL
+c4 mk my-trash.c4m: --retain 30d    # user's trash, 30-day retention
+c4 mk builds: --retain 14d          # build artifacts, 14-day retention
+c4 mk tmp: --retain 7d              # temp workspace, 7-day retention
 ```
 
-When the TTL expires, the path is automatically un-established.
-Content referenced only by that path enters purgatory. Content
-referenced by other active paths stays active.
+When an entry's TTL expires, it is automatically removed from the
+directory. Content referenced only by that entry enters purgatory.
+Content referenced by other active paths stays active. The directory
+itself persists — only its contents expire.
 
 TTL-bearing paths are visible and browsable like any other path.
-The user chose the name, the TTL, and what to put there. The system
-just enforces the expiration.
+The user chose the name, the retention duration, and what to put
+there. The system just enforces the expiration on individual entries.
 
 ## Reference Model
 
@@ -157,98 +161,74 @@ some are governed by retention policy, some expire on a timer.
 Nothing the user values disappears without the user changing its
 disposition.
 
-## Snapshots: Diffs, Cadence, and Sparse History
+## Snapshots and Tags
 
-### Snapshots as Diffs
+### Two Layers
 
-Snapshots are stored as diffs from the previous snapshot, not as full
-c4m copies. A diff records what changed — added entries, removed
-entries, modified entries (same path, different C4 ID). The diff
-itself is a c4m patch.
+Snapshots have two layers: raw history and tags.
 
-This makes snapshots cheap. A 200,000-entry project where 3 files
-changed produces a 3-entry diff, not a 200,000-entry full copy.
-Frequent snapshots become practical because most diffs are small.
+**Raw snapshots** are created on every mutation — every `c4 ln :`,
+`c4 cp :`, `c4 rm :file`. They're cheap, frequent, and internal.
+The user doesn't interact with raw snapshots directly. They exist
+to support undo/redo and to provide the diff base for detecting
+what changed. Raw history is aggressively pruned.
 
-To reconstruct a historical state, apply diffs backward from the
-current state (or forward from a base snapshot). Periodic base
-snapshots (full c4m copies) bound the reconstruction cost — e.g.,
-one base per 100 diffs.
-
-### Cadence-Based Snapshots
-
-Snapshots are created automatically on a time cadence, not only on
-explicit `c4 sync`:
+**Tags** are the user-visible history. A tagged snapshot is a named
+reference to a specific point in time — the states that matter.
+Tags survive beyond the raw snapshot retention window. When users
+think about "going back to a previous version," they mean tags.
 
 ```
-c4 mk : --snapshot-cadence 5m        # snapshot every 5 minutes
-c4 mk : --snapshot-cadence 1h        # snapshot every hour
-c4 mk : --snapshot-cadence off       # manual only (c4 sync)
+c4 mk : --snapshot-retain 10    # keep last 10 tagged snapshots
 ```
 
-A cadence snapshot is only created if something actually changed
-since the last snapshot. No change, no snapshot.
+`--snapshot-retain` controls tags, not raw snapshots. Raw snapshots
+are implementation detail.
 
-### Conditional Cadence
+### Auto-Tagging
 
-A diff-size threshold adds conditional triggering — snapshot early
-if enough has changed, regardless of the cadence timer:
+Tags are created automatically based on two criteria, evaluated at
+every CLI mutation point (not on a timer — there is no background
+watcher):
 
-```
-c4 mk : --snapshot-cadence 5m --snapshot-threshold 100
-# snapshot every 5 minutes OR when 100+ entries have changed,
-# whichever comes first
-```
-
-This catches large batch changes (VFX re-renders, bulk imports)
-immediately rather than waiting for the next cadence tick. The
-threshold is measured in entry count — how many files were added,
-removed, or modified since the last snapshot.
-
-### Sparse History
-
-Snapshot retention controls implement sparse history — keeping
-selected snapshots and pruning the rest:
+**Cadence:** If enough time has passed since the last auto-tag, tag
+this snapshot. This ensures periodic meaningful checkpoints during
+active work sessions.
 
 ```
-c4 mk : --snapshot-retain 10         # keep last 10 snapshots
-c4 mk : --snapshot-retain tagged     # keep only tagged snapshots
-c4 mk : --snapshot-retain 30d        # keep snapshots younger than 30 days
+c4 mk : --snapshot-cadence 1h       # auto-tag at most every hour
+c4 mk : --snapshot-cadence off      # manual tags only
 ```
 
-Default: last 10 snapshots + all tagged snapshots.
+**Threshold:** If the diff from the last tagged snapshot is large
+enough, tag immediately regardless of cadence. This catches large
+batch changes (VFX re-renders, bulk imports) as they happen.
 
-Because snapshots are diffs, pruning means **collapsing** adjacent
-diffs rather than deleting full snapshots. Pruning snapshot S3
-between S2 and S4 composes the S2→S3 and S3→S4 diffs into a single
-S2→S4 diff. The intermediate state is lost, but the before and after
-states are preserved exactly.
+```
+c4 mk : --snapshot-threshold 100    # auto-tag when 100+ entries changed
+```
 
-Content blobs referenced only by pruned diffs — the blobs that were
-the "in between" states — enter purgatory if not referenced by
-anything else.
+Both criteria are evaluated at the moment a snapshot is taken during
+a CLI mutation. No filesystem watcher, no daemon, no timer — just
+a check against the last tag's timestamp and the accumulated diff
+size.
 
-**The keystroke churn problem:** Cadence-based snapshots capture
-every intermediate state cheaply (small diffs). Sparse history
-collapses them naturally. Between the current state and sparse
-history marker #1, the intermediate diffs are collapsed into one.
-The unique blobs from those intermediates enter purgatory. The
+### Snapshots as Diffs (Future Optimization)
+
+Currently snapshots are stored as full c4m copies. A future
+optimization stores them as diffs from the previous snapshot — a
+200,000-entry project where 3 files changed produces a 3-entry diff,
+not a 200,000-entry copy.
+
+With diff storage, pruning means **collapsing** adjacent diffs rather
+than deleting snapshots. Pruning snapshot S3 between S2 and S4
+composes the diffs into a single S2→S4 diff. Periodic base snapshots
+(full c4m copies) bound reconstruction cost.
+
+Content blobs referenced only by pruned snapshots — the "in between"
+states — enter purgatory if not referenced by anything else. The
 retention policy on the managed directory IS the disposition for
-this churn — no user action needed.
-
-The critical safety property: between the current file, sparse
-history marker #1, and all the intermediate blobs, we are only
-unlinking the intermediates. The current state and the markers are
-protected by active references. Diff collapse is an atomic
-operation — the combined diff replaces the individual diffs in a
-single atomic write.
-
-**Auto-tagging on significant changes:** When a large batch of entries
-is replaced (e.g., VFX re-render — detected via the snapshot
-threshold), the system auto-tags the pre-change snapshot. Tagged
-snapshots survive beyond the retention window, giving you the
-selected prior states that matter without keeping every intermediate
-version.
+keystroke churn — no user action needed.
 
 ## Purgatory as Cache
 
@@ -571,22 +551,18 @@ type Store interface {
 func (s *FileStore) Walk(fn func(c4.ID) error) error
 ```
 
-### TTL-Bearing Path Registration
+### TTL-Bearing Path Implementation
 
-Namespace entries can carry a TTL:
+A TTL-bearing path is a namespace directory with a retention policy.
+The TTL store tracks two things:
 
-```go
-type Registration struct {
-    Path      string
-    C4ID      c4.ID
-    CreatedAt time.Time
-    ExpiresAt *time.Time  // nil = permanent
-}
-```
+- **Policies:** directory path → retention duration (e.g., `/mnt/staging/` → 30 days)
+- **Entries:** child path → expiration time (auto-computed as `now + duration` on PUT)
 
-When `ExpiresAt` is reached, the path is automatically un-established
-— triggering the same namespace DELETE path as explicit removal.
-Forward/backward index updates propagate normally.
+When an entry's expiration is reached, c4d automatically deletes it
+from the namespace — triggering the same namespace DELETE path as
+explicit removal. The directory and its policy persist. Forward/backward
+index updates propagate normally.
 
 ### Purgatory Management
 
