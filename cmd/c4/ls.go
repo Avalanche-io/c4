@@ -87,7 +87,7 @@ func runLs(args []string) {
 		}
 		enc.Encode(manifest)
 
-	case pathspec.Capsule:
+	case pathspec.C4m:
 		// c4m file — read and list its contents
 		manifest, err := loadManifest(spec.Source)
 		if err != nil {

@@ -5,7 +5,7 @@
 // colon typos — a trailing colon shouldn't silently change "copy file"
 // to "write into namespace."
 //
-// Capsule establishment uses a centralized registry (~/.c4/capsules/).
+// C4m file establishment uses a centralized registry (~/.c4/c4m/).
 // Location establishment uses a registry directory (~/.c4/locations/).
 package establish
 
@@ -19,17 +19,17 @@ import (
 	"time"
 )
 
-// capsulesDir returns the path to the capsules registry.
-func capsulesDir() (string, error) {
+// c4mDir returns the path to the c4m file registry.
+func c4mDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".c4", "capsules"), nil
+	return filepath.Join(home, ".c4", "c4m"), nil
 }
 
-// capsuleKey returns a deterministic filename for a c4m path.
-func capsuleKey(c4mPath string) (string, error) {
+// c4mKey returns a deterministic filename for a c4m path.
+func c4mKey(c4mPath string) (string, error) {
 	abs, err := filepath.Abs(c4mPath)
 	if err != nil {
 		return "", err
@@ -38,13 +38,13 @@ func capsuleKey(c4mPath string) (string, error) {
 	return hex.EncodeToString(h[:16]), nil
 }
 
-// IsCapsuleEstablished checks if a capsule file has been established for writing.
-func IsCapsuleEstablished(c4mPath string) bool {
-	dir, err := capsulesDir()
+// IsC4mEstablished checks if a c4m file has been established for writing.
+func IsC4mEstablished(c4mPath string) bool {
+	dir, err := c4mDir()
 	if err != nil {
 		return false
 	}
-	key, err := capsuleKey(c4mPath)
+	key, err := c4mKey(c4mPath)
 	if err != nil {
 		return false
 	}
@@ -52,17 +52,17 @@ func IsCapsuleEstablished(c4mPath string) bool {
 	return err == nil
 }
 
-// EstablishCapsule marks a capsule file as established for writing.
-// The capsule file itself need not exist yet (create-on-write).
-func EstablishCapsule(c4mPath string) error {
-	dir, err := capsulesDir()
+// EstablishC4m marks a c4m file as established for writing.
+// The c4m file itself need not exist yet (create-on-write).
+func EstablishC4m(c4mPath string) error {
+	dir, err := c4mDir()
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("create capsules dir: %w", err)
+		return fmt.Errorf("create c4m dir: %w", err)
 	}
-	key, err := capsuleKey(c4mPath)
+	key, err := c4mKey(c4mPath)
 	if err != nil {
 		return err
 	}
@@ -70,13 +70,13 @@ func EstablishCapsule(c4mPath string) error {
 	return os.WriteFile(filepath.Join(dir, key), []byte(abs+"\n"), 0644)
 }
 
-// RemoveCapsuleEstablishment removes the establishment marker.
-func RemoveCapsuleEstablishment(c4mPath string) error {
-	dir, err := capsulesDir()
+// RemoveC4mEstablishment removes the establishment marker.
+func RemoveC4mEstablishment(c4mPath string) error {
+	dir, err := c4mDir()
 	if err != nil {
 		return err
 	}
-	key, err := capsuleKey(c4mPath)
+	key, err := c4mKey(c4mPath)
 	if err != nil {
 		return err
 	}

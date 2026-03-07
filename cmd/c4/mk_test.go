@@ -12,7 +12,7 @@ import (
 
 // --- mk subprocess tests ---
 
-func TestMkCapsule(t *testing.T) {
+func TestMkC4m(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
@@ -26,13 +26,13 @@ func TestMkCapsule(t *testing.T) {
 		t.Errorf("expected 'established' message, got %q", out)
 	}
 
-	// Verify capsule is established in central registry
-	if !establish.IsCapsuleEstablished(filepath.Join(dir, "test.c4m")) {
-		t.Error("capsule not established after mk")
+	// Verify c4m file is established in central registry
+	if !establish.IsC4mEstablished(filepath.Join(dir, "test.c4m")) {
+		t.Error("c4m file not established after mk")
 	}
 }
 
-func TestMkCapsuleIdempotent(t *testing.T) {
+func TestMkC4mIdempotent(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
@@ -118,12 +118,12 @@ func TestMkUsage(t *testing.T) {
 
 // --- rm subprocess tests ---
 
-func TestRmCapsule(t *testing.T) {
+func TestRmC4m(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
 	// First establish
-	establish.EstablishCapsule(filepath.Join(dir, "test.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "test.c4m"))
 
 	// Then remove
 	cmd := exec.Command(bin, "rm", "test.c4m:")
@@ -137,12 +137,12 @@ func TestRmCapsule(t *testing.T) {
 	}
 
 	// Verify no longer established
-	if establish.IsCapsuleEstablished(filepath.Join(dir, "test.c4m")) {
-		t.Error("capsule still established after rm")
+	if establish.IsC4mEstablished(filepath.Join(dir, "test.c4m")) {
+		t.Error("c4m file still established after rm")
 	}
 }
 
-func TestRmCapsuleNotEstablished(t *testing.T) {
+func TestRmC4mNotEstablished(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
@@ -150,7 +150,7 @@ func TestRmCapsuleNotEstablished(t *testing.T) {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Error("expected error for non-established capsule")
+		t.Error("expected error for non-established c4m file")
 	}
 	if !strings.Contains(string(out), "not established") {
 		t.Errorf("expected 'not established' in error, got %q", out)
@@ -209,8 +209,8 @@ func TestMkdirBasic(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	// Establish capsule first
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	// Establish c4m file first
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	cmd := exec.Command(bin, "mkdir", "project.c4m:renders/")
 	cmd.Dir = dir
@@ -247,7 +247,7 @@ func TestMkdirNotEstablished(t *testing.T) {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Error("expected error for non-established capsule")
+		t.Error("expected error for non-established c4m file")
 	}
 	if !strings.Contains(string(out), "not established") {
 		t.Errorf("expected 'not established' error, got %q", out)
@@ -258,7 +258,7 @@ func TestMkdirNoSubpath(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	cmd := exec.Command(bin, "mkdir", "project.c4m:")
 	cmd.Dir = dir
@@ -275,7 +275,7 @@ func TestMkdirIdempotent(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	runMkdir := func() ([]byte, error) {
 		cmd := exec.Command(bin, "mkdir", "project.c4m:renders/")
@@ -301,14 +301,14 @@ func TestMkdirIdempotent(t *testing.T) {
 func TestMkdirLocalPath(t *testing.T) {
 	bin := buildTestBinary(t)
 
-	// Should fail because mkdir requires a capsule path
+	// Should fail because mkdir requires a c4m file path
 	cmd := exec.Command(bin, "mkdir", "localdir/")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Error("expected error for local path")
 	}
-	if !strings.Contains(string(out), "capsule") {
-		t.Errorf("expected 'capsule' in error, got %q", out)
+	if !strings.Contains(string(out), "c4m file") {
+		t.Errorf("expected 'c4m file' in error, got %q", out)
 	}
 }
 
@@ -329,7 +329,7 @@ func TestMkdirNestedFailsWithoutParent(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	// mkdir renders/shots/ should fail — renders/ doesn't exist
 	cmd := exec.Command(bin, "mkdir", "project.c4m:renders/shots/")
@@ -347,7 +347,7 @@ func TestMkdirNestedWithParentFlag(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	// mkdir -p renders/shots/ should create both directories
 	cmd := exec.Command(bin, "mkdir", "-p", "project.c4m:renders/shots/")
@@ -384,7 +384,7 @@ func TestMkdirNestedWithExistingParent(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	// First create renders/
 	cmd := exec.Command(bin, "mkdir", "project.c4m:renders/")
@@ -424,7 +424,7 @@ func TestMkdirParentFlagIdempotent(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	// First mkdir -p creates directories
 	cmd := exec.Command(bin, "mkdir", "-p", "project.c4m:renders/shots/")
@@ -449,7 +449,7 @@ func TestMkdirDeepNested(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	establish.EstablishCapsule(filepath.Join(dir, "project.c4m"))
+	establish.EstablishC4m(filepath.Join(dir, "project.c4m"))
 
 	// mkdir -p a/b/c/ should create 3 levels
 	cmd := exec.Command(bin, "mkdir", "-p", "project.c4m:a/b/c/")
@@ -492,19 +492,19 @@ func TestEstablishmentLifecycle(t *testing.T) {
 		return cmd.CombinedOutput()
 	}
 
-	// 1. mk capsule
+	// 1. mk c4m file
 	out, err := runInDir("mk", "project.c4m:")
 	if err != nil {
 		t.Fatalf("mk: %v\n%s", err, out)
 	}
 
-	// 2. mkdir inside capsule
+	// 2. mkdir inside c4m file
 	out, err = runInDir("mkdir", "project.c4m:renders/")
 	if err != nil {
 		t.Fatalf("mkdir: %v\n%s", err, out)
 	}
 
-	// 3. cp file into capsule
+	// 3. cp file into c4m file
 	os.WriteFile(filepath.Join(dir, "test.txt"), []byte("data"), 0644)
 	out, err = runInDir("cp", "test.txt", "project.c4m:")
 	if err != nil {
@@ -529,6 +529,6 @@ func TestEstablishmentLifecycle(t *testing.T) {
 	// 6. cp should now fail (not established)
 	out, err = runInDir("cp", "test.txt", "project.c4m:")
 	if err == nil {
-		t.Error("expected error after rm — capsule should not be established")
+		t.Error("expected error after rm — c4m file should not be established")
 	}
 }

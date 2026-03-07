@@ -36,7 +36,7 @@ func TestParseLocal(t *testing.T) {
 	}
 }
 
-func TestParseCapsule(t *testing.T) {
+func TestParseC4m(t *testing.T) {
 	tests := []struct {
 		input   string
 		source  string
@@ -54,8 +54,8 @@ func TestParseCapsule(t *testing.T) {
 			t.Errorf("Parse(%q) error: %v", tt.input, err)
 			continue
 		}
-		if p.Type != Capsule {
-			t.Errorf("Parse(%q).Type = %v, want Capsule", tt.input, p.Type)
+		if p.Type != C4m {
+			t.Errorf("Parse(%q).Type = %v, want C4m", tt.input, p.Type)
 		}
 		if p.Source != tt.source {
 			t.Errorf("Parse(%q).Source = %q, want %q", tt.input, p.Source, tt.source)
@@ -163,13 +163,13 @@ func TestParseNilLocationFunc(t *testing.T) {
 		t.Error("Parse(\"studio:\", nil) should error without location resolver")
 	}
 
-	// But capsule paths still work
+	// But c4m paths still work
 	p, err := Parse("project.c4m:", nil)
 	if err != nil {
 		t.Errorf("Parse(\"project.c4m:\", nil) error: %v", err)
 	}
-	if p.Type != Capsule {
-		t.Errorf("Parse(\"project.c4m:\", nil).Type = %v, want Capsule", p.Type)
+	if p.Type != C4m {
+		t.Errorf("Parse(\"project.c4m:\", nil).Type = %v, want C4m", p.Type)
 	}
 }
 
@@ -179,8 +179,8 @@ func TestString(t *testing.T) {
 		want string
 	}{
 		{PathSpec{Type: Local, Source: "file.txt"}, "file.txt"},
-		{PathSpec{Type: Capsule, Source: "project.c4m"}, "project.c4m:"},
-		{PathSpec{Type: Capsule, Source: "project.c4m", SubPath: "renders/"}, "project.c4m:renders/"},
+		{PathSpec{Type: C4m, Source: "project.c4m"}, "project.c4m:"},
+		{PathSpec{Type: C4m, Source: "project.c4m", SubPath: "renders/"}, "project.c4m:renders/"},
 		{PathSpec{Type: Location, Source: "studio"}, "studio:"},
 		{PathSpec{Type: Location, Source: "studio", SubPath: "project/"}, "studio:project/"},
 	}
@@ -194,11 +194,11 @@ func TestString(t *testing.T) {
 }
 
 func TestIsRoot(t *testing.T) {
-	root := PathSpec{Type: Capsule, Source: "project.c4m"}
+	root := PathSpec{Type: C4m, Source: "project.c4m"}
 	if !root.IsRoot() {
 		t.Error("empty SubPath should be root")
 	}
-	nonRoot := PathSpec{Type: Capsule, Source: "project.c4m", SubPath: "renders/"}
+	nonRoot := PathSpec{Type: C4m, Source: "project.c4m", SubPath: "renders/"}
 	if nonRoot.IsRoot() {
 		t.Error("non-empty SubPath should not be root")
 	}

@@ -35,7 +35,7 @@ func runMv(args []string) {
 		os.Exit(1)
 	}
 
-	if src.Type != pathspec.Capsule || dst.Type != pathspec.Capsule {
+	if src.Type != pathspec.C4m || dst.Type != pathspec.C4m {
 		fmt.Fprintf(os.Stderr, "Error: mv currently supports c4m paths only\n")
 		os.Exit(1)
 	}
@@ -48,7 +48,7 @@ func runMv(args []string) {
 		os.Exit(1)
 	}
 
-	if !establish.IsCapsuleEstablished(src.Source) {
+	if !establish.IsC4mEstablished(src.Source) {
 		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", src.Source)
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", src.Source)
 		os.Exit(1)

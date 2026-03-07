@@ -110,7 +110,7 @@ func lnSymlink(args []string) {
 		os.Exit(1)
 	}
 
-	if link.Type != pathspec.Capsule {
+	if link.Type != pathspec.C4m {
 		fmt.Fprintf(os.Stderr, "Error: link location must be a c4m path\n")
 		os.Exit(1)
 	}
@@ -119,7 +119,7 @@ func lnSymlink(args []string) {
 		os.Exit(1)
 	}
 
-	if !establish.IsCapsuleEstablished(link.Source) {
+	if !establish.IsC4mEstablished(link.Source) {
 		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", link.Source)
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", link.Source)
 		os.Exit(1)
@@ -188,7 +188,7 @@ func lnHard(args []string) {
 		os.Exit(1)
 	}
 
-	if src.Type != pathspec.Capsule || dst.Type != pathspec.Capsule {
+	if src.Type != pathspec.C4m || dst.Type != pathspec.C4m {
 		fmt.Fprintf(os.Stderr, "Error: ln currently supports c4m paths only\n")
 		os.Exit(1)
 	}
@@ -201,7 +201,7 @@ func lnHard(args []string) {
 		os.Exit(1)
 	}
 
-	if !establish.IsCapsuleEstablished(src.Source) {
+	if !establish.IsC4mEstablished(src.Source) {
 		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", src.Source)
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", src.Source)
 		os.Exit(1)

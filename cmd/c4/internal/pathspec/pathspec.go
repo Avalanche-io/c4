@@ -1,10 +1,10 @@
 // Package pathspec implements the colon syntax path parser for the c4 CLI.
 //
-// The colon is the portal between local paths, capsule contents, and remote
+// The colon is the portal between local paths, c4m file contents, and remote
 // locations. Everything after the colon is just a path.
 //
 //	renders/                   → local directory
-//	project.c4m:renders/       → described directory (capsule)
+//	project.c4m:renders/       → described directory (c4m file)
 //	studio:project/renders/    → remote directory (location)
 package pathspec
 
@@ -18,7 +18,7 @@ type Type int
 
 const (
 	Local     Type = iota // Regular filesystem path
-	Capsule               // Path into a .c4m file
+	C4m               // Path into a .c4m file
 	Location              // Path into a named location
 	Container             // Path into a tar/tgz archive
 	Managed               // Managed directory (bare colon)
@@ -28,8 +28,8 @@ func (t Type) String() string {
 	switch t {
 	case Local:
 		return "local"
-	case Capsule:
-		return "capsule"
+	case C4m:
+		return "c4m"
 	case Location:
 		return "location"
 	case Container:
@@ -44,11 +44,11 @@ func (t Type) String() string {
 // PathSpec is a parsed colon-syntax path.
 type PathSpec struct {
 	Type    Type
-	Source  string // capsule file path, location name, or local path
-	SubPath string // path within capsule/location (empty = root)
+	Source  string // c4m file path, location name, or local path
+	SubPath string // path within c4m file/location (empty = root)
 }
 
-// IsRoot returns true if this refers to the root of a capsule or location
+// IsRoot returns true if this refers to the root of a c4m file or location
 // (trailing colon with no subpath).
 func (p PathSpec) IsRoot() bool {
 	return p.SubPath == ""
@@ -59,7 +59,7 @@ func (p PathSpec) String() string {
 	switch p.Type {
 	case Local:
 		return p.Source
-	case Capsule, Location:
+	case C4m, Location:
 		if p.SubPath == "" {
 			return p.Source + ":"
 		}
@@ -77,11 +77,11 @@ func (p PathSpec) String() string {
 //  1. No colon → local path
 //  2. Starts with ./ or / → local path (colon is inside a path component)
 //  3. Left side contains / → local path (colon is inside a path component)
-//  4. Left side ends with .c4m → capsule path
+//  4. Left side ends with .c4m → c4m path
 //  5. Left side matches a known location → location path
 //  6. Otherwise → error
 //
-// The isLocation function is optional. If nil, only capsule paths are
+// The isLocation function is optional. If nil, only c4m paths are
 // recognized through the colon syntax. Pass a lookup function to enable
 // location resolution.
 func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
@@ -110,13 +110,13 @@ func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
 	}
 
 	// Strip leading "/" from subpath — everything after the colon
-	// is relative to the root of the capsule/location.
+	// is relative to the root of the c4m file/location.
 	// test.c4m:/files/ → SubPath "files/", not "/files/"
 	right = strings.TrimPrefix(right, "/")
 
-	// Rule 4: left side ends with .c4m → capsule
+	// Rule 4: left side ends with .c4m → c4m file
 	if strings.HasSuffix(left, ".c4m") {
-		return PathSpec{Type: Capsule, Source: left, SubPath: right}, nil
+		return PathSpec{Type: C4m, Source: left, SubPath: right}, nil
 	}
 
 	// Rule 4b: left side ends with a container extension → container
@@ -130,7 +130,7 @@ func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
 	}
 
 	// Rule 6: unrecognized
-	return PathSpec{}, fmt.Errorf("%q is not a capsule (.c4m) or known location", left)
+	return PathSpec{}, fmt.Errorf("%q is not a c4m file or known location", left)
 }
 
 // containerExts lists recognized archive extensions.

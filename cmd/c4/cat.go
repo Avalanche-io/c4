@@ -42,13 +42,13 @@ func runCat(args []string) {
 	}
 
 	switch spec.Type {
-	case pathspec.Capsule:
+	case pathspec.C4m:
 		if spec.SubPath == "" {
 			fmt.Fprintf(os.Stderr, "Error: c4 cat requires a file path within the c4m\n")
 			fmt.Fprintf(os.Stderr, "Usage: c4 cat %s:<path>\n", spec.Source)
 			os.Exit(1)
 		}
-		catFromCapsule(spec.Source, spec.SubPath)
+		catFromC4m(spec.Source, spec.SubPath)
 
 	case pathspec.Local:
 		// For local files, just output their content (like regular cat)
@@ -165,11 +165,11 @@ func catFromManaged(subPath string) {
 	os.Exit(1)
 }
 
-// catFromCapsule extracts a file's content from a c4m file via c4d.
-func catFromCapsule(capsulePath, subPath string) {
-	manifest, err := loadManifest(capsulePath)
+// catFromC4m extracts a file's content from a c4m file via c4d.
+func catFromC4m(c4mPath, subPath string) {
+	manifest, err := loadManifest(c4mPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", capsulePath, err)
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", c4mPath, err)
 		os.Exit(1)
 	}
 
@@ -207,6 +207,6 @@ func catFromCapsule(capsulePath, subPath string) {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Error: %s not found in %s\n", subPath, capsulePath)
+	fmt.Fprintf(os.Stderr, "Error: %s not found in %s\n", subPath, c4mPath)
 	os.Exit(1)
 }

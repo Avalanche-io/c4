@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestCapsuleEstablishment(t *testing.T) {
+func TestC4mEstablishment(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -14,17 +14,17 @@ func TestCapsuleEstablishment(t *testing.T) {
 	c4mPath := filepath.Join(dir, "project.c4m")
 
 	// Not established initially
-	if IsCapsuleEstablished(c4mPath) {
+	if IsC4mEstablished(c4mPath) {
 		t.Error("should not be established before mk")
 	}
 
 	// Establish
-	if err := EstablishCapsule(c4mPath); err != nil {
-		t.Fatalf("EstablishCapsule: %v", err)
+	if err := EstablishC4m(c4mPath); err != nil {
+		t.Fatalf("EstablishC4m: %v", err)
 	}
 
 	// Now established
-	if !IsCapsuleEstablished(c4mPath) {
+	if !IsC4mEstablished(c4mPath) {
 		t.Error("should be established after mk")
 	}
 
@@ -35,26 +35,26 @@ func TestCapsuleEstablishment(t *testing.T) {
 	}
 
 	// Establishment is stored centrally
-	capDir, _ := capsulesDir()
-	entries, err := os.ReadDir(capDir)
+	regDir, _ := c4mDir()
+	entries, err := os.ReadDir(regDir)
 	if err != nil {
-		t.Fatalf("capsules dir: %v", err)
+		t.Fatalf("c4m dir: %v", err)
 	}
 	if len(entries) != 1 {
-		t.Errorf("expected 1 entry in capsules dir, got %d", len(entries))
+		t.Errorf("expected 1 entry in c4m dir, got %d", len(entries))
 	}
 
 	// Remove establishment
-	if err := RemoveCapsuleEstablishment(c4mPath); err != nil {
-		t.Fatalf("RemoveCapsuleEstablishment: %v", err)
+	if err := RemoveC4mEstablishment(c4mPath); err != nil {
+		t.Fatalf("RemoveC4mEstablishment: %v", err)
 	}
 
-	if IsCapsuleEstablished(c4mPath) {
+	if IsC4mEstablished(c4mPath) {
 		t.Error("should not be established after removal")
 	}
 }
 
-func TestCapsuleEstablishmentWithoutFile(t *testing.T) {
+func TestC4mEstablishmentWithoutFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -62,12 +62,12 @@ func TestCapsuleEstablishmentWithoutFile(t *testing.T) {
 	c4mPath := filepath.Join(dir, "new.c4m")
 
 	// Can establish even if .c4m doesn't exist yet (create-on-write)
-	if err := EstablishCapsule(c4mPath); err != nil {
-		t.Fatalf("EstablishCapsule on nonexistent file: %v", err)
+	if err := EstablishC4m(c4mPath); err != nil {
+		t.Fatalf("EstablishC4m on nonexistent file: %v", err)
 	}
 
-	if !IsCapsuleEstablished(c4mPath) {
-		t.Error("should be established for nonexistent capsule")
+	if !IsC4mEstablished(c4mPath) {
+		t.Error("should be established for nonexistent c4m file")
 	}
 }
 

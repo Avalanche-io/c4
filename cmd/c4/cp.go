@@ -34,9 +34,9 @@ var c4dClient = &http.Client{
 
 // runCp implements "c4 cp" — the universal copy verb.
 //
-//	c4 cp source/ project.c4m:          # capture into capsule
+//	c4 cp source/ project.c4m:          # capture into c4m file
 //	c4 cp source/ project.c4m:renders/  # capture into subtree
-//	c4 cp project.c4m: ./output/        # materialize from capsule
+//	c4 cp project.c4m: ./output/        # materialize from c4m file
 //	c4 cp project.c4m:renders/ ./out/   # materialize subtree
 func runCp(args []string) {
 	// Strip -r/--recursive flag (scan is always recursive)
@@ -51,9 +51,9 @@ func runCp(args []string) {
 	if len(args) != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 cp [-r] <source> <dest>\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  c4 cp files/ project.c4m:           # capture into capsule\n")
+		fmt.Fprintf(os.Stderr, "  c4 cp files/ project.c4m:           # capture into c4m file\n")
 		fmt.Fprintf(os.Stderr, "  c4 cp files/ project.c4m:renders/   # capture into subtree\n")
-		fmt.Fprintf(os.Stderr, "  c4 cp project.c4m: ./output/        # materialize from capsule\n")
+		fmt.Fprintf(os.Stderr, "  c4 cp project.c4m: ./output/        # materialize from c4m file\n")
 		fmt.Fprintf(os.Stderr, "  c4 cp project.c4m:renders/ ./out/   # materialize subtree\n")
 		os.Exit(1)
 	}
@@ -88,7 +88,7 @@ func runCp(args []string) {
 		os.Exit(1)
 	}
 
-	// Resolve managed source to a manifest-backed capsule-like operation
+	// Resolve managed source to a manifest-backed c4m-like operation
 	if src.Type == pathspec.Managed {
 		manifest := getManagedManifest(src.SubPath)
 		cpManifestToTarget(manifest, dst)
@@ -96,18 +96,18 @@ func runCp(args []string) {
 	}
 
 	switch {
-	case src.Type == pathspec.Local && dst.Type == pathspec.Capsule:
-		cpLocalToCapsule(src, dst)
-	case src.Type == pathspec.Capsule && dst.Type == pathspec.Local:
-		cpCapsuleToLocal(src, dst)
+	case src.Type == pathspec.Local && dst.Type == pathspec.C4m:
+		cpLocalToC4m(src, dst)
+	case src.Type == pathspec.C4m && dst.Type == pathspec.Local:
+		cpC4mToLocal(src, dst)
 	case src.Type == pathspec.Local && dst.Type == pathspec.Container:
 		cpLocalToContainer(src, dst)
 	case src.Type == pathspec.Container && dst.Type == pathspec.Local:
 		cpContainerToLocal(src, dst)
-	case src.Type == pathspec.Capsule && dst.Type == pathspec.Container:
-		cpCapsuleToContainer(src, dst)
-	case src.Type == pathspec.Container && dst.Type == pathspec.Capsule:
-		cpContainerToCapsule(src, dst)
+	case src.Type == pathspec.C4m && dst.Type == pathspec.Container:
+		cpC4mToContainer(src, dst)
+	case src.Type == pathspec.Container && dst.Type == pathspec.C4m:
+		cpContainerToC4m(src, dst)
 	case src.Type == pathspec.Local && dst.Type == pathspec.Local:
 		fmt.Fprintf(os.Stderr, "Error: use OS cp for local-to-local copies\n")
 		os.Exit(1)
@@ -121,8 +121,8 @@ func runCp(args []string) {
 // Used when the source is a managed directory (: notation).
 func cpManifestToTarget(manifest *c4m.Manifest, dst pathspec.PathSpec) {
 	switch dst.Type {
-	case pathspec.Capsule:
-		if !establish.IsCapsuleEstablished(dst.Source) {
+	case pathspec.C4m:
+		if !establish.IsC4mEstablished(dst.Source) {
 			fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
 			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 			os.Exit(1)
@@ -184,10 +184,10 @@ func cpManifestToTarget(manifest *c4m.Manifest, dst pathspec.PathSpec) {
 	}
 }
 
-// cpLocalToCapsule captures local files into a capsule.
-func cpLocalToCapsule(src, dst pathspec.PathSpec) {
+// cpLocalToC4m captures local files into a c4m file.
+func cpLocalToC4m(src, dst pathspec.PathSpec) {
 	// Check establishment
-	if !establish.IsCapsuleEstablished(dst.Source) {
+	if !establish.IsC4mEstablished(dst.Source) {
 		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 		os.Exit(1)
@@ -202,7 +202,7 @@ func cpLocalToCapsule(src, dst pathspec.PathSpec) {
 
 	if !info.IsDir() {
 		// Single file capture
-		cpFileIntoCapsule(src.Source, dst)
+		cpFileIntoC4m(src.Source, dst)
 		return
 	}
 
@@ -271,8 +271,8 @@ func cpLocalToCapsule(src, dst pathspec.PathSpec) {
 	}
 }
 
-// cpFileIntoCapsule captures a single file into a capsule.
-func cpFileIntoCapsule(filePath string, dst pathspec.PathSpec) {
+// cpFileIntoC4m captures a single file into a c4m file.
+func cpFileIntoC4m(filePath string, dst pathspec.PathSpec) {
 	info, err := os.Stat(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -328,9 +328,9 @@ func cpFileIntoCapsule(filePath string, dst pathspec.PathSpec) {
 	fmt.Printf("captured %s into %s\n", filepath.Base(filePath), dst)
 }
 
-// cpCapsuleToLocal materializes capsule contents to local filesystem.
-func cpCapsuleToLocal(src, dst pathspec.PathSpec) {
-	// Load capsule
+// cpC4mToLocal materializes c4m file contents to local filesystem.
+func cpC4mToLocal(src, dst pathspec.PathSpec) {
+	// Load c4m file
 	manifest, err := loadManifest(src.Source)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", src.Source, err)
@@ -615,8 +615,8 @@ func cpStdinToTarget(dst pathspec.PathSpec) {
 		}
 		fmt.Printf("created %s (%d entries from stdin)\n", dst.Source, len(manifest.Entries))
 
-	case pathspec.Capsule:
-		if !establish.IsCapsuleEstablished(dst.Source) {
+	case pathspec.C4m:
+		if !establish.IsC4mEstablished(dst.Source) {
 			fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
 			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 			os.Exit(1)
@@ -643,9 +643,9 @@ func cpStdinToTarget(dst pathspec.PathSpec) {
 	}
 }
 
-// cpCapsuleToContainer exports c4m contents as a tar archive.
+// cpC4mToContainer exports c4m contents as a tar archive.
 // Content bytes are fetched from c4d.
-func cpCapsuleToContainer(src, dst pathspec.PathSpec) {
+func cpC4mToContainer(src, dst pathspec.PathSpec) {
 	manifest, err := loadManifest(src.Source)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", src.Source, err)
@@ -677,9 +677,9 @@ func cpCapsuleToContainer(src, dst pathspec.PathSpec) {
 	fmt.Printf("exported %s → %s (%d entries)\n", src.Source, dst.Source, len(manifest.Entries))
 }
 
-// cpContainerToCapsule imports tar contents into a c4m file.
-func cpContainerToCapsule(src, dst pathspec.PathSpec) {
-	if !establish.IsCapsuleEstablished(dst.Source) {
+// cpContainerToC4m imports tar contents into a c4m file.
+func cpContainerToC4m(src, dst pathspec.PathSpec) {
+	if !establish.IsC4mEstablished(dst.Source) {
 		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 		os.Exit(1)
@@ -956,8 +956,8 @@ func cpGlobToSequence(srcGlob, dstPattern string) {
 	// The user-provided dest name is a template; the actual range comes from detection.
 
 	switch dst.Type {
-	case pathspec.Capsule:
-		if !establish.IsCapsuleEstablished(dst.Source) {
+	case pathspec.C4m:
+		if !establish.IsC4mEstablished(dst.Source) {
 			fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
 			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 			os.Exit(1)

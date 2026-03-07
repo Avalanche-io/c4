@@ -46,7 +46,7 @@ func runPatch(args []string) {
 	}
 
 	switch spec.Type {
-	case pathspec.Capsule:
+	case pathspec.C4m:
 		patchC4mFile(spec.Source, source)
 	case pathspec.Local:
 		patchLocalPath(spec.Source, source)

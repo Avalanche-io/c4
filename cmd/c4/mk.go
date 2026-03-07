@@ -12,14 +12,14 @@ import (
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
 
-// runMk implements "c4 mk" — establish a capsule or location for writing.
+// runMk implements "c4 mk" — establish a c4m file or location for writing.
 //
-//	c4 mk project.c4m:                    # capsule
+//	c4 mk project.c4m:                    # c4m file
 //	c4 mk studio: cloud.example.com:7433  # location
 func runMk(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "  c4 mk <name>.c4m:              # establish capsule for writing\n")
+		fmt.Fprintf(os.Stderr, "  c4 mk <name>.c4m:              # establish c4m file for writing\n")
 		fmt.Fprintf(os.Stderr, "  c4 mk <name>: <host:port>      # establish location for writing\n")
 		os.Exit(1)
 	}
@@ -76,12 +76,12 @@ func runMk(args []string) {
 	name := strings.TrimSuffix(target, ":")
 
 	if strings.HasSuffix(name, ".c4m") {
-		// Capsule establishment
-		if establish.IsCapsuleEstablished(name) {
+		// c4m file establishment
+		if establish.IsC4mEstablished(name) {
 			fmt.Fprintf(os.Stderr, "%s already established\n", target)
 			os.Exit(0)
 		}
-		if err := establish.EstablishCapsule(name); err != nil {
+		if err := establish.EstablishC4m(name); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -113,7 +113,7 @@ func runMk(args []string) {
 // runRm implements "c4 rm" — remove entries, registrations, or tracking.
 //
 //	c4 rm studio:                   # remove location
-//	c4 rm project.c4m:              # remove capsule establishment
+//	c4 rm project.c4m:              # remove c4m file establishment
 //	c4 rm project.c4m:renders/old/  # remove entry from c4m
 //	c4 rm :                         # stop tracking, remove history
 //	c4 rm :~.ignore/data/           # remove ignore pattern
@@ -147,16 +147,16 @@ func runRm(args []string) {
 	case pathspec.Managed:
 		rmManaged(spec)
 
-	case pathspec.Capsule:
+	case pathspec.C4m:
 		if spec.SubPath != "" {
-			rmCapsuleEntry(spec)
+			rmC4mEntry(spec)
 		} else {
 			// Bare c4m: → remove establishment
-			if !establish.IsCapsuleEstablished(spec.Source) {
+			if !establish.IsC4mEstablished(spec.Source) {
 				fmt.Fprintf(os.Stderr, "%s: is not established\n", spec.Source)
 				os.Exit(1)
 			}
-			if err := establish.RemoveCapsuleEstablishment(spec.Source); err != nil {
+			if err := establish.RemoveC4mEstablishment(spec.Source); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
@@ -237,9 +237,9 @@ func rmManaged(spec pathspec.PathSpec) {
 	os.Exit(1)
 }
 
-// rmCapsuleEntry removes an entry from a c4m file.
-func rmCapsuleEntry(spec pathspec.PathSpec) {
-	if !establish.IsCapsuleEstablished(spec.Source) {
+// rmC4MEntry removes an entry from a c4m file.
+func rmC4mEntry(spec pathspec.PathSpec) {
+	if !establish.IsC4mEstablished(spec.Source) {
 		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", spec.Source)
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", spec.Source)
 		os.Exit(1)

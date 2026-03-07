@@ -64,7 +64,7 @@ func TestMain(m *testing.M) {
 	}
 	testBinaryPath = bin
 
-	// Set HOME for centralized capsule/location registry (~/.c4/)
+	// Set HOME for centralized c4m file/location registry (~/.c4/)
 	testHome := filepath.Join(tmpDir, "home")
 	os.MkdirAll(testHome, 0755)
 	os.Setenv("HOME", testHome)
@@ -386,7 +386,7 @@ func TestC4dAddr(t *testing.T) {
 
 // --- Integration tests using subprocess ---
 
-func TestCpLocalToCapsuleIntegration(t *testing.T) {
+func TestCpLocalToC4mIntegration(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create source files
@@ -395,10 +395,10 @@ func TestCpLocalToCapsuleIntegration(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "a.txt"), []byte("file a"), 0644)
 	os.WriteFile(filepath.Join(srcDir, "b.txt"), []byte("file b"), 0644)
 
-	capsulePath := filepath.Join(dir, "test.c4m")
+	c4mPath := filepath.Join(dir, "test.c4m")
 
-	// Establish the capsule
-	if err := establish.EstablishCapsule(capsulePath); err != nil {
+	// Establish the c4m file
+	if err := establish.EstablishC4m(c4mPath); err != nil {
 		t.Fatalf("establish: %v", err)
 	}
 
@@ -417,12 +417,12 @@ func TestCpLocalToCapsuleIntegration(t *testing.T) {
 	manifest.SortEntries()
 	scan.PropagateMetadata(manifest.Entries)
 
-	if err := writeManifest(capsulePath, manifest); err != nil {
+	if err := writeManifest(c4mPath, manifest); err != nil {
 		t.Fatalf("write manifest: %v", err)
 	}
 
 	// Verify the manifest was created and has entries
-	loaded, err := loadManifest(capsulePath)
+	loaded, err := loadManifest(c4mPath)
 	if err != nil {
 		t.Fatalf("load manifest: %v", err)
 	}
@@ -441,27 +441,27 @@ func TestCpLocalToCapsuleIntegration(t *testing.T) {
 	}
 }
 
-func TestCpLocalToCapsuleWithSubpath(t *testing.T) {
+func TestCpLocalToC4mWithSubpath(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create source file
 	srcFile := filepath.Join(dir, "frame.exr")
 	os.WriteFile(srcFile, []byte("frame data"), 0644)
 
-	capsulePath := filepath.Join(dir, "project.c4m")
+	c4mPath := filepath.Join(dir, "project.c4m")
 
-	// Establish the capsule
-	establish.EstablishCapsule(capsulePath)
+	// Establish the c4m file
+	establish.EstablishC4m(c4mPath)
 
 	// Create manifest with renders/ directory
 	manifest := c4m.NewManifest()
 	ensureParentDirs(manifest, "renders/")
-	if err := writeManifest(capsulePath, manifest); err != nil {
+	if err := writeManifest(c4mPath, manifest); err != nil {
 		t.Fatalf("write initial manifest: %v", err)
 	}
 
 	// Simulate adding a file under renders/
-	manifest, _ = loadManifest(capsulePath)
+	manifest, _ = loadManifest(c4mPath)
 	entry := &c4m.Entry{
 		Name:  "frame.exr",
 		Depth: 1,
@@ -471,12 +471,12 @@ func TestCpLocalToCapsuleWithSubpath(t *testing.T) {
 	insertUnderParent(manifest, entry, "renders/")
 	manifest.SortEntries()
 
-	if err := writeManifest(capsulePath, manifest); err != nil {
+	if err := writeManifest(c4mPath, manifest); err != nil {
 		t.Fatalf("write updated manifest: %v", err)
 	}
 
 	// Verify
-	loaded, _ := loadManifest(capsulePath)
+	loaded, _ := loadManifest(c4mPath)
 	if len(loaded.Entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(loaded.Entries))
 	}
@@ -494,7 +494,7 @@ func TestCpLocalToCapsuleWithSubpath(t *testing.T) {
 	}
 }
 
-func TestCpCapsuleToLocalIntegration(t *testing.T) {
+func TestCpC4mToLocalIntegration(t *testing.T) {
 	dir := t.TempDir()
 
 	// Start a mock c4d that returns file content
@@ -504,8 +504,8 @@ func TestCpCapsuleToLocalIntegration(t *testing.T) {
 	defer ts.Close()
 	t.Setenv("C4D_ADDR", ts.URL)
 
-	// Create a capsule with a file entry
-	capsulePath := filepath.Join(dir, "project.c4m")
+	// Create a c4m file with a file entry
+	c4mPath := filepath.Join(dir, "project.c4m")
 	manifest := c4m.NewManifest()
 
 	fileID := identifyString("restored content")
@@ -516,14 +516,14 @@ func TestCpCapsuleToLocalIntegration(t *testing.T) {
 		C4ID: fileID,
 	})
 	manifest.SortEntries()
-	writeManifest(capsulePath, manifest)
+	writeManifest(c4mPath, manifest)
 
 	// Materialize to output directory
 	outDir := filepath.Join(dir, "output")
 	os.MkdirAll(outDir, 0755)
 
-	// Load and materialize manually (since cpCapsuleToLocal calls os.Exit)
-	loaded, err := loadManifest(capsulePath)
+	// Load and materialize manually (since cpC4mToLocal calls os.Exit)
+	loaded, err := loadManifest(c4mPath)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestWriteFileContentErrorsOnFetchFailure(t *testing.T) {
 	}
 }
 
-func TestCpCapsuleToLocalNilID(t *testing.T) {
+func TestCpC4mToLocalNilID(t *testing.T) {
 	dir := t.TempDir()
 
 	// Entry with nil C4 ID should create an empty file
@@ -601,7 +601,7 @@ func TestCpCapsuleToLocalNilID(t *testing.T) {
 	}
 }
 
-func TestCpCapsuleToLocalWithDirectories(t *testing.T) {
+func TestCpC4mToLocalWithDirectories(t *testing.T) {
 	dir := t.TempDir()
 
 	// Mock c4d
@@ -611,8 +611,8 @@ func TestCpCapsuleToLocalWithDirectories(t *testing.T) {
 	defer ts.Close()
 	t.Setenv("C4D_ADDR", ts.URL)
 
-	// Create a capsule with a nested directory structure
-	capsulePath := filepath.Join(dir, "project.c4m")
+	// Create a c4m file with a nested directory structure
+	c4mPath := filepath.Join(dir, "project.c4m")
 	manifest := c4m.NewManifest()
 	manifest.AddEntry(&c4m.Entry{
 		Name:  "renders/",
@@ -629,13 +629,13 @@ func TestCpCapsuleToLocalWithDirectories(t *testing.T) {
 	})
 	manifest.SortEntries()
 	scan.PropagateMetadata(manifest.Entries)
-	writeManifest(capsulePath, manifest)
+	writeManifest(c4mPath, manifest)
 
 	// Materialize
 	outDir := filepath.Join(dir, "output")
 
-	// Build resolved paths (replicate the logic from cpCapsuleToLocal)
-	loaded, _ := loadManifest(capsulePath)
+	// Build resolved paths (replicate the logic from cpC4mToLocal)
+	loaded, _ := loadManifest(c4mPath)
 	type pathEntry struct {
 		fullPath string
 		entry    *c4m.Entry
@@ -691,23 +691,23 @@ func TestCpCapsuleToLocalWithDirectories(t *testing.T) {
 func TestCpIncrementalCapture(t *testing.T) {
 	dir := t.TempDir()
 
-	capsulePath := filepath.Join(dir, "project.c4m")
-	establish.EstablishCapsule(capsulePath)
+	c4mPath := filepath.Join(dir, "project.c4m")
+	establish.EstablishC4m(c4mPath)
 
 	// First capture: add a.txt
 	m := c4m.NewManifest()
 	m.AddEntry(&c4m.Entry{Name: "a.txt", Mode: 0644, Size: 5})
 	m.SortEntries()
-	writeManifest(capsulePath, m)
+	writeManifest(c4mPath, m)
 
 	// Second capture: add b.txt via loadOrCreate + AddEntry
-	m, _ = loadOrCreateManifest(capsulePath)
+	m, _ = loadOrCreateManifest(c4mPath)
 	m.AddEntry(&c4m.Entry{Name: "b.txt", Mode: 0644, Size: 10})
 	m.SortEntries()
-	writeManifest(capsulePath, m)
+	writeManifest(c4mPath, m)
 
 	// Verify both entries exist
-	loaded, _ := loadManifest(capsulePath)
+	loaded, _ := loadManifest(c4mPath)
 	if len(loaded.Entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(loaded.Entries))
 	}
@@ -724,25 +724,25 @@ func TestCpIncrementalCapture(t *testing.T) {
 func TestCpIncrementalCaptureSubpath(t *testing.T) {
 	dir := t.TempDir()
 
-	capsulePath := filepath.Join(dir, "project.c4m")
-	establish.EstablishCapsule(capsulePath)
+	c4mPath := filepath.Join(dir, "project.c4m")
+	establish.EstablishC4m(c4mPath)
 
 	// Create manifest with renders/ directory and a file
 	m := c4m.NewManifest()
 	ensureParentDirs(m, "renders/")
 	m.AddEntry(&c4m.Entry{Name: "frame_001.exr", Depth: 1, Mode: 0644, Size: 100})
 	m.SortEntries()
-	writeManifest(capsulePath, m)
+	writeManifest(c4mPath, m)
 
 	// Add another file under renders/
-	m, _ = loadOrCreateManifest(capsulePath)
+	m, _ = loadOrCreateManifest(c4mPath)
 	entry := &c4m.Entry{Name: "frame_002.exr", Depth: 1, Mode: 0644, Size: 100}
 	insertUnderParent(m, entry, "renders/")
 	m.SortEntries()
-	writeManifest(capsulePath, m)
+	writeManifest(c4mPath, m)
 
 	// Verify
-	loaded, _ := loadManifest(capsulePath)
+	loaded, _ := loadManifest(c4mPath)
 	fileCount := 0
 	for _, e := range loaded.Entries {
 		if !e.IsDir() {
@@ -791,12 +791,12 @@ func TestCpSubprocessNotEstablished(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "src"), 0755)
 	os.WriteFile(filepath.Join(dir, "src", "test.txt"), []byte("data"), 0644)
 
-	// cp into non-established capsule should error
+	// cp into non-established c4m file should error
 	cmd := exec.Command(bin, "cp", "src", "test.c4m:")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Error("expected non-zero exit for non-established capsule")
+		t.Error("expected non-zero exit for non-established c4m file")
 	}
 	if !strings.Contains(string(out), "not established") {
 		t.Errorf("expected 'not established' message, got %q", out)
@@ -885,7 +885,7 @@ func TestCpSubprocessRecursiveFlag(t *testing.T) {
 		t.Fatalf("cp -r: %v\n%s", err, out)
 	}
 
-	// Verify capsule has entries
+	// Verify c4m file has entries
 	loaded, err := loadManifest(filepath.Join(dir, "test.c4m"))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -954,8 +954,8 @@ func TestCpSubprocessMaterializeSubpath(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	// Create capsule with nested structure
-	capsulePath := filepath.Join(dir, "project.c4m")
+	// Create c4m file with nested structure
+	c4mPath := filepath.Join(dir, "project.c4m")
 	m := c4m.NewManifest()
 	fileID := identifyString("materialized content")
 	m.AddEntry(&c4m.Entry{Name: "renders/", Depth: 0, Mode: os.ModeDir | 0755, Size: -1})
@@ -964,7 +964,7 @@ func TestCpSubprocessMaterializeSubpath(t *testing.T) {
 	m.AddEntry(&c4m.Entry{Name: "texture.png", Depth: 1, Mode: 0644, Size: 15, C4ID: identifyString("texture data")})
 	m.SortEntries()
 	scan.PropagateMetadata(m.Entries)
-	writeManifest(capsulePath, m)
+	writeManifest(c4mPath, m)
 
 	// Materialize only renders/ subpath
 	cmd := exec.Command(bin, "cp", "project.c4m:renders/", "out")

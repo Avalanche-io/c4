@@ -10,7 +10,7 @@ import (
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 )
 
-// runMkdir implements "c4 mkdir" — create a directory entry in a capsule.
+// runMkdir implements "c4 mkdir" — create a directory entry in a c4m file.
 //
 //	c4 mkdir project.c4m:renders/             # create renders/ (parent must exist or be root)
 //	c4 mkdir -p project.c4m:renders/shots/    # create renders/ and shots/ if needed
@@ -27,7 +27,7 @@ func runMkdir(args []string) {
 	}
 
 	if len(filtered) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 mkdir [-p] <capsule>.c4m:<path>/\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 mkdir [-p] <name>.c4m:<path>/\n")
 		os.Exit(1)
 	}
 
@@ -37,13 +37,13 @@ func runMkdir(args []string) {
 		os.Exit(1)
 	}
 
-	if spec.Type != pathspec.Capsule {
-		fmt.Fprintf(os.Stderr, "Error: mkdir requires a capsule path (e.g. project.c4m:renders/)\n")
+	if spec.Type != pathspec.C4m {
+		fmt.Fprintf(os.Stderr, "Error: mkdir requires a c4m file path (e.g. project.c4m:renders/)\n")
 		os.Exit(1)
 	}
 
 	if spec.SubPath == "" {
-		fmt.Fprintf(os.Stderr, "Error: must specify a directory path within the capsule\n")
+		fmt.Fprintf(os.Stderr, "Error: must specify a directory path within the c4m file\n")
 		os.Exit(1)
 	}
 
@@ -54,7 +54,7 @@ func runMkdir(args []string) {
 	}
 
 	// Check establishment
-	if !establish.IsCapsuleEstablished(spec.Source) {
+	if !establish.IsC4mEstablished(spec.Source) {
 		fmt.Fprintf(os.Stderr, "Error: %s is not established for writing\n", spec.Source+":")
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", spec.Source)
 		os.Exit(1)

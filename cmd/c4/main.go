@@ -321,7 +321,7 @@ func getManifest(pathArg string) *c4m.Manifest {
 	}
 
 	switch spec.Type {
-	case pathspec.Capsule:
+	case pathspec.C4m:
 		manifest, err := loadManifest(spec.Source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", spec.Source, err)
