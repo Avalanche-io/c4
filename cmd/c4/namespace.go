@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -124,6 +125,50 @@ func registerNamespacePath(c4mPath string) error {
 		return fmt.Errorf("c4d namespace PUT %s: %s", nsPath, resp.Status)
 	}
 	return nil
+}
+
+// runPurge flushes all purgatory content from c4d.
+func runPurge() {
+	if !c4dConfigured() {
+		fmt.Fprintf(os.Stderr, "Error: c4d not configured (no backing store to purge)\n")
+		os.Exit(1)
+	}
+
+	client, addr := c4dVersionClient()
+	req, err := http.NewRequest("POST", addr+"/admin/purge", nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: c4d not reachable: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error: c4d purge: %s\n", resp.Status)
+		os.Exit(1)
+	}
+
+	// Parse response for summary
+	var result struct {
+		Reclaimed  int   `json:"reclaimed"`
+		FreedBytes int64 `json:"freed_bytes"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fmt.Println("purgatory flushed")
+		return
+	}
+
+	if result.Reclaimed == 0 {
+		fmt.Println("purgatory empty — nothing to flush")
+	} else {
+		fmt.Printf("flushed %d blobs (%.1f MB freed)\n", result.Reclaimed,
+			float64(result.FreedBytes)/(1024*1024))
+	}
 }
 
 // unregisterNamespacePath removes a c4m file from the c4d namespace.

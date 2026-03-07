@@ -171,7 +171,13 @@ func runMk(args []string) {
 //	c4 rm :                         # stop tracking, remove history
 //	c4 rm :~.ignore/data/           # remove ignore pattern
 //	c4 rm :~tagname                 # remove tag
+//	c4 rm --purge                   # flush purgatory cache
 func runRm(args []string) {
+	if len(args) == 1 && args[0] == "--purge" {
+		runPurge()
+		return
+	}
+
 	if len(args) != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 rm <target>\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
@@ -180,6 +186,7 @@ func runRm(args []string) {
 		fmt.Fprintf(os.Stderr, "  c4 rm :                        # stop tracking\n")
 		fmt.Fprintf(os.Stderr, "  c4 rm :~.ignore/data/          # remove ignore pattern\n")
 		fmt.Fprintf(os.Stderr, "  c4 rm :~tagname                # remove tag\n")
+		fmt.Fprintf(os.Stderr, "  c4 rm --purge                  # flush purgatory cache\n")
 		os.Exit(1)
 	}
 
