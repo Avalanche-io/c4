@@ -406,19 +406,17 @@ to the relay as a mesh-wide deny list.
 
 ## Safety Mechanisms
 
-### Last-Copy Protection
+### Cross-Node Preservation
 
-Before content transitions from purgatory to gone, c4d checks whether
-it holds the last known copy in the mesh (via bloom filter query to
-connected peers).
+There is no automatic last-copy detection. Most content is
+single-node — blocking reclamation for "last copies" would
+effectively disable purgatory for the common case.
 
-If this node has the last copy:
-- Reclamation is blocked for that content
-- User is warned via `c4 status`: "N blobs are the last known copy"
-- User must explicitly override: `c4 rm --force --purge`
-
-This prevents the cascade scenario where unreplicated content is
-permanently lost from a single node's policy decision.
+Cross-node preservation uses the existing reachability model:
+a shared c4m established on multiple nodes and synced via relay.
+Anything in that c4m stays active on every node that has it
+established. This is just the normal reference model — no special
+retention logic needed.
 
 ### Purgatory-to-Active Resurrection
 
@@ -678,6 +676,7 @@ not block normal operations.
 ### HTTP API Changes
 
 - `GET /du` — reachability breakdown (referenced/unreferenced counts and bytes)
+- `POST /admin/purge` — flush all purgatory immediately
 - `410 Gone` for tombstoned content (future)
 - No `POST /admin/gc` — reclamation is automatic
 
@@ -688,7 +687,7 @@ not block normal operations.
 | Scenario | Mitigation |
 |----------|-----------|
 | Malicious tombstone injection | PKI-signed, namespace-scoped |
-| Simultaneous reclaim across nodes | Last-copy protection |
+| Simultaneous reclaim across nodes | Shared archive c4m for cross-node preservation |
 | Put-before-reference race | Content starts active; purgatory only after unreference |
 | Crash during snapshot prune | Atomic writes; prune either completes or doesn't |
 | Accidental rm in managed dir | Undo + snapshot history; content recoverable |
@@ -703,8 +702,8 @@ not block normal operations.
 |----------|-----------|
 | Storage grows until disposition | Safe default; user controls when to dispose |
 | Purgatory uses space for cache | Saves network transfers; auto-sized by pressure |
-| Reachability requires parsing c4m files | Local operation; incremental optimization possible |
-| Last-copy check requires peer connectivity | Degrades to warning if peers unreachable |
+| Reachability requires parsing c4m files | Local operation; forward index caches permanently |
+| No automatic last-copy detection | Most content is single-node; shared archive c4m for cross-node preservation |
 | Auth-required paths add access control | Required for enterprise; uses existing path model |
 
 ## Tuning Parameters (Defaults TBD Through Testing)
