@@ -501,19 +501,83 @@ collective outcome.
 
 ## Implementation
 
-### Reachability Engine
+### Reference Graph
 
-c4d maintains continuous awareness of what's reachable:
+Content-addressed storage has three structural properties that make
+reference counting uniquely clean:
 
-1. The establishment registry is the root set
-2. Each established c4m's referenced C4 IDs are tracked
-3. Managed directory snapshots within retention windows are tracked
-4. TTL-bearing paths are tracked with expiration times
-5. Purgatory is the complement: stored blobs not in any of the above
+1. **No reference cycles.** A c4m's ID is computed from its content.
+   A c4m cannot contain its own ID. Cycles are structurally impossible.
 
-This is a local computation — no distributed coordination needed.
-Incremental updates on each Put/Rm/establish/un-establish operation,
-with periodic full recomputation for consistency.
+2. **Forward references are immutable.** Given a c4m ID, the set of
+   blob IDs it references is a pure function of its content. Parse
+   once, cache forever, never invalidate.
+
+3. **Root set is explicitly managed.** Namespace PUT/DELETE are the
+   only operations that change what's reachable. No implicit roots.
+
+These properties mean the retention engine is a reference graph with
+event-driven updates, not a periodic garbage collector.
+
+#### Forward Index (c4m ID → referenced blob IDs)
+
+When c4d first encounters a c4m ID (via namespace PUT or blob
+ingestion), it parses the c4m and records the set of blob IDs it
+references. This forward mapping is permanent and append-only —
+a c4m's content never changes, so its forward references never
+change. The index is a persistent cache, never invalidated.
+
+```
+forward[c4m_A] = {blob_1, blob_2, blob_3}
+forward[c4m_B] = {blob_2, blob_4}
+```
+
+Parsing includes recursive tracing: if a c4m entry references
+another c4m, follow the chain (up to a bounded depth). Data blocks
+containing ID lists (sequences) are also traced.
+
+#### Backward Index (blob ID → referencing c4m IDs)
+
+The backward index is the inverse: for each blob, which c4m IDs
+reference it. Maintained from the forward index + namespace changes.
+
+```
+backward[blob_1] = {c4m_A}
+backward[blob_2] = {c4m_A, c4m_B}
+backward[blob_3] = {c4m_A}
+backward[blob_4] = {c4m_B}
+```
+
+This is a reference **set**, not a reference count. Storing the
+specific c4m IDs (not just a count) costs negligible extra storage
+and provides:
+
+- **Observability:** "What keeps this blob alive?" is a direct lookup.
+- **Impact analysis:** "How much would un-establishing this c4m free?"
+  is answerable without a full scan.
+- **Self-healing:** If a c4m ID in a backward set is no longer in the
+  namespace, the stale reference is detectable and correctable.
+
+#### Event-Driven Updates
+
+Purgatory transitions happen at the exact moment of namespace change,
+not on a polling interval:
+
+**Namespace PUT (register c4m):**
+1. Parse c4m → get forward references (or read from forward index cache)
+2. For each referenced blob, add this c4m ID to the blob's backward set
+3. Any blob that was in purgatory (empty backward set) is resurrected
+
+**Namespace DELETE (unregister c4m):**
+1. Look up forward references for this c4m ID
+2. For each referenced blob, remove this c4m ID from the blob's backward set
+3. Any blob whose backward set becomes empty enters purgatory (timestamp recorded)
+
+**Blob ingestion (store.Put):**
+1. If the blob is itself a valid c4m, compute and cache its forward index
+2. Backward index is not affected until a namespace entry points to it
+
+These operations are O(entries per c4m), not O(blobs in store).
 
 ### Store Interface
 
@@ -532,20 +596,11 @@ type Store interface {
 // FileStore adds Walk for iteration (not on the interface —
 // iteration is storage-backend-specific).
 func (s *FileStore) Walk(fn func(c4.ID) error) error
-
-// Reachability engine computes stats against a referenced set.
-type Stats struct {
-    ReferencedCount   int64
-    ReferencedBytes   int64
-    UnreferencedCount int64
-    UnreferencedBytes int64
-}
 ```
 
 ### TTL-Bearing Path Registration
 
-Paths with TTLs are registered in the establishment registry with
-an expiration time:
+Namespace entries can carry a TTL:
 
 ```go
 type Registration struct {
@@ -556,34 +611,69 @@ type Registration struct {
 }
 ```
 
-When `ExpiresAt` is reached, the path is automatically un-established.
+When `ExpiresAt` is reached, the path is automatically un-established
+— triggering the same namespace DELETE path as explicit removal.
+Forward/backward index updates propagate normally.
 
 ### Purgatory Management
 
-Purgatory is not a separate store. It's a metadata state on blobs in
-the existing store:
+Purgatory is derived from the reference graph, not stored as per-blob
+metadata. A blob is in purgatory when its backward index is empty
+(no c4m in the namespace references it) and it is still physically
+present in the store.
 
-```go
-type BlobState struct {
-    StoredAt      time.Time
-    State         string    // "active", "purgatory"
-    PurgatoryAt   *time.Time
-    TombstonedAt  *time.Time
-}
-```
+#### Purgatory List
+
+An explicit, ordered list of (blob ID, entered-purgatory timestamp)
+pairs. Maintained by namespace DELETE events: when a blob's backward
+set becomes empty, it's appended to the purgatory list. When a blob
+is resurrected (backward set becomes non-empty), it's removed.
+
+The list is ordered by entry timestamp — oldest entries are reclaimed
+first. The reclamation goroutine walks the list from the front.
+
+#### Pressure Curve
 
 c4d manages purgatory reclamation via a tunable pressure curve.
-The input is the ratio of total storage (active + purgatory)
-to the configured storage limit. The output is how aggressively
-purgatory blobs are reclaimed — from "keep everything" when well
-under the limit, to "reclaim immediately" when at the limit.
+The input is the storage utilization ratio:
 
-The curve is configurable but ships with reasonable defaults. The
-exact shape will be refined through testing and early user feedback.
-If referenced content alone exceeds the limit, purgatory is
-fully disabled and c4d warns the user.
+```
+ratio = (active_bytes + purgatory_bytes) / store_limit
+```
 
-These thresholds are configurable.
+The output is a reclamation aggressiveness level:
+
+```
+ratio < 0.70  →  keep all purgatory (no reclamation)
+0.70 ≤ ratio < 0.90  →  linear ramp (reclaim oldest purgatory)
+ratio ≥ 0.90  →  full reclaim (aggressive, FIFO drain)
+```
+
+The thresholds and curve shape are configurable. The reclamation
+goroutine wakes on namespace change events and on a slow timer
+(e.g., every 60 seconds) for pressure-driven reclamation.
+
+If referenced content alone exceeds the limit, purgatory is fully
+disabled and c4d warns the user.
+
+#### Consistency Audit (Full Scan)
+
+The full-scan reachability computation (`Compute` + `Walk`) becomes
+a startup and periodic consistency check, not the primary retention
+mechanism:
+
+1. **On startup:** Walk all namespace entries, rebuild forward index
+   cache for any c4m IDs not already cached. Rebuild backward index.
+   Populate purgatory list. No reclamation until scan completes.
+
+2. **Periodic (e.g., hourly):** Re-walk namespace and store. Compare
+   derived backward index against maintained backward index. Log and
+   fix any discrepancies. This catches bugs and crash recovery edge
+   cases — the event-driven path is the fast path, the full scan is
+   the correctness backstop.
+
+The full scan is O(blobs in store) and runs at low priority. It does
+not block normal operations.
 
 ### HTTP API Changes
 
