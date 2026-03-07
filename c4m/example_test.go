@@ -86,7 +86,7 @@ func ExampleMarshal() {
 
 	fmt.Print(string(data))
 	// Output:
-	// -rw-r--r-- 2025-01-01T00:00:00Z 100 test.txt
+	// -rw-r--r-- 2025-01-01T00:00:00Z 100 test.txt -
 }
 
 func ExampleUnmarshal() {
@@ -117,7 +117,7 @@ func ExampleFormat() {
 
 	fmt.Print(string(formatted))
 	// Output:
-	// -rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt
+	// -rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt -
 }
 
 func ExampleValidator() {

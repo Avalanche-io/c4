@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 // FileMetadata represents generic file metadata that implements os.FileInfo
@@ -165,21 +166,18 @@ func CalculateDirectorySize(entries []*Entry) int64 {
 	return total
 }
 
-// GetMostRecentModtime finds the most recent modification time among entries
-// Returns current time if no valid timestamps found
+// GetMostRecentModtime finds the most recent modification time among entries.
+// Returns NullTimestamp if no valid timestamps found.
 func GetMostRecentModtime(entries []*Entry) time.Time {
-	var mostRecent time.Time
+	mostRecent := c4m.NullTimestamp()
 
 	for _, e := range entries {
-		// Skip null timestamps (epoch)
-		if e.Timestamp.Unix() > 0 && e.Timestamp.After(mostRecent) {
+		if e.Timestamp.Equal(c4m.NullTimestamp()) {
+			continue
+		}
+		if e.Timestamp.After(mostRecent) {
 			mostRecent = e.Timestamp
 		}
-	}
-
-	// If no valid timestamps found, return current time
-	if mostRecent.Unix() == 0 {
-		return time.Now().UTC()
 	}
 
 	return mostRecent
@@ -187,19 +185,27 @@ func GetMostRecentModtime(entries []*Entry) time.Time {
 
 // PropagateMetadata resolves null values in entries by propagating from children.
 // Iterates in reverse so deeper directories are resolved before their parents.
+// Empty directories retain their null values — nothing to propagate from.
 func PropagateMetadata(entries []*Entry) {
 	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
 
-		if entry.IsDir() && entry.HasNullValues() {
-			children := getDirectoryChildren(entries, entry)
+		if !entry.IsDir() || !entry.HasNullValues() {
+			continue
+		}
+		children := getDirectoryChildren(entries, entry)
+		if len(children) == 0 {
+			continue
+		}
 
-			if entry.Size < 0 {
-				entry.Size = CalculateDirectorySize(children)
-			}
+		if entry.Size < 0 {
+			entry.Size = CalculateDirectorySize(children)
+		}
 
-			if entry.Timestamp.Unix() == 0 {
-				entry.Timestamp = GetMostRecentModtime(children)
+		if entry.Timestamp.Equal(c4m.NullTimestamp()) {
+			t := GetMostRecentModtime(children)
+			if !t.Equal(c4m.NullTimestamp()) {
+				entry.Timestamp = t
 			}
 		}
 	}

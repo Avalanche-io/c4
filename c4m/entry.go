@@ -20,6 +20,10 @@ type Entry struct {
 	C4ID      c4.ID       // Content identifier
 	Depth     int         // Indentation level
 
+	// Hard link marker: entries sharing the same C4 ID and marker are write-bound.
+	// 0 = not a hard link, -1 = ungrouped hard link (->), >0 = group number (->N)
+	HardLink int
+
 	// For sequences
 	IsSequence  bool
 	Pattern     string // Original sequence pattern
@@ -82,15 +86,23 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	
 	// Build the line
 	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}
-	
-	// Add symlink target if present
+
+	// Add symlink target or hard link marker
 	if e.Target != "" {
 		parts = append(parts, "->", formatTarget(e.Target))
+	} else if e.HardLink != 0 {
+		if e.HardLink < 0 {
+			parts = append(parts, "->")
+		} else {
+			parts = append(parts, fmt.Sprintf("->%d", e.HardLink))
+		}
 	}
 
-	// Add C4 ID if present
+	// C4 ID or "-" is always the last field
 	if !e.C4ID.IsNil() {
 		parts = append(parts, e.C4ID.String())
+	} else {
+		parts = append(parts, "-")
 	}
 
 	return strings.Join(parts, " ")
@@ -126,10 +138,19 @@ func (e *Entry) Canonical() string {
 
 	if e.Target != "" {
 		parts = append(parts, "->", formatTarget(e.Target))
+	} else if e.HardLink != 0 {
+		if e.HardLink < 0 {
+			parts = append(parts, "->")
+		} else {
+			parts = append(parts, fmt.Sprintf("->%d", e.HardLink))
+		}
 	}
 
+	// C4 ID or "-" is always the last field
 	if !e.C4ID.IsNil() {
 		parts = append(parts, e.C4ID.String())
+	} else {
+		parts = append(parts, "-")
 	}
 
 	return strings.Join(parts, " ")

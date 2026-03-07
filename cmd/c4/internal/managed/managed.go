@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -169,8 +170,9 @@ func (d *Dir) GetSnapshot(n int) (*c4m.Manifest, error) {
 
 // HistoryEntry represents one snapshot in the history chain.
 type HistoryEntry struct {
-	Index int
-	ID    string
+	Index     int
+	ID        string
+	Timestamp time.Time
 }
 
 // History returns the full snapshot history, newest first.
@@ -182,6 +184,10 @@ func (d *Dir) History() ([]HistoryEntry, error) {
 	entries := make([]HistoryEntry, len(history))
 	for i, id := range history {
 		entries[i] = HistoryEntry{Index: i, ID: id}
+		snapPath := filepath.Join(d.meta, "snapshots", id)
+		if info, serr := os.Stat(snapPath); serr == nil {
+			entries[i].Timestamp = info.ModTime().UTC()
+		}
 	}
 	return entries, nil
 }

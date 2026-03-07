@@ -177,7 +177,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Timestamp = timestamp
 
 	// Parse remaining fields using character-level parsing
-	size, name, rawName, target, id, nameQuoted, err := d.parseEntryFields(remainingLine)
+	size, name, rawName, target, id, nameQuoted, hardLink, err := d.parseEntryFields(remainingLine)
 	if err != nil {
 		return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
 	}
@@ -186,6 +186,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Name = name
 	entry.Target = target
 	entry.C4ID = id
+	entry.HardLink = hardLink
 
 	// Check for sequence notation: only unquoted names, and check the RAW
 	// name for unescaped brackets forming a valid range pattern.
@@ -205,7 +206,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 //
 // The expected format is: SIZE NAME [-> TARGET] [C4ID]
 // Where NAME and TARGET may be quoted with backslash escapes.
-func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, target string, id c4.ID, nameQuoted bool, err error) {
+func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, target string, id c4.ID, nameQuoted bool, hardLink int, err error) {
 	pos := 0
 	n := len(line)
 
@@ -264,25 +265,45 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 		pos++
 	}
 
-	// 3. Check for symlink target ("->")
+	// 3. Check for "->" (symlink target or hard link marker)
 	if pos+1 < n && line[pos] == '-' && line[pos+1] == '>' {
 		pos += 2
-		// Skip whitespace after ->
-		for pos < n && line[pos] == ' ' {
-			pos++
-		}
-		if pos >= n {
-			err = fmt.Errorf("missing symlink target after ->")
-			return
-		}
-		target, pos, err = d.parseTarget(line, pos)
-		if err != nil {
-			err = fmt.Errorf("parsing symlink target: %w", err)
-			return
-		}
-		// Skip whitespace
-		for pos < n && line[pos] == ' ' {
-			pos++
+
+		// Check for hard link group number: ->N (no space)
+		if pos < n && line[pos] >= '1' && line[pos] <= '9' {
+			groupStart := pos
+			for pos < n && line[pos] >= '0' && line[pos] <= '9' {
+				pos++
+			}
+			groupNum, _ := strconv.Atoi(line[groupStart:pos])
+			hardLink = groupNum
+			for pos < n && line[pos] == ' ' {
+				pos++
+			}
+		} else {
+			// Skip whitespace after ->
+			for pos < n && line[pos] == ' ' {
+				pos++
+			}
+
+			// Determine if this is a hard link or symlink:
+			// Hard link: next token is C4 ID (c4...) or null ("-" at end)
+			// Symlink: next token is a path
+			remaining := strings.TrimSpace(line[pos:])
+			if remaining == "-" || strings.HasPrefix(remaining, "c4") {
+				// Hard link (ungrouped)
+				hardLink = -1
+			} else if pos < n {
+				// Symlink target
+				target, pos, err = d.parseTarget(line, pos)
+				if err != nil {
+					err = fmt.Errorf("parsing symlink target: %w", err)
+					return
+				}
+				for pos < n && line[pos] == ' ' {
+					pos++
+				}
+			}
 		}
 	}
 
@@ -301,7 +322,7 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 		}
 	}
 
-	return
+	return size, name, rawName, target, id, nameQuoted, hardLink, err
 }
 
 // parseNameOrTarget parses a quoted or unquoted name/target starting at pos.

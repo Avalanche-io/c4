@@ -130,6 +130,7 @@ func mkdirStrict(manifest *c4m.Manifest, parts []string) (bool, error) {
 }
 
 // mkdirParents creates all missing directories in the path (-p mode).
+// Entries are inserted after their parent to maintain tree structure.
 // Returns true if any directory was created.
 func mkdirParents(manifest *c4m.Manifest, parts []string) bool {
 	created := false
@@ -138,16 +139,46 @@ func mkdirParents(manifest *c4m.Manifest, parts []string) bool {
 		if dirExistsInManifest(manifest, dirName, i) {
 			continue
 		}
-		manifest.AddEntry(&c4m.Entry{
+		entry := &c4m.Entry{
 			Name:      dirName,
 			Depth:     i,
 			Mode:      os.ModeDir | 0755,
 			Timestamp: c4m.NullTimestamp(),
 			Size:      -1,
-		})
+		}
+		// Insert after parent and its subtree to maintain tree structure
+		insertIdx := findInsertionPoint(manifest, parts[:i], i)
+		entries := manifest.Entries
+		manifest.Entries = make([]*c4m.Entry, 0, len(entries)+1)
+		manifest.Entries = append(manifest.Entries, entries[:insertIdx]...)
+		manifest.Entries = append(manifest.Entries, entry)
+		manifest.Entries = append(manifest.Entries, entries[insertIdx:]...)
 		created = true
 	}
 	return created
+}
+
+// findInsertionPoint finds where to insert a new entry at the given depth
+// by locating the parent directory and skipping past its subtree.
+func findInsertionPoint(manifest *c4m.Manifest, parentParts []string, depth int) int {
+	if depth == 0 {
+		// Insert at end for root-level entries
+		return len(manifest.Entries)
+	}
+	// Find the parent entry
+	parentName := parentParts[len(parentParts)-1] + "/"
+	parentDepth := depth - 1
+	for i, e := range manifest.Entries {
+		if e.Name == parentName && e.Depth == parentDepth && e.IsDir() {
+			// Skip past the parent's subtree
+			j := i + 1
+			for j < len(manifest.Entries) && manifest.Entries[j].Depth > parentDepth {
+				j++
+			}
+			return j
+		}
+	}
+	return len(manifest.Entries)
 }
 
 // dirExistsInManifest checks if a directory entry exists at the given depth.

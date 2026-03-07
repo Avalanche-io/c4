@@ -238,7 +238,12 @@ func lnHard(args []string) {
 		ensureParentDirs(manifest, parentPath)
 	}
 
-	// Create new entry with same content identity
+	// Mark source as hard-linked if not already
+	if srcEntry.HardLink == 0 {
+		srcEntry.HardLink = -1 // ungrouped hard link
+	}
+
+	// Create new entry with same content identity and hard link marker
 	newEntry := &c4m.Entry{
 		Name:      name,
 		Depth:     depth,
@@ -246,6 +251,7 @@ func lnHard(args []string) {
 		Timestamp: srcEntry.Timestamp,
 		Size:      srcEntry.Size,
 		C4ID:      srcEntry.C4ID,
+		HardLink:  srcEntry.HardLink,
 	}
 
 	manifest.AddEntry(newEntry)

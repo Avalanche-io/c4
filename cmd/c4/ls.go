@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/container"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
@@ -148,15 +149,32 @@ func lsManaged(target string, idOnly, pretty bool) {
 		manifest, err = d.Current()
 
 	case target == ":~":
-		// List snapshot history
+		// List snapshot history as c4m directory entries
 		entries, herr := d.History()
 		if herr != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", herr)
 			os.Exit(1)
 		}
+		hist := c4m.NewManifest()
 		for _, e := range entries {
-			fmt.Printf("%d/ %s\n", e.Index, e.ID)
+			id, _ := c4.Parse(e.ID)
+			entry := &c4m.Entry{
+				Name:      fmt.Sprintf("%d/", e.Index),
+				Mode:      os.ModeDir | 0755,
+				Timestamp: e.Timestamp,
+				Size:      -1,
+				C4ID:      id,
+			}
+			if e.Timestamp.IsZero() {
+				entry.Timestamp = c4m.NullTimestamp()
+			}
+			hist.AddEntry(entry)
 		}
+		enc := c4m.NewEncoder(os.Stdout)
+		if pretty {
+			enc.SetPretty(true)
+		}
+		enc.Encode(hist)
 		return
 
 	case target == ":~.ignore":

@@ -149,23 +149,28 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 	// Build base line
 	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}
 
-	// Add symlink target if present
+	// Add symlink target or hard link marker
 	if entry.Target != "" {
 		parts = append(parts, "->", formatTarget(entry.Target))
+	} else if entry.HardLink != 0 {
+		if entry.HardLink < 0 {
+			parts = append(parts, "->")
+		} else {
+			parts = append(parts, fmt.Sprintf("->%d", entry.HardLink))
+		}
 	}
 
 	baseLine := strings.Join(parts, " ")
 
-	// Add C4 ID with column alignment if present
+	// C4 ID or "-" is always the last field
+	padding := c4IDColumn - len(baseLine)
+	if padding < 10 {
+		padding = 10
+	}
 	if !entry.C4ID.IsNil() {
-		padding := c4IDColumn - len(baseLine)
-		if padding < 10 {
-			padding = 10 // Minimum 10 spaces for readability
-		}
 		return baseLine + strings.Repeat(" ", padding) + entry.C4ID.String()
 	}
-
-	return baseLine
+	return baseLine + strings.Repeat(" ", padding) + "-"
 }
 
 // ----------------------------------------------------------------------------

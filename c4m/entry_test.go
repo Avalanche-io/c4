@@ -143,7 +143,7 @@ func TestEntryFormat(t *testing.T) {
 			},
 			indentWidth:   2,
 			displayFormat: false,
-			want:          "drwxr-xr-x 2024-01-15T10:30:00Z 4096 mydir/",
+			want:          "drwxr-xr-x 2024-01-15T10:30:00Z 4096 mydir/ -",
 		},
 		{
 			name: "symlink",
@@ -157,7 +157,7 @@ func TestEntryFormat(t *testing.T) {
 			},
 			indentWidth:   2,
 			displayFormat: false,
-			want:          "lrwxrwxrwx 2024-01-15T10:30:00Z 0 link -> target.txt",
+			want:          "lrwxrwxrwx 2024-01-15T10:30:00Z 0 link -> target.txt -",
 		},
 		{
 			name: "file with spaces needs quotes",
@@ -170,7 +170,7 @@ func TestEntryFormat(t *testing.T) {
 			},
 			indentWidth:   2,
 			displayFormat: false,
-			want:          `-rw-r--r-- 2024-01-15T10:30:00Z 100 "my file.txt"`,
+			want:          `-rw-r--r-- 2024-01-15T10:30:00Z 100 "my file.txt" -`,
 		},
 		{
 			name: "display format with commas",
@@ -183,7 +183,7 @@ func TestEntryFormat(t *testing.T) {
 			},
 			indentWidth:   2,
 			displayFormat: true,
-			want:          "-rw-r--r-- 2024-01-15T10:30:00Z 1,234,567 big.txt",
+			want:          "-rw-r--r-- 2024-01-15T10:30:00Z 1,234,567 big.txt -",
 		},
 	}
 
@@ -239,7 +239,7 @@ func TestEntryCanonical(t *testing.T) {
 				Name:      "link",
 				Target:    "target.txt",
 			},
-			want: "lrwxrwxrwx 2024-01-15T10:30:00Z 0 link -> target.txt",
+			want: "lrwxrwxrwx 2024-01-15T10:30:00Z 0 link -> target.txt -",
 		},
 		{
 			name: "file with spaces (quoted)",
@@ -249,7 +249,7 @@ func TestEntryCanonical(t *testing.T) {
 				Size:      100,
 				Name:      "my file.txt",
 			},
-			want: `-rw-r--r-- 2024-01-15T10:30:00Z 100 "my file.txt"`,
+			want: `-rw-r--r-- 2024-01-15T10:30:00Z 100 "my file.txt" -`,
 		},
 		{
 			name: "null timestamp renders as dash",
