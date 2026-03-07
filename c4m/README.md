@@ -140,7 +140,7 @@ The `c4` CLI provides built-in filesystem operations using the same c4m format:
 ```bash
 c4 cp ./src/ project.c4m:src/    # Copy into a c4m file
 c4 diff dir1/ dir2/              # Compare directories
-c4 patch : desired.c4m           # Converge filesystem to target state
+c4 patch desired.c4m :           # Converge filesystem to target state
 ```
 
 See the [CLI Reference](../docs/cli-reference.md) for the full command vocabulary.

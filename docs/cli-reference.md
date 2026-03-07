@@ -14,7 +14,7 @@ c4 mk <name>.c4m:                # Establish a c4m file or location for writing
 c4 mk <name>: <host:port>        # Establish remote location
 c4 rm <location>:<path>          # Remove entries or endpoints
 c4 diff <source> <target>        # Compare two sources (output is a c4m patch)
-c4 patch <target> <input>        # Apply a c4m patch or converge to target state
+c4 patch <source> <target>       # Apply a c4m patch or converge to target state
 c4 undo :                        # Revert last operation on managed directory
 c4 redo :                        # Re-apply undone operation
 c4 unrm :                        # List or recover removed items
@@ -63,8 +63,8 @@ c4 diff :~release-v1 :           # changes since tagged state
 Apply changes:
 
 ```bash
-c4 patch : changes.c4m           # apply delta (tracked, undoable)
-c4 patch : desired.c4m           # converge to target state
+c4 patch changes.c4m :           # apply delta (tracked, undoable)
+c4 patch desired.c4m :           # converge to target state
 ```
 
 ## c4m File Endpoints

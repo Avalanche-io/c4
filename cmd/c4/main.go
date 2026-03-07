@@ -27,6 +27,7 @@ var (
 	prettyFlag   bool
 	helpFlag     bool
 	sequenceFlag bool
+	progressFlag bool
 )
 
 func init() {
@@ -36,6 +37,7 @@ func init() {
 	flag.BoolVarP(&idFlag, "id", "i", false, "Output bare C4 ID(s) instead of c4m")
 	flag.BoolVarP(&prettyFlag, "pretty", "p", false, "Pretty-print c4m with aligned columns")
 	flag.BoolVarP(&sequenceFlag, "sequence", "s", false, "Detect and fold file sequences into range notation")
+	flag.BoolVarP(&progressFlag, "progress", "P", false, "Show progressive scan with stage progress bars")
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 }
 
@@ -54,7 +56,7 @@ Usage:
   c4 mk <target>: [address]         # Establish for writing (c4m, location, or :)
   c4 rm <target>:                  # Remove establishment or entries
   c4 mkdir [-p] <target>           # Create directory in c4m file
-  c4 patch <target> <source>       # Apply c4m patch or target state
+  c4 patch <source> <target>       # Apply c4m patch or target state
   c4 undo :                        # Revert last operation on managed dir
   c4 redo :                        # Re-apply undone operation
   c4 unrm :                        # List/recover removed items
@@ -181,6 +183,10 @@ func processPath(path string) error {
 }
 
 func processDirectory(dirPath string) error {
+	if progressFlag {
+		return processDirectoryProgressive(dirPath)
+	}
+
 	opts := []scan.GeneratorOption{scan.WithC4IDs(true)}
 	if sequenceFlag {
 		opts = append(opts, scan.WithSequenceDetection(true))
@@ -198,6 +204,13 @@ func processDirectory(dirPath string) error {
 
 	outputManifest(manifest)
 	return nil
+}
+
+func processDirectoryProgressive(dirPath string) error {
+	cli := scan.NewProgressiveCLI(dirPath,
+		scan.WithProgress(true),
+	)
+	return cli.Run()
 }
 
 func processFile(path string, info os.FileInfo) error {

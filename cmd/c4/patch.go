@@ -3,49 +3,57 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
 
 // runPatch implements "c4 patch" — apply a c4m patch or target state.
 //
-//	c4 patch project.c4m: changes.c4m
-//	c4 patch : changes.c4m           # apply to managed directory (tracked, undoable)
-//	c4 patch : desired.c4m           # converge to target state
-//	c4 patch : .                     # re-sync managed state to match disk
+//	c4 patch changes.c4m project.c4m:
+//	c4 patch changes.c4m :           # apply to managed directory (tracked, undoable)
+//	c4 patch desired.c4m :           # converge to target state
+//	c4 patch . :                     # re-sync managed state to match disk
+//	c4 patch desired.c4m ./output/   # converge local path to desired state
 func runPatch(args []string) {
 	if len(args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 patch <target> <source>\n")
-		fmt.Fprintf(os.Stderr, "  c4 patch project.c4m: changes.c4m  # patch a c4m file\n")
-		fmt.Fprintf(os.Stderr, "  c4 patch : changes.c4m             # apply changes (tracked)\n")
-		fmt.Fprintf(os.Stderr, "  c4 patch : .                       # re-sync from disk\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 patch <source> <target>\n")
+		fmt.Fprintf(os.Stderr, "  c4 patch changes.c4m project.c4m:  # patch a c4m file\n")
+		fmt.Fprintf(os.Stderr, "  c4 patch changes.c4m :             # apply changes (tracked)\n")
+		fmt.Fprintf(os.Stderr, "  c4 patch . :                       # re-sync from disk\n")
+		fmt.Fprintf(os.Stderr, "  c4 patch desired.c4m ./output/     # converge local path\n")
 		os.Exit(1)
 	}
 
-	target := args[0]
-	source := args[1]
+	source := args[0]
+	target := args[1]
 
 	if target == ":" {
 		patchManaged(source)
 		return
 	}
 
-	// Non-managed targets: apply patch to a c4m file
 	spec, err := pathspec.Parse(target, establish.IsLocationEstablished)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if spec.Type != pathspec.Capsule {
-		fmt.Fprintf(os.Stderr, "Error: patch target must be : or a c4m file (with colon)\n")
+
+	switch spec.Type {
+	case pathspec.Capsule:
+		patchC4mFile(spec.Source, source)
+	case pathspec.Local:
+		patchLocalPath(spec.Source, source)
+	default:
+		fmt.Fprintf(os.Stderr, "Error: patch target must be a local path, :, or a c4m file (with colon)\n")
 		os.Exit(1)
 	}
-
-	patchC4mFile(spec.Source, source)
 }
 
 // patchC4mFile applies a source to a c4m file.
@@ -160,4 +168,234 @@ func patchManaged(source string) {
 	_ = result
 
 	fmt.Printf("patched : (tracked, undoable)\n")
+}
+
+// patchLocalPath converges a local directory to match a desired c4m state.
+// Uses C4 IDs to resolve operations: content already on disk is moved, not copied.
+func patchLocalPath(targetDir, source string) {
+	// Load desired state
+	desired, err := loadSourceManifest(source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Ensure target directory exists
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", targetDir, err)
+		os.Exit(1)
+	}
+
+	// Scan current state of target directory
+	gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+	currentScan, err := gen.GenerateFromPath(targetDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error scanning %s: %v\n", targetDir, err)
+		os.Exit(1)
+	}
+	current := currentScan
+
+	// Build C4 ID → disk path index from current state
+	idIndex := buildIDIndex(current, targetDir)
+
+	// Compute diff: what needs to change
+	diff, err := c4m.Diff(c4m.ManifestSource{Manifest: current}, c4m.ManifestSource{Manifest: desired})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error computing diff: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(diff.Added.Entries) == 0 && len(diff.Removed.Entries) == 0 && len(diff.Modified.Entries) == 0 {
+		fmt.Fprintf(os.Stderr, "no changes\n")
+		return
+	}
+
+	var moved, created, removed, skipped int
+
+	// Phase 1: Create directories from desired state
+	desiredPaths := manifestPaths(desired)
+	for _, dp := range desiredPaths {
+		if !strings.HasSuffix(dp.path, "/") {
+			continue
+		}
+		dirPath := filepath.Join(targetDir, dp.path)
+		if err := os.MkdirAll(dirPath, dp.entry.Mode.Perm()|0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating directory %s: %v\n", dirPath, err)
+			os.Exit(1)
+		}
+	}
+
+	// Phase 2: Place files (move from current location or fail)
+	for _, dp := range desiredPaths {
+		if dp.entry.IsDir() || dp.entry.IsSymlink() {
+			continue
+		}
+
+		destPath := filepath.Join(targetDir, dp.path)
+
+		// Check if file already exists at correct path with correct ID
+		if info, err := os.Stat(destPath); err == nil && info.Mode().IsRegular() {
+			existingID := identifyFile(destPath)
+			if !existingID.IsNil() && existingID == dp.entry.C4ID {
+				skipped++
+				continue
+			}
+		}
+
+		// Look for this C4 ID elsewhere on disk
+		sourcePaths, ok := idIndex[dp.entry.C4ID.String()]
+		if !ok || len(sourcePaths) == 0 {
+			fmt.Fprintf(os.Stderr, "Error: content %s not available locally for %s\n",
+				dp.entry.C4ID.String()[:16]+"...", dp.path)
+			os.Exit(1)
+		}
+
+		// Move from the first available source
+		srcPath := sourcePaths[0]
+
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := os.Rename(srcPath, destPath); err != nil {
+			// Cross-device: fall back to copy
+			if copyErr := copyFile(srcPath, destPath); copyErr != nil {
+				fmt.Fprintf(os.Stderr, "Error moving %s → %s: %v\n", srcPath, destPath, err)
+				os.Exit(1)
+			}
+			os.Remove(srcPath)
+		}
+		moved++
+
+		// Remove used source from index (don't reuse)
+		idIndex[dp.entry.C4ID.String()] = sourcePaths[1:]
+	}
+
+	// Phase 3: Create symlinks
+	for _, dp := range desiredPaths {
+		if !dp.entry.IsSymlink() {
+			continue
+		}
+		linkPath := filepath.Join(targetDir, dp.path)
+		os.Remove(linkPath) // remove existing if any
+		if err := os.Symlink(dp.entry.Target, linkPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating symlink %s: %v\n", linkPath, err)
+			os.Exit(1)
+		}
+		created++
+	}
+
+	// Phase 4: Remove files not in desired state
+	currentPaths := manifestPaths(current)
+	desiredSet := make(map[string]bool)
+	for _, dp := range desiredPaths {
+		desiredSet[dp.path] = true
+	}
+	// Remove files (not dirs) in reverse order
+	for i := len(currentPaths) - 1; i >= 0; i-- {
+		cp := currentPaths[i]
+		if desiredSet[cp.path] || cp.entry.IsDir() {
+			continue
+		}
+		fullPath := filepath.Join(targetDir, cp.path)
+		if _, err := os.Lstat(fullPath); err == nil {
+			os.Remove(fullPath)
+			removed++
+		}
+	}
+
+	// Phase 5: Remove empty directories not in desired state
+	for i := len(currentPaths) - 1; i >= 0; i-- {
+		cp := currentPaths[i]
+		if !cp.entry.IsDir() || desiredSet[cp.path] {
+			continue
+		}
+		fullPath := filepath.Join(targetDir, cp.path)
+		os.Remove(fullPath) // only succeeds if empty
+	}
+
+	fmt.Fprintf(os.Stderr, "patched %s (%d moved, %d created, %d removed, %d unchanged)\n",
+		targetDir, moved, created, removed, skipped)
+}
+
+// loadSourceManifest loads a manifest from a c4m file or stdin.
+func loadSourceManifest(source string) (*c4m.Manifest, error) {
+	if source == "-" {
+		return c4m.NewDecoder(os.Stdin).Decode()
+	}
+	if strings.HasSuffix(source, ".c4m") {
+		return loadManifest(source)
+	}
+	return nil, fmt.Errorf("source must be a .c4m file or -")
+}
+
+type pathEntry struct {
+	path  string
+	entry *c4m.Entry
+}
+
+// manifestPaths extracts full relative paths from a manifest's depth/name structure.
+func manifestPaths(m *c4m.Manifest) []pathEntry {
+	var result []pathEntry
+	var dirStack []string
+
+	for _, entry := range m.Entries {
+		if entry.Depth < len(dirStack) {
+			dirStack = dirStack[:entry.Depth]
+		}
+
+		var fullPath string
+		if len(dirStack) > 0 {
+			fullPath = strings.Join(dirStack, "") + entry.Name
+		} else {
+			fullPath = entry.Name
+		}
+
+		result = append(result, pathEntry{path: fullPath, entry: entry})
+
+		if entry.IsDir() {
+			for len(dirStack) <= entry.Depth {
+				dirStack = append(dirStack, "")
+			}
+			dirStack[entry.Depth] = entry.Name
+		}
+	}
+	return result
+}
+
+// buildIDIndex maps C4 ID strings to disk paths in the current directory.
+func buildIDIndex(m *c4m.Manifest, rootDir string) map[string][]string {
+	index := make(map[string][]string)
+	paths := manifestPaths(m)
+	for _, pe := range paths {
+		if pe.entry.IsDir() || pe.entry.C4ID.IsNil() {
+			continue
+		}
+		idStr := pe.entry.C4ID.String()
+		index[idStr] = append(index[idStr], filepath.Join(rootDir, pe.path))
+	}
+	return index
+}
+
+func identifyFile(path string) c4.ID {
+	f, err := os.Open(path)
+	if err != nil {
+		return c4.ID{}
+	}
+	defer f.Close()
+	return c4.Identify(f)
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, info.Mode())
 }

@@ -131,9 +131,9 @@ func TestManagedUndoRedo(t *testing.T) {
 
 	// Add a file and re-sync
 	os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new\n"), 0644)
-	out, err := runC4(t, bin, dir, "patch", ":", ".")
+	out, err := runC4(t, bin, dir, "patch", ".", ":")
 	if err != nil {
-		t.Fatalf("c4 patch : . failed: %v\n%s", err, out)
+		t.Fatalf("c4 patch . : failed: %v\n%s", err, out)
 	}
 
 	// Verify new.txt is in managed state
@@ -181,11 +181,11 @@ func TestManagedUnrm(t *testing.T) {
 
 	// Add file and snapshot
 	os.WriteFile(filepath.Join(dir, "draft.txt"), []byte("draft\n"), 0644)
-	runC4(t, bin, dir, "patch", ":", ".")
+	runC4(t, bin, dir, "patch", ".", ":")
 
 	// Remove the file from disk and re-sync
 	os.Remove(filepath.Join(dir, "draft.txt"))
-	runC4(t, bin, dir, "patch", ":", ".")
+	runC4(t, bin, dir, "patch", ".", ":")
 
 	// c4 unrm : should list draft.txt as recoverable
 	out, err := runC4(t, bin, dir, "unrm", ":")
@@ -279,7 +279,7 @@ func TestManagedLnTag(t *testing.T) {
 
 	// Create a second snapshot by modifying a file and patching
 	os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new content\n"), 0644)
-	runC4(t, bin, dir, "patch", ":", ".")
+	runC4(t, bin, dir, "patch", ".", ":")
 
 	// Tag snapshot 1 (the initial state) as "baseline"
 	out, err := runC4(t, bin, dir, "ln", ":~1", ":~baseline")

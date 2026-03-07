@@ -355,8 +355,8 @@ func (ps *ProgressiveScanner) scanDirectory(dirPath string) {
 func (ps *ProgressiveScanner) completionMonitor() {
 	defer ps.wg.Done()
 	
-	// Wait a bit before starting to monitor to ensure initial work is queued
-	time.Sleep(100 * time.Millisecond) // Initial wait before monitoring
+	// Brief wait to ensure initial work is queued
+	time.Sleep(5 * time.Millisecond)
 	
 	ticker := time.NewTicker(50 * time.Millisecond) // More responsive
 	defer ticker.Stop()

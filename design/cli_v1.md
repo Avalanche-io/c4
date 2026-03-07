@@ -391,15 +391,15 @@ nested under them are additions or clobbers as normal.
 
 ### Target State Mode
 
-`c4 patch` auto-detects its input. If the input contains bare C4 ID
-page boundaries, it applies as a patch chain. If the input is plain c4m
-(entry lines only, no page boundaries), it treats the input as a desired
+`c4 patch` auto-detects its source. If the source contains bare C4 ID
+page boundaries, it applies as a patch chain. If the source is plain c4m
+(entry lines only, no page boundaries), it treats the source as a desired
 end-state — internally diffs against the target's current state and
 applies the delta.
 
 ```
-c4 patch : changes.c4m      # apply a delta (patch chain)
-c4 patch : desired.c4m      # converge to target state (plain c4m)
+c4 patch changes.c4m :      # apply a delta (patch chain)
+c4 patch desired.c4m :      # converge to target state (plain c4m)
 ```
 
 Same verb, same syntax, same undo semantics. The user doesn't need to
@@ -465,7 +465,7 @@ c4 ls :                    # read managed state (works immediately)
 c4 :                       # identify managed state (read-only)
 c4 mk :                   # establish for tracking
 c4 cp files/ :renders/     # tracked write
-c4 patch : changes.c4m     # tracked, snapshotted
+c4 patch changes.c4m :     # tracked, snapshotted
 c4 rm :                    # stop tracking, clean up history
 ```
 
@@ -488,7 +488,7 @@ The snapshot chain is a sequence of c4m states, each identified by its
 C4 ID. This gives filesystem undo for free:
 
 ```
-c4 patch : restructure.c4m      # auto-snapshots before applying
+c4 patch restructure.c4m :      # auto-snapshots before applying
 c4 undo :                        # reverts to prior snapshot
 c4 redo :                        # re-applies the undone change
 ```
@@ -627,7 +627,7 @@ text document:
 ```bash
 c4 . > current.c4m                            # snapshot
 # LLM edits current.c4m -> desired.c4m        # text editing
-c4 patch : desired.c4m                         # converge (tracked, undoable)
+c4 patch desired.c4m :                         # converge (tracked, undoable)
 ```
 
 The entire restructuring is reviewable text before anything touches
@@ -636,7 +636,7 @@ of twenty tool-call round trips.
 
 Empty files use the C4 ID of the empty string (same ID as an empty
 directory — both are the hash of zero bytes of content). An LLM can
-generate a project template as pure c4m text — `c4 patch : template.c4m`
+generate a project template as pure c4m text — `c4 patch template.c4m :`
 creates the whole structure in one operation, including empty
 placeholder files.
 
@@ -879,15 +879,18 @@ boundary C4 ID at the end is the identity of the second operand's state.
 Apply a c4m patch or target state to a target.
 
 ```
-c4 patch project.c4m: changes.c4m
-c4 patch studio:project/ friday_delta.c4m
-c4 patch : changes.c4m           # apply delta (tracked, undoable)
-c4 patch : desired.c4m           # converge to target state
-c4 patch : .                     # re-sync managed state to match disk
+c4 patch changes.c4m project.c4m:
+c4 patch friday_delta.c4m studio:project/
+c4 patch changes.c4m :           # apply delta (tracked, undoable)
+c4 patch desired.c4m :           # converge to target state
+c4 patch . :                     # re-sync managed state to match disk
+c4 patch desired.c4m ./output/   # converge local path to desired state
 ```
 
-Auto-detects mode: if the input contains bare C4 ID page boundaries,
-applies as a patch chain. If the input is plain c4m (entry lines only),
+Arguments follow the same source → target convention as `c4 cp`.
+
+Auto-detects mode: if the source contains bare C4 ID page boundaries,
+applies as a patch chain. If the source is plain c4m (entry lines only),
 treats it as a desired end-state and internally diffs against the
 target's current state.
 
