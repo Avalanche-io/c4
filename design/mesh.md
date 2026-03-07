@@ -34,8 +34,9 @@ or on location in Morocco.
 
 ### Discovery
 
-Discovery resolves identity to network address. Three mechanisms,
-same identity model:
+Discovery resolves identity to a route — not necessarily a direct
+address, but a path to reach someone. That path might be direct,
+or it might go through intermediaries.
 
 **LAN (zero-config):** Every c4d broadcasts `_c4d._tcp` via
 mDNS. Identity from the TLS cert in the service record. `c4 find`
@@ -48,19 +49,31 @@ c4 find
   desktop       (josh@home)        10.0.1.10:7433
 ```
 
-**Mesh (peer announcement):** When c4d starts, it announces
-itself to configured peers — "I'm Sarah, I'm currently at this
-address." Peers remember. When you send to Sarah, your node asks
-its peers until someone knows where she is. She moved to hotel
-WiFi? Her node re-announced. The mesh tracks her.
+**Mesh (peer routing):** When c4d starts, it announces itself to
+configured peers. Peers remember. When you send to Sarah, your
+node asks its peers "can you reach Sarah?" — not "what's her
+address?" The peer that can reach her becomes the route. Discovery
+and relay are the same operation: the node that knows where Sarah
+is can also forward content to her.
+
+This handles the hard cases naturally:
+- Sarah behind hotel NAT? She connected outbound to the home NAS.
+  The NAS can reach her. It's the route.
+- Sarah offline? The intermediary stores the c4m (and blobs by
+  policy) until she reconnects.
+- Sarah has a cloud VM? It's always reachable. Content lands
+  there. Her laptop syncs from it later.
+
+Every node is a potential proxy for any node it can reach.
+"Sending to sarah" doesn't mean delivering to a specific device.
+It means ensuring Sarah's cache network has the content. Which
+of her nodes receives it first depends on which is reachable.
+Her nodes sync among themselves.
 
 **Directory (Avalanche.io):** For strangers. c4d registers with
 the directory on startup. You look up sarah@example.com and get
-her current endpoint. This is the only mechanism that requires
-accounts.
-
-All three resolve identity to address. Once resolved, it's
-HTTPS + mTLS. The protocol doesn't care how you found the node.
+a route — possibly through the Avalanche.io relay if no direct
+path exists. This is the only mechanism that requires accounts.
 
 ### Description
 
@@ -169,23 +182,26 @@ setup. The mesh is three caches that know about each other.
 ### Sending to a person
 
 Sarah is traveling for business. Josh wants to send her project
-files. Sarah's laptop is on hotel WiFi in Tokyo. Her c4d
-announced itself to the home NAS (a shared mesh peer) when she
-connected.
+files. Sarah's laptop is on hotel WiFi in Tokyo — behind NAT,
+not directly reachable.
 
 ```
-# Josh's node resolves "sarah" through the mesh
+# Josh sends to "sarah" — not to an address
 c4 cp dailies.c4m: sarah:
-
-# Sarah's node got the c4m instantly (small).
-# Blobs materialize as she accesses them, or eagerly if
-# her node's policy says so.
 ```
+
+Josh's node asks its peers "can you reach Sarah?" The home NAS
+can — Sarah's laptop connected to it outbound. The NAS is the
+route. The c4m goes to the NAS, which forwards it to Sarah's
+laptop. Blobs materialize through the same path, or from any
+other source Sarah's node can reach.
+
+If Sarah's laptop is off entirely, the c4m (and blobs by policy)
+land on the NAS. When Sarah reconnects, her node syncs from the
+NAS. The content was "sent to sarah" — not to a device.
 
 If Sarah walks into the same room as Josh, mDNS finds her
-directly — no mesh resolution needed. If she's offline, the c4m
-queues on the shared peer (the NAS, a cloud node) and delivers
-when she reconnects. The transport adapts; the intent is the same.
+directly — content goes peer-to-peer with no intermediary.
 
 ### Studio on an isolated network
 
@@ -344,14 +360,24 @@ hierarchy IS the efficient sync protocol.
 A batch `POST /has` endpoint (send a list of C4 IDs, get back the
 missing set) collapses blob-level discovery to one round-trip.
 
-### The Relay Is Just a Node
+### Discovery Is Relay
 
-A relay is a c4d that accepts content on behalf of others. Bob
-runs his own on AWS with S3 storage. Alice pushes to Bob's relay.
-Avalanche.io's relay is the same thing — managed infrastructure.
+There is no separate relay concept. Discovery and relay are the
+same operation: the node that can answer "where is Sarah?" can
+also forward content to Sarah. The discovery path IS the delivery
+path.
 
-The protocol is uniform. Every relay speaks the c4d API. The only
-difference is who operates it.
+Every node in the mesh is a potential intermediary for any node
+it can reach. When you send to "sarah", your node finds a route
+— possibly direct, possibly through one or more intermediaries.
+Content flows along that route. No special relay software, no
+inbox model, no delivery queue. Just nodes forwarding to nodes
+they can reach.
+
+A c4d on AWS with S3 storage isn't a "relay." It's a node that
+Sarah controls, always reachable, that her other nodes sync with.
+Content addressed to Sarah lands there because it's reachable.
+Avalanche.io runs the same thing as managed infrastructure.
 
 ### OSS vs Paid: Self-Hostable Everything
 
@@ -382,16 +408,17 @@ locked into a platform.
 
 ## What Needs to Be Built
 
-### Discovery
+### Discovery and Routing
 - mDNS/Bonjour advertisement (`_c4d._tcp` service type)
 - `c4 find` (scan LAN for c4d nodes)
-- Peer announcement (c4d → peer "I'm online at this address")
-- Peer resolution (c4 → peer "where is Sarah?")
+- Peer announcement (c4d → peers "I'm online at this address")
+- Peer routing ("can you reach X?" → forward through intermediary)
+- Store-and-forward (hold content for offline peers)
 - Directory registration/lookup (Avalanche.io integration)
 
 ### Content Resolution
 - Peer list configuration in c4d
-- Blob fallback (local miss → ask peers)
+- Blob fallback (local miss → ask peers → ask peers' peers)
 - Batch `POST /has` endpoint
 - Parallel/cascading resolver strategies
 
