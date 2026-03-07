@@ -370,39 +370,14 @@ c4 rm --purge              # flush purgatory → gone (force reclaim)
 This is still declarative — "flush the cache" is a disposition
 statement, not a sweep command.
 
-## Shred
+## Shred (Future)
 
-`c4 rm --shred :secret.doc` is the nuclear option:
-
-1. Remove entry from current managed state
-2. Scrub the C4 ID from all local snapshots (rewrite history)
-3. Delete content from local c4d store immediately (skip purgatory)
-4. Write a **tombstone** for the C4 ID
-
-### Tombstones
-
-A tombstone is a signed record: "this C4 ID is rejected by this node."
-
-- Prevents the local node from re-caching the content (blocks
-  purgatory-to-active resurrection)
-- Propagates to mesh peers during sync (lazy, batched)
-- Checked at fetch time: receiving node rejects tombstoned content
-- **Must be PKI-signed** — only the signing node's namespace is affected
-- Other nodes' independently-referenced copies are unaffected
-
-Tombstones are not global delete commands. They are "I don't want this
-and don't send it to me." Each node's copy survives or dies based on
-that node's own retention anchors.
-
-### Tombstone Lifetime
-
-Tombstones persist for a configurable duration (default: 1 year).
-After expiration, the C4 ID is no longer actively rejected — but the
-content is also long gone from this node's store. If content re-appears
-via a sync after tombstone expiration, it's treated as new content.
-
-For compliance shred (GDPR), tombstones are permanent and propagated
-to the relay as a mesh-wide deny list.
+Shred (forced deletion with tombstones and cross-node propagation)
+is deferred. It solves a compliance/enterprise problem — ensuring
+content is irrecoverable across nodes you don't fully control (GDPR,
+legal, departing employees). For personal and small-team use, the
+normal retention flow handles all deletion needs: un-establish the
+c4m, let purgatory reclaim, or `c4 rm --purge` for immediate flush.
 
 ## Safety Mechanisms
 
@@ -677,7 +652,7 @@ not block normal operations.
 
 - `GET /du` — reachability breakdown (referenced/unreferenced counts and bytes)
 - `POST /admin/purge` — flush all purgatory immediately
-- `410 Gone` for tombstoned content (future)
+- `410 Gone` for tombstoned content (future, with shred)
 - No `POST /admin/gc` — reclamation is automatic
 
 ## Failure Mode Analysis
@@ -686,7 +661,7 @@ not block normal operations.
 
 | Scenario | Mitigation |
 |----------|-----------|
-| Malicious tombstone injection | PKI-signed, namespace-scoped |
+| Malicious tombstone injection | Deferred (shred is future scope) |
 | Simultaneous reclaim across nodes | Shared archive c4m for cross-node preservation |
 | Put-before-reference race | Content starts active; purgatory only after unreference |
 | Crash during snapshot prune | Atomic writes; prune either completes or doesn't |
