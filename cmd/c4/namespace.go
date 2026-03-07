@@ -84,8 +84,8 @@ func identityFromConfig() (string, error) {
 // registerNamespacePath registers a c4m file in the c4d namespace.
 // In backing-store mode (c4d configured): errors are real errors.
 // In local-only mode (no c4d): returns nil immediately, no-op.
-// If expiresAt is non-nil, sets the X-Expires-At header for TTL.
-func registerNamespacePath(c4mPath string, expiresAt ...*time.Time) error {
+// If retain is non-nil, sets a TTL policy on the namespace path.
+func registerNamespacePath(c4mPath string, retain ...*time.Duration) error {
 	if !c4dConfigured() {
 		return nil
 	}
@@ -117,8 +117,8 @@ func registerNamespacePath(c4mPath string, expiresAt ...*time.Time) error {
 		return fmt.Errorf("namespace registration: %w", err)
 	}
 
-	if len(expiresAt) > 0 && expiresAt[0] != nil {
-		req.Header.Set("X-Expires-At", expiresAt[0].Format(time.RFC3339))
+	if len(retain) > 0 && retain[0] != nil {
+		req.Header.Set("X-TTL-Policy", retain[0].String())
 	}
 
 	resp, err := client.Do(req)

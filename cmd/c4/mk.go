@@ -28,8 +28,8 @@ func parseDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// extractRetain pulls --retain from args, returns the expiration time and remaining args.
-func extractRetain(args []string) (*time.Time, []string) {
+// extractRetain pulls --retain from args, returns the retention duration and remaining args.
+func extractRetain(args []string) (*time.Duration, []string) {
 	var remaining []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--retain" && i+1 < len(args) {
@@ -38,11 +38,10 @@ func extractRetain(args []string) (*time.Time, []string) {
 				fmt.Fprintf(os.Stderr, "Error: invalid --retain value %q: %v\n", args[i+1], err)
 				os.Exit(1)
 			}
-			t := time.Now().Add(d).UTC()
 			i++ // skip value
 			// Collect rest of args
 			remaining = append(remaining, args[i+1:]...)
-			return &t, remaining
+			return &d, remaining
 		}
 		remaining = append(remaining, args[i])
 	}
@@ -143,7 +142,7 @@ func runMk(args []string) {
 	name := strings.TrimSuffix(target, ":")
 
 	// Parse --retain from remaining args
-	expiresAt, remaining := extractRetain(args[1:])
+	retain, remaining := extractRetain(args[1:])
 
 	if strings.HasSuffix(name, ".c4m") {
 		// c4m file establishment
@@ -155,13 +154,13 @@ func runMk(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := registerNamespacePath(name, expiresAt); err != nil {
+		if err := registerNamespacePath(name, retain); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		msg := fmt.Sprintf("established %s", target)
-		if expiresAt != nil {
-			msg += fmt.Sprintf(" (expires %s)", expiresAt.Format("2006-01-02"))
+		if retain != nil {
+			msg += fmt.Sprintf(" (retain %s)", formatRetain(*retain))
 		}
 		fmt.Println(msg)
 	} else {
@@ -184,11 +183,19 @@ func runMk(args []string) {
 			os.Exit(1)
 		}
 		msg := fmt.Sprintf("established %s → %s", target, address)
-		if expiresAt != nil {
-			msg += fmt.Sprintf(" (expires %s)", expiresAt.Format("2006-01-02"))
+		if retain != nil {
+			msg += fmt.Sprintf(" (retain %s)", formatRetain(*retain))
 		}
 		fmt.Println(msg)
 	}
+}
+
+func formatRetain(d time.Duration) string {
+	if d >= 24*time.Hour {
+		days := int(d / (24 * time.Hour))
+		return fmt.Sprintf("%dd", days)
+	}
+	return d.String()
 }
 
 // runRm implements "c4 rm" — remove entries, registrations, or tracking.
