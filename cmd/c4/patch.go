@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -413,13 +414,35 @@ func identifyFile(path string) c4.ID {
 }
 
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	info, err := os.Stat(src)
+	defer in.Close()
+
+	info, err := in.Stat()
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, info.Mode())
+
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".tmp.*")
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(tmp, in); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	tmp.Chmod(info.Mode().Perm())
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return os.Rename(tmp.Name(), dst)
 }

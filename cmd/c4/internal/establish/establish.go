@@ -19,6 +19,37 @@ import (
 	"time"
 )
 
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp.*")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
+}
+
 // c4mDir returns the path to the c4m file registry.
 func c4mDir() (string, error) {
 	home, err := os.UserHomeDir()
@@ -67,7 +98,7 @@ func EstablishC4m(c4mPath string) error {
 		return err
 	}
 	abs, _ := filepath.Abs(c4mPath)
-	return os.WriteFile(filepath.Join(dir, key), []byte(abs+"\n"), 0644)
+	return atomicWriteFile(filepath.Join(dir, key), []byte(abs+"\n"), 0644)
 }
 
 // RemoveC4mEstablishment removes the establishment marker.
@@ -126,7 +157,7 @@ func EstablishLocation(name, address string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, name), data, 0644)
+	return atomicWriteFile(filepath.Join(dir, name), data, 0644)
 }
 
 // RemoveLocation removes a location registration.

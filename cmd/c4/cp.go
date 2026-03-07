@@ -485,14 +485,34 @@ func writeFileContent(path string, entry *c4m.Entry) error {
 		return fmt.Errorf("c4d fetch: %s", resp.Status)
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm())
+	// Write to temp file, fsync, rename for crash safety
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp.*")
 	if err != nil {
 		return err
 	}
 
-	_, err = io.Copy(f, resp.Body)
-	f.Close()
-	if err != nil {
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Chmod(entry.Mode.Perm()); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		os.Remove(tmp.Name())
 		return err
 	}
 	restoreMetadata(path, entry)
@@ -846,17 +866,30 @@ func cpContainerToLocal(src, dst pathspec.PathSpec) {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
-			outF, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode().Perm())
+			tmp, err := os.CreateTemp(dir, ".tmp.*")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", fullPath, err)
 				os.Exit(1)
 			}
-			if _, err := io.Copy(outF, tr); err != nil {
-				outF.Close()
+			if _, err := io.Copy(tmp, tr); err != nil {
+				tmp.Close()
+				os.Remove(tmp.Name())
 				fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", fullPath, err)
 				os.Exit(1)
 			}
-			outF.Close()
+			tmp.Chmod(hdr.FileInfo().Mode().Perm())
+			if err := tmp.Sync(); err != nil {
+				tmp.Close()
+				os.Remove(tmp.Name())
+				fmt.Fprintf(os.Stderr, "Error syncing %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
+			tmp.Close()
+			if err := os.Rename(tmp.Name(), fullPath); err != nil {
+				os.Remove(tmp.Name())
+				fmt.Fprintf(os.Stderr, "Error renaming %s: %v\n", fullPath, err)
+				os.Exit(1)
+			}
 			os.Chtimes(fullPath, hdr.ModTime, hdr.ModTime)
 			created++
 		}
