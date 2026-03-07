@@ -69,23 +69,58 @@ func c4mKey(c4mPath string) (string, error) {
 	return hex.EncodeToString(h[:16]), nil
 }
 
+// C4mEntry holds establishment metadata for a c4m file.
+type C4mEntry struct {
+	Path      string     `json:"path"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// IsExpired returns true if the entry has a TTL and it has passed.
+func (e *C4mEntry) IsExpired() bool {
+	return e.ExpiresAt != nil && time.Now().After(*e.ExpiresAt)
+}
+
 // IsC4mEstablished checks if a c4m file has been established for writing.
 func IsC4mEstablished(c4mPath string) bool {
+	entry := GetC4mEntry(c4mPath)
+	if entry == nil {
+		return false
+	}
+	return !entry.IsExpired()
+}
+
+// GetC4mEntry returns the establishment entry for a c4m file, or nil.
+func GetC4mEntry(c4mPath string) *C4mEntry {
 	dir, err := c4mDir()
 	if err != nil {
-		return false
+		return nil
 	}
 	key, err := c4mKey(c4mPath)
 	if err != nil {
-		return false
+		return nil
 	}
-	_, err = os.Stat(filepath.Join(dir, key))
-	return err == nil
+	data, err := os.ReadFile(filepath.Join(dir, key))
+	if err != nil {
+		return nil
+	}
+	var entry C4mEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		// Legacy format: plain text path
+		abs, _ := filepath.Abs(c4mPath)
+		return &C4mEntry{Path: abs}
+	}
+	return &entry
 }
 
 // EstablishC4m marks a c4m file as established for writing.
 // The c4m file itself need not exist yet (create-on-write).
 func EstablishC4m(c4mPath string) error {
+	return EstablishC4mWithTTL(c4mPath, nil)
+}
+
+// EstablishC4mWithTTL marks a c4m file as established with an optional TTL.
+func EstablishC4mWithTTL(c4mPath string, expiresAt *time.Time) error {
 	dir, err := c4mDir()
 	if err != nil {
 		return err
@@ -98,7 +133,16 @@ func EstablishC4m(c4mPath string) error {
 		return err
 	}
 	abs, _ := filepath.Abs(c4mPath)
-	return atomicWriteFile(filepath.Join(dir, key), []byte(abs+"\n"), 0644)
+	entry := C4mEntry{
+		Path:      abs,
+		CreatedAt: time.Now().UTC(),
+		ExpiresAt: expiresAt,
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(filepath.Join(dir, key), data, 0644)
 }
 
 // RemoveC4mEstablishment removes the establishment marker.
@@ -116,8 +160,14 @@ func RemoveC4mEstablishment(c4mPath string) error {
 
 // LocationEntry holds the connection info for a named location.
 type LocationEntry struct {
-	Address   string    `json:"address"`
-	CreatedAt time.Time `json:"created_at"`
+	Address   string     `json:"address"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// IsExpired returns true if the entry has a TTL and it has passed.
+func (e *LocationEntry) IsExpired() bool {
+	return e.ExpiresAt != nil && time.Now().After(*e.ExpiresAt)
 }
 
 // locationsDir returns the path to the locations registry.
@@ -129,18 +179,22 @@ func locationsDir() (string, error) {
 	return filepath.Join(home, ".c4", "locations"), nil
 }
 
-// IsLocationEstablished checks if a location name is registered.
+// IsLocationEstablished checks if a location name is registered and not expired.
 func IsLocationEstablished(name string) bool {
-	dir, err := locationsDir()
-	if err != nil {
+	entry := GetLocation(name)
+	if entry == nil {
 		return false
 	}
-	_, err = os.Stat(filepath.Join(dir, name))
-	return err == nil
+	return !entry.IsExpired()
 }
 
 // EstablishLocation registers a named location with its address.
 func EstablishLocation(name, address string) error {
+	return EstablishLocationWithTTL(name, address, nil)
+}
+
+// EstablishLocationWithTTL registers a named location with an optional TTL.
+func EstablishLocationWithTTL(name, address string, expiresAt *time.Time) error {
 	dir, err := locationsDir()
 	if err != nil {
 		return err
@@ -152,6 +206,7 @@ func EstablishLocation(name, address string) error {
 	entry := LocationEntry{
 		Address:   address,
 		CreatedAt: time.Now().UTC(),
+		ExpiresAt: expiresAt,
 	}
 	data, err := json.Marshal(entry)
 	if err != nil {

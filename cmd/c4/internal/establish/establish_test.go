@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestC4mEstablishment(t *testing.T) {
@@ -131,5 +132,116 @@ func TestListLocationsEmpty(t *testing.T) {
 	}
 	if len(locs) != 0 {
 		t.Errorf("ListLocations returned %d entries, want 0", len(locs))
+	}
+}
+
+func TestC4mEstablishmentWithTTL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	c4mPath := filepath.Join(t.TempDir(), "ttl.c4m")
+
+	// Establish with future TTL
+	future := time.Now().Add(time.Hour)
+	if err := EstablishC4mWithTTL(c4mPath, &future); err != nil {
+		t.Fatalf("EstablishC4mWithTTL: %v", err)
+	}
+	if !IsC4mEstablished(c4mPath) {
+		t.Error("should be established with future TTL")
+	}
+
+	entry := GetC4mEntry(c4mPath)
+	if entry == nil {
+		t.Fatal("GetC4mEntry returned nil")
+	}
+	if entry.ExpiresAt == nil {
+		t.Fatal("ExpiresAt should be set")
+	}
+	if entry.IsExpired() {
+		t.Error("should not be expired yet")
+	}
+}
+
+func TestC4mEstablishmentExpired(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	c4mPath := filepath.Join(t.TempDir(), "expired.c4m")
+
+	// Establish with past TTL
+	past := time.Now().Add(-time.Hour)
+	if err := EstablishC4mWithTTL(c4mPath, &past); err != nil {
+		t.Fatalf("EstablishC4mWithTTL: %v", err)
+	}
+
+	// File exists but IsC4mEstablished should return false
+	if IsC4mEstablished(c4mPath) {
+		t.Error("should not be established with expired TTL")
+	}
+
+	entry := GetC4mEntry(c4mPath)
+	if entry == nil {
+		t.Fatal("GetC4mEntry should still return entry")
+	}
+	if !entry.IsExpired() {
+		t.Error("should be expired")
+	}
+}
+
+func TestC4mLegacyFormat(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	c4mPath := filepath.Join(t.TempDir(), "legacy.c4m")
+	abs, _ := filepath.Abs(c4mPath)
+
+	// Write legacy format (plain text)
+	dir, _ := c4mDir()
+	os.MkdirAll(dir, 0755)
+	key, _ := c4mKey(c4mPath)
+	os.WriteFile(filepath.Join(dir, key), []byte(abs+"\n"), 0644)
+
+	// Should still be recognized
+	if !IsC4mEstablished(c4mPath) {
+		t.Error("legacy format should be established")
+	}
+
+	entry := GetC4mEntry(c4mPath)
+	if entry == nil {
+		t.Fatal("GetC4mEntry returned nil for legacy")
+	}
+	if entry.Path != abs {
+		t.Errorf("Path = %q, want %q", entry.Path, abs)
+	}
+	if entry.ExpiresAt != nil {
+		t.Error("legacy should have nil ExpiresAt")
+	}
+}
+
+func TestLocationWithTTL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	future := time.Now().Add(time.Hour)
+	if err := EstablishLocationWithTTL("builds", "localhost:7433", &future); err != nil {
+		t.Fatalf("EstablishLocationWithTTL: %v", err)
+	}
+	if !IsLocationEstablished("builds") {
+		t.Error("should be established with future TTL")
+	}
+
+	entry := GetLocation("builds")
+	if entry.ExpiresAt == nil {
+		t.Fatal("ExpiresAt should be set")
+	}
+}
+
+func TestLocationExpired(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	past := time.Now().Add(-time.Hour)
+	if err := EstablishLocationWithTTL("old", "localhost:7433", &past); err != nil {
+		t.Fatalf("EstablishLocationWithTTL: %v", err)
+	}
+
+	if IsLocationEstablished("old") {
+		t.Error("should not be established with expired TTL")
 	}
 }

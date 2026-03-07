@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
@@ -12,15 +14,52 @@ import (
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
 
+// parseDuration parses a human duration like "30d", "7d", "24h", "1h30m".
+// Supports d (days) suffix in addition to Go's time.ParseDuration.
+func parseDuration(s string) (time.Duration, error) {
+	// Handle day suffix
+	if strings.HasSuffix(s, "d") {
+		n, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil {
+			return 0, fmt.Errorf("invalid duration %q", s)
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
+}
+
+// extractRetain pulls --retain from args, returns the expiration time and remaining args.
+func extractRetain(args []string) (*time.Time, []string) {
+	var remaining []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--retain" && i+1 < len(args) {
+			d, err := parseDuration(args[i+1])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid --retain value %q: %v\n", args[i+1], err)
+				os.Exit(1)
+			}
+			t := time.Now().Add(d).UTC()
+			i++ // skip value
+			// Collect rest of args
+			remaining = append(remaining, args[i+1:]...)
+			return &t, remaining
+		}
+		remaining = append(remaining, args[i])
+	}
+	return nil, remaining
+}
+
 // runMk implements "c4 mk" — establish a c4m file or location for writing.
 //
 //	c4 mk project.c4m:                    # c4m file
+//	c4 mk project.c4m: --retain 30d       # c4m file with TTL
 //	c4 mk studio: cloud.example.com:7433  # location
 func runMk(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintf(os.Stderr, "Usage:\n")
 		fmt.Fprintf(os.Stderr, "  c4 mk <name>.c4m:              # establish c4m file for writing\n")
 		fmt.Fprintf(os.Stderr, "  c4 mk <name>: <host:port>      # establish location for writing\n")
+		fmt.Fprintf(os.Stderr, "  c4 mk <target>: --retain 30d   # establish with TTL\n")
 		os.Exit(1)
 	}
 
@@ -75,38 +114,48 @@ func runMk(args []string) {
 
 	name := strings.TrimSuffix(target, ":")
 
+	// Parse --retain from remaining args
+	expiresAt, remaining := extractRetain(args[1:])
+
 	if strings.HasSuffix(name, ".c4m") {
 		// c4m file establishment
 		if establish.IsC4mEstablished(name) {
 			fmt.Fprintf(os.Stderr, "%s already established\n", target)
 			os.Exit(0)
 		}
-		if err := establish.EstablishC4m(name); err != nil {
+		if err := establish.EstablishC4mWithTTL(name, expiresAt); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("established %s\n", target)
+		msg := fmt.Sprintf("established %s", target)
+		if expiresAt != nil {
+			msg += fmt.Sprintf(" (expires %s)", expiresAt.Format("2006-01-02"))
+		}
+		fmt.Println(msg)
 	} else {
 		// Location establishment — requires address argument
-		if len(args) < 2 {
+		if len(remaining) < 1 {
 			fmt.Fprintf(os.Stderr, "Error: location requires address argument\n")
 			fmt.Fprintf(os.Stderr, "Usage: c4 mk %s <host:port>\n", target)
 			os.Exit(1)
 		}
-		address := args[1]
+		address := remaining[0]
 		if establish.IsLocationEstablished(name) {
 			existing := establish.GetLocation(name)
 			if existing != nil && existing.Address == address {
 				fmt.Fprintf(os.Stderr, "%s already established at %s\n", target, address)
 				os.Exit(0)
 			}
-			// Update address
 		}
-		if err := establish.EstablishLocation(name, address); err != nil {
+		if err := establish.EstablishLocationWithTTL(name, address, expiresAt); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("established %s → %s\n", target, address)
+		msg := fmt.Sprintf("established %s → %s", target, address)
+		if expiresAt != nil {
+			msg += fmt.Sprintf(" (expires %s)", expiresAt.Format("2006-01-02"))
+		}
+		fmt.Println(msg)
 	}
 }
 
