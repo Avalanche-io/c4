@@ -122,93 +122,122 @@ Each node has its own retention policy. The render farm might have
 aggressive TTLs (clean up after 14 days). The archive keeps
 everything. Content flows between them via push/pull.
 
-## Design Questions
+## Design Decisions
 
-### Transfer Protocol
+### Transfer Model: Push Intent, Pull Content
 
-How does content move between nodes?
+Content transfer follows a two-phase model:
 
-**Option A: Blob-level transfer.** Push/pull individual blobs by
-C4 ID. The sender walks a c4m, checks which blobs the receiver
-already has (`HEAD /{c4id}`), and sends only the missing ones.
-Simple, uses existing store API.
+1. **Push intent**: Register the c4m reference in the remote
+   namespace. This is fast — just the c4m file itself (small) and
+   a namespace PUT.
 
-**Option B: c4m-level transfer.** Push/pull the c4m itself plus a
-manifest of what's needed. The receiver diffs the c4m against its
-store and requests missing blobs. More efficient for large c4m
-files (one round-trip to determine what's needed).
+2. **Pull content**: Blobs are fetched on demand when the remote
+   node (or a client of it) actually accesses them. The remote
+   becomes a "thin" mirror that fills in content as needed.
 
-**Option C: Lazy transfer.** Register the c4m in the remote
-namespace immediately. Blobs are fetched on demand when accessed.
-The remote node becomes a "thin" mirror that fills in content as
-needed.
+Eager transfer is an optimization on top of this. After pushing
+the c4m reference, the sender can proactively push blobs the
+remote doesn't have. A batch `POST /has` endpoint (send a list
+of C4 IDs, get back the missing set) collapses discovery to one
+round-trip. But the baseline is: intent is pushed, content is
+pulled.
 
-These aren't mutually exclusive. Blob-level is the foundation.
-c4m-level is an optimization. Lazy is a mode.
+This means `c4 cp project.c4m: nas:` registers the c4m on the
+NAS immediately. The NAS can serve the c4m to clients right away.
+Blob fetches happen lazily or are backfilled eagerly — either
+way, the namespace is live instantly.
 
-### Content Discovery
+### Relay: Just Another Node
 
-When you `c4 cp project.c4m: nas:`, how does the remote know what
-blobs are needed?
+A relay is not a special service. It's a c4d instance that
+accepts content on behalf of a recipient.
 
-The sender has the c4m and can enumerate its blobs. For each blob,
-it checks whether the remote already has it. This is the
-Has/HEAD check — already in the c4d API. The remaining set is
-what gets transferred.
+Bob can run his own c4d on AWS with S3 storage. Alice sends
+content to Bob by pushing to Bob's relay. Avalanche.io's relay
+is the same thing — just managed infrastructure so users don't
+have to provision their own.
 
-For large c4m files, this is many HEAD requests. A batch endpoint
-(`POST /has` with a list of IDs, returns which ones are missing)
-would collapse this to one round-trip.
+This keeps the protocol uniform. Every relay speaks the same c4d
+API. The only difference is who operates the infrastructure and
+who manages the identity/CA.
 
-### Namespace Model for Shared Locations
+### Shared Locations: Just a Location
 
-When Alice pushes `project.c4m:` to a shared location, where does
-it land in the remote namespace?
+A shared location is not a special namespace concept. It's a
+location that multiple users have established.
 
-Options:
-- Under Alice's identity: `/home/alice@example.com/project.c4m`
-- Under a shared path: `/mnt/team-project/project.c4m`
-- Caller specifies: `c4 cp project.c4m: team:renders/project.c4m`
+```
+# Everyone on the team establishes the same location
+c4 mk OurShare: shared.example.com:7433
 
-The `/home/` scoping already exists for identity-isolated paths.
-Shared paths under `/mnt/` need team-level access control — who
-can write to `/mnt/team-project/`.
+# Browse it
+c4 ls OurShare:/path
+
+# Push to it
+c4 cp shots.c4m: OurShare:renders/shots.c4m
+```
+
+The remote c4d handles access control — who can read, who can
+write, to which paths. The namespace on the shared node is just
+a namespace. Paths are caller-specified, not auto-scoped by
+identity (though the remote node may enforce path restrictions
+based on the caller's mTLS identity).
 
 ### Identity and Authentication
 
-**Self-hosted nodes:** mTLS with certs from a shared CA. Already
-implemented. No accounts needed.
+**Self-hosted mesh:** Sign and accept your own certs. A team or
+studio runs its own CA, issues certs to members, and all nodes
+in the mesh trust that CA. This is the fully self-hosted model —
+no external dependencies.
 
-**Avalanche.io cloud nodes:** `c4 login` authenticates and provisions
-client certs. The cloud c4d uses the same mTLS model — `c4 login`
-just automates the cert exchange.
+**Avalanche.io CA:** For collaborating with strangers or avoiding
+the overhead of running your own CA. `c4 login` provisions a
+client cert signed by the Avalanche.io CA. Nodes that trust the
+Avalanche.io CA can authenticate any logged-in user.
+
+**CA hierarchy:** Studios, vendors, and distributed teams can
+build CA hierarchies. A studio CA signs sub-CAs for departments
+or vendor relationships. On-location and internet-limited teams
+can use pre-provisioned certs without live CA access.
 
 **Cross-org federation:** Node A trusts CA-1, Node B trusts CA-2.
-They can't talk directly. The relay (which trusts both CAs) bridges
+They can't talk directly. A relay that trusts both CAs bridges
 them. This is how sending to external recipients works.
 
-### OSS vs Paid Boundary
+Token-based authentication may be added as a lighter-weight
+option for cases where mTLS cert management is too heavy. The
+mTLS model remains the foundation.
 
-What's free, what requires a subscription?
+### OSS vs Paid: Self-Hostable Everything
+
+Everything is self-hostable. The protocol is open. A self-hosted
+mesh with its own CA has every capability — relay, shared
+locations, team access control, cross-node sync.
+
+The paid service is convenience, not lock-in:
 
 **OSS (free, self-hosted):**
 - c4 CLI (all local operations)
-- c4d (run your own nodes)
+- c4d (run your own nodes, relay, shared locations)
 - Node-to-node push/pull (direct mTLS)
 - All retention features
 - All c4m operations
+- Full mesh topology
 
 **Avalanche.io subscription:**
-- Cloud-hosted c4d node (storage + compute)
-- `c4 login` (managed identity)
-- Relay delivery (send to others by email)
-- Team management (shared locations, access control)
-- Cross-org federation (relay bridges trust domains)
+- Cloud-hosted c4d nodes (managed storage + compute)
+- `c4 login` (managed identity, no CA to run)
+- Managed relay (no server to provision)
+- Team admin UI (shared locations, access control)
+- Cross-org federation (managed CA bridging)
 
-The boundary is infrastructure and identity management, not
-features. The protocol is the same. A self-hosted mesh with its own
-CA has every capability except the convenience of managed
-infrastructure.
+The analogy: Git is self-hostable, Docker is self-hostable,
+websites are self-hostable. And all of those are easier to set up
+than a secure, reliable c4d + relay + identity system. The value
+is that you don't have to build and maintain that infrastructure
+yourself, while never feeling locked into a platform. Good will
+towards the community.
 
 ### Transfer Priorities and Bandwidth
 
@@ -222,17 +251,15 @@ When syncing large amounts of content, how is bandwidth managed?
 
 ### Conflict Resolution
 
-What happens when two users modify the same c4m on different nodes?
-
 c4m files are content-addressed. Two different modifications produce
 two different c4m IDs. There's no conflict at the storage level —
 both versions exist. The question is which one the namespace points
 to.
 
-Options:
-- Last-writer-wins (simplest, current model)
-- CAS with If-Match (optimistic concurrency, already implemented)
-- Fork detection (both versions preserved, user resolves)
+Current model: last-writer-wins (simplest). CAS with If-Match
+(optimistic concurrency) is already implemented in the c4d API.
+Fork detection (both versions preserved, user resolves) is a
+future option if needed.
 
 ## What Needs to Be Built
 
