@@ -37,7 +37,8 @@ func (f ShardedFolder) Open(id c4.ID) (io.ReadCloser, error) {
 	return os.Open(filepath.Join(string(f), id.String()))
 }
 
-// Create creates a file in the sharded layout.
+// Create creates a file in the sharded layout. Writes go to a temp file;
+// Close syncs to disk and atomically renames to the final path.
 func (f ShardedFolder) Create(id c4.ID) (io.WriteCloser, error) {
 	p := f.path(id)
 	if _, err := os.Stat(p); err == nil {
@@ -51,7 +52,7 @@ func (f ShardedFolder) Create(id c4.ID) (io.WriteCloser, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return nil, err
 	}
-	return os.Create(p)
+	return newDurableWriter(p)
 }
 
 // Remove removes a file from sharded or flat layout.

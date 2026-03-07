@@ -123,3 +123,60 @@ func TestFolderStore(t *testing.T) {
 	}
 
 }
+
+func TestDurableWrite(t *testing.T) {
+	dir := t.TempDir()
+	fs := Folder(dir)
+
+	key := "durable-test-data"
+	id := c4.Identify(strings.NewReader(key))
+
+	w, err := fs.Create(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Final file should not exist before Close
+	finalPath := filepath.Join(dir, id.String())
+	if _, err := os.Stat(finalPath); err == nil {
+		t.Fatal("final file exists before Close")
+	}
+
+	if _, err := w.Write([]byte(key)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Still should not exist
+	if _, err := os.Stat(finalPath); err == nil {
+		t.Fatal("final file exists before Close")
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now it should exist
+	if _, err := os.Stat(finalPath); err != nil {
+		t.Fatal("final file missing after Close")
+	}
+
+	// No temp files should remain
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".tmp.") {
+			t.Errorf("temp file not cleaned up: %s", e.Name())
+		}
+	}
+
+	// Verify content
+	data, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != key {
+		t.Errorf("wrong content: got %q, want %q", string(data), key)
+	}
+}
