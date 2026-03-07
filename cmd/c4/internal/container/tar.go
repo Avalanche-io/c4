@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/Avalanche-io/c4"
@@ -225,14 +226,16 @@ func CatFile(archivePath, format, filePath string) (io.ReadCloser, error) {
 // WriteTar creates a tar archive from a manifest.
 // getContent returns a ReadCloser for each file entry given its full path.
 func WriteTar(archivePath, format string, manifest *c4m.Manifest, getContent func(fullPath string, entry *c4m.Entry) (io.ReadCloser, error)) error {
-	f, err := os.Create(archivePath)
+	f, err := os.CreateTemp(filepath.Dir(archivePath), ".tmp.*")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmpName := f.Name()
+	cleanup := func() { f.Close(); os.Remove(tmpName) }
 
 	tw, compressor, err := newTarWriter(f, format)
 	if err != nil {
+		cleanup()
 		return err
 	}
 
@@ -262,6 +265,7 @@ func WriteTar(archivePath, format string, manifest *c4m.Manifest, getContent fun
 				ModTime:  entry.Timestamp,
 			}
 			if err := tw.WriteHeader(hdr); err != nil {
+				cleanup()
 				return fmt.Errorf("writing dir header %s: %w", fullPath, err)
 			}
 			continue
@@ -276,6 +280,7 @@ func WriteTar(archivePath, format string, manifest *c4m.Manifest, getContent fun
 				ModTime:  entry.Timestamp,
 			}
 			if err := tw.WriteHeader(hdr); err != nil {
+				cleanup()
 				return fmt.Errorf("writing symlink header %s: %w", fullPath, err)
 			}
 			continue
@@ -283,6 +288,7 @@ func WriteTar(archivePath, format string, manifest *c4m.Manifest, getContent fun
 
 		rc, err := getContent(fullPath, entry)
 		if err != nil {
+			cleanup()
 			return fmt.Errorf("content for %s: %w", fullPath, err)
 		}
 
@@ -295,22 +301,38 @@ func WriteTar(archivePath, format string, manifest *c4m.Manifest, getContent fun
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
 			rc.Close()
+			cleanup()
 			return fmt.Errorf("writing file header %s: %w", fullPath, err)
 		}
 		if _, err := io.Copy(tw, rc); err != nil {
 			rc.Close()
+			cleanup()
 			return fmt.Errorf("writing file content %s: %w", fullPath, err)
 		}
 		rc.Close()
 	}
 
 	if err := tw.Close(); err != nil {
+		cleanup()
 		return fmt.Errorf("finalizing tar: %w", err)
 	}
 	if compressor != nil {
 		if err := compressor.Close(); err != nil {
+			cleanup()
 			return fmt.Errorf("finalizing compression: %w", err)
 		}
+	}
+	if err := f.Sync(); err != nil {
+		cleanup()
+		return fmt.Errorf("syncing archive: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, archivePath); err != nil {
+		os.Remove(tmpName)
+		return err
 	}
 	return nil
 }
