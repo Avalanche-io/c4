@@ -60,6 +60,7 @@ Usage:
   c4 undo :                        # Revert last operation on managed dir
   c4 redo :                        # Re-apply undone operation
   c4 unrm :                        # List/recover removed items
+  c4 du                            # Show store disk usage
 
 Examples:
   c4 file.txt                      # c4m entry for file
@@ -125,6 +126,9 @@ func main() {
 			return
 		case "unrm":
 			runUnrm(os.Args[2:])
+			return
+		case "du":
+			runDU(os.Args[2:])
 			return
 		}
 	}
