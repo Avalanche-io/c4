@@ -397,16 +397,25 @@ func cpCapsuleToLocal(src, dst pathspec.PathSpec) {
 		os.Exit(1)
 	}
 
-	// Create directory structure and write placeholder files
+	// Create directory structure and materialize files with exact metadata
 	created := 0
+	// Collect directories to restore timestamps after all children are written
+	// (writing children changes parent dir mtime)
+	type dirMeta struct {
+		path  string
+		entry *c4m.Entry
+	}
+	var dirs []dirMeta
+
 	for _, pe := range resolved {
 		fullPath := filepath.Join(destDir, pe.fullPath)
 
 		if pe.entry.IsDir() {
-			if err := os.MkdirAll(fullPath, pe.entry.Mode.Perm()|0755); err != nil {
+			if err := os.MkdirAll(fullPath, pe.entry.Mode.Perm()); err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating directory %s: %v\n", fullPath, err)
 				os.Exit(1)
 			}
+			dirs = append(dirs, dirMeta{fullPath, pe.entry})
 			created++
 		} else if pe.entry.IsSymlink() {
 			os.Remove(fullPath)
@@ -414,6 +423,7 @@ func cpCapsuleToLocal(src, dst pathspec.PathSpec) {
 				fmt.Fprintf(os.Stderr, "Error creating symlink %s: %v\n", fullPath, err)
 				os.Exit(1)
 			}
+			// Symlinks: Lchtimes not portable; timestamp is best-effort
 			created++
 		} else {
 			dir := filepath.Dir(fullPath)
@@ -429,18 +439,26 @@ func cpCapsuleToLocal(src, dst pathspec.PathSpec) {
 		}
 	}
 
+	// Restore directory metadata bottom-up (deepest first so parent timestamps aren't
+	// overwritten by child creation)
+	for i := len(dirs) - 1; i >= 0; i-- {
+		restoreMetadata(dirs[i].path, dirs[i].entry)
+	}
+
 	fmt.Printf("materialized %d entries from %s to %s\n", created, src, destDir)
 }
 
 // writeFileContent fetches content from c4d and streams it to path.
-// Returns an error if content cannot be fetched — never writes stubs.
+// Sets exact permissions and timestamp for round-trip identity.
 func writeFileContent(path string, entry *c4m.Entry) error {
 	if entry.C4ID.IsNil() {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm()|0644)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm())
 		if err != nil {
 			return err
 		}
-		return f.Close()
+		f.Close()
+		restoreMetadata(path, entry)
+		return nil
 	}
 
 	// Fetch from c4d and stream directly to file (no memory buffering)
@@ -454,14 +472,30 @@ func writeFileContent(path string, entry *c4m.Entry) error {
 		return fmt.Errorf("c4d fetch: %s", resp.Status)
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm()|0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode.Perm())
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	_, err = io.Copy(f, resp.Body)
-	return err
+	f.Close()
+	if err != nil {
+		return err
+	}
+	restoreMetadata(path, entry)
+	return nil
+}
+
+// restoreMetadata sets exact permissions and timestamp on a materialized path.
+// This ensures round-trip identity: c4m → filesystem → c4m produces the same result.
+func restoreMetadata(path string, entry *c4m.Entry) {
+	// Set exact permissions (no |0644 fallback — preserve what c4m says)
+	os.Chmod(path, entry.Mode.Perm())
+
+	// Restore timestamp if not the null sentinel
+	if !entry.Timestamp.Equal(c4m.NullTimestamp()) {
+		os.Chtimes(path, entry.Timestamp, entry.Timestamp)
+	}
 }
 
 // c4d HTTP integration
@@ -739,6 +773,13 @@ func cpContainerToLocal(src, dst pathspec.PathSpec) {
 		os.Exit(1)
 	}
 
+	type dirRestore struct {
+		path string
+		time time.Time
+		mode os.FileMode
+	}
+	var dirRestores []dirRestore
+
 	created := 0
 	for {
 		hdr, err := tr.Next()
@@ -758,10 +799,11 @@ func cpContainerToLocal(src, dst pathspec.PathSpec) {
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(fullPath, hdr.FileInfo().Mode().Perm()|0755); err != nil {
+			if err := os.MkdirAll(fullPath, hdr.FileInfo().Mode().Perm()); err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", fullPath, err)
 				os.Exit(1)
 			}
+			dirRestores = append(dirRestores, dirRestore{fullPath, hdr.ModTime, hdr.FileInfo().Mode().Perm()})
 			created++
 
 		case tar.TypeSymlink:
@@ -778,7 +820,7 @@ func cpContainerToLocal(src, dst pathspec.PathSpec) {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
-			outF, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode().Perm()|0644)
+			outF, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode().Perm())
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", fullPath, err)
 				os.Exit(1)
@@ -789,8 +831,16 @@ func cpContainerToLocal(src, dst pathspec.PathSpec) {
 				os.Exit(1)
 			}
 			outF.Close()
+			os.Chtimes(fullPath, hdr.ModTime, hdr.ModTime)
 			created++
 		}
+	}
+
+	// Restore directory timestamps bottom-up
+	for i := len(dirRestores) - 1; i >= 0; i-- {
+		d := dirRestores[i]
+		os.Chmod(d.path, d.mode)
+		os.Chtimes(d.path, d.time, d.time)
 	}
 
 	_ = manifest // used for count only

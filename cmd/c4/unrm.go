@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -115,15 +113,22 @@ func recoverFromSnapshot(snap *c4m.Manifest, itemPath string) {
 		os.Exit(1)
 	}
 
+	type dirMeta struct {
+		path  string
+		entry *c4m.Entry
+	}
+	var dirs []dirMeta
+
 	recovered := 0
 	for _, m := range matched {
 		localPath := m.fullPath
 
 		if m.entry.IsDir() {
-			if err := os.MkdirAll(localPath, m.entry.Mode.Perm()|0755); err != nil {
+			if err := os.MkdirAll(localPath, m.entry.Mode.Perm()); err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", localPath, err)
 				os.Exit(1)
 			}
+			dirs = append(dirs, dirMeta{localPath, m.entry})
 			recovered++
 			continue
 		}
@@ -143,53 +148,23 @@ func recoverFromSnapshot(snap *c4m.Manifest, itemPath string) {
 			continue
 		}
 
-		// Regular file — fetch content
+		// Regular file — use writeFileContent (handles c4d fetch + exact metadata)
 		dir := filepath.Dir(localPath)
 		if dir != "." {
 			os.MkdirAll(dir, 0755)
 		}
 
-		if m.entry.C4ID.IsNil() {
-			// No content — create empty file
-			f, err := os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, m.entry.Mode.Perm()|0644)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", localPath, err)
-				os.Exit(1)
-			}
-			f.Close()
-			fmt.Printf("recovered %s (empty)\n", localPath)
-			recovered++
-			continue
-		}
-
-		// Fetch from c4d
-		resp, err := c4dClient.Get(c4dAddr() + "/" + m.entry.C4ID.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching %s: %v\n", localPath, err)
+		if err := writeFileContent(localPath, m.entry); err != nil {
+			fmt.Fprintf(os.Stderr, "Error recovering %s: %v\n", localPath, err)
 			os.Exit(1)
 		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			fmt.Fprintf(os.Stderr, "Error: c4d returned %s for %s (C4 ID %s)\n", resp.Status, localPath, m.entry.C4ID)
-			os.Exit(1)
-		}
-
-		f, err := os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, m.entry.Mode.Perm()|0644)
-		if err != nil {
-			resp.Body.Close()
-			fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", localPath, err)
-			os.Exit(1)
-		}
-		if _, err := io.Copy(f, resp.Body); err != nil {
-			f.Close()
-			resp.Body.Close()
-			fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", localPath, err)
-			os.Exit(1)
-		}
-		f.Close()
-		resp.Body.Close()
 		fmt.Printf("recovered %s\n", localPath)
 		recovered++
+	}
+
+	// Restore directory metadata bottom-up
+	for i := len(dirs) - 1; i >= 0; i-- {
+		restoreMetadata(dirs[i].path, dirs[i].entry)
 	}
 
 	fmt.Printf("%d item(s) recovered\n", recovered)
