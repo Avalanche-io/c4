@@ -1,100 +1,50 @@
-# C4 Design Documentation
+# Design Documents
 
-This directory contains design specifications and requirements documents for C4 features.
+## Active Specs
 
-## Structure
+These are the authoritative design documents for the current system.
 
-- **Active**: Feature specifications currently being designed or implemented
-- **archived/**: Superseded designs and historical documents
-- **archived/transform/**: Archived transform package (removed for complexity reduction)
-- **archived/superseded/**: Earlier design iterations now superseded by implementation
+| Document | Scope |
+|----------|-------|
+| [cli_v1.md](cli_v1.md) | CLI command vocabulary, flags, pathspec grammar, all subcommands |
+| [unified_cli.md](unified_cli.md) | c4/c4d architecture split, colon syntax, locations, mesh model |
+| [c4d_api_v1.md](c4d_api_v1.md) | c4d HTTP API, namespace routing, content store interface |
+| [retention.md](retention.md) | Content retention model, GC, tombstones, safety mechanisms |
 
-## Implemented Features
+## Format and Identity
 
-### [C4M Bundle System](c4m_bundle_system.md)
-A system for handling unbounded filesystems by chunking output into multiple C4M files stored in a structured bundle format.
+| Document | Scope |
+|----------|-------|
+| [c4m_range_format.md](c4m_range_format.md) | Sequence/range notation, `@data` blocks |
+| [expand_range_folding.md](expand_range_folding.md) | `@expand` directive, folding control, identity impact |
+| [by_note_identity.md](by_note_identity.md) | `@by`/`@note` do not affect C4 IDs |
+| [c4m_metadata_extension.md](c4m_metadata_extension.md) | Why production metadata stays external to c4m |
+| [c4_package_format.md](c4_package_format.md) | Encrypted delivery analysis (conclusion: trust relays) |
 
-**Status**: ✅ Implemented
-**Location**: `cmd/c4/internal/bundle/`
-**Features**:
-- Chunked progressive output with @base chains
-- Resumable scans with last chunk tracking
-- Directory compaction for large subdirectories
-- Bundle extraction and materialization
+## Architecture and Philosophy
 
-### [Progressive UI Status](progressive_ui_status.md)
-Real-time feedback system for long-running filesystem scans.
+| Document | Scope |
+|----------|-------|
+| [push_intent_pull_content.md](push_intent_pull_content.md) | Core transfer model: push intent, pull data |
+| [reframing_file_transfer.md](reframing_file_transfer.md) | Formal argument: manifests as preprocessing |
+| [mhl_vs_c4m_comparison.md](mhl_vs_c4m_comparison.md) | Feature comparison with ASC MHL |
 
-**Status**: ✅ Implemented
-**Location**: `cmd/c4/internal/scan/`
-**Features**:
-- Three-stage scanning (structure, metadata, C4 IDs)
-- Signal handling (SIGINT/SIGTERM graceful shutdown)
-- Progress display with stage tracking
+## Future Work
 
-### [Progress Feedback](progress_feedback_and_id_caching.md)
-Visual progress indicators with live statistics during scans.
+| Document | Scope |
+|----------|-------|
+| [c4m_language_server.md](c4m_language_server.md) | LSP design for c4m files |
 
-**Status**: ⚠️ Partially Implemented
-**Notes**:
-- Progress display: ✅ Implemented
-- ID caching (SQLite): ❌ Not implemented (future work)
+## Explored Ideas
 
-## Reference Documents
+Short notes on concepts investigated but not yet implemented.
+See [explored/](explored/) for details.
 
-### [C4M Metadata Extension](c4m_metadata_extension.md)
-Proposed metadata directives for production workflows (@creator, @author, @location, etc.).
+- [ID Caching](explored/id_caching.md) — skip re-hashing unchanged files
+- [Delta Sync](explored/delta_sync.md) — FastCDC chunking for efficient transfer
+- [Incremental Scanning](explored/incremental_scanning.md) — priority-driven progressive scanning
+- [OpenAssetIO Integration](explored/openassetio_integration.md) — M&E pipeline integration
 
-**Status**: 📋 Future Extension Proposal
-**Notes**: Core layer directives (@base, @layer, @remove, @by, @time, @note, @data) are implemented. Production metadata directives are proposed for future implementation.
+## Archived
 
-### [C4M Range Format](c4m_range_format.md)
-Sequence notation and @data block specification for media file sequences.
-
-**Status**: ✅ Implemented
-**Location**: `c4m/sequence.go`
-
-### [MHL vs C4M Comparison](mhl_vs_c4m_comparison.md)
-Feature comparison between C4M and ASC Media Hash List format.
-
-**Status**: 📚 Reference Document
-
-### [C4M Superiority Analysis](c4m_superiority_analysis.md)
-Strategic positioning of C4M's content-addressed approach.
-
-**Status**: 📚 Reference Document
-
-## Archived Documents
-
-Documents in `archived/superseded/` represent earlier design iterations:
-
-- `c4m_testing_strategy.md` - Testing approach now reflected in actual test files
-- `bundle_chunking_notes.md` - Chunking details now in implementation
-- `bundle_compartmentalized_chunking.md` - Compartmentalization now implemented
-
-## Design Process
-
-1. **Requirements Document**: Create detailed specification in this directory
-2. **Review**: Team review and refinement of requirements
-3. **Implementation**: Build feature according to specification
-4. **Validation**: Ensure implementation meets all requirements
-5. **Archive**: Move to `archived/` when superseded; update status when implemented
-
-## Document Template
-
-Each design document should include:
-
-1. **Overview**: Brief description of the feature
-2. **Motivation**: Why this feature is needed
-3. **Requirements**: Detailed functional and non-functional requirements
-4. **Architecture**: Technical design and structure
-5. **Configuration**: User-configurable options
-6. **Testing Strategy**: How to validate the implementation
-7. **Success Criteria**: Measurable goals
-8. **Future Extensions**: Potential enhancements
-
-## Authoritative Sources
-
-- **Implementation**: Source code in `c4m/`, `cmd/c4/internal/` is the source of truth
-- **Specification**: `c4m/SPECIFICATION.md` documents the implemented format
-- **Design docs**: Reference for intent and future direction
+Superseded designs preserved for reference: [archived/](archived/)
