@@ -70,6 +70,12 @@ func runCp(args []string) {
 		return
 	}
 
+	// Handle [] collapse marker: c4 cp frames.*.exr :frames.[].exr
+	if strings.Contains(args[1], "[]") {
+		cpGlobToSequence(args[0], args[1])
+		return
+	}
+
 	isLoc := establish.IsLocationEstablished
 	src, err := pathspec.Parse(args[0], isLoc)
 	if err != nil {
@@ -827,6 +833,135 @@ func buildLocalIDIndex(root string) map[string]string {
 		return nil
 	})
 	return idx
+}
+
+// cpGlobToSequence implements the [] collapse marker convention.
+// Source is a glob pattern, dest contains [] which absorbs the varying part.
+//
+//	c4 cp frames.*.exr project.c4m:frames.[].exr
+//	c4 cp render.*.exr :render.[].exr
+func cpGlobToSequence(srcGlob, dstPattern string) {
+	// Expand source glob
+	matches, err := filepath.Glob(srcGlob)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: invalid glob pattern: %v\n", err)
+		os.Exit(1)
+	}
+	if len(matches) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: no files match %s\n", srcGlob)
+		os.Exit(1)
+	}
+
+	// Build a manifest from the matched files, then detect sequences
+	tempManifest := c4m.NewManifest()
+	for _, path := range matches {
+		info, err := os.Lstat(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if info.IsDir() {
+			continue
+		}
+
+		entry := &c4m.Entry{
+			Name:      filepath.Base(path),
+			Mode:      info.Mode(),
+			Size:      info.Size(),
+			Timestamp: info.ModTime().UTC(),
+		}
+
+		if info.Mode().IsRegular() {
+			f, err := os.Open(path)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			entry.C4ID = c4.Identify(f)
+			f.Close()
+		}
+
+		tempManifest.AddEntry(entry)
+	}
+
+	// Detect sequences (minimum 1 — the user explicitly asked for folding)
+	detector := c4m.NewSequenceDetector(1)
+	folded := detector.DetectSequences(tempManifest)
+
+	if len(folded.Entries) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: no sequences detected in matched files\n")
+		os.Exit(1)
+	}
+
+	// Parse destination
+	isLoc := establish.IsLocationEstablished
+	dst, err := pathspec.Parse(dstPattern, isLoc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing dest: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Override names: the dest pattern's [] becomes the detected range
+	// e.g., dest "frames.[].exr" + detected "frames.[001-100].exr" → use detected name
+	// The user-provided dest name is a template; the actual range comes from detection.
+
+	switch dst.Type {
+	case pathspec.Capsule:
+		if !establish.IsCapsuleEstablished(dst.Source) {
+			fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", dst.Source)
+			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
+			os.Exit(1)
+		}
+		manifest, err := loadOrCreateManifest(dst.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		prefix := dst.SubPath
+		// Strip the filename from subpath to get the directory prefix
+		dir := ""
+		if idx := strings.LastIndex(prefix, "/"); idx >= 0 {
+			dir = prefix[:idx+1]
+		}
+		prefixDepth := 0
+		if dir != "" {
+			prefixDepth = strings.Count(strings.TrimSuffix(dir, "/"), "/") + 1
+			ensureParentDirs(manifest, dir)
+		}
+
+		for _, entry := range folded.Entries {
+			e := *entry
+			e.Depth += prefixDepth
+			manifest.AddEntry(&e)
+		}
+		for _, db := range folded.DataBlocks {
+			manifest.AddDataBlock(db)
+		}
+		manifest.SortEntries()
+		scan.PropagateMetadata(manifest.Entries)
+
+		if err := writeManifest(dst.Source, manifest); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Push file content to c4d
+		pushed := 0
+		for _, path := range matches {
+			if err := putToC4d(path); err != nil {
+				fmt.Fprintf(os.Stderr, "error: c4d push failed for %s: %v\n", filepath.Base(path), err)
+			} else {
+				pushed++
+			}
+		}
+
+		fmt.Printf("captured %d files as %d sequence(s) into %s\n", len(matches), len(folded.Entries), dst)
+
+	default:
+		fmt.Fprintf(os.Stderr, "Error: [] collapse marker requires a c4m or managed destination\n")
+		os.Exit(1)
+	}
 }
 
 // ensureParentDirs adds missing parent directory entries with proper depth.

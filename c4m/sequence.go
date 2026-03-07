@@ -622,8 +622,9 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 			dir = dir + "/"
 		}
 
-		// Create group key
-		groupKey := fmt.Sprintf("%s|%s|%s|%d", dir, prefix, suffix, len(frameStr))
+		// Create group key — separate symlinks from regular files
+		isSymlink := entry.Mode&os.ModeSymlink != 0
+		groupKey := fmt.Sprintf("%s|%s|%s|%d|%v", dir, prefix, suffix, len(frameStr), isSymlink)
 
 		// Get or create group
 		group, exists := groups[groupKey]
@@ -746,6 +747,12 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 					Pattern:     pattern,
 					dataBlockID: dataBlock.ID,
 				}
+
+				// Fold symlink targets if this is a symlink sequence
+				if firstEntry.Mode&os.ModeSymlink != 0 {
+					seqEntry.Target = foldSymlinkTargets(group, r, group.padding)
+				}
+
 				result.AddEntry(seqEntry)
 				result.AddDataBlock(dataBlock)
 			} else {
@@ -807,6 +814,50 @@ func (sd *SequenceDetector) findRanges(frames []int) []sequenceRange {
 	})
 
 	return ranges
+}
+
+// foldSymlinkTargets determines the folded target string for a symlink sequence.
+// If all targets follow the same numbering pattern, returns range notation (e.g. "source[001-003].exr").
+// If targets differ in structure, returns "...".
+func foldSymlinkTargets(group *fileGroup, r sequenceRange, padding int) string {
+	framePattern := regexp.MustCompile(`^(.*?)(\d+)(.*)$`)
+
+	var prefix, suffix string
+	uniform := true
+
+	for i := r.start; i <= r.end; i++ {
+		entry, ok := group.entries[i]
+		if !ok || entry.Target == "" {
+			return "..."
+		}
+		matches := framePattern.FindStringSubmatch(entry.Target)
+		if matches == nil {
+			return "..."
+		}
+		if i == r.start {
+			prefix = matches[1]
+			suffix = matches[3]
+		} else if matches[1] != prefix || matches[3] != suffix {
+			uniform = false
+			break
+		}
+	}
+
+	if !uniform {
+		return "..."
+	}
+
+	// Extract target frame numbers for range notation
+	firstTarget := group.entries[r.start].Target
+	lastTarget := group.entries[r.end].Target
+	firstMatches := framePattern.FindStringSubmatch(firstTarget)
+	lastMatches := framePattern.FindStringSubmatch(lastTarget)
+	targetPadding := len(firstMatches[2])
+
+	firstNum, _ := strconv.Atoi(firstMatches[2])
+	lastNum, _ := strconv.Atoi(lastMatches[2])
+
+	return fmt.Sprintf("%s[%0*d-%0*d]%s", prefix, targetPadding, firstNum, targetPadding, lastNum, suffix)
 }
 
 // DetectSequences is a convenience function using default minimum sequence length of 3

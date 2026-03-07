@@ -25,11 +25,16 @@ func runLs(args []string) {
 	fs := flag.NewFlagSet("ls", flag.ExitOnError)
 	pretty := fs.BoolP("pretty", "p", false, "Pretty-print c4m")
 	id := fs.BoolP("id", "i", false, "Output bare C4 ID")
+	seq := fs.BoolP("sequence", "s", false, "Detect and fold file sequences")
 	fs.Parse(args)
 
 	if fs.NArg() == 0 {
 		// No argument = list current directory (same as c4 .)
-		gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+		opts := []scan.GeneratorOption{scan.WithC4IDs(true)}
+		if *seq {
+			opts = append(opts, scan.WithSequenceDetection(true))
+		}
+		gen := scan.NewGeneratorWithOptions(opts...)
 		manifest, err := gen.GenerateFromPath(".")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -62,7 +67,11 @@ func runLs(args []string) {
 
 	case pathspec.Local:
 		// Local path — scan it
-		gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+		opts := []scan.GeneratorOption{scan.WithC4IDs(true)}
+		if *seq {
+			opts = append(opts, scan.WithSequenceDetection(true))
+		}
+		gen := scan.NewGeneratorWithOptions(opts...)
 		manifest, err := gen.GenerateFromPath(spec.Source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

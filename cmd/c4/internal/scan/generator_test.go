@@ -824,15 +824,15 @@ func TestSymlinkRangeGrouping(t *testing.T) {
 		{
 			name: "symlinks and regular files not grouped together",
 			setup: func(tmpdir string) error {
-				// Create some regular files
-				for i := 1; i <= 2; i++ {
+				// Create regular files (3 to meet minimum sequence length)
+				for i := 1; i <= 3; i++ {
 					file := filepath.Join(tmpdir, fmt.Sprintf("frame%03d.exr", i))
 					if err := os.WriteFile(file, []byte(fmt.Sprintf("content %d", i)), 0644); err != nil {
 						return err
 					}
 				}
-				// Create some symlinks with same naming pattern
-				for i := 3; i <= 4; i++ {
+				// Create symlinks with same naming pattern (3 to meet minimum)
+				for i := 4; i <= 6; i++ {
 					link := filepath.Join(tmpdir, fmt.Sprintf("frame%03d.exr", i))
 					if err := os.Symlink(fmt.Sprintf("source%03d.exr", i), link); err != nil {
 						return err
@@ -840,7 +840,7 @@ func TestSymlinkRangeGrouping(t *testing.T) {
 				}
 				return nil
 			},
-			wantEntries: []string{"frame[001-002].exr", "frame[003-004].exr"},
+			wantEntries: []string{"frame[001-003].exr", "frame[004-006].exr"},
 			checkEntry: func(t *testing.T, entry *Entry) {
 				// Should have two separate sequences
 			},

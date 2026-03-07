@@ -22,10 +22,11 @@ const version = "1.0.0"
 
 var (
 	// Global flags
-	versionFlag bool
-	idFlag      bool
-	prettyFlag  bool
-	helpFlag    bool
+	versionFlag  bool
+	idFlag       bool
+	prettyFlag   bool
+	helpFlag     bool
+	sequenceFlag bool
 )
 
 func init() {
@@ -34,6 +35,7 @@ func init() {
 	flag.BoolVarP(&versionFlag, "version", "", false, "Show version information")
 	flag.BoolVarP(&idFlag, "id", "i", false, "Output bare C4 ID(s) instead of c4m")
 	flag.BoolVarP(&prettyFlag, "pretty", "p", false, "Pretty-print c4m with aligned columns")
+	flag.BoolVarP(&sequenceFlag, "sequence", "s", false, "Detect and fold file sequences into range notation")
 	flag.BoolVar(&helpFlag, "help", false, "Show help message")
 }
 
@@ -179,7 +181,11 @@ func processPath(path string) error {
 }
 
 func processDirectory(dirPath string) error {
-	gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
+	opts := []scan.GeneratorOption{scan.WithC4IDs(true)}
+	if sequenceFlag {
+		opts = append(opts, scan.WithSequenceDetection(true))
+	}
+	gen := scan.NewGeneratorWithOptions(opts...)
 	manifest, err := gen.GenerateFromPath(dirPath)
 	if err != nil {
 		return err
