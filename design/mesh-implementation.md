@@ -36,31 +36,29 @@ CLI doesn't know how to push/pull to a remote location.
 local.c4m:` work. Push c4m + blobs to a remote c4d, pull c4m +
 blobs from a remote c4d.
 
-### 1.1 Remote client package
+### 1.1 Shared client package
 
-Create `cmd/c4/internal/remote/client.go` — a thin wrapper
-around `peer.Client` logic, configured from the CLI's TLS
-settings.
+`c4d/internal/peer/client.go` already implements the c4d HTTP
+protocol: Put, Get, Has, PutPath, GetPath. The CLI needs the
+same protocol — don't duplicate it.
+
+Move `peer.Client` to a shared package importable by both c4d
+and the CLI. The only difference is TLS configuration:
 
 ```go
-type Client struct {
-    baseURL    string
-    httpClient *http.Client
-}
-
-func NewFromLocation(loc *establish.LocationEntry) (*Client, error)
-func (c *Client) PutBlob(r io.Reader) (c4.ID, error)
-func (c *Client) GetBlob(id c4.ID) (io.ReadCloser, error)
-func (c *Client) HasBlob(id c4.ID) (bool, error)
-func (c *Client) HasBatch(ids []c4.ID) (missing []c4.ID, error)
-func (c *Client) PutNamespace(path string, c4mID c4.ID) error
-func (c *Client) GetNamespace(path string) (c4.ID, error)
-func (c *Client) ListNamespace(path string) ([]NamespaceEntry, error)
+// c4d uses: peer.NewClient(addr, tlsConfig)         — from c4d config
+// CLI uses: peer.NewClient(addr, tlsFromC4dConfig()) — from ~/.c4d/config.yaml
 ```
 
-`NewFromLocation` reads TLS config from `~/.c4d/config.yaml`
-(same certs the local c4d uses). Falls back to plain HTTP if
-no TLS configured (development mode).
+Add to the shared client:
+```go
+func (c *Client) ListPath(path string) ([]*c4m.Entry, error)
+func (c *Client) Needs(c4mBody []byte) ([]c4.ID, error) // Phase 2
+```
+
+`NewFromLocation` is a CLI-side helper that reads TLS config
+from `~/.c4d/config.yaml` and returns a `*peer.Client`. Falls
+back to plain HTTP if no TLS configured (development mode).
 
 ### 1.2 Push: local → location
 
@@ -77,13 +75,12 @@ case src.Type == pathspec.Managed && dst.Type == pathspec.Location:
 
 `cpC4mToLocation(src, dst)`:
 1. Load local c4m file
-2. Create remote client from location
-3. Walk c4m entries, collect all C4 IDs
-4. `HasBatch` → get missing set (falls back to individual Has
-   if batch endpoint not available yet)
-5. For each missing blob: read from local c4d, `PutBlob` to remote
-6. `PutBlob` the c4m file itself
-7. `PutNamespace` to register the c4m at `dst.SubPath`
+2. Create peer client from location
+3. Send c4m body to `POST /needs` → get missing set
+   (falls back to individual HEAD if `/needs` returns 404)
+4. For each missing blob: read from local c4d, `Put` to remote
+5. `Put` the c4m blob itself
+6. `PutPath` to register the c4m at `dst.SubPath`
 
 ### 1.3 Pull: location → local
 
@@ -95,29 +92,23 @@ case src.Type == pathspec.Location && dst.Type == pathspec.Local:
 ```
 
 `cpLocationToC4m(src, dst)`:
-1. `GetNamespace` to resolve the remote path to a C4 ID
-2. `GetBlob` the c4m content
-3. Decode the c4m
-4. Walk entries, `HasBatch` against local c4d
-5. For each missing blob: `GetBlob` from remote, `PutBlob` to
-   local c4d
-6. Write the c4m file locally
-7. Establish and register if needed
+1. `GetPath` to resolve the remote path to a C4 ID
+2. `Get` the c4m content
+3. Decode the c4m, check local c4d for missing blobs
+4. For each missing blob: `Get` from remote, put to local c4d
+5. Write the c4m file locally
+6. Establish and register if needed
 
 ### 1.4 `c4 ls location:`
 
 Wire `pathspec.Location` in `ls.go`:
-1. Create remote client from location
-2. `ListNamespace(path)` → get entries
+1. Create peer client from location
+2. `ListPath(path)` → get entries (returns c4m format)
 3. Display as usual
 
-Requires a list endpoint on c4d — currently namespace only
-supports GET (returns C4 ID for a path) and PUT/DELETE. Need
-GET on a directory path to return child entries.
-
-**New c4d endpoint:** `GET /path/` (trailing slash) returns a
-JSON list of child namespace entries. Distinct from `GET /path`
-which returns the C4 ID for that exact path.
+The listing endpoint already exists: `GET /path/` (trailing
+slash) returns c4m-formatted entries (`name\tC4ID\n`, Content-
+Type `text/c4m`). See `handleListDir` in namespace.go.
 
 ### 1.5 Tests
 
@@ -130,41 +121,59 @@ which returns the C4 ID for that exact path.
 
 ### Files to create/modify
 
+**Move:**
+- `c4d/internal/peer/client.go` → shared package (importable
+  by both c4d and CLI)
+
 **Create:**
-- `c4/cmd/c4/internal/remote/client.go`
-- `c4/cmd/c4/internal/remote/client_test.go`
+- `c4/cmd/c4/internal/remote/remote.go` — thin helper:
+  `NewFromLocation` → `*peer.Client` with CLI TLS config
 
 **Modify:**
 - `c4/cmd/c4/cp.go` — add Location cases to switch
 - `c4/cmd/c4/ls.go` — add Location case
-- `c4d/internal/server/namespace.go` — directory listing endpoint
-- `c4d/internal/server/server.go` — route directory GET
 
 ---
 
-## Phase 2: Batch Has + Efficient Transfer
+## Phase 2: Needs Query + Efficient Transfer
 
 **Goal:** Large transfers are efficient. One round-trip to
 determine what needs to move.
 
-### 2.1 Batch `POST /has` endpoint
+### 2.1 `POST /needs` endpoint
+
+The c4m IS the existence query. The sender pushes intent (the
+c4m), the receiver declares what it needs.
 
 `c4d/internal/server/content.go`:
 
 ```go
-// POST /has — batch existence check
-// Request body: JSON array of C4 ID strings
-// Response: JSON array of C4 ID strings that are NOT present
-func (s *Server) handleBatchHas(w http.ResponseWriter, r *http.Request)
+// POST /needs — given a c4m, return missing blob IDs
+// Request body: raw c4m content (text/c4m)
+// Response: newline-delimited C4 IDs not present (text/plain)
+func (s *Server) handleNeeds(w http.ResponseWriter, r *http.Request)
 ```
 
-Route in `server.go`: `POST` to `/has`.
+The receiver parses the c4m, walks entries, checks its store,
+returns newline-delimited C4 IDs it doesn't have. No JSON, no
+separate ID list. The c4m drives the transfer.
 
-### 2.2 Wire batch into remote client
+For nested c4m references: the receiver recursively checks
+referenced c4m files it already has and includes their missing
+blobs too.
 
-`HasBatch` prefers `POST /has` if available, falls back to
-individual `HEAD /{c4id}` calls. Version detection: try batch
-once, if 404, fall back permanently for this client instance.
+Route in `server.go`: `POST` to `/needs`.
+
+### 2.2 Wire needs query into transfer
+
+The push flow becomes:
+1. Send the c4m body to `POST /needs` → get missing set
+2. Push missing blobs
+3. Push the c4m blob itself
+4. Register in namespace (`PUT /path`)
+
+Fallback for older c4d: individual `HEAD /{c4id}` calls. Version
+detection: try `/needs` once, if 404, fall back for this session.
 
 ### 2.3 Transfer progress
 
@@ -174,15 +183,14 @@ pushing project.c4m: → nas:
   142/500 blobs (28%) — 2.3 GB / 8.1 GB
 ```
 
-Progress callback in the remote client, wired to stderr output
-in cp.go.
+Progress callback in the client, wired to stderr output in cp.go.
 
 ### Files to create/modify
 
 **Modify:**
-- `c4d/internal/server/content.go` — handleBatchHas
-- `c4d/internal/server/server.go` — route POST /has
-- `c4/cmd/c4/internal/remote/client.go` — HasBatch with fallback
+- `c4d/internal/server/content.go` — handleNeeds
+- `c4d/internal/server/server.go` — route POST /needs
+- `c4/cmd/c4/cp.go` — use needs query in push flow
 
 ---
 
@@ -341,36 +349,35 @@ from TLS handshake).
 
 ### 5.2 Peer announcement
 
-On startup, c4d announces itself to configured peers:
+The TLS cert carries identity. The TCP connection carries the
+source address. Connecting IS announcing.
 
-```
-POST /peer/announce
-{
-  "identity": "sarah@home",
-  "address": "10.42.5.7:7433"
-}
-```
+On startup, c4d connects to each configured peer (e.g. `HEAD /`
+version check). The peer reads identity from the mTLS cert and
+records the source address. This creates a routing table entry
+(in-memory, TTL-based).
 
-Peers store the announcement in a routing table (in-memory,
-TTL-based). Re-announce periodically (heartbeat).
+Any subsequent interaction refreshes the routing entry. No
+special announce endpoint, no JSON. The mTLS handshake that
+already happens IS the announcement.
+
+Heartbeat: periodic version check (`HEAD /`) to each peer.
+Serves double duty — liveness probe and routing refresh.
 
 ### 5.3 Peer routing
 
 When content is addressed to an identity:
 
 ```
-POST /peer/route
-{
-  "identity": "sarah@home"
-}
-→ {
-  "reachable": true,
-  "via": "self"          // or "peer" with next-hop info
-}
+GET /route/sarah@home
+→ 10.42.5.7:7433       (directly reachable)
+→ via:nas.local:7433    (reachable through intermediary)
+→ 404                   (unknown)
 ```
 
-The query cascades through peers (with hop limit). The first
-peer that can reach the target becomes the route.
+Plain text response. The query cascades through peers (with
+hop limit). The first peer that can reach the target becomes
+the route.
 
 ### 5.4 Identity-based cp
 
@@ -389,27 +396,29 @@ If resolved, create a transient connection and push.
 
 When the target identity is not currently reachable, content
 lands on the intermediary (the peer that's "closest" to the
-target). When the target reconnects and re-announces, the
-intermediary forwards queued content.
+target). When the target reconnects (re-establishing its route
+via mTLS handshake), the intermediary forwards pending content.
 
-Storage: intermediary's namespace under a queue path, e.g.
-`/queue/{target-identity}/`. Delivered on next announcement.
+Storage: intermediary's namespace under a convention-based path,
+e.g. `/pending/{target-identity}/`. No special queue mechanism —
+just namespace entries pointing to c4m files, like every other
+operation. Delivered when the target's route becomes active.
 
 ### Files to create/modify
 
 **Create:**
-- `c4d/internal/peer/announce.go`
-- `c4d/internal/peer/routing.go`
+- `c4d/internal/peer/routing.go` — routing table, identity
+  extraction from mTLS cert on connect
 - `c4d/internal/peer/routing_test.go`
-- `c4d/internal/server/peer.go` — announce/route handlers
+- `c4d/internal/server/peer.go` — route query handler
 
 **Modify:**
 - `c4d/internal/config/config.go` — PeerConfig struct
 - `c4d/internal/peer/client.go` — identity field
 - `c4d/internal/peer/router.go` — identity-based routing
-- `c4d/serve.go` — announcement on startup
+- `c4d/serve.go` — connect to peers on startup (implicit
+  announcement via mTLS handshake)
 - `c4/cmd/c4/cp.go` — identity resolution fallback
-- `c4/cmd/c4/internal/remote/client.go` — identity resolution
 
 ---
 
@@ -424,7 +433,7 @@ locations automatically on every mutation.
 c4 mk : --sync nas: desktop:
 ```
 
-Stores sync targets in `.c4/sync` (JSON list of location names).
+Stores sync targets in `.c4/sync` (one location name per line).
 
 ### 6.2 Mutation propagation
 
@@ -502,7 +511,7 @@ intermediary for their mesh.
 ```
 Phase 1 (Remote Copy)
   ↓
-Phase 2 (Batch Has) ← optimization, can ship Phase 1 without it
+Phase 2 (Needs Query) ← optimization, can ship Phase 1 without it
   ↓
 Phase 3 (LAN Discovery) ← independent of 1-2, can parallelize
   ↓
@@ -539,21 +548,23 @@ These are additive (JSON, zero values are no-ops).
 
 ### Namespace listing protocol
 
-c4d namespace currently stores paths → C4 IDs in a flat c4m file.
-Listing a directory means scanning the c4m for entries under that
-prefix. The `ListNamespace` endpoint returns JSON:
+c4d namespace stores paths → C4 IDs in a c4m file (root.c4m).
+Listing a directory means scanning for entries under that prefix.
+The listing endpoint (`GET /path/`) already returns c4m format:
 
-```json
-[
-  {"path": "/home/josh/project.c4m", "c4id": "c4abc..."},
-  {"path": "/home/josh/backup.c4m", "c4id": "c4def..."}
-]
 ```
+project.c4m	c41abc...
+backup.c4m	c41def...
+renders/
+```
+
+Content-Type: `text/c4m`. No JSON. Name + tab + C4 ID (or bare
+name for directories). Same format the CLI already parses.
 
 ### Error handling
 
 Remote operations can fail (network, auth, disk). The CLI should:
 - Report progress before failure ("pushed 142/500 blobs")
-- Be resumable (re-run same command, batch has skips existing)
+- Be resumable (re-run same command, needs query skips existing)
 - Distinguish "remote unreachable" from "auth failed" from
   "content not found"
