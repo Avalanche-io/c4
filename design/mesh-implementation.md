@@ -466,12 +466,11 @@ CA. Enables collaboration with strangers.
 
 ### 7.1 `c4 login`
 
-OAuth2 device flow with Avalanche.io:
-1. CLI displays authorization URL + user code
-2. User authenticates in browser
-3. CLI polls for completion
-4. Avalanche.io issues client cert (signed by its CA)
-5. Cert stored in `~/.c4/auth/`
+Provision a cert from the Avalanche.io CA:
+1. CLI initiates cert request with Avalanche.io
+2. User verifies identity (email confirmation or browser)
+3. Avalanche.io CA issues client cert
+4. Cert stored in `~/.c4/auth/`
 
 ### 7.2 `c4 logout`
 

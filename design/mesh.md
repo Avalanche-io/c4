@@ -34,7 +34,7 @@ you. The TLS cert carries the email in the SAN field.
 `editorial`, `unit-3`). Machine names are LAN/peer-routable
 only — there's no email fallback for a machine.
 
-Three tiers of trust establishment:
+Two tiers of trust:
 
 - **TOFU (zero-config):** `c4d init` generates a self-signed
   key pair. On first contact via mDNS, prompt: "Trust desktop
@@ -42,14 +42,12 @@ Three tiers of trust establishment:
   accounts, no setup beyond `c4d init`. For technical users
   syncing their own machines.
 
-- **CA (self-hosted):** A studio or family runs their own CA.
-  Issues certs to all machines and people. Full control, full
-  isolation, works on air-gapped networks. For studios, teams,
-  and anyone who wants managed trust.
-
-- **Avalanche.io (managed):** `c4 login` provisions a cert
-  via OAuth. No PKI to run. For collaboration with strangers
-  and the simplest onramp to the mesh.
+- **CA:** Issues certs to machines and people. Run your own
+  (full control, air-gapped networks) or use Avalanche.io
+  (turnkey — same thing, they run it for you). `c4 login`
+  provisions a cert from the Avalanche.io CA. Studios,
+  vendors, families, home users — anyone who wants managed
+  trust without managing infrastructure.
 
 Identity is not an address. `sarah@gmail.com` is Sarah regardless
 of which network she's on. `nas` is nas whether it's at home or
@@ -494,16 +492,16 @@ bundle/import, multi-band transfer.
 - mDNS discovery
 - TOFU trust (SSH-style, no CA needed)
 - Peer routing (mTLS connection = announcement)
-- Optional self-hosted CA for managed trust
+- Self-hosted CA for managed trust
 - All sync, retention, bundle, import operations
 - Full mesh topology
 
-**Avalanche.io (managed convenience):**
+**Avalanche.io (turnkey):**
+- Managed CA (no PKI to run — `c4 login`)
 - Cloud-hosted c4d nodes
-- Managed CA (no PKI to run)
 - Directory discovery (find anyone by email)
 - Managed relay (no server to provision)
-- Team admin UI
+- Team admin, vendor onboarding
 
 Git is self-hostable. Docker is self-hostable. Websites are
 self-hostable. All of those are easier to set up than a secure,
