@@ -3,102 +3,73 @@
 ## Synopsis
 
 ```
-c4 [options] [path...]           # Generate C4 IDs or capsules
-c4 fmt [options] <file.c4m>      # Format capsule (canonical or ergonomic)
-c4 diff <source> <target>        # Compare capsules or paths
-c4 union <inputs...>             # Combine capsules
-c4 intersect <inputs...>         # Find common elements
-c4 subtract <from> <remove>      # Set subtraction
-c4 validate <file|bundle>        # Validate capsule or bundle
-c4 extract <bundle> [output]     # Extract bundle to single capsule
-c4 mk <name>.c4m:                # Establish capsule endpoint
-c4 mk <name>: <host:port>        # Establish location endpoint
-c4 rm <name>:                    # Remove endpoint
-c4 mkdir <name>.c4m:<path>/      # Create directory in capsule
-c4 cp [-r] <src> <dst>           # Copy content between endpoints
+c4 [path...]                     # Identify files/directories (output is c4m)
+c4 ls <location>:                # List contents of a c4m file, location, or managed dir
+c4 cat <location>:<path>         # Output file content bytes to stdout
+c4 cp <src> <dst>                # Copy content between local, c4m, and remote locations
+c4 mv <src> <dst>                # Move/rename entries
+c4 ln <src> <dst>                # Create hard links or tags
+c4 mkdir <location>:<path>/      # Create directory in a c4m file
+c4 mk <name>.c4m:                # Establish a c4m file or location for writing
+c4 mk <name>: <host:port>        # Establish remote location
+c4 rm <location>:<path>          # Remove entries or endpoints
+c4 diff <source> <target>        # Compare two sources (output is a c4m patch)
+c4 patch <target> <input>        # Apply a c4m patch or converge to target state
+c4 undo :                        # Revert last operation on managed directory
+c4 redo :                        # Re-apply undone operation
+c4 unrm :                        # List or recover removed items
+c4 version                       # Show version and mesh nodes
 ```
 
 ## Scanning and Identification
 
 ```bash
-# Identify a single file
+# Identify a single file (outputs a c4m entry)
 c4 photo.jpg
 
-# Identify from stdin
+# Identify from stdin (bare C4 ID, no metadata)
 echo "hello" | c4
 
-# Identify a directory (single C4 ID)
+# Identify a directory (full recursive c4m listing)
 c4 my-project/
 
-# One-level capsule
-c4 -m my-project/
-
-# Full recursive capsule
-c4 -mr my-project/
-
-# Save capsule to file
-c4 -mr my-project/ > project.c4m
+# Just the C4 ID
+c4 -i my-project/
 
 # Pretty-print with aligned columns
-c4 -m --pretty my-project/
+c4 -p my-project/
 
-# Progressive scan (interruptible)
-c4 --progressive --bundle large-dir/
-
-# Resume interrupted scan
-c4 --bundle --resume large-dir.c4m_bundle
+# Save c4m to file
+c4 my-project/ > project.c4m
 ```
 
-## Options
+## Global Flags
 
 | Flag | Long | Description |
 |------|------|-------------|
-| `-a` | `--absolute` | Use absolute paths |
-| | `--bundle` | Create/use bundle for unbounded scans |
-| `-d` | `--depth N` | Max depth for recursive processing (default: unlimited) |
-| | `--empty` | Exit 0 if empty, 1 if content |
-| `-L` | `--follow` | Follow symbolic links |
-| | `--format` | Output format: `c4m`, `paths`, `json` |
-| `-m` | `--manifest` | Output capsule format |
-| `-n` | `--no-ids` | Skip C4 ID computation (faster) |
-| `-p` | `--paths` | Output paths only |
-| | `--pretty` | Pretty-print with aligned columns and formatted sizes |
-| | `--progressive` | Progressive scan with interrupt support |
-| `-q` | `--quiet` | Quiet mode |
-| `-r` | `--recursive` | Process recursively |
-| | `--resume` | Resume incomplete bundle scan |
-| `-v` | `--verbose` | Verbose output |
-| | `--version` | Show version |
+| `-i` | `--id` | Output bare C4 ID(s) instead of c4m |
+| `-p` | `--pretty` | Pretty-print (aligned columns, local time, comma sizes) |
 
-## Set Operations
+## Comparing and Patching
 
-Compare two capsules:
+Compare two sources:
 
 ```bash
-c4 diff old.c4m new.c4m
+c4 diff old.c4m: new.c4m:
+c4 diff :~1 :                    # what changed in last operation
+c4 diff :~release-v1 :           # changes since tagged state
 ```
 
-Find files present in both:
+Apply changes:
 
 ```bash
-c4 intersect a.c4m b.c4m
+c4 patch : changes.c4m           # apply delta (tracked, undoable)
+c4 patch : desired.c4m           # converge to target state
 ```
 
-Find files in `needed.c4m` but not in local directory:
+## c4m File Endpoints
 
-```bash
-c4 subtract needed.c4m ./local/ > missing.c4m
-```
-
-Merge capsules:
-
-```bash
-c4 union part1.c4m part2.c4m > combined.c4m
-```
-
-## Capsule Endpoints
-
-Establish a capsule for writing:
+Establish a c4m file for writing:
 
 ```bash
 c4 mk project.c4m:
@@ -110,19 +81,19 @@ Establish a location backed by c4d:
 c4 mk store: localhost:17433
 ```
 
-Create a directory inside a capsule:
+Create a directory inside a c4m file:
 
 ```bash
 c4 mkdir project.c4m:src/
 ```
 
-Copy content into a capsule:
+Copy content into a c4m file:
 
 ```bash
-c4 cp -r ./src/ project.c4m:src/
+c4 cp ./src/ project.c4m:src/
 ```
 
-Copy content from a capsule to disk:
+Copy content from a c4m file to disk:
 
 ```bash
 c4 cp project.c4m:src/ ./restored/
@@ -136,28 +107,17 @@ c4 rm project.c4m:
 
 ## Colon Syntax
 
-The colon (`:`) separates an endpoint name from a subpath within it:
+The colon (`:`) is the portal between local paths, c4m files, and remote locations:
 
 ```
 <endpoint>:<subpath>
 ```
 
-- `project.c4m:` — the capsule root
-- `project.c4m:src/main.go` — a file inside the capsule
+- `project.c4m:` — the c4m file root
+- `project.c4m:src/main.go` — a file inside the c4m file
 - `store:assets/` — a directory in a location
+- `:` — the managed current directory
+- `:~1` — one snapshot ago
+- `:~release-v1` — tagged snapshot
 
 Trailing colon means "look inside" — it's the boundary between the endpoint and its contents.
-
-## Formatting
-
-Reformat a capsule to canonical form:
-
-```bash
-c4 fmt capsule.c4m
-```
-
-Pretty-print an existing capsule:
-
-```bash
-c4 fmt --pretty capsule.c4m
-```

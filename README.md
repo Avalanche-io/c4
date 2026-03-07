@@ -29,9 +29,9 @@ go install github.com/Avalanche-io/c4/cmd/c4@latest
 - IDs are URL-safe, filename-safe, double-click selectable
 - Regex: `c4[1-9A-HJ-NP-Za-km-z]{88}`
 
-### Capsules (C4M Format)
+### C4M Format
 
-A **capsule** (`.c4m` file) encapsulates a filesystem — a small, human-readable description that behaves like the full directory without needing the actual file content.
+A **c4m file** (`.c4m`) describes a filesystem — a small, human-readable text file that behaves like the full directory without needing the actual file content.
 
 - [User Guide](./c4m/README.md) — Quick start and examples
 - [Specification](./c4m/SPECIFICATION.md) — Formal C4M v1.0 spec
@@ -52,23 +52,19 @@ To illustrate, the following is the SHA-512 of "foo" in hex, base64 and c4 encod
 ### CLI Usage
 
 ```bash
-# Identify a file
+# Identify a file (outputs a c4m entry with metadata + C4 ID)
 c4 file.txt
-# c43zYcLni5LF9rR4Lg4B8h3Jp8SBwjcnyyeh4bc6gTPHndKuKdjUWx1kJPYhZxYt3zV6tQXpDs2shPsPYjgG81wZM1
 
-# Identify a directory (produces a single C4 ID)
-c4 .
+# Identify a directory (full recursive c4m listing)
+c4 myproject/
 
-# Generate a capsule (C4M manifest)
-c4 -mr .
+# Just the C4 ID
+c4 -i myproject/
 
 # Compare two directories
 c4 diff old/ new/
 
-# Find what's missing
-c4 subtract needed.c4m . > todo.c4m
-
-# Pipe data
+# Pipe data (bare C4 ID, no metadata)
 echo "hello" | c4
 ```
 

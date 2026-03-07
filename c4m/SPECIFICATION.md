@@ -386,7 +386,7 @@ drwxr-xr-x 2024-01-01T00:00:00Z 4096 subdir/ c42xyz...
 This approach ensures:
 - Each directory has a unique C4 ID based on its contents
 - Subdirectories are represented by their computed C4 IDs (merkle-tree structure)
-- The command `c4 <dir>` equals `c4 -m <dir> | c4`
+- The command `c4 -i <dir>` equals `c4 <dir> | c4`
 
 ## Null and Zero Values
 

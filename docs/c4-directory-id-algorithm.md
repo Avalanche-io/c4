@@ -2,7 +2,7 @@
 
 ## Overview
 
-The C4 ID of a directory is computed from its **canonical C4M representation**. This ensures that `c4 .` equals `c4 -m . | c4`.
+The C4 ID of a directory is computed from its **canonical c4m representation**. This ensures that `c4 -i .` equals `c4 . | c4`.
 
 ## Key Principle
 
@@ -74,11 +74,11 @@ mydir/
 
 ## Why This Works
 
-This algorithm ensures `c4 .` equals `c4 -m . | c4` because:
+This algorithm ensures `c4 -i .` equals `c4 . | c4` because:
 
-1. `c4 .` computes the directory's C4 ID using the algorithm above
-2. `c4 -m .` outputs the same one-level manifest used in step 1
-3. When piped to `c4`, it recognizes the C4M format and computes the C4 ID of the canonical form
+1. `c4 -i .` computes the directory's C4 ID using the algorithm above
+2. `c4 .` outputs the c4m listing used in step 1
+3. When piped to `c4`, it recognizes the c4m format and computes the C4 ID of the canonical form
 4. Both paths use the exact same canonical form
 
 ## Key Implementation Details

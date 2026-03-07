@@ -76,7 +76,7 @@ When processing a manifest with `@base`:
 **Incremental Backup:**
 ```
 # Day 1: Full backup
-c4 -mr /data > backup-day1.c4m
+c4 /data > backup-day1.c4m
 BASE_ID=$(c4 backup-day1.c4m)
 
 # Day 2: Incremental (only changed files)

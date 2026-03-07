@@ -1,5 +1,7 @@
 # C4 Filesystem Tools Design Concept
 
+> **Note:** As of c4 v1.0, `cp`, `mv`, `rm`, `diff`, and `patch` are built-in CLI subcommands. This document is retained for historical context on the design evolution.
+
 ## Overview
 Unix-like filesystem tools that integrate C4 content addressing for integrity tracking and verification.
 

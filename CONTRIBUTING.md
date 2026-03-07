@@ -112,16 +112,10 @@ if __name__ == "__main__":
 
 #### Proposed Tools
 
-We envision an ecosystem of C4 tools:
-- `c4-cp` - Copy with verification
-- `c4-mv` - Move with tracking
-- `c4-rm` - Remove with tracking
-- `c4-sync` - Synchronize directories
-- `c4-verify` - Verify against manifests
+The core `c4` CLI now includes `cp`, `mv`, `rm`, `diff`, and `patch` as built-in subcommands. Extension tools can add complementary functionality:
+- `c4-verify` - Verify against c4m files
 - `c4-backup` - Backup workflows
 - `c4-watch` - Monitor filesystem changes
-
-See [docs/c4-tools-design.md](docs/c4-tools-design.md) for detailed design concepts.
 
 ### Contributing Tools
 

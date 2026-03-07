@@ -21,26 +21,22 @@ C4M (C4 Manifest) treats filesystems as documents, providing:
 
 ### Generate a C4 ID for a directory
 ```bash
-# Get the C4 ID of a directory (computed from its C4M manifest)
-c4 myproject/
+# Get the C4 ID of a directory
+c4 -i myproject/
 
 # Output: c42RgFeXFYL1FjFueMKjPjnwwjyJKnHVasmfEVmrWBekjiCVNjL5xBMtZePcchNPdf8AV8pUwp6L5BTbWfx6J7s7jr
 ```
 
-### View a directory's manifest
+### View a directory's c4m listing
 ```bash
-# Show one-level manifest
-c4 -m myproject/
-
-# Show recursive manifest
-c4 -mr myproject/
+# Full recursive c4m output
+c4 myproject/
 ```
 
-### Verify manifest integrity
+### Verify integrity
 ```bash
-# These should produce the same C4 ID
-c4 myproject/
-c4 -m myproject/ | c4
+# The C4 ID is computed from the canonical c4m listing
+c4 -i myproject/
 ```
 
 ## C4M Format
@@ -59,97 +55,75 @@ Each line contains:
 - Filename (directories end with `/`)
 - C4 ID (content hash)
 
-## Boolean Operations
+## Comparing Directories
 
-C4M supports set operations for powerful manifest manipulation:
-
-### Compare directories (diff)
 ```bash
-# Show files that differ between two directories
+# Show what changed between two directories
 c4 diff dir1/ dir2/
 
-# Compare a directory against a saved manifest
-c4 diff dir1/ backup.c4m
-```
-
-### Combine manifests (union)
-```bash
-# Merge manifests from multiple sources
-c4 union source1/ source2/ > combined.c4m
-```
-
-### Find common files (intersect)
-```bash
-# Show files present in both directories
-c4 intersect project-v1/ project-v2/
-```
-
-### Exclude files (subtract)
-```bash
-# Show files in dir1 that aren't in dir2
-c4 subtract dir1/ dir2/
+# Compare a directory against a saved c4m file
+c4 diff dir1/ backup.c4m:
 ```
 
 ## Use Cases
 
 ### Backup Verification
-Create manifests of important directories and verify backups haven't changed:
+Create c4m files of important directories and verify backups haven't changed:
 ```bash
-# Create manifest
-c4 -m ~/Documents > documents.c4m
+# Create c4m file
+c4 ~/Documents > documents.c4m
 
 # Later, verify nothing changed
-c4 diff ~/Documents documents.c4m
+c4 diff ~/Documents documents.c4m:
 ```
 
 ### Build Reproducibility
 Track build outputs to ensure reproducible builds:
 ```bash
-# Generate manifest of build artifacts
-c4 -m build/ > build-v1.0.0.c4m
+# Generate c4m file of build artifacts
+c4 build/ > build-v1.0.0.c4m
 
 # Verify next build produces identical output
-c4 diff build/ build-v1.0.0.c4m
+c4 diff build/ build-v1.0.0.c4m:
 ```
 
 ### Data Transfer Validation
 Ensure data integrity when transferring files:
 ```bash
 # On source machine
-c4 -m data/ > transfer.c4m
+c4 data/ > transfer.c4m
 
 # On destination machine (after transfer)
-c4 diff data/ transfer.c4m
+c4 diff data/ transfer.c4m:
 ```
 
 ### Change Detection
 Monitor filesystem changes over time:
 ```bash
 # Create baseline
-c4 -m project/ > baseline.c4m
+c4 project/ > baseline.c4m
 
 # Check what changed
-c4 diff project/ baseline.c4m
+c4 diff project/ baseline.c4m:
 
 # Update baseline
-c4 -m project/ > baseline.c4m
+c4 project/ > baseline.c4m
 ```
 
 ## Advanced Features
 
 ### Piping and Composition
-C4M auto-detects format when piped:
+c4m output is plain text, native to Unix tools:
 ```bash
-# Filter and process manifests
-c4 -m dir/ | grep "\.jpg" | c4
-```
+# Filter c4m entries with grep
+c4 dir/ | grep "\.jpg"
 
-### Recursive Manifests
-View complete directory structure:
-```bash
-c4 -mr project/
+# Extract all C4 IDs with awk
+c4 dir/ | awk '{ print $NF }'
+
+# Files over 1MB
+c4 dir/ | awk '$3+0 > 1048576'
 ```
-Output shows nested structure with proper indentation.
 
 ### Canonical Form
 Directories compute their C4 ID from a canonical representation where subdirectories are represented by their computed C4 ID:
@@ -159,15 +133,17 @@ c4 mydir/
 # Always produces the same ID for the same content
 ```
 
-## Integration Ideas
+## CLI Integration
 
-We're exploring filesystem tool integration for seamless C4 workflows:
-- `c4-cp` - Copy with automatic C4 verification
-- `c4-mv` - Move with manifest updates
-- `c4-rm` - Remove with manifest tracking
-- `c4-sync` - Sync directories using C4M manifests
+The `c4` CLI provides built-in filesystem operations using the same c4m format:
 
-These would maintain standard Unix tool interfaces while adding C4 integrity tracking.
+```bash
+c4 cp ./src/ project.c4m:src/    # Copy into a c4m file
+c4 diff dir1/ dir2/              # Compare directories
+c4 patch : desired.c4m           # Converge filesystem to target state
+```
+
+See the [CLI Reference](../docs/cli-reference.md) for the full command vocabulary.
 
 ## Technical Details
 

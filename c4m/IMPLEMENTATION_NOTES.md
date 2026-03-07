@@ -243,27 +243,20 @@ Right:  drwxr-xr-x 2025-09-19T12:00:00Z 150 dirname/   # Content sum
 4. Warning suppresssion should be configurable
 5. Output formatting should preserve canonical form when possible
 
-## Bundle Extraction
+## Output Formats
 
-The extract command supports two output formats:
+c4m output supports two formats:
 
-### Pretty Format (Default)
-```bash
-c4 extract bundle_dir [output.c4m]
-```
+### Canonical Format (Default)
+- Strict UTC timestamps with 'Z' suffix
+- Single space between fields, no alignment
+- Exact byte counts without formatting
+- Machine-processable, awk-native
+
+### Pretty Format (`-p` / `--pretty`)
 - Human-readable timestamps with timezone
 - Aligned columns for better readability
-- Size values may include commas or units
-
-### Canonical Format
-```bash
-c4 extract --canonical bundle_dir [output.c4m]
-```
-- Strict UTC timestamps with 'Z' suffix
-- Minimal formatting for machine processing
-- Exact byte counts without formatting
-
-Both formats preserve the complete manifest structure including @base references for proper reconstruction of unbounded filesystem scans.
+- Size values with commas (e.g., `43,783`)
 
 ## Canonical Form and C4 ID Computation
 
