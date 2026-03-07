@@ -125,6 +125,13 @@ func lnSymlink(args []string) {
 		os.Exit(1)
 	}
 
+	unlock, err := lockC4mFile(link.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", link.Source, err)
+		os.Exit(1)
+	}
+	defer unlock()
+
 	manifest, err := loadOrCreateManifest(link.Source)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -206,6 +213,13 @@ func lnHard(args []string) {
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", src.Source)
 		os.Exit(1)
 	}
+
+	unlock, err := lockC4mFile(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", src.Source, err)
+		os.Exit(1)
+	}
+	defer unlock()
 
 	manifest, err := loadManifest(src.Source)
 	if err != nil {

@@ -245,6 +245,13 @@ func rmC4mEntry(spec pathspec.PathSpec) {
 		os.Exit(1)
 	}
 
+	unlock, err := lockC4mFile(spec.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", spec.Source, err)
+		os.Exit(1)
+	}
+	defer unlock()
+
 	manifest, err := loadManifest(spec.Source)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

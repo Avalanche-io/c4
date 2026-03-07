@@ -59,6 +59,14 @@ func runPatch(args []string) {
 // patchC4mFile applies a source to a c4m file.
 // Auto-detects: plain c4m = target state mode, patch with page boundaries = delta mode.
 func patchC4mFile(c4mPath, source string) {
+	// Lock the c4m file for the read-modify-write cycle
+	unlock, err := lockC4mFile(c4mPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", c4mPath, err)
+		os.Exit(1)
+	}
+	defer unlock()
+
 	// Load the base c4m file
 	base, err := loadManifest(c4mPath)
 	if err != nil {

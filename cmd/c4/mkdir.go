@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
@@ -61,6 +62,14 @@ func runMkdir(args []string) {
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", spec.Source)
 		os.Exit(1)
 	}
+
+	// Lock the c4m file for the read-modify-write cycle
+	unlock, err := lockC4mFile(spec.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", spec.Source, err)
+		os.Exit(1)
+	}
+	defer unlock()
 
 	// Load or create manifest
 	manifest, err := loadOrCreateManifest(spec.Source)
@@ -191,6 +200,29 @@ func dirExistsInManifest(manifest *c4m.Manifest, name string, depth int) bool {
 		}
 	}
 	return false
+}
+
+// lockC4mFile acquires an exclusive advisory lock on a c4m file's sidecar
+// lock file. Returns an unlock function that must be deferred. This prevents
+// concurrent c4 commands from racing on the same c4m file.
+func lockC4mFile(path string) (unlock func(), err error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	lockPath := abs + ".lock"
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return func() {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}, nil
 }
 
 // loadOrCreateManifest loads a c4m file, or creates a new empty manifest.

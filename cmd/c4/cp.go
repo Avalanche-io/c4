@@ -127,6 +127,12 @@ func cpManifestToTarget(manifest *c4m.Manifest, dst pathspec.PathSpec) {
 			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 			os.Exit(1)
 		}
+		unlock, err := lockC4mFile(dst.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", dst.Source, err)
+			os.Exit(1)
+		}
+		defer unlock()
 		existing, err := loadOrCreateManifest(dst.Source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -192,6 +198,13 @@ func cpLocalToC4m(src, dst pathspec.PathSpec) {
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 		os.Exit(1)
 	}
+
+	unlock, err := lockC4mFile(dst.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", dst.Source, err)
+		os.Exit(1)
+	}
+	defer unlock()
 
 	// Walk source and build manifest entries
 	info, err := os.Stat(src.Source)
@@ -621,6 +634,12 @@ func cpStdinToTarget(dst pathspec.PathSpec) {
 			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 			os.Exit(1)
 		}
+		unlock, err := lockC4mFile(dst.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", dst.Source, err)
+			os.Exit(1)
+		}
+		defer unlock()
 		existing, err := loadOrCreateManifest(dst.Source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -684,6 +703,13 @@ func cpContainerToC4m(src, dst pathspec.PathSpec) {
 		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 		os.Exit(1)
 	}
+
+	unlock, err := lockC4mFile(dst.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", dst.Source, err)
+		os.Exit(1)
+	}
+	defer unlock()
 
 	format := pathspec.ContainerFormat(src.Source)
 	tarManifest, err := container.ReadManifest(src.Source, format)
@@ -962,6 +988,12 @@ func cpGlobToSequence(srcGlob, dstPattern string) {
 			fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", dst.Source)
 			os.Exit(1)
 		}
+		unlock, err := lockC4mFile(dst.Source)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", dst.Source, err)
+			os.Exit(1)
+		}
+		defer unlock()
 		manifest, err := loadOrCreateManifest(dst.Source)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
