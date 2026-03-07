@@ -123,7 +123,7 @@ func runMk(args []string) {
 			fmt.Fprintf(os.Stderr, "%s already established\n", target)
 			os.Exit(0)
 		}
-		if err := establish.EstablishC4mWithTTL(name, expiresAt); err != nil {
+		if err := establish.EstablishC4m(name); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -147,7 +147,7 @@ func runMk(args []string) {
 				os.Exit(0)
 			}
 		}
-		if err := establish.EstablishLocationWithTTL(name, address, expiresAt); err != nil {
+		if err := establish.EstablishLocation(name, address); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
