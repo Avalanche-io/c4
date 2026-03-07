@@ -212,30 +212,20 @@ func patchLocalPath(targetDir, source string) {
 
 	desiredPaths := manifestPaths(desired)
 
-	// Pre-flight: verify all required content is available before touching anything.
-	// Simulate the ID consumption to catch duplicates that need multiple sources.
-	idCheck := make(map[string]int) // available count per ID
-	for k, v := range idIndex {
-		idCheck[k] = len(v)
+	// Pre-flight: verify all required content exists on disk before touching anything.
+	// One copy is enough — content can always be copied from wherever it is.
+	availableIDs := make(map[string]bool)
+	for k := range idIndex {
+		availableIDs[k] = true
 	}
 	var missing []string
 	for _, dp := range desiredPaths {
 		if dp.entry.IsDir() || dp.entry.IsSymlink() || dp.entry.C4ID.IsNil() {
 			continue
 		}
-		destPath := filepath.Join(targetDir, dp.path)
-		if info, err := os.Stat(destPath); err == nil && info.Mode().IsRegular() {
-			existingID := identifyFile(destPath)
-			if !existingID.IsNil() && existingID == dp.entry.C4ID {
-				continue // already in place
-			}
-		}
-		idStr := dp.entry.C4ID.String()
-		if idCheck[idStr] <= 0 {
+		if !availableIDs[dp.entry.C4ID.String()] {
 			missing = append(missing, dp.path)
-			continue
 		}
-		idCheck[idStr]--
 	}
 	if len(missing) > 0 {
 		fmt.Fprintf(os.Stderr, "%d files not available locally:\n", len(missing))
@@ -259,7 +249,14 @@ func patchLocalPath(targetDir, source string) {
 		}
 	}
 
-	// Phase 2: Place files (move from current location)
+	// Phase 2: Place files — move first occurrence, copy for duplicates.
+	// Track where each C4 ID currently lives (sources may move during this phase).
+	idLocation := make(map[string]string) // C4 ID → current disk path
+	for id, paths := range idIndex {
+		if len(paths) > 0 {
+			idLocation[id] = paths[0]
+		}
+	}
 	for _, dp := range desiredPaths {
 		if dp.entry.IsDir() || dp.entry.IsSymlink() {
 			continue
@@ -272,32 +269,27 @@ func patchLocalPath(targetDir, source string) {
 			existingID := identifyFile(destPath)
 			if !existingID.IsNil() && existingID == dp.entry.C4ID {
 				skipped++
+				// Update location — this path is a valid source for copies
+				idLocation[dp.entry.C4ID.String()] = destPath
 				continue
 			}
 		}
 
-		// Move from the first available source (pre-flight guarantees this exists)
-		sourcePaths := idIndex[dp.entry.C4ID.String()]
-		srcPath := sourcePaths[0]
+		srcPath := idLocation[dp.entry.C4ID.String()]
 
-		// Ensure parent directory exists
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
-		if err := os.Rename(srcPath, destPath); err != nil {
-			// Cross-device: fall back to copy
-			if copyErr := copyFile(srcPath, destPath); copyErr != nil {
-				fmt.Fprintf(os.Stderr, "Error moving %s → %s: %v\n", srcPath, destPath, err)
-				os.Exit(1)
-			}
-			os.Remove(srcPath)
+		if err := copyFile(srcPath, destPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error copying %s → %s: %v\n", srcPath, destPath, err)
+			os.Exit(1)
 		}
 		moved++
 
-		// Remove used source from index (don't reuse)
-		idIndex[dp.entry.C4ID.String()] = sourcePaths[1:]
+		// This destination is now a valid source for future copies of the same ID
+		idLocation[dp.entry.C4ID.String()] = destPath
 	}
 
 	// Phase 3: Create symlinks
