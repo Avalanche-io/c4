@@ -23,26 +23,37 @@ operations plus discovery and policy.
 
 ### Identity
 
-Identity is an email address. `sarah@home`, `unit-3@studio`,
-`josh@avalanche.io`. The email address serves triple duty:
+People have email addresses. Machines have names.
 
-- **Authentication:** Your TLS cert carries your email in the
-  SAN field. Self-verifying — signed by a CA the other party
-  trusts. No accounts, no tokens, no passwords.
-- **Routing:** The mesh resolves your email to a route. The
-  sender doesn't need to know your address or even which of
-  your devices is online.
-- **Fallback transport:** If no mesh route exists, the c4m can
-  literally be emailed. The email address is always reachable
-  — it's the transport of last resort.
+**People:** Your real email address (`sarah@gmail.com`,
+`josh@example.com`). The email is your mesh identity AND your
+fallback — if the mesh can't route to you, it can always email
+you. The TLS cert carries the email in the SAN field.
 
-A studio issues certs with `@studio` addresses. A family signs
-their own with `@home`. Avalanche.io issues `@avalanche.io`
-certs for strangers.
+**Machines:** Named by their cert CN (`nas`, `desktop`,
+`editorial`, `unit-3`). Machine names are LAN/peer-routable
+only — there's no email fallback for a machine.
 
-Identity is not an address. `sarah@home` is Sarah regardless of
-which network she's on. `unit-3@studio` is Unit-3 whether it's
-in the building or on location in Morocco.
+Three tiers of trust establishment:
+
+- **TOFU (zero-config):** `c4d init` generates a self-signed
+  key pair. On first contact via mDNS, prompt: "Trust desktop
+  (fingerprint abc123)?" Say yes, done. Like SSH — no CA, no
+  accounts, no setup beyond `c4d init`. For technical users
+  syncing their own machines.
+
+- **CA (self-hosted):** A studio or family runs their own CA.
+  Issues certs to all machines and people. Full control, full
+  isolation, works on air-gapped networks. For studios, teams,
+  and anyone who wants managed trust.
+
+- **Avalanche.io (managed):** `c4 login` provisions a cert
+  via OAuth. No PKI to run. For collaboration with strangers
+  and the simplest onramp to the mesh.
+
+Identity is not an address. `sarah@gmail.com` is Sarah regardless
+of which network she's on. `nas` is nas whether it's at home or
+carried to a shoot location.
 
 ### Discovery
 
@@ -56,17 +67,17 @@ shows who's on the local network. No configuration. No internet.
 
 ```
 c4 find
-  nas           (josh@home)        nas.local:7433
-  sarah-laptop  (sarah@home)       10.0.1.42:7433
-  desktop       (josh@home)        10.0.1.10:7433
+  nas           nas.local:7433
+  sarah-laptop  10.0.1.42:7433
+  desktop       10.0.1.10:7433
 ```
 
 **Mesh (peer routing):** When c4d starts, it connects to
 configured peers. The mTLS handshake IS the announcement —
 identity from the cert, address from the connection. Peers
-remember. When you send to `sarah@home`, your node asks its
-peers "can you reach `sarah@home`?" The peer that can reach
-her becomes the route.
+remember. When you send to `sarah@gmail.com`, your node asks
+its peers "can you reach sarah@gmail.com?" The peer that can
+reach her becomes the route.
 
 This handles the hard cases naturally:
 - Sarah behind hotel NAT? She connected outbound to the home
@@ -77,21 +88,21 @@ This handles the hard cases naturally:
   there. Her laptop syncs from it later.
 
 Every node is a potential proxy for any node it can reach.
-"Sending to `sarah@home`" doesn't mean delivering to a specific
-device. It means ensuring Sarah's cache network has the content.
-The sender doesn't need to know which device, which network, or
-even which continent. The mesh routes it.
+"Sending to sarah@gmail.com" doesn't mean delivering to a
+specific device. It means ensuring Sarah's cache network has
+the content. The sender doesn't need to know which device,
+which network, or even which continent. The mesh routes it.
 
 **Email (fallback):** If no mesh route exists, the c4m can be
-delivered as email. `sarah@home` is a real email address. The
-c4m is small enough to attach. Sarah imports it. Her node pulls
-blobs through whatever channel works later.
+delivered as actual email to the same address. The c4m is small
+enough to attach. Sarah imports it. Her node pulls blobs through
+whatever channel works later. No special configuration — the
+mesh identity IS the email address.
 
 **Directory (Avalanche.io):** For strangers. c4d registers with
-the directory on startup. You look up `sarah@example.com` and
-get a route — possibly through the Avalanche.io relay if no
-direct path exists. This is the only mechanism that requires
-accounts.
+the directory on startup. You look up `sarah@gmail.com` and get
+a route — possibly through the Avalanche.io relay if no direct
+path exists. This is the only mechanism that requires accounts.
 
 ### Description
 
@@ -187,15 +198,18 @@ the C4 ID on receipt. Done.
 
 ### Personal mesh
 
-Josh has a laptop, desktop, and NAS at home. All three run c4d
-with certs from a self-signed home CA. They discover each other
-via mDNS.
+Josh has a laptop, desktop, and NAS at home. All three run c4d.
+He runs `c4d init` on each, they discover each other via mDNS,
+and he trusts each on first contact (TOFU).
 
 ```
 # On laptop — NAS and desktop appear automatically
 c4 find
-  nas       (josh@home)    nas.local:7433
-  desktop   (josh@home)    desktop.local:7433
+  nas       nas.local:7433
+  desktop   desktop.local:7433
+
+# Trust on first use
+# "Trust nas (fingerprint abc123)?" → yes
 
 # Sync a project directory across all machines
 c4 mk : --sync nas: desktop:
@@ -203,8 +217,8 @@ c4 mk : --sync nas: desktop:
 # Every change propagates. Content materializes on each node.
 ```
 
-No accounts. No cloud. No configuration beyond the initial CA
-setup. The mesh is three caches that know about each other.
+No accounts. No cloud. No CA. Just `c4d init` on each machine
+and say yes when they find each other.
 
 ### Sending to a person
 
@@ -214,15 +228,20 @@ not directly reachable.
 
 ```
 # Josh sends to sarah — not to an address, not to a device
-c4 cp dailies.c4m: sarah@home:
+c4 cp dailies.c4m: sarah@gmail.com:
 ```
 
-Josh's node finds a route to `sarah@home`. The home NAS can
-reach her — Sarah's laptop connected outbound. The c4m travels
-to the NAS, which materializes the blobs into a transit path
-with a short TTL. The NAS forwards to Sarah's laptop. Blobs
-are now cached on the NAS (transit) and available to any other
-node that routes through it.
+Josh's node finds a route to `sarah@gmail.com`. The home NAS
+can reach her — Sarah's laptop connected outbound. The c4m
+travels to the NAS, which materializes the blobs into a transit
+path with a short TTL. The NAS forwards to Sarah's laptop.
+
+On Sarah's end, the c4m arrives in seconds. She can immediately
+browse the project structure, see all the file names and sizes,
+diff against what she had before. The blobs materialize in the
+background — but Sarah is already working with the description.
+Moving 10 TB feels instant because the c4m IS the project, and
+the c4m is kilobytes.
 
 If Sarah's laptop is off entirely, the c4m and blobs sit in
 transit on the NAS. When Sarah reconnects, her node pulls from
@@ -232,10 +251,9 @@ space through existing retention machinery.
 If Sarah walks into the same room as Josh, mDNS finds her
 directly — content goes peer-to-peer with no intermediary.
 
-If no mesh route exists at all, the c4m can be delivered as
-email to `sarah@home`. Sarah imports it. Her node pulls blobs
-through whatever channel is available — mesh, cloud, shuttle
-drive. The email address is always reachable.
+If no mesh route exists at all, the c4m is emailed to
+`sarah@gmail.com` — the same address. Sarah imports it. Her
+node pulls blobs through whatever channel is available.
 
 ### Studio on an isolated network
 
@@ -247,10 +265,10 @@ production units, editorial bays, vendor workstations.
 # mDNS discovery — no internet, no directory, no accounts
 
 c4 find
-  editorial     (editorial@studio)     10.42.1.5:7433
-  unit-3        (unit-3@studio)        10.42.1.30:7433
-  color-suite   (color@studio)         10.42.1.40:7433
-  vendor-weta   (vendor@weta)          10.42.2.5:7433
+  editorial     (studio-ca)     10.42.1.5:7433
+  unit-3        (studio-ca)     10.42.1.30:7433
+  color-suite   (studio-ca)     10.42.1.40:7433
+  vendor-weta   (weta-ca)       10.42.2.5:7433
 
 # Send plates from unit-3 to editorial
 c4 cp plates.c4m: editorial:incoming/
@@ -347,16 +365,36 @@ managed one for convenience.
 
 ## Design Decisions
 
+### The c4m Arrives Instantly
+
+Moving 10 TB of content should feel fast and lightweight.
+It does — because the transfer completes when the c4m arrives,
+and the c4m is kilobytes.
+
+The moment you receive a c4m, you can:
+- Browse the full project structure (`c4 ls`)
+- See every file name, size, timestamp, permission
+- Diff against local content (`c4 diff`)
+- Organize, rename, restructure the described files
+- Start working with files as their blobs materialize
+
+You don't wait for 10 TB to download before you can interact
+with the project. The c4m IS the project. The blobs are the
+content behind it — they follow asynchronously, and everything
+is usable at every stage. This is the philosophy of "partial
+knowledge is not an error state" applied to transfer.
+
 ### Push Intent, Pull Content
 
 Content transfer is two phases:
 
 1. **Push intent:** The c4m arrives at the destination (or the
-   next hop). Fast — KB-MB regardless of project size.
+   next hop). Fast — KB-MB regardless of project size. The
+   receiver can work with it immediately.
 
 2. **Pull content:** Blobs materialize based on policy. Eagerly
    for backup, lazily for thin mirrors, into transit paths with
-   short TTLs for forwarding.
+   short TTLs for forwarding. c4d handles this in the background.
 
 `c4 cp project.c4m: nas:` means: the NAS knows about this
 project right now. The NAS has the complete description. Blobs
@@ -429,12 +467,12 @@ checks its own store, it pulls what's missing. No explicit
 
 There is no separate relay concept. Discovery and relay are the
 same operation: the node that can answer "can you reach
-`sarah@home`?" can also forward content to her. The discovery
+sarah@gmail.com?" can also forward content to her. The discovery
 path IS the delivery path.
 
 Every node in the mesh is a potential intermediary for any node
-it can reach. When you send to `sarah@home`, your node finds a
-route — possibly direct, possibly through one or more
+it can reach. When you send to `sarah@gmail.com`, your node
+finds a route — possibly direct, possibly through one or more
 intermediaries. Content flows along that route, materializing
 into transit caches at each hop. No special relay software, no
 inbox model, no delivery queue. Just nodes forwarding to nodes
@@ -454,8 +492,9 @@ bundle/import, multi-band transfer.
 **OSS (free, self-hosted):**
 - c4 CLI, c4d (full mesh node)
 - mDNS discovery
+- TOFU trust (SSH-style, no CA needed)
 - Peer routing (mTLS connection = announcement)
-- mTLS with self-signed CA
+- Optional self-hosted CA for managed trust
 - All sync, retention, bundle, import operations
 - Full mesh topology
 
@@ -506,6 +545,8 @@ locked into a platform.
 - `c4 cp location:path local.c4m:` (pull)
 
 ### Identity
+- `c4d init` (generate self-signed key pair, TOFU mode)
+- TOFU trust prompting on first contact
 - `c4 login` (provision cert from Avalanche.io CA)
 - `c4 logout` (revoke cert)
-- Self-signed CA setup tooling
+- Self-signed CA setup tooling (for studios/teams)

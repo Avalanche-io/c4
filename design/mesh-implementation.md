@@ -207,8 +207,8 @@ Wire into `serve.go` after TLS config is loaded.
 Scan for `_c4d._tcp` services on the local network. Display:
 ```
 c4 find
-  nas        (josh@home)     nas.local:7433
-  desktop    (josh@home)     10.0.1.10:7433
+  nas        nas.local:7433
+  desktop    10.0.1.10:7433
 ```
 
 Timeout: 3 seconds by default, configurable.
@@ -328,9 +328,9 @@ Currently `peers: []string` (addresses only). Change to:
 ```yaml
 peers:
   - address: nas.local:7433
-    identity: josh@home
+    name: nas
   - address: cloud.example.com:7433
-    identity: josh@cloud
+    name: cloud
 ```
 
 `config.PeerConfig` struct with Address + Identity fields.
@@ -359,7 +359,7 @@ Serves double duty — liveness probe and routing refresh.
 When content is addressed to an identity:
 
 ```
-GET /route/sarah@home
+GET /route/sarah@gmail.com
 → 10.42.5.7:7433       (directly reachable)
 → via:nas.local:7433    (reachable through intermediary)
 → 404                   (unknown)
@@ -372,19 +372,18 @@ the route.
 ### 5.4 Identity-based cp
 
 ```
-c4 cp project.c4m: sarah@home:
+c4 cp project.c4m: sarah@gmail.com:
 ```
 
-If `sarah@home` is not an established location, resolve it:
-1. Check mDNS (LAN)
-2. Check peer routing (mesh)
-3. Check directory (Avalanche.io, future)
-4. Email fallback (send c4m as attachment)
+If `sarah@gmail.com` is not an established location, resolve:
+1. Check peer routing (mesh — ask peers)
+2. Check directory (Avalanche.io, future)
+3. Email fallback (send c4m as attachment to the same address)
 
 The sender doesn't need to know the target location. The
 mesh routes it. If resolved to a mesh route, push the c4m to
-the next hop's transit path. If no route exists, the c4m can
-be emailed to the address — it's a real email address.
+the next hop's transit path. If no route exists, the c4m is
+emailed — the identity IS the email address.
 
 ### 5.5 Store-and-forward
 
