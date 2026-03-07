@@ -265,7 +265,6 @@ From strongest to weakest:
 | Anchor | Lifetime | Release mechanism |
 |--------|----------|-------------------|
 | **Auth-required path** (legal hold) | Until authorized release | Un-establish with auth |
-| **Explicit pin** | Indefinite | `c4 unpin` |
 | **Established c4m** (no TTL) | Until un-established | `c4 rm project.c4m:` |
 | **Managed dir current** | While managed | `c4 rm :` (teardown) |
 | **Tagged snapshot** | While tag exists | `c4 rm :~tagname` |
