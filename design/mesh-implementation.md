@@ -205,15 +205,15 @@ Wire into `serve.go` after TLS config is loaded.
 
 ### 3.2 Peers endpoint in c4d
 
-`GET /peers/` returns discovered peers in c4m listing format:
+`GET /peers/` returns discovered peers in c4m format:
 
 ```
-nas/
-desktop/
-sarah-laptop/
+drwxr-xr-x - - nas/ -
+drwxr-xr-x - - desktop/ -
+drwxr-xr-x - - sarah-laptop/ -
 ```
 
-Each peer is a directory entry. `GET /peers/nas/` could return
+Standard c4m directory entries. `GET /peers/nas/` could return
 that peer's namespace root (proxied). Content-Type: `text/c4m`.
 
 The peers list is maintained by the mDNS browser running in
@@ -567,16 +567,18 @@ These are additive (JSON, zero values are no-ops).
 
 c4d namespace stores paths → C4 IDs in a c4m file (root.c4m).
 Listing a directory means scanning for entries under that prefix.
-The listing endpoint (`GET /path/`) already returns c4m format:
+The listing endpoint (`GET /path/`) returns c4m format:
 
 ```
-project.c4m	c41abc...
-backup.c4m	c41def...
-renders/
+-rw-r--r-- - - project.c4m c41abc...
+-rw-r--r-- - - backup.c4m c41def...
+drwxr-xr-x - - renders/ -
 ```
 
-Content-Type: `text/c4m`. No JSON. Name + tab + C4 ID (or bare
-name for directories). Same format the CLI already parses.
+Content-Type: `text/c4m`. Standard c4m entries. The current
+implementation returns a simplified `name\tC4ID` format — this
+should be upgraded to full c4m entries for consistency with
+`c4 ls` output everywhere.
 
 ### Error handling
 

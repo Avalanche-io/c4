@@ -66,9 +66,9 @@ your node. No configuration. No internet.
 
 ```
 c4 ls net:/peers
-nas/
-sarah-laptop/
-desktop/
+drwxr-xr-x - - nas/ -
+drwxr-xr-x - - sarah-laptop/ -
+drwxr-xr-x - - desktop/ -
 ```
 
 **Mesh (peer routing):** When c4d starts, it connects to
@@ -204,8 +204,8 @@ and he trusts each on first contact (TOFU).
 ```
 # On laptop — NAS and desktop appear automatically
 c4 ls net:/peers
-nas/
-desktop/
+drwxr-xr-x - - nas/ -
+drwxr-xr-x - - desktop/ -
 
 # Trust on first use
 # "Trust nas (fingerprint abc123)?" → yes
@@ -265,10 +265,10 @@ production units, editorial bays, vendor workstations.
 # mDNS discovery — no internet, no directory, no accounts
 
 c4 ls net:/peers
-editorial/
-unit-3/
-color-suite/
-vendor-weta/
+drwxr-xr-x - - editorial/ -
+drwxr-xr-x - - unit-3/ -
+drwxr-xr-x - - color-suite/ -
+drwxr-xr-x - - vendor-weta/ -
 
 # Send plates from unit-3 to editorial
 c4 cp plates.c4m: editorial:incoming/

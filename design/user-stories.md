@@ -323,7 +323,7 @@ want their project files backed up without thinking about it.
 **Setup (once):**
 ```
 c4 ls net:/peers
-nas/
+drwxr-xr-x - - nas/ -
 
 c4 mk nas:                  # auto-resolves via net:/peers/nas
 ```
@@ -616,7 +616,7 @@ c4d init
 
 # On laptop, find the Pi
 c4 ls net:/peers
-pi-nas/
+drwxr-xr-x - - pi-nas/ -
 
 c4 mk pi-nas:               # auto-resolves via net:/peers/pi-nas
 ```
