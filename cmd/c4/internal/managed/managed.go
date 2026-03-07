@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -182,6 +183,12 @@ func (d *Dir) Snapshot() (c4.ID, error) {
 	}
 
 	history = append([]string{id.String()}, history...)
+
+	// Prune history if retention limit is set
+	if retain := d.Retain(); retain > 0 && len(history) > retain {
+		history = history[:retain]
+	}
+
 	if err := d.writeHistory(history); err != nil {
 		return c4.ID{}, err
 	}
@@ -190,6 +197,9 @@ func (d *Dir) Snapshot() (c4.ID, error) {
 	if err := atomicWriteFile(filepath.Join(d.meta, "redo"), nil, 0644); err != nil {
 		return c4.ID{}, fmt.Errorf("clear redo: %w", err)
 	}
+
+	// Clean up orphaned snapshot files
+	d.pruneSnapshots()
 
 	return id, nil
 }
@@ -340,6 +350,29 @@ func (d *Dir) RemoveTag(name string) error {
 	return os.Remove(filepath.Join(d.meta, "tags", name))
 }
 
+// SetRetain sets the maximum number of snapshots to keep in history.
+// On each new snapshot, older entries beyond this limit are pruned.
+// Set to 0 to disable retention pruning (keep all).
+func (d *Dir) SetRetain(n int) error {
+	if n <= 0 {
+		return os.Remove(filepath.Join(d.meta, "retain"))
+	}
+	return atomicWriteFile(filepath.Join(d.meta, "retain"), []byte(strconv.Itoa(n)+"\n"), 0644)
+}
+
+// Retain returns the configured retention limit, or 0 if unlimited.
+func (d *Dir) Retain() int {
+	data, err := os.ReadFile(filepath.Join(d.meta, "retain"))
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
 // ListTags returns all tag names and their C4 IDs.
 func (d *Dir) ListTags() (map[string]string, error) {
 	entries, err := os.ReadDir(filepath.Join(d.meta, "tags"))
@@ -406,6 +439,40 @@ func (d *Dir) RemoveIgnorePattern(pattern string) error {
 // The filesystem is left untouched.
 func (d *Dir) Teardown() error {
 	return os.RemoveAll(d.meta)
+}
+
+// pruneSnapshots removes snapshot files not referenced by history, redo, or tags.
+func (d *Dir) pruneSnapshots() {
+	// Collect all referenced snapshot IDs
+	referenced := make(map[string]struct{})
+
+	history, _ := d.readHistory()
+	for _, id := range history {
+		referenced[id] = struct{}{}
+	}
+	redo, _ := d.readRedo()
+	for _, id := range redo {
+		referenced[id] = struct{}{}
+	}
+	tags, _ := d.ListTags()
+	for _, id := range tags {
+		referenced[id] = struct{}{}
+	}
+
+	// Walk snapshots/ and remove unreferenced files
+	entries, err := os.ReadDir(filepath.Join(d.meta, "snapshots"))
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if _, ok := referenced[e.Name()]; ok {
+			continue
+		}
+		os.Remove(filepath.Join(d.meta, "snapshots", e.Name()))
+	}
 }
 
 // --- Internal methods ---

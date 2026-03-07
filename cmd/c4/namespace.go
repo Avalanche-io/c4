@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 )
@@ -83,7 +84,8 @@ func identityFromConfig() (string, error) {
 // registerNamespacePath registers a c4m file in the c4d namespace.
 // In backing-store mode (c4d configured): errors are real errors.
 // In local-only mode (no c4d): returns nil immediately, no-op.
-func registerNamespacePath(c4mPath string) error {
+// If expiresAt is non-nil, sets the X-Expires-At header for TTL.
+func registerNamespacePath(c4mPath string, expiresAt ...*time.Time) error {
 	if !c4dConfigured() {
 		return nil
 	}
@@ -113,6 +115,10 @@ func registerNamespacePath(c4mPath string) error {
 	req, err := http.NewRequest("PUT", addr+nsPath, strings.NewReader(id.String()))
 	if err != nil {
 		return fmt.Errorf("namespace registration: %w", err)
+	}
+
+	if len(expiresAt) > 0 && expiresAt[0] != nil {
+		req.Header.Set("X-Expires-At", expiresAt[0].Format(time.RFC3339))
 	}
 
 	resp, err := client.Do(req)

@@ -519,3 +519,66 @@ func TestConcurrentSnapshots(t *testing.T) {
 		t.Error("lock file should exist after locked operations")
 	}
 }
+
+func TestSnapshotRetention(t *testing.T) {
+	dir := setupTestDir(t)
+
+	d, err := Init(dir, nil)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Set retention to 3
+	if err := d.SetRetain(3); err != nil {
+		t.Fatalf("SetRetain: %v", err)
+	}
+	if d.Retain() != 3 {
+		t.Errorf("Retain = %d, want 3", d.Retain())
+	}
+
+	// Create 5 more snapshots (total 6 with init)
+	for i := 0; i < 5; i++ {
+		os.WriteFile(filepath.Join(dir, fmt.Sprintf("r%d.txt", i)), []byte(fmt.Sprintf("%d", i)), 0644)
+		if _, err := d.Snapshot(); err != nil {
+			t.Fatalf("Snapshot %d: %v", i, err)
+		}
+	}
+
+	// History should be pruned to 3
+	entries, err := d.History()
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Errorf("expected 3 history entries, got %d", len(entries))
+	}
+
+	// Snapshot files should also be pruned — only referenced ones remain
+	snaps, err := os.ReadDir(filepath.Join(dir, ".c4", "snapshots"))
+	if err != nil {
+		t.Fatalf("ReadDir snapshots: %v", err)
+	}
+	if len(snaps) != 3 {
+		t.Errorf("expected 3 snapshot files, got %d", len(snaps))
+	}
+}
+
+func TestRetainDisable(t *testing.T) {
+	dir := setupTestDir(t)
+
+	d, err := Init(dir, nil)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	d.SetRetain(5)
+	if d.Retain() != 5 {
+		t.Errorf("Retain = %d, want 5", d.Retain())
+	}
+
+	// Disable retention
+	d.SetRetain(0)
+	if d.Retain() != 0 {
+		t.Errorf("Retain = %d, want 0 after disable", d.Retain())
+	}
+}

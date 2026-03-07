@@ -67,28 +67,48 @@ func runMk(args []string) {
 
 	// Bare colon = managed directory
 	if target == ":" {
-		// Collect --exclude flags
+		// Collect --exclude and --snapshot-retain flags
 		var excludes []string
+		var snapshotRetain int
 		for i := 1; i < len(args); i++ {
 			if args[i] == "--exclude" && i+1 < len(args) {
 				excludes = append(excludes, args[i+1])
+				i++
+			} else if args[i] == "--snapshot-retain" && i+1 < len(args) {
+				n, err := strconv.Atoi(args[i+1])
+				if err != nil || n < 1 {
+					fmt.Fprintf(os.Stderr, "Error: --snapshot-retain requires a positive integer\n")
+					os.Exit(1)
+				}
+				snapshotRetain = n
 				i++
 			}
 		}
 
 		if managed.IsManaged(".") {
+			d, err := managed.Open(".")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			changed := false
 			if len(excludes) > 0 {
-				d, err := managed.Open(".")
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-					os.Exit(1)
-				}
 				if err := d.AddIgnorePatterns(excludes); err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					os.Exit(1)
 				}
 				fmt.Println("added exclude patterns")
-			} else {
+				changed = true
+			}
+			if snapshotRetain > 0 {
+				if err := d.SetRetain(snapshotRetain); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					os.Exit(1)
+				}
+				fmt.Printf("snapshot retention set to %d\n", snapshotRetain)
+				changed = true
+			}
+			if !changed {
 				fmt.Fprintf(os.Stderr, ": already established\n")
 			}
 			os.Exit(0)
@@ -99,10 +119,18 @@ func runMk(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		n, _ := d.HistoryLen()
+		if snapshotRetain > 0 {
+			if err := d.SetRetain(snapshotRetain); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		}
 		m, _ := d.Current()
-		fmt.Printf("established : (%d entries, snapshot 0)\n", len(m.Entries))
-		_ = n
+		msg := fmt.Sprintf("established : (%d entries, snapshot 0)", len(m.Entries))
+		if snapshotRetain > 0 {
+			msg += fmt.Sprintf(" [retain %d]", snapshotRetain)
+		}
+		fmt.Println(msg)
 		return
 	}
 
@@ -127,7 +155,7 @@ func runMk(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := registerNamespacePath(name); err != nil {
+		if err := registerNamespacePath(name, expiresAt); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
