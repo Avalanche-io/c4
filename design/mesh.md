@@ -60,14 +60,15 @@ address, but a path to reach someone. That path might be direct,
 or it might go through intermediaries.
 
 **LAN (zero-config):** Every c4d broadcasts `_c4d._tcp` via
-mDNS. Identity from the TLS cert in the service record. `c4 find`
-shows who's on the local network. No configuration. No internet.
+mDNS. Identity from the TLS cert in the service record. `net:` is
+a built-in pseudo-location that exposes the network as seen from
+your node. No configuration. No internet.
 
 ```
-c4 find
-  nas           nas.local:7433
-  sarah-laptop  10.0.1.42:7433
-  desktop       10.0.1.10:7433
+c4 ls net:/peers
+nas/
+sarah-laptop/
+desktop/
 ```
 
 **Mesh (peer routing):** When c4d starts, it connects to
@@ -202,14 +203,15 @@ and he trusts each on first contact (TOFU).
 
 ```
 # On laptop — NAS and desktop appear automatically
-c4 find
-  nas       nas.local:7433
-  desktop   desktop.local:7433
+c4 ls net:/peers
+nas/
+desktop/
 
 # Trust on first use
 # "Trust nas (fingerprint abc123)?" → yes
 
-# Sync a project directory across all machines
+# Establish and sync
+c4 mk nas:                         # auto-resolves via net:/peers/nas
 c4 mk : --sync nas: desktop:
 
 # Every change propagates. Content materializes on each node.
@@ -262,11 +264,11 @@ production units, editorial bays, vendor workstations.
 # Studio CA issues certs to every node before deployment
 # mDNS discovery — no internet, no directory, no accounts
 
-c4 find
-  editorial     (studio-ca)     10.42.1.5:7433
-  unit-3        (studio-ca)     10.42.1.30:7433
-  color-suite   (studio-ca)     10.42.1.40:7433
-  vendor-weta   (weta-ca)       10.42.2.5:7433
+c4 ls net:/peers
+editorial/
+unit-3/
+color-suite/
+vendor-weta/
 
 # Send plates from unit-3 to editorial
 c4 cp plates.c4m: editorial:incoming/
@@ -513,7 +515,7 @@ locked into a platform.
 
 ### Discovery and Routing
 - mDNS/Bonjour advertisement (`_c4d._tcp` service type)
-- `c4 find` (scan LAN for c4d nodes)
+- `net:` pseudo-location (browse LAN peers via `c4 ls net:/peers`)
 - Implicit peer announcement (mTLS connection = announcement)
 - Peer routing ("can you reach X?" → forward through intermediary)
 - Store-and-forward (transit namespace paths for offline peers)

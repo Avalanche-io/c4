@@ -186,8 +186,9 @@ Progress callback in the client, wired to stderr output in cp.go.
 
 ## Phase 3: LAN Discovery
 
-**Goal:** `c4 find` shows c4d nodes on the local network.
-c4d advertises itself via mDNS.
+**Goal:** `c4 ls net:/peers` shows c4d nodes on the local
+network. No new commands — discovery is a path on a pseudo-
+location.
 
 ### 3.1 mDNS advertisement in c4d
 
@@ -202,30 +203,50 @@ Uses `_c4d._tcp` service type. TXT record carries identity
 
 Wire into `serve.go` after TLS config is loaded.
 
-### 3.2 `c4 find` command
+### 3.2 Peers endpoint in c4d
 
-Scan for `_c4d._tcp` services on the local network. Display:
-```
-c4 find
-  nas        nas.local:7433
-  desktop    10.0.1.10:7433
-```
-
-Timeout: 3 seconds by default, configurable.
-
-### 3.3 Auto-discovery for locations
-
-When `c4 mk name: address` is called without an address, try
-mDNS lookup for a node with matching identity. If exactly one
-match, use it. This enables:
+`GET /peers/` returns discovered peers in c4m listing format:
 
 ```
-c4 find                    # see what's on the network
-c4 mk nas: nas.local:7433  # establish (explicit)
+nas/
+desktop/
+sarah-laptop/
 ```
 
-Future: `c4 mk nas:` (no address) could auto-resolve via mDNS
-if a node advertising identity "nas" is found.
+Each peer is a directory entry. `GET /peers/nas/` could return
+that peer's namespace root (proxied). Content-Type: `text/c4m`.
+
+The peers list is maintained by the mDNS browser running in
+c4d. Entries have a TTL — disappear when the peer stops
+advertising.
+
+### 3.3 `net:` pseudo-location in pathspec
+
+`net:` is a built-in pseudo-location recognized by the pathspec
+system. It resolves to the local c4d's address (from
+`~/.c4d/config.yaml`). No entry in `~/.c4/locations/` — it's
+implicit when c4d is configured.
+
+```
+c4 ls net:/peers          # list discovered peers
+c4 ls net:/peers/nas/     # browse a peer's namespace
+```
+
+In `pathspec.go`, when `isLocation("net")` is called, return
+true and resolve to the local c4d address. This is the only
+special-cased location name.
+
+### 3.4 Auto-discovery for `c4 mk`
+
+When `c4 mk nas:` is called without an address, resolve via
+`net:/peers/nas`. If the peer is discovered, use its address.
+This enables:
+
+```
+c4 ls net:/peers       # see what's on the network
+c4 mk nas:             # establish (auto-resolve address)
+c4 cp project.c4m: nas:
+```
 
 ### Dependencies
 
@@ -237,11 +258,13 @@ supports both advertising and browsing).
 **Create:**
 - `c4d/internal/discovery/mdns.go`
 - `c4d/internal/discovery/mdns_test.go`
-- `c4/cmd/c4/find.go`
 
 **Modify:**
 - `c4d/serve.go` — start mDNS advertisement
-- `c4/cmd/c4/main.go` — add "find" case
+- `c4d/internal/server/server.go` — `/peers/` endpoint
+- `c4/cmd/c4/internal/pathspec/pathspec.go` — recognize `net:`
+- `c4/cmd/c4/mk.go` — auto-resolve from `net:/peers/` when
+  no address given
 
 ---
 
@@ -505,7 +528,7 @@ Phase 1 (Remote Copy)
   ↓
 Phase 2 (Transit + Progress) ← builds on Phase 1 materialization
   ↓
-Phase 3 (LAN Discovery) ← independent of 1-2, can parallelize
+Phase 3 (LAN Discovery) ← requires Phase 1 (shared client + Location pathspec)
   ↓
 Phase 4 (Bundle/Import) ← independent of 1-3, can parallelize
   ↓
@@ -516,9 +539,11 @@ Phase 6 (Sync Policy) ← requires Phase 1
 Phase 7 (Identity/Login) ← requires Phase 5
 ```
 
-Phases 3 and 4 are independent and can be done at any time.
+Phase 4 is independent and can be done at any time.
 Phase 1 is the critical path — everything else builds on the
-remote client and location-based cp.
+remote client and location-based cp. Phase 3 uses the same
+Location pathspec wiring from Phase 1 (`net:` is just another
+location).
 
 ## Implementation Notes
 

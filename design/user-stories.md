@@ -322,10 +322,10 @@ want their project files backed up without thinking about it.
 
 **Setup (once):**
 ```
-c4 find
-  nas     (alex@home)   nas.local:7433
+c4 ls net:/peers
+nas/
 
-c4 mk nas: nas.local:7433
+c4 mk nas:                  # auto-resolves via net:/peers/nas
 ```
 
 **Daily workflow:**
@@ -615,10 +615,10 @@ c4d init
 # → generated CA, server cert, client cert
 
 # On laptop, find the Pi
-c4 find
-  pi-nas    (pat@home)    raspberrypi.local:7433
+c4 ls net:/peers
+pi-nas/
 
-c4 mk pi: raspberrypi.local:7433
+c4 mk pi-nas:               # auto-resolves via net:/peers/pi-nas
 ```
 
 **Backup photos:**
