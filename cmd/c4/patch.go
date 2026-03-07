@@ -249,47 +249,51 @@ func patchLocalPath(targetDir, source string) {
 		}
 	}
 
-	// Phase 2: Place files — move first occurrence, copy for duplicates.
-	// Track where each C4 ID currently lives (sources may move during this phase).
-	idLocation := make(map[string]string) // C4 ID → current disk path
-	for id, paths := range idIndex {
-		if len(paths) > 0 {
-			idLocation[id] = paths[0]
-		}
-	}
+	// Phase 2: Place files — rename first, copy only if the same content is needed again.
+	movedIDs := make(map[string]string) // C4 ID → destination after move
 	for _, dp := range desiredPaths {
 		if dp.entry.IsDir() || dp.entry.IsSymlink() {
 			continue
 		}
 
 		destPath := filepath.Join(targetDir, dp.path)
+		idStr := dp.entry.C4ID.String()
 
-		// Check if file already exists at correct path with correct ID
+		// Already at correct path with correct content — skip
 		if info, err := os.Stat(destPath); err == nil && info.Mode().IsRegular() {
 			existingID := identifyFile(destPath)
 			if !existingID.IsNil() && existingID == dp.entry.C4ID {
 				skipped++
-				// Update location — this path is a valid source for copies
-				idLocation[dp.entry.C4ID.String()] = destPath
+				movedIDs[idStr] = destPath
 				continue
 			}
 		}
-
-		srcPath := idLocation[dp.entry.C4ID.String()]
 
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
-		if err := copyFile(srcPath, destPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Error copying %s → %s: %v\n", srcPath, destPath, err)
-			os.Exit(1)
+		if prev, ok := movedIDs[idStr]; ok {
+			// Same content needed again — copy from where we already placed it
+			if err := copyFile(prev, destPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error copying %s → %s: %v\n", prev, destPath, err)
+				os.Exit(1)
+			}
+		} else {
+			// First occurrence — move (atomic rename, O(1) on same filesystem)
+			srcPath := idIndex[idStr][0]
+			if err := os.Rename(srcPath, destPath); err != nil {
+				// Cross-device fallback
+				if err := copyFile(srcPath, destPath); err != nil {
+					fmt.Fprintf(os.Stderr, "Error placing %s: %v\n", destPath, err)
+					os.Exit(1)
+				}
+				os.Remove(srcPath)
+			}
 		}
+		movedIDs[idStr] = destPath
 		moved++
-
-		// This destination is now a valid source for future copies of the same ID
-		idLocation[dp.entry.C4ID.String()] = destPath
 	}
 
 	// Phase 3: Create symlinks
