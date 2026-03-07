@@ -210,10 +210,44 @@ func patchLocalPath(targetDir, source string) {
 		return
 	}
 
+	desiredPaths := manifestPaths(desired)
+
+	// Pre-flight: verify all required content is available before touching anything.
+	// Simulate the ID consumption to catch duplicates that need multiple sources.
+	idCheck := make(map[string]int) // available count per ID
+	for k, v := range idIndex {
+		idCheck[k] = len(v)
+	}
+	var missing []string
+	for _, dp := range desiredPaths {
+		if dp.entry.IsDir() || dp.entry.IsSymlink() || dp.entry.C4ID.IsNil() {
+			continue
+		}
+		destPath := filepath.Join(targetDir, dp.path)
+		if info, err := os.Stat(destPath); err == nil && info.Mode().IsRegular() {
+			existingID := identifyFile(destPath)
+			if !existingID.IsNil() && existingID == dp.entry.C4ID {
+				continue // already in place
+			}
+		}
+		idStr := dp.entry.C4ID.String()
+		if idCheck[idStr] <= 0 {
+			missing = append(missing, dp.path)
+			continue
+		}
+		idCheck[idStr]--
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(os.Stderr, "%d files not available locally:\n", len(missing))
+		for _, m := range missing {
+			fmt.Fprintf(os.Stderr, "  %s\n", m)
+		}
+		os.Exit(1)
+	}
+
 	var moved, created, removed, skipped int
 
 	// Phase 1: Create directories from desired state
-	desiredPaths := manifestPaths(desired)
 	for _, dp := range desiredPaths {
 		if !strings.HasSuffix(dp.path, "/") {
 			continue
@@ -225,7 +259,7 @@ func patchLocalPath(targetDir, source string) {
 		}
 	}
 
-	// Phase 2: Place files (move from current location or fail)
+	// Phase 2: Place files (move from current location)
 	for _, dp := range desiredPaths {
 		if dp.entry.IsDir() || dp.entry.IsSymlink() {
 			continue
@@ -242,15 +276,8 @@ func patchLocalPath(targetDir, source string) {
 			}
 		}
 
-		// Look for this C4 ID elsewhere on disk
-		sourcePaths, ok := idIndex[dp.entry.C4ID.String()]
-		if !ok || len(sourcePaths) == 0 {
-			fmt.Fprintf(os.Stderr, "Error: content %s not available locally for %s\n",
-				dp.entry.C4ID.String()[:16]+"...", dp.path)
-			os.Exit(1)
-		}
-
-		// Move from the first available source
+		// Move from the first available source (pre-flight guarantees this exists)
+		sourcePaths := idIndex[dp.entry.C4ID.String()]
 		srcPath := sourcePaths[0]
 
 		// Ensure parent directory exists
