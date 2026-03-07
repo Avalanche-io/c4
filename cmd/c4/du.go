@@ -18,6 +18,11 @@ type duResponse struct {
 }
 
 func runDU(args []string) {
+	if !c4dConfigured() {
+		fmt.Fprintf(os.Stderr, "c4d not configured — du requires a backing store\n")
+		fmt.Fprintf(os.Stderr, "Run: c4d init\n")
+		os.Exit(1)
+	}
 	client, addr := c4dVersionClient()
 	resp, err := client.Get(addr + "/du")
 	if err != nil {
