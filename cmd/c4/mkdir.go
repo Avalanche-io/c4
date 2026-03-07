@@ -266,5 +266,7 @@ func writeManifest(path string, m *c4m.Manifest) error {
 		os.Remove(tmp.Name())
 		return err
 	}
+	// Update c4d namespace registration (best-effort)
+	registerNamespacePath(path)
 	return nil
 }
