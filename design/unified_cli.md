@@ -374,13 +374,13 @@ These work today and don't change:
 ```
 c4 file.txt                       # C4 ID of a file
 c4 .                              # C4 ID of a directory
-c4 -m .                           # Show capsule
-c4 -mr .                          # Full recursive capsule
-c4 diff old.c4m new.c4m           # Compare capsules
-c4 union a.c4m b.c4m              # Combine capsules
+c4 -m .                           # Show c4m listing
+c4 -mr .                          # Full recursive c4m listing
+c4 diff old.c4m new.c4m           # Compare c4m files
+c4 union a.c4m b.c4m              # Combine c4m files
 c4 subtract need.c4m have.c4m     # What's missing?
-c4 fmt manifest.c4m               # Format capsule
-c4 validate manifest.c4m          # Validate capsule
+c4 fmt manifest.c4m               # Format c4m file
+c4 validate manifest.c4m          # Validate c4m file
 ```
 
 ### Network (talks to local c4d)
@@ -400,7 +400,7 @@ c4 checkout <id> ./output --from home-nas  # fetch from a specific location
 
 ```
 c4 mk <name>: <address>            # establish a location for writing
-c4 mk <file>.c4m:                  # establish a capsule for writing
+c4 mk <file>.c4m:                  # establish a c4m file for writing
 c4 rm <name>:                      # remove a location
 c4 locations                       # list all locations with status
 c4 groups                          # list groups
@@ -464,7 +464,7 @@ Read-only. Used by the client for status display.
 
 "Every computer runs c4d." Your laptop, your workstation, your render farm
 nodes, your NAS — they all run c4d. Each is a node in your personal mesh.
-Content flows between them based on capsules and intent.
+Content flows between them based on c4m files and intent.
 
 Within your mesh, you think in places:
 
@@ -488,7 +488,7 @@ The colon is the portal. Everything after it is just a path.
 
 ```
 c4 ls renders/                      # local directory
-c4 ls project.c4m:renders/          # described directory (capsule)
+c4 ls project.c4m:renders/          # described directory (c4m file)
 c4 ls studio:project/renders/       # remote directory (location)
 ```
 
@@ -497,13 +497,13 @@ Three different kinds of filesystem. One syntax. One mental model.
 ### PathSpec Grammar
 
 ```
-PathSpec     ::= LocalPath | CapsulePath | LocationPath
+PathSpec     ::= LocalPath | C4MPath | LocationPath
 
 LocalPath    ::= path                          (no colon, or starts with ./ or /)
-CapsulePath  ::= capsule_file ':' subpath?
+C4MPath      ::= c4m_file ':' subpath?
 LocationPath ::= location_name ':' subpath?
 
-capsule_file    ::= path ending in '.c4m'
+c4m_file        ::= path ending in '.c4m'
 location_name   ::= registered name (no '/', no '.c4m' suffix)
 subpath         ::= path within target (may contain sequence notation)
 ```
@@ -515,11 +515,11 @@ Parse the first colon. What's to its left determines the type:
 1. **No colon** → Local path. `c4 ls renders/`
 2. **Starts with `./` or `/`** → Local path. `c4 ls ./file:with:colons`
 3. **Left side contains `/`** → Local path (colon is inside a path component).
-4. **Left side ends with `.c4m`** → Capsule path. Syntactic — no lookup needed.
+4. **Left side ends with `.c4m`** → C4M path. Syntactic — no lookup needed.
 5. **Left side is a registered location** → Location path. Semantic — checks registry.
-6. **Otherwise** → Error: `"foo" is not a capsule (.c4m) or known location.`
+6. **Otherwise** → Error: `"foo" is not a c4m file (.c4m) or known location.`
 
-Capsule detection is syntactic (works offline, no daemon). Location detection is
+C4M path detection is syntactic (works offline, no daemon). Location detection is
 semantic (requires registry lookup, but the lookup is fast and definitive since
 location names are explicitly registered).
 
@@ -528,14 +528,14 @@ location names are explicitly registered).
 ```go
 type PathSpec struct {
     Type     PathType
-    Source   string  // capsule path, location name, or local path
-    SubPath  string  // path within capsule/location (empty = root)
+    Source   string  // c4m path, location name, or local path
+    SubPath  string  // path within c4m file/location (empty = root)
 }
 
 type PathType int
 const (
     PathLocal    PathType = iota
-    PathCapsule
+    PathC4M
     PathLocation
 )
 ```
@@ -551,11 +551,11 @@ argument conventions.
 | Source → Dest | Semantics | Speed |
 |------|-----------|-------|
 | Local → Local | File copy with C4 identity | Normal (bytes move) |
-| Local → Capsule | Capture — build/extend c4m, optionally store in c4d | Fast (hash + write) |
+| Local → C4M | Capture — build/extend c4m, optionally store in c4d | Fast (hash + write) |
 | Local → Location | Push intent | Instant (description now, bytes later) |
-| Capsule → Local | Materialize — extract described content | Slow (bytes move) |
-| Capsule → Capsule | Manifest editing | Instant (description only) |
-| Capsule → Location | Push described state | Instant |
+| C4M → Local | Materialize — extract described content | Slow (bytes move) |
+| C4M → C4M | Manifest editing | Instant (description only) |
+| C4M → Location | Push described state | Instant |
 | Location → Local | Pull content | Slow (bytes move) |
 | Location → Location | Orchestrate transfer | Instant (locations negotiate) |
 
@@ -570,30 +570,30 @@ c4d never sees colons. The c4 CLI translates colon paths into standard HTTP:
 1. `PUT /` with file data → C4 ID (store content)
 2. `PUT /project/file.txt` with C4 ID body (write namespace)
 
-**Directory (capsule expansion):** `c4 cp dailies/ studio:project/dailies/`
-1. c4 walks `dailies/`, creates capsule — fast, just hashing + metadata
-2. `PUT /` → capsule ID (store capsule)
+**Directory (c4m expansion):** `c4 cp dailies/ studio:project/dailies/`
+1. c4 walks `dailies/`, creates c4m listing — fast, just hashing + metadata
+2. `PUT /` → c4m ID (store c4m file)
 3. `PUT /` for each file (concurrent, streamed)
-4. `PUT /project/dailies/` with `Content-Type: application/c4m` → capsule expansion
-5. c4d reads capsule from store, expands entries into namespace under target path
+4. `PUT /project/dailies/` with `Content-Type: application/c4m` → c4m expansion
+5. c4d reads c4m file from store, expands entries into namespace under target path
 
 **Cross-location:** `c4 cp studio:project/ archive:backup/`
 1. `GET /project/` on studio's c4d → manifest
 2. `PUT /` on archive's c4d → push content
-3. `PUT /backup/` on archive's c4d → capsule expansion
+3. `PUT /backup/` on archive's c4d → c4m expansion
 
 The user's machine orchestrates; actual bytes flow between locations directly.
 
-### One Protocol Addition: Capsule Expansion
+### One Protocol Addition: C4M Expansion
 
 When `PUT /path` receives `Content-Type: application/c4m`, c4d expands the
-capsule's entries into the namespace under the target path. ~20 lines of
+c4m file's entries into the namespace under the target path. ~20 lines of
 server code. No new endpoints.
 
 ### Instant Completion Model
 
-1. Capsule creation is fast — walking files + hashing produces kilobytes
-2. Capsule push is instant — kilobytes over the network
+1. C4M creation is fast — walking files + hashing produces kilobytes
+2. C4M push is instant — kilobytes over the network
 3. Namespace expansion is instant — writing path→ID entries
 4. User sees "done" — the directory structure exists at the destination
 5. Content streams in background — actual file data transfers asynchronously
@@ -609,17 +609,17 @@ No ambiguity with sequence notation (`plate.[0001-0200].exr`):
 
 ### Nested Colon Syntax
 
-`studio:myfiles.c4m:renders/` — a capsule inside a location. Two-pass parse:
+`studio:myfiles.c4m:renders/` — a c4m file inside a location. Two-pass parse:
 
 **First colon** resolves the location:
 1. c4 resolves `studio` → c4d address
 2. Fetches `myfiles.c4m` from studio's namespace
 
-**Second colon** navigates into the capsule:
-3. Parse capsule locally
+**Second colon** navigates into the c4m file:
+3. Parse c4m file locally
 4. Navigate to `renders/` within the virtual filesystem
 
-c4d serves the capsule as a blob. "Looking inside" happens in the c4 CLI.
+c4d serves the c4m file as a blob. "Looking inside" happens in the c4 CLI.
 Clean separation between transport (c4d) and interpretation (c4).
 
 The key invariant: each `.c4m` segment in the path can introduce another colon
@@ -639,9 +639,9 @@ myfiles.c4m:renders/ → a path inside that virtual filesystem
 
 Applied to commands:
 ```
-c4 ls project.c4m           # shows the capsule file itself (size, C4 ID)
-c4 ls project.c4m:          # lists the capsule's described contents
-c4 ls project.c4m:renders/  # lists a subtree inside the capsule
+c4 ls project.c4m           # shows the c4m file itself (size, C4 ID)
+c4 ls project.c4m:          # lists the c4m file's described contents
+c4 ls project.c4m:renders/  # lists a subtree inside the c4m file
 ```
 
 Applied to cp — materialization without a separate command:
@@ -656,7 +656,7 @@ Recursive across locations:
 c4 ls studio:myfiles.c4m:           # navigates into a remote c4m's virtual contents
 ```
 
-The colon means "open the portal." Without it, the capsule is opaque.
+The colon means "open the portal." Without it, the c4m file is opaque.
 
 ### Establishment: `mk` and `rm`
 
@@ -671,7 +671,7 @@ file" to "write into namespace." If b.c4m is important, this corrupts it.
 
 ```
 c4 ls project.c4m:              # works — read-only, safe
-c4 cp project.c4m:renders/ ./   # works — reading from capsule
+c4 cp project.c4m:renders/ ./   # works — reading from c4m file
 c4 cp files/ project.c4m:       # ERROR unless c4 mk project.c4m: was run first
 c4 cp files/ studio:            # ERROR unless c4 mk studio: addr:port was run first
 ```
@@ -679,9 +679,9 @@ c4 cp files/ studio:            # ERROR unless c4 mk studio: addr:port was run f
 **Why `mk`:** Unix lineage — `mkdir` makes directories, `mkfifo` makes FIFOs,
 `mk` makes colon endpoints. Short, imperative, no ambiguity.
 
-**For capsules:**
+**For c4m files:**
 ```
-c4 mk project.c4m:              # establish capsule for writing
+c4 mk project.c4m:              # establish c4m file for writing
 c4 cp dailies/ project.c4m:     # now this works
 ```
 
@@ -701,19 +701,19 @@ rm project.c4m                   # OS rm removes the file (and its establishment
 ```
 
 Locations use `c4 rm` because the registration is in c4's registry.
-Capsules use OS `rm` because the file is just a file.
+C4M files use OS `rm` because the file is just a file.
 
 **Same verb, both types.** The colon suffix on `mk` makes both types look the
 same: `c4 mk thing:`. What follows the name distinguishes them — `.c4m` suffix
-means capsule, otherwise location (with address argument).
+means c4m file, otherwise location (with address argument).
 
-### Bidirectional Capture: Writing Into Capsules
+### Bidirectional Capture: Writing Into C4M Files
 
 The colon syntax is fully symmetric — read and write:
 
 ```
-c4 cp myfiles.c4m: dest/           # Read: content flows OUT of capsule
-c4 cp /path/to/files myfiles.c4m:  # Write: content flows IN, capsule gets built
+c4 cp myfiles.c4m: dest/           # Read: content flows OUT of c4m file
+c4 cp /path/to/files myfiles.c4m:  # Write: content flows IN, c4m file gets built
 ```
 
 Write requires prior establishment: `c4 mk myfiles.c4m:` — this is the safety
@@ -725,33 +725,33 @@ into a `c4m:` path.
 **Capture examples:**
 ```
 c4 mk today.c4m:                          # establish for writing (once)
-c4 cp dailies/ today.c4m:                 # capture dailies, build capsule
+c4 cp dailies/ today.c4m:                 # capture dailies, build c4m file
 c4 cp dailies/ today.c4m:renders/         # capture into a subtree
-c4 cp shot_010/ project.c4m:shots/010/    # add to an existing capsule (after mk)
+c4 cp shot_010/ project.c4m:shots/010/    # add to an existing c4m file (after mk)
 ```
 
 **Create-on-write.** If the target c4m file doesn't exist, `cp` creates it
 (after establishment). Like how `cp` creates destination files.
 
-**Merge semantics.** When writing into an existing capsule:
+**Merge semantics.** When writing into an existing c4m file:
 - New paths → added
 - Existing paths with different content → updated
 - Existing paths with same content → no-op (idempotent)
 
 The c4m file on disk is a **working document** — a mutable workspace for
-building capsules. The C4 ID of any given snapshot is immutable (change the
+building c4m files. The C4 ID of any given snapshot is immutable (change the
 file, change the ID), but the file itself evolves. This is the git model:
 working tree is mutable, commits are immutable. Want a clean start? Delete the
 file and rebuild.
 
 **Two modes of operation:**
 - **Local-only (no c4d):** Walks source, hashes files, writes c4m entries.
-  Content stays on disk where it is. The capsule accurately describes the
+  Content stays on disk where it is. The c4m file accurately describes the
   filesystem. This is what `c4 -m .` already does — cp is the universal entry.
 - **With c4d running:** Builds the c4m AND stores content in c4d. Content is
   now tracked, transferable, and subject to policies.
 
-The capsule is useful either way — it's a description. But to move content to
+The c4m file is useful either way — it's a description. But to move content to
 other locations, you need c4d.
 
 **Protocol flow for `c4 cp source/ file.c4m:`:**
@@ -767,15 +767,15 @@ other locations, you need c4d.
 4. Write updated c4m to disk
 5. If c4d running: store new content
 
-### Capsule Identity vs. Capsule Mutability
+### C4M Identity vs. C4M Mutability
 
-A capsule's **C4 ID** is immutable — it's a hash of the content. Change the
+A c4m file's **C4 ID** is immutable — it's a hash of the content. Change the
 file, get a new ID. But the c4m **file** on disk is mutable: you keep adding to
-it with successive `cp` operations. When you push a capsule to a location, you
+it with successive `cp` operations. When you push a c4m file to a location, you
 push a specific snapshot — THAT snapshot's identity is permanent.
 
-Capsule transforms (`c4 union`, `c4 subtract`) remain the tools for combining
-or diffing capsules structurally. `cp` handles the capture (building from real
+C4M transforms (`c4 union`, `c4 subtract`) remain the tools for combining
+or diffing c4m files structurally. `cp` handles the capture (building from real
 files) and materialization (extracting to real files) directions.
 
 ### Colon Syntax Replaces Flags
@@ -811,8 +811,8 @@ Immediately `ls`-able, `tree`-able. No config parsing.
 
 ## The @intent Connection
 
-Capsules have `@intent` directives that describe what should happen with the
-content. The c4 client interprets these. A capsule emailed to someone can carry
+C4M files have `@intent` directives that describe what should happen with the
+content. The c4 client interprets these. A c4m file emailed to someone can carry
 its own delivery instructions:
 
 ```

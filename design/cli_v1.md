@@ -981,10 +981,10 @@ documented with their commands.
 The colon is the portal.
 
 ```
-PathSpec     ::= LocalPath | CapsulePath | LocationPath | HerePath
+PathSpec     ::= LocalPath | C4MPath | LocationPath | HerePath
 
 LocalPath    ::= path                    (no colon, or starts with ./ or /)
-CapsulePath  ::= file.c4m ':' subpath?
+C4MPath      ::= file.c4m ':' subpath?
 LocationPath ::= name ':' subpath?
 HerePath     ::= ':' modifier?
 

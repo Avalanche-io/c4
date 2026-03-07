@@ -18,7 +18,7 @@ conclusion.
 
 ## The Question
 
-c4m capsules describe filesystem content using plaintext C4 IDs. When content
+c4m files describe filesystem content using plaintext C4 IDs. When content
 traverses relays (NAT-traversing intermediaries), could an untrusted relay
 read the content or correlate content identities? Should c4 encrypt content
 for relay transit?
@@ -35,9 +35,9 @@ complexity. The format, the mechanism, the key management — each piece must
 earn its place. If any part can be eliminated without losing a necessary
 property, it should be.
 
-**"Knowing about data and having data are different things."** The capsule is
+**"Knowing about data and having data are different things."** The c4m file is
 the description. Content is the data. Encryption belongs on the data side, not
-the description side. Capsules should remain human-readable, diffable,
+the description side. C4M files should remain human-readable, diffable,
 email-able text.
 
 **"Simplicity is the goal, not a tradeoff."** The solution should have the
@@ -75,9 +75,9 @@ request encrypted content by cipher ID from relays.
   production encrypted content-addressed system (Tahoe-LAFS, ERIS, Storj)
   faces the same constraint.
 
-- **A cipher table artifact** communicated alongside the capsule. For a
+- **A cipher table artifact** communicated alongside the c4m file. For a
   sequence-heavy VFX project (47k files), the cipher table is 6–9 MB — an
-  order of magnitude larger than the capsule. This is a new layer that must
+  order of magnitude larger than the c4m file. This is a new layer that must
   justify its existence.
 
 - **Storage or CPU overhead.** Either store both plaintext and ciphertext
@@ -101,7 +101,7 @@ property that cannot be sacrificed.
 
 Define cipher IDs as a deterministic function of key + plaintext ID:
 `cipherID = SHA-512(key || plaintextID)`. Recipients compute cipher IDs
-locally from the capsule.
+locally from the c4m file.
 
 **Result:** Simplest possible design. But the cipher ID is not the hash of
 the ciphertext — relays store content under an ID that doesn't match the
@@ -135,7 +135,7 @@ If relays are trusted, the problem disappears:
 - **Source independence:** Fully preserved. Content flows as plaintext C4 IDs.
   Any source can serve any content.
 - **Simplicity:** No new formats, no cipher tables, no locator indexes, no
-  protocol changes. The capsule is still just a capsule.
+  protocol changes. The c4m file is still just a c4m file.
 
 Trusting relays is reasonable:
 
@@ -158,7 +158,7 @@ is to not use untrusted relays for that content.
 
 The `internal/encryption` package (XChaCha20-Poly1305, deterministic nonce
 from C4 ID) remains in the c4d codebase. It is not part of the relay protocol,
-the capsule format, or the transfer system.
+the c4m format, or the transfer system.
 
 ## Future: Encrypt at Rest
 
@@ -167,7 +167,7 @@ every problem that relay encryption creates. The store layer would transparently
 encrypt on write and decrypt on read using a node-local key.
 
 - **C4 IDs still refer to plaintext.** The encryption is invisible to
-  everything above the store — HTTP layer, transfer system, capsules, peers.
+  everything above the store — HTTP layer, transfer system, c4m files, peers.
 - **No cipher tables.** The ID is always the plaintext hash. The store just
   happens to encrypt bytes on disk.
 - **No source independence issues.** Content is served decrypted. Any node
