@@ -1,7 +1,6 @@
 # Content Retention: Declarative Disposition
 
 > You never expect files to disappear from your hard drive.
-> And when you throw something away, you put it in the trash.
 
 ## The Mental Model
 
@@ -9,13 +8,11 @@ c4 storage works like your laptop's hard drive. You put files there,
 they stay there. You delete files when you choose to. Nothing
 disappears on its own.
 
-When you're done with something, you throw it away — explicitly,
-deliberately, into a visible place you can recover from. Eventually
-the trash empties itself. The content lingers a while longer as a
-hidden cache, then it's truly gone.
-
-This is how every desktop operating system works. It's the only model
-that doesn't surprise people.
+The user describes what they value through existing structural tools —
+c4m files, managed directories, tags, pins, locations. Content
+reachable from these structures is alive. Content that loses all
+references lingers as a hidden cache (purgatory), then is eventually
+reclaimed by storage pressure.
 
 ## Why Content-Addressed Storage Is Different
 
@@ -34,30 +31,21 @@ system handles the rest.
 
 ## The Reachability Spectrum
 
-Content in c4 exists on a spectrum of reachability. Each level has
-different visibility, different TTL behavior, and different user
-interaction:
+Content in c4 exists on a spectrum of reachability:
 
 ```
-Active ──────→ Trash ──────→ Purgatory ──────→ Gone
-(valued)       (disposed)    (cache)           (freed)
-reachable      reachable     unreachable       deleted
-no TTL         user TTL      system TTL        —
-user-visible   user-visible  hidden            —
+Active ──────────────→ Purgatory ──────→ Gone
+(referenced)           (cache)           (freed)
+reachable              unreachable       deleted
+user-visible           hidden            —
 ```
 
 ### Active
 
 Content reachable from any established path — a c4m file, a managed
-directory, a tag, a pin, a location. No TTL. Stays until the user
-changes its disposition.
-
-### Trash
-
-Content the user has explicitly disposed of. Still reachable via a
-trash path — visible, browsable, recoverable. Has a user-defined TTL.
-The user put it here deliberately; they understand it will eventually
-be cleaned up.
+directory, a tag, a pin, a location. Stays until the user changes
+its disposition. Some paths may carry a TTL (see TTL-Bearing Paths
+below); content stays active as long as any reference keeps it.
 
 ### Purgatory
 
@@ -75,136 +63,69 @@ mechanism — it's not undo, it's cache.
 
 Content deleted from the store. Storage freed. Irreversible.
 
-## Two Paths to Purgatory
+## How Content Enters Purgatory
 
-Content reaches purgatory via two distinct paths:
+Content enters purgatory when it loses all references. This happens
+via two paths:
 
-### 1. Explicit Disposition (User-Driven)
+### 1. Explicit Removal (User-Driven)
 
-The user decides they don't need something. `c4 rm` has three levels
-of intent:
+`c4 rm` operates on two different things depending on target:
 
-```
-c4 rm :old-file.exr            # soft: move to trash (recoverable)
-c4 unrm :old-file.exr          # recover from trash
+**Managed directory edits** — `c4 rm :file` removes an entry from
+the current c4m state. This is a structural edit, recoverable via
+`c4 undo :` or snapshots. The blob stays in the store, still
+referenced by snapshot history. It enters purgatory only when all
+snapshots containing it are pruned.
 
-c4 rm --hard :old-file.exr     # hard: skip trash, send to purgatory
-                               # not undoable, but still physically
-                               # present as cache (purgatory)
+**Path un-establishment** — `c4 rm project.c4m:` un-establishes a
+c4m file or location. The c4m is no longer a reachability root.
+Content referenced only by that c4m (and not by anything else)
+enters purgatory.
 
-c4 rm --shred :secret.doc      # nuclear: immediate delete + tombstone
-```
+These are different operations:
 
-**Soft rm (default)** moves content to a trash path. It's visible,
-recoverable via `c4 unrm`, and the user understands the timeline.
-When the trash TTL expires, the content must not exist in any undo
-history or other reference chain. Only then does it enter purgatory.
-
-**Hard rm** sends content directly to purgatory, skipping the visible
-trash phase. This is the system `rm` — no undo, no grace period. But
-purgatory is still purgatory: the blob remains physically present as
-cache. A new c4m from a remote can still resurrect it. And in an
-emergency, one could halt reclamation and inspect unreachable content.
-The difference from soft rm is disposition intent, not physical
-deletion.
-
-**Shred** is documented separately below — it's the only path that
-bypasses purgatory entirely.
+| Command | What it does | Recovery |
+|---|---|---|
+| `c4 rm :file` | Remove entry from managed c4m | `c4 undo :`, snapshots |
+| `c4 rm project.c4m:` | Un-establish a c4m | Re-establish it |
+| `c4 rm location:` | Un-establish a location | Re-establish it |
+| `c4 rm --shred :file` | Nuclear delete + tombstone | Not recoverable |
 
 ### 2. Implicit Pruning (Policy-Driven)
 
-Sparse history, snapshot retention, and transient policies
+Sparse history, snapshot retention, and TTL-bearing paths
 automatically remove references:
 
 - A managed directory with `--snapshot-retain 10` prunes its 11th
   oldest snapshot. Unique blobs lose their reference.
-- A transient namespace with `--retain 30d` expires. Its content
-  loses its reference.
+- A TTL-bearing path (see below) expires. Its content loses its
+  reference.
 - Keystroke-level churn: between the current state and sparse
   history marker #1, intermediate blobs are unreferenced.
 
-These blobs go directly to purgatory — no visible trash phase needed
-because the user never explicitly valued them. They were transient
-by declaration or by the natural operation of sparse history.
+These blobs enter purgatory directly — no user action needed.
 
-## Trash Locations
+## TTL-Bearing Paths
 
-Trash is not a single hardcoded path. Users and applications can
-designate any path as a trash location with a retention policy:
+Any established path can carry a TTL. There is no system-defined
+"trash" concept — if a user wants a trash folder, they create one:
 
 ```
-c4 mk trash: --retain 30d      # personal trash, 30-day TTL
-c4 mk .trash: --retain 7d      # project-level trash, 7-day TTL
+c4 mk my-trash.c4m: --retain 30d    # user's trash, 30-day TTL
+c4 mk builds: --retain 14d          # build artifacts, 14-day TTL
+c4 mk tmp: --retain 7d              # temp workspace, 7-day TTL
 ```
 
-A managed directory might define its own trash policy. An application
-might create a dedicated trash namespace. The macOS desktop has its
-Trash folder; c4 lets you define yours.
+When the TTL expires, the path is automatically un-established.
+Content referenced only by that path enters purgatory. Content
+referenced by other active paths stays active.
 
-The mechanism is the same regardless of where the trash lives: content
-under a TTL-bearing path is kept for the declared duration, then
-enters purgatory when the TTL expires and all references are clear.
+TTL-bearing paths are visible and browsable like any other path.
+The user chose the name, the TTL, and what to put there. The system
+just enforces the expiration.
 
-### Trash TTL Configuration
-
-The default trash TTL is 30 days. This is an arbitrary but reasonable
-starting point. The TTL must be easy to discover and configure:
-
-```
-c4 status trash:               # shows current TTL, contents, expiry dates
-c4 config trash.ttl            # show current default
-c4 config trash.ttl 14d        # change default to 14 days
-c4 mk trash: --retain 90d     # per-location override
-```
-
-Trash TTL is set per trash location at creation time. Changing the
-default affects newly created trash locations, not existing ones.
-Each trash location shows its TTL prominently in `c4 status` output.
-
-Individual trashed items inherit the TTL of the trash location they
-enter. The expiry date for each item is visible:
-
-```
-c4 ls trash:
-  old-file.exr     expires 2026-04-06 (23 days)
-  draft-v2.c4m     expires 2026-03-21 (7 days)
-```
-
-## Two Zones
-
-The zone distinction is about default disposition, not about separate
-storage systems.
-
-### Zone 1: Primary Storage — Explicit Disposition
-
-Content starts permanent. It stays until the user changes its
-disposition. Within Zone 1, different levels of the reachability
-spectrum have different TTLs:
-
-- **Active paths** — no TTL (stays until explicitly disposed)
-- **Trash paths** — user-defined TTL (stays until TTL expires)
-- **Purgatory** — system TTL (stays as cache until storage pressure)
-
-Zone 1's strict policy: **nothing the user values disappears without
-the user changing its disposition.** TTLs exist at every level below
-"active," but the transition into those levels is always explicit.
-
-### Zone 2: Transient Storage — Born with a TTL
-
-Some content is created with a TTL from the start:
-
-```
-c4 mk builds: --retain 30d         # build artifacts
-c4 mk ci-output.c4m: --retain 14d  # CI/CD output
-c4 mk tmp: --retain 7d             # temp workspace
-```
-
-Zone 2 content follows the same reachability spectrum — it just
-enters at a different point. When the registration's TTL expires,
-the reference is released. Content follows the same path to
-purgatory and eventually gone.
-
-### How the Zones Interact
+## Reference Model
 
 Content is alive if ANY reference keeps it. Content enters purgatory
 only when ALL references have been released:
@@ -220,14 +141,21 @@ only when ALL references have been released:
          +-----------+-----+--------+-----------+
          |           |              |           |
   +------+------+ +--+-------+ +---+-----+ +---+------+
-  |  Active     | |  Trash   | | Managed | | Transient|
-  |  c4m/pin/   | |  (user   | | Dir     | | (born    |
-  |  location   | |   TTL)   | | history | | with TTL)|
+  |  Established| | Managed  | | Tagged  | | TTL-     |
+  |  c4m/pin/   | | Dir      | | Snap-   | | bearing  |
+  |  location   | | current  | | shots   | | paths    |
   +------+------+ +--+-------+ +---+-----+ +---+------+
          |           |              |           |
        keeps       keeps         keeps       keeps
-      forever    until TTL     per policy   until TTL
+      forever   while managed  while tag   until TTL
+                                exists      expires
 ```
+
+Every reference type uses the same reachability engine. The only
+difference is lifetime: some are permanent until explicitly removed,
+some are governed by retention policy, some expire on a timer.
+Nothing the user values disappears without the user changing its
+disposition.
 
 ## Snapshots: Diffs, Cadence, and Sparse History
 
@@ -336,13 +264,11 @@ active.
 
 ```
                          new c4m references it
-                         ┌─────────────────────┐
-                         │                     │
-Active ──dispose──→ Trash ──expires──→ Purgatory ──expires──→ Gone
-  ↑                   │                     │
-  └──recover──────────┘                     │
-  ↑                                         │
-  └────────new c4m references───────────────┘
+                         ┌──────────────────────┐
+                         │                      │
+Active ──lose all refs──→ Purgatory ──pressure──→ Gone
+  ↑                           │
+  └───new c4m references──────┘
 ```
 
 Purgatory TTL is managed by c4d based on a tunable pressure curve
@@ -360,12 +286,11 @@ From strongest to weakest:
 |--------|----------|-------------------|
 | **Auth-required path** (legal hold) | Until authorized release | Un-establish with auth |
 | **Explicit pin** | Indefinite | `c4 unpin` |
-| **Established c4m** (no policy) | Until un-established | `c4 rm project.c4m:` |
+| **Established c4m** (no TTL) | Until un-established | `c4 rm project.c4m:` |
 | **Managed dir current** | While managed | `c4 rm :` (teardown) |
 | **Tagged snapshot** | While tag exists | `c4 rm :~tagname` |
-| **Trash location** | Until TTL expires | Automatic expiration |
 | **Managed dir snapshot** (in window) | Within retention config | Automatic pruning |
-| **Transient namespace** | Until policy expires | Automatic expiration |
+| **TTL-bearing path** | Until TTL expires | Automatic expiration |
 | **Location registration** | While registered | `c4 rm location:` |
 
 The **establishment registry** is the root set. Everything reachable
@@ -382,10 +307,9 @@ c4 config store.limit 200G     # this node may use up to 200 GB
 c4 config store.limit          # show current limit
 ```
 
-The storage limit governs the purgatory pressure curve. Active and
-trash content is always kept (it's referenced). Purgatory content
-is the flex space — cached blobs that c4d reclaims as needed to
-stay within the limit.
+The storage limit governs the purgatory pressure curve. Referenced
+content is always kept. Purgatory content is the flex space — cached
+blobs that c4d reclaims as needed to stay within the limit.
 
 ### The OS Visibility Problem
 
@@ -394,20 +318,17 @@ of that is purgatory cache, the OS reports 300 GB used. Every other
 application — the OS itself, Finder, disk space warnings — sees the
 disk as 300 GB fuller than the user's "real" data warrants.
 
-The user needs to understand the difference between actual content
-(active + trash, which can't be reclaimed without losing something)
-and cache (purgatory, which c4d can free instantly). And they need
-a way to act on that understanding:
+The user needs to understand the difference between referenced content
+(which can't be reclaimed without losing something) and purgatory
+cache (which c4d can free instantly). And they need a way to act on
+that understanding:
 
 ```
 c4 du
-  Active:     82 GB   (established c4m files, managed dirs, pins)
-  Trash:      12 GB   (expires over next 30 days)
-  Purgatory: 206 GB   (cache, reclaimable)
-  ─────────────────
-  Total:     300 GB   of 500 GB limit
-  Disk:      300 GB   of 1 TB (OS view)
-  Actual:     94 GB   (what you'd lose if purgatory were flushed)
+  Active:      94 GB  (847 objects)
+  Purgeable:  206 GB  (12031 objects)
+  Total:      300 GB  (12878 objects)
+  Limit:      500 GB  (60.0% used)
 ```
 
 If the user wants more visible free space on their drive, they
@@ -420,8 +341,8 @@ c4 config store.limit 100G
 ```
 
 This is the only tuning knob most users need. Lower the limit to
-free disk space; raise it to maximize cache. Active and trash content
-are never affected by the limit — if active content exceeds the limit,
+free disk space; raise it to maximize cache. Referenced content is
+never affected by the limit — if referenced content exceeds the limit,
 c4d keeps it all and warns that purgatory is disabled.
 
 ## Observability
@@ -429,30 +350,25 @@ c4d keeps it all and warns that purgatory is disabled.
 There is no `c4 gc` command. Instead, the user can observe:
 
 ```
-c4 du                      # storage breakdown: actual vs purgable
+c4 du                      # storage breakdown: referenced vs purgeable
 c4 status                  # overall node health + storage summary
 c4 status project.c4m:     # what this c4m keeps alive
 c4 status :                # managed dir storage breakdown
-c4 status trash:           # what's in the trash, when it expires
 ```
 
 `c4 du` is the primary storage tool — it shows the reachability
-breakdown and makes the distinction between actual content and
-purgatory cache explicit. `c4 status` provides broader node health
-including storage.
+breakdown and makes the distinction between referenced content and
+purgatory cache explicit.
 
 If the user wants to force immediate reclaim (e.g., before shipping
 a drive):
 
 ```
-c4 rm --hard trash:        # empty the trash → purgatory immediately
 c4 rm --purge              # flush purgatory → gone (force reclaim)
 ```
 
-These are still declarative — "empty this trash now" and "flush the
-cache" are disposition statements, not sweep commands. The user is
-operating on named concepts they understand, not running a system
-maintenance task.
+This is still declarative — "flush the cache" is a disposition
+statement, not a sweep command.
 
 ## Shred
 
@@ -592,7 +508,7 @@ c4d maintains continuous awareness of what's reachable:
 1. The establishment registry is the root set
 2. Each established c4m's referenced C4 IDs are tracked
 3. Managed directory snapshots within retention windows are tracked
-4. Trash locations with TTLs are tracked with expiration times
+4. TTL-bearing paths are tracked with expiration times
 5. Purgatory is the complement: stored blobs not in any of the above
 
 This is a local computation — no distributed coordination needed.
@@ -626,21 +542,21 @@ type Stats struct {
 }
 ```
 
-### Trash Location Registration
+### TTL-Bearing Path Registration
 
-Trash locations are registered with TTL policies in the establishment
-registry, just like any other c4m or location. The only difference is
-the TTL annotation:
+Paths with TTLs are registered in the establishment registry with
+an expiration time:
 
 ```go
 type Registration struct {
     Path      string
     C4ID      c4.ID
     CreatedAt time.Time
-    ExpiresAt *time.Time  // nil = permanent (Zone 1 active)
-    IsTrash   bool        // entries here have individual TTLs
+    ExpiresAt *time.Time  // nil = permanent
 }
 ```
+
+When `ExpiresAt` is reached, the path is automatically un-established.
 
 ### Purgatory Management
 
@@ -650,21 +566,21 @@ the existing store:
 ```go
 type BlobState struct {
     StoredAt      time.Time
-    State         string    // "active", "trash", "purgatory"
+    State         string    // "active", "purgatory"
     PurgatoryAt   *time.Time
     TombstonedAt  *time.Time
 }
 ```
 
 c4d manages purgatory reclamation via a tunable pressure curve.
-The input is the ratio of total storage (active + trash + purgatory)
+The input is the ratio of total storage (active + purgatory)
 to the configured storage limit. The output is how aggressively
 purgatory blobs are reclaimed — from "keep everything" when well
 under the limit, to "reclaim immediately" when at the limit.
 
 The curve is configurable but ships with reasonable defaults. The
 exact shape will be refined through testing and early user feedback.
-If active + trash content alone exceeds the limit, purgatory is
+If referenced content alone exceeds the limit, purgatory is
 fully disabled and c4d warns the user.
 
 These thresholds are configurable.
@@ -685,7 +601,7 @@ These thresholds are configurable.
 | Simultaneous reclaim across nodes | Last-copy protection |
 | Put-before-reference race | Content starts active; purgatory only after unreference |
 | Crash during snapshot prune | Atomic writes; prune either completes or doesn't |
-| Accidental rm | Trash grace period; content visible and recoverable |
+| Accidental rm in managed dir | Undo + snapshot history; content recoverable |
 | Crash during purgatory reclaim | Idempotent delete; incomplete reclaim is safe |
 | Disk full prevents reclaim | Reclaim doesn't write; it only deletes |
 | Clock skew | TTLs are local; no cross-node comparison |
@@ -707,5 +623,3 @@ These thresholds are configurable.
   shape (linear, exponential, sigmoid) based on real usage patterns.
 - **Snapshot auto-tagging threshold:** Tied to `--snapshot-threshold`.
   Threshold-triggered snapshots are auto-tagged. Default count TBD.
-- **Default trash TTL:** 30 days initial default. Easy to discover
-  and configure via `c4 config`.
