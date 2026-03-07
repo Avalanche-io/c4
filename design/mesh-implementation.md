@@ -213,8 +213,19 @@ drwxr-xr-x - - desktop/ -
 drwxr-xr-x - - sarah-laptop/ -
 ```
 
-Standard c4m directory entries. `GET /peers/nas/` could return
-that peer's namespace root (proxied). Content-Type: `text/c4m`.
+Standard c4m directory entries. `GET /peers/nas/` proxies to
+that peer's namespace root. Content-Type: `text/c4m`.
+
+Composable: `GET /peers/nas/peers` returns nas's peers.
+The mesh topology is browsable by walking deeper paths:
+
+```
+c4 ls net:/peers/nas/peers        # transitive discovery
+c4 ls net:/peers/nas/peers/cloud/ # browse cloud through nas
+```
+
+This is the manual form of what Phase 5 formalizes as peer
+routing — "can you reach X?" is walking the peer graph.
 
 The peers list is maintained by the mDNS browser running in
 c4d. Entries have a TTL — disappear when the peer stops

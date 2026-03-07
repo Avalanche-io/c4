@@ -71,6 +71,17 @@ drwxr-xr-x - - sarah-laptop/ -
 drwxr-xr-x - - desktop/ -
 ```
 
+`net:` is composable — peers are directories, and each peer
+exposes its own `/peers/` path. The mesh topology is browsable:
+
+```
+c4 ls net:/peers/nas/peers        # who can nas reach?
+c4 ls net:/peers/nas/peers/cloud/ # browse cloud through nas
+```
+
+Transitive discovery is path composition. No special query
+language, no routing API — just `ls` on deeper paths.
+
 **Mesh (peer routing):** When c4d starts, it connects to
 configured peers. The mTLS handshake IS the announcement —
 identity from the cert, address from the connection. Peers
