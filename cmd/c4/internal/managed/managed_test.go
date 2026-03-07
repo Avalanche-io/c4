@@ -1,6 +1,7 @@
 package managed
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -477,5 +478,44 @@ func TestHistory(t *testing.T) {
 			t.Errorf("duplicate ID in history: %s", e.ID)
 		}
 		seen[e.ID] = true
+	}
+}
+
+func TestConcurrentSnapshots(t *testing.T) {
+	dir := setupTestDir(t)
+
+	d, err := Init(dir, nil)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// Run concurrent snapshots — locking should serialize them
+	errs := make(chan error, 10)
+	for i := 0; i < 10; i++ {
+		go func(n int) {
+			os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.txt", n)), []byte(fmt.Sprintf("%d\n", n)), 0644)
+			_, err := d.Snapshot()
+			errs <- err
+		}(i)
+	}
+
+	for i := 0; i < 10; i++ {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent Snapshot failed: %v", err)
+		}
+	}
+
+	// History should have 11 entries (1 from Init + 10 snapshots)
+	entries, err := d.History()
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(entries) != 11 {
+		t.Errorf("expected 11 history entries, got %d", len(entries))
+	}
+
+	// Lock file should exist
+	if _, err := os.Stat(filepath.Join(dir, ".c4", "lock")); err != nil {
+		t.Error("lock file should exist after locked operations")
 	}
 }

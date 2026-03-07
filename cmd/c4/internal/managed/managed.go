@@ -160,6 +160,12 @@ func (d *Dir) Current() (*c4m.Manifest, error) {
 // Clears the redo stack (new change after undo = forward history detaches).
 // Returns the C4 ID of the new snapshot.
 func (d *Dir) Snapshot() (c4.ID, error) {
+	unlock, err := d.lock()
+	if err != nil {
+		return c4.ID{}, fmt.Errorf("lock: %w", err)
+	}
+	defer unlock()
+
 	manifest, err := d.scan()
 	if err != nil {
 		return c4.ID{}, fmt.Errorf("scan: %w", err)
@@ -236,6 +242,12 @@ func (d *Dir) HistoryLen() (int, error) {
 // Undo reverts to the previous snapshot. The current state moves to
 // the redo stack.
 func (d *Dir) Undo() error {
+	unlock, err := d.lock()
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	defer unlock()
+
 	history, err := d.readHistory()
 	if err != nil {
 		return err
@@ -262,6 +274,12 @@ func (d *Dir) Undo() error {
 
 // Redo re-applies the last undone snapshot.
 func (d *Dir) Redo() error {
+	unlock, err := d.lock()
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	defer unlock()
+
 	redo, err := d.readRedo()
 	if err != nil {
 		return err
@@ -298,6 +316,12 @@ func (d *Dir) GetTag(name string) (*c4m.Manifest, error) {
 
 // SetTag creates or updates a named tag pointing to a snapshot C4 ID.
 func (d *Dir) SetTag(name, c4id string) error {
+	unlock, err := d.lock()
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	defer unlock()
+
 	// Verify the snapshot exists
 	snapPath := filepath.Join(d.meta, "snapshots", c4id)
 	if _, err := os.Stat(snapPath); err != nil {
@@ -308,6 +332,11 @@ func (d *Dir) SetTag(name, c4id string) error {
 
 // RemoveTag removes a named tag.
 func (d *Dir) RemoveTag(name string) error {
+	unlock, err := d.lock()
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	defer unlock()
 	return os.Remove(filepath.Join(d.meta, "tags", name))
 }
 
@@ -336,6 +365,12 @@ func (d *Dir) ListTags() (map[string]string, error) {
 
 // AddIgnorePatterns appends exclusion patterns.
 func (d *Dir) AddIgnorePatterns(patterns []string) error {
+	unlock, err := d.lock()
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	defer unlock()
+
 	existing, _ := d.readIgnorePatterns()
 	combined := append(existing, patterns...)
 	return d.writeIgnore(combined)
@@ -348,6 +383,12 @@ func (d *Dir) IgnorePatterns() ([]string, error) {
 
 // RemoveIgnorePattern removes a single exclusion pattern.
 func (d *Dir) RemoveIgnorePattern(pattern string) error {
+	unlock, err := d.lock()
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	defer unlock()
+
 	existing, err := d.readIgnorePatterns()
 	if err != nil {
 		return err
