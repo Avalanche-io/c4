@@ -23,14 +23,26 @@ operations plus discovery and policy.
 
 ### Identity
 
-Your TLS cert says who you are. It's self-verifying — signed by
-a CA the other party trusts. No accounts, no tokens, no
-passwords. A studio issues certs to its people. A family signs
-their own. Avalanche.io runs a CA for strangers.
+Identity is an email address. `sarah@home`, `unit-3@studio`,
+`josh@avalanche.io`. The email address serves triple duty:
 
-Identity is not an address. "Sarah" is Sarah regardless of which
-network she's on. "Unit-3" is Unit-3 whether it's in the studio
-or on location in Morocco.
+- **Authentication:** Your TLS cert carries your email in the
+  SAN field. Self-verifying — signed by a CA the other party
+  trusts. No accounts, no tokens, no passwords.
+- **Routing:** The mesh resolves your email to a route. The
+  sender doesn't need to know your address or even which of
+  your devices is online.
+- **Fallback transport:** If no mesh route exists, the c4m can
+  literally be emailed. The email address is always reachable
+  — it's the transport of last resort.
+
+A studio issues certs with `@studio` addresses. A family signs
+their own with `@home`. Avalanche.io issues `@avalanche.io`
+certs for strangers.
+
+Identity is not an address. `sarah@home` is Sarah regardless of
+which network she's on. `unit-3@studio` is Unit-3 whether it's
+in the building or on location in Morocco.
 
 ### Discovery
 
@@ -49,31 +61,37 @@ c4 find
   desktop       (josh@home)        10.0.1.10:7433
 ```
 
-**Mesh (peer routing):** When c4d starts, it announces itself to
-configured peers. Peers remember. When you send to Sarah, your
-node asks its peers "can you reach Sarah?" — not "what's her
-address?" The peer that can reach her becomes the route. Discovery
-and relay are the same operation: the node that knows where Sarah
-is can also forward content to her.
+**Mesh (peer routing):** When c4d starts, it connects to
+configured peers. The mTLS handshake IS the announcement —
+identity from the cert, address from the connection. Peers
+remember. When you send to `sarah@home`, your node asks its
+peers "can you reach `sarah@home`?" The peer that can reach
+her becomes the route.
 
 This handles the hard cases naturally:
-- Sarah behind hotel NAT? She connected outbound to the home NAS.
-  The NAS can reach her. It's the route.
-- Sarah offline? The intermediary stores the c4m (and blobs by
-  policy) until she reconnects.
+- Sarah behind hotel NAT? She connected outbound to the home
+  NAS. The NAS can reach her. It's the route.
+- Sarah offline? The intermediary materializes into a transit
+  path until she reconnects.
 - Sarah has a cloud VM? It's always reachable. Content lands
   there. Her laptop syncs from it later.
 
 Every node is a potential proxy for any node it can reach.
-"Sending to sarah" doesn't mean delivering to a specific device.
-It means ensuring Sarah's cache network has the content. Which
-of her nodes receives it first depends on which is reachable.
-Her nodes sync among themselves.
+"Sending to `sarah@home`" doesn't mean delivering to a specific
+device. It means ensuring Sarah's cache network has the content.
+The sender doesn't need to know which device, which network, or
+even which continent. The mesh routes it.
+
+**Email (fallback):** If no mesh route exists, the c4m can be
+delivered as email. `sarah@home` is a real email address. The
+c4m is small enough to attach. Sarah imports it. Her node pulls
+blobs through whatever channel works later.
 
 **Directory (Avalanche.io):** For strangers. c4d registers with
-the directory on startup. You look up sarah@example.com and get
-a route — possibly through the Avalanche.io relay if no direct
-path exists. This is the only mechanism that requires accounts.
+the directory on startup. You look up `sarah@example.com` and
+get a route — possibly through the Avalanche.io relay if no
+direct path exists. This is the only mechanism that requires
+accounts.
 
 ### Description
 
@@ -87,9 +105,12 @@ c4m files describe content. A c4m file is simultaneously:
 
 The c4m travels independently of the content it describes.
 It's small (KB-MB for projects with TB of content). It can go
-through any channel — HTTPS, email, git, QR code, written on a
-shipping label. Once the receiver has the c4m, they have complete
-knowledge of the content without having a single byte of it.
+through any channel — HTTPS, email, git, QR code, shuttle drive,
+written on a shipping label. Since identities are email
+addresses, the c4m can always reach the recipient even when no
+mesh route exists. Once the receiver has the c4m, they have
+complete knowledge of the content without having a single byte
+of it.
 
 This is the separation: **knowing about data and having data are
 different things.** The c4m is the knowing. The blobs are the
@@ -128,6 +149,12 @@ How bytes actually move. Pluggable. Orthogonal to everything else.
 
 **HTTPS:** The default. c4d already serves blobs via GET and
 accepts them via PUT. Works for any size over any network.
+
+**Email:** The fallback. The c4m is small enough to email (KB-MB
+even for TB-scale projects). If mesh routing fails, email the
+c4m. The receiver imports it and pulls blobs through whatever
+channel works. Since identities are email addresses, the
+fallback is always available — no special configuration.
 
 **Bundle (sneakernet):** When the network is too slow or doesn't
 exist. Export a c4m and all referenced blobs to a portable
@@ -186,22 +213,29 @@ files. Sarah's laptop is on hotel WiFi in Tokyo — behind NAT,
 not directly reachable.
 
 ```
-# Josh sends to "sarah" — not to an address
-c4 cp dailies.c4m: sarah:
+# Josh sends to sarah — not to an address, not to a device
+c4 cp dailies.c4m: sarah@home:
 ```
 
-Josh's node asks its peers "can you reach Sarah?" The home NAS
-can — Sarah's laptop connected to it outbound. The NAS is the
-route. The c4m goes to the NAS, which forwards it to Sarah's
-laptop. Blobs materialize through the same path, or from any
-other source Sarah's node can reach.
+Josh's node finds a route to `sarah@home`. The home NAS can
+reach her — Sarah's laptop connected outbound. The c4m travels
+to the NAS, which materializes the blobs into a transit path
+with a short TTL. The NAS forwards to Sarah's laptop. Blobs
+are now cached on the NAS (transit) and available to any other
+node that routes through it.
 
-If Sarah's laptop is off entirely, the c4m (and blobs by policy)
-land on the NAS. When Sarah reconnects, her node syncs from the
-NAS. The content was "sent to sarah" — not to a device.
+If Sarah's laptop is off entirely, the c4m and blobs sit in
+transit on the NAS. When Sarah reconnects, her node pulls from
+the NAS. After the transit TTL expires, the NAS reclaims the
+space through existing retention machinery.
 
 If Sarah walks into the same room as Josh, mDNS finds her
 directly — content goes peer-to-peer with no intermediary.
+
+If no mesh route exists at all, the c4m can be delivered as
+email to `sarah@home`. Sarah imports it. Her node pulls blobs
+through whatever channel is available — mesh, cloud, shuttle
+drive. The email address is always reachable.
 
 ### Studio on an isolated network
 
@@ -317,16 +351,46 @@ managed one for convenience.
 
 Content transfer is two phases:
 
-1. **Push intent:** Register the c4m in the remote namespace.
-   Fast — just the c4m file (small) and a namespace PUT.
+1. **Push intent:** The c4m arrives at the destination (or the
+   next hop). Fast — KB-MB regardless of project size.
 
-2. **Pull content:** Blobs materialize on demand or by policy.
-   The remote can serve the c4m immediately. Blobs follow.
+2. **Pull content:** Blobs materialize based on policy. Eagerly
+   for backup, lazily for thin mirrors, into transit paths with
+   short TTLs for forwarding.
 
 `c4 cp project.c4m: nas:` means: the NAS knows about this
 project right now. The NAS has the complete description. Blobs
-materialize based on the NAS's policy — eagerly for backup,
-lazily for thin mirrors.
+materialize based on the NAS's policy.
+
+The source colon controls what moves:
+- `c4 cp project.c4m nas:` — send the c4m FILE (just the blob)
+- `c4 cp project.c4m: nas:` — send the DESCRIBED CONTENT (c4m
+  triggers materialization along the route)
+
+### Transit Materialization
+
+When content is sent through the mesh, each intermediate node
+materializes the c4m into a transit namespace path with a short
+TTL. This serves three purposes:
+
+1. **Forwarding:** Blobs are cached locally so the next hop can
+   pull them. The transit node is temporarily a cache for this
+   content.
+
+2. **Distribution:** Multiple routes through the same node share
+   cached blobs. The mesh becomes a CDN naturally — content
+   spreads along routes and accumulates where traffic converges.
+
+3. **Cleanup:** Transit TTLs are short (hours to days). When
+   they expire, the existing retention machinery (purgatory,
+   pressure-curve reclamation) cleans up. No special transit
+   garbage collection.
+
+Transit materialization is not a new mechanism. It is the
+existing materialization policy applied to a TTL-bearing
+namespace path. The combination of "materialize on arrival"
+and "expire after N hours" is already implementable with
+existing primitives.
 
 ### Content Resolution Cascade
 
@@ -357,22 +421,24 @@ becomes a Merkle-tree walk: top-level changed → which sub-c4m
 changed → expand only those → find the exact delta. The c4m
 hierarchy IS the efficient sync protocol.
 
-A batch `POST /has` endpoint (send a list of C4 IDs, get back the
-missing set) collapses blob-level discovery to one round-trip.
+Blob-level discovery is implicit: the receiver has the c4m, it
+checks its own store, it pulls what's missing. No explicit
+"what do you have?" query needed.
 
 ### Discovery Is Relay
 
 There is no separate relay concept. Discovery and relay are the
-same operation: the node that can answer "where is Sarah?" can
-also forward content to Sarah. The discovery path IS the delivery
-path.
+same operation: the node that can answer "can you reach
+`sarah@home`?" can also forward content to her. The discovery
+path IS the delivery path.
 
 Every node in the mesh is a potential intermediary for any node
-it can reach. When you send to "sarah", your node finds a route
-— possibly direct, possibly through one or more intermediaries.
-Content flows along that route. No special relay software, no
+it can reach. When you send to `sarah@home`, your node finds a
+route — possibly direct, possibly through one or more
+intermediaries. Content flows along that route, materializing
+into transit caches at each hop. No special relay software, no
 inbox model, no delivery queue. Just nodes forwarding to nodes
-they can reach.
+they can reach, with transit TTLs cleaning up behind them.
 
 A c4d on AWS with S3 storage isn't a "relay." It's a node that
 Sarah controls, always reachable, that her other nodes sync with.
@@ -388,7 +454,7 @@ bundle/import, multi-band transfer.
 **OSS (free, self-hosted):**
 - c4 CLI, c4d (full mesh node)
 - mDNS discovery
-- Peer announcement
+- Peer routing (mTLS connection = announcement)
 - mTLS with self-signed CA
 - All sync, retention, bundle, import operations
 - Full mesh topology
@@ -411,15 +477,16 @@ locked into a platform.
 ### Discovery and Routing
 - mDNS/Bonjour advertisement (`_c4d._tcp` service type)
 - `c4 find` (scan LAN for c4d nodes)
-- Peer announcement (c4d → peers "I'm online at this address")
+- Implicit peer announcement (mTLS connection = announcement)
 - Peer routing ("can you reach X?" → forward through intermediary)
-- Store-and-forward (hold content for offline peers)
+- Store-and-forward (transit namespace paths for offline peers)
+- Email fallback (c4m delivery via SMTP when no mesh route)
 - Directory registration/lookup (Avalanche.io integration)
 
 ### Content Resolution
 - Peer list configuration in c4d
 - Blob fallback (local miss → ask peers → ask peers' peers)
-- Batch `POST /has` endpoint
+- Transit materialization (TTL-bearing paths, auto-reclaimed)
 - Parallel/cascading resolver strategies
 
 ### Sync

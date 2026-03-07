@@ -53,7 +53,6 @@ and the CLI. The only difference is TLS configuration:
 Add to the shared client:
 ```go
 func (c *Client) ListPath(path string) ([]*c4m.Entry, error)
-func (c *Client) Needs(c4mBody []byte) ([]c4.ID, error) // Phase 2
 ```
 
 `NewFromLocation` is a CLI-side helper that reads TLS config
@@ -76,11 +75,17 @@ case src.Type == pathspec.Managed && dst.Type == pathspec.Location:
 `cpC4mToLocation(src, dst)`:
 1. Load local c4m file
 2. Create peer client from location
-3. Send c4m body to `POST /needs` → get missing set
-   (falls back to individual HEAD if `/needs` returns 404)
-4. For each missing blob: read from local c4d, `Put` to remote
-5. `Put` the c4m blob itself
-6. `PutPath` to register the c4m at `dst.SubPath`
+3. `Put` the c4m blob to remote
+4. `PutPath` to register the c4m at `dst.SubPath`
+5. The remote now has the description. It materializes blobs
+   from the sender's c4d (which is a peer) on its own schedule.
+
+For the source-colon case (`project.c4m:`), the sender also
+pushes all referenced blobs. For the no-colon case
+(`project.c4m`), only the c4m file blob is pushed.
+
+CAS deduplication: if a blob already exists on the remote,
+the PUT is a fast no-op.
 
 ### 1.3 Pull: location → local
 
@@ -135,47 +140,31 @@ Type `text/c4m`). See `handleListDir` in namespace.go.
 
 ---
 
-## Phase 2: Needs Query + Efficient Transfer
+## Phase 2: Transit Materialization + Transfer Progress
 
-**Goal:** Large transfers are efficient. One round-trip to
-determine what needs to move.
+**Goal:** Content materializes through the mesh. Intermediate
+nodes cache in transit. Large transfers show progress.
 
-### 2.1 `POST /needs` endpoint
+### 2.1 Transit namespace policy
 
-The c4m IS the existence query. The sender pushes intent (the
-c4m), the receiver declares what it needs.
+When a c4m is registered in a transit path (e.g. `/transit/`),
+the node materializes all referenced blobs from its peers.
+Transit paths have short TTLs — content is cached for
+forwarding, then reclaimed by existing retention machinery.
 
-`c4d/internal/server/content.go`:
-
-```go
-// POST /needs — given a c4m, return missing blob IDs
-// Request body: raw c4m content (text/c4m)
-// Response: newline-delimited C4 IDs not present (text/plain)
-func (s *Server) handleNeeds(w http.ResponseWriter, r *http.Request)
+Configuration in c4d config.yaml:
+```yaml
+transit:
+  path: /transit/
+  ttl: 24h
+  materialize: eager
 ```
 
-The receiver parses the c4m, walks entries, checks its store,
-returns newline-delimited C4 IDs it doesn't have. No JSON, no
-separate ID list. The c4m drives the transfer.
+Uses existing primitives: namespace PUT (with TTL), content
+resolution cascade (blob fallback to peers), retention
+(purgatory + pressure curve).
 
-For nested c4m references: the receiver recursively checks
-referenced c4m files it already has and includes their missing
-blobs too.
-
-Route in `server.go`: `POST` to `/needs`.
-
-### 2.2 Wire needs query into transfer
-
-The push flow becomes:
-1. Send the c4m body to `POST /needs` → get missing set
-2. Push missing blobs
-3. Push the c4m blob itself
-4. Register in namespace (`PUT /path`)
-
-Fallback for older c4d: individual `HEAD /{c4id}` calls. Version
-detection: try `/needs` once, if 404, fall back for this session.
-
-### 2.3 Transfer progress
+### 2.2 Transfer progress
 
 For large transfers, show progress:
 ```
@@ -188,9 +177,10 @@ Progress callback in the client, wired to stderr output in cp.go.
 ### Files to create/modify
 
 **Modify:**
-- `c4d/internal/server/content.go` — handleNeeds
-- `c4d/internal/server/server.go` — route POST /needs
-- `c4/cmd/c4/cp.go` — use needs query in push flow
+- `c4d/internal/server/namespace.go` — trigger materialization
+  on PUT to transit paths
+- `c4d/internal/config/config.go` — transit config
+- `c4/cmd/c4/cp.go` — progress display for blob push
 
 ---
 
@@ -382,15 +372,19 @@ the route.
 ### 5.4 Identity-based cp
 
 ```
-c4 cp project.c4m: sarah:
+c4 cp project.c4m: sarah@home:
 ```
 
-If "sarah" is not an established location, resolve it:
+If `sarah@home` is not an established location, resolve it:
 1. Check mDNS (LAN)
 2. Check peer routing (mesh)
 3. Check directory (Avalanche.io, future)
+4. Email fallback (send c4m as attachment)
 
-If resolved, create a transient connection and push.
+The sender doesn't need to know the target location. The
+mesh routes it. If resolved to a mesh route, push the c4m to
+the next hop's transit path. If no route exists, the c4m can
+be emailed to the address — it's a real email address.
 
 ### 5.5 Store-and-forward
 
@@ -511,7 +505,7 @@ intermediary for their mesh.
 ```
 Phase 1 (Remote Copy)
   ↓
-Phase 2 (Needs Query) ← optimization, can ship Phase 1 without it
+Phase 2 (Transit + Progress) ← builds on Phase 1 materialization
   ↓
 Phase 3 (LAN Discovery) ← independent of 1-2, can parallelize
   ↓
@@ -565,6 +559,6 @@ name for directories). Same format the CLI already parses.
 
 Remote operations can fail (network, auth, disk). The CLI should:
 - Report progress before failure ("pushed 142/500 blobs")
-- Be resumable (re-run same command, needs query skips existing)
+- Be resumable (re-run same command, CAS dedup skips existing)
 - Distinguish "remote unreachable" from "auth failed" from
   "content not found"
