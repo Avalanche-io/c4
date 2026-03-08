@@ -759,9 +759,10 @@ c4 cp archive.tar:renders/ studio:    # tar contents to location
 c4 cp - project.tar:                  # c4m from stdin selects files
 ```
 
-Write targets require prior establishment (`c4 mk`). Read targets do
-not. Scan is always recursive. `-r` is accepted and ignored for muscle
-memory.
+Location and managed directory targets require prior establishment
+(`c4 mk`). c4m files are created on first write. Read targets never
+need establishment. Scan is always recursive. `-r` is accepted and
+ignored for muscle memory.
 
 **Sequence copy convention:**
 ```
@@ -817,21 +818,28 @@ c4 mkdir project.c4m:renders/
 c4 mkdir -p project.c4m:renders/shots/final/
 ```
 
-`-p` creates intermediate directories. Write target must be established.
+`-p` creates intermediate directories.
 
 ### `c4 mk` — Establish
 
-Establish a c4m file, location, or managed directory for writing. The
-safety gate that prevents accidental writes.
+Establish a location or managed directory. The safety gate for
+operations that create ongoing relationships.
 
 ```
-c4 mk project.c4m:                       # establish c4m file
-c4 mk studio: cloud.example.com:7433     # establish remote location
+c4 mk nas:                               # establish location (CLI alias for c4d peer)
 c4 mk :                                  # establish current dir for tracking
 c4 mk : --exclude data/ --exclude '*.tmp'  # establish with exclusions
+c4 mk : --sync nas: desktop:             # establish with sync targets
 ```
 
-Read is always implicit. Write requires `mk`.
+c4m files do not require establishment. `c4 cp files/ project.c4m:`
+creates the c4m on first write — like `tar cf`. When the c4m is later
+used as a source for a location copy (`c4 cp project.c4m: nas:`), the
+CLI pushes referenced blobs to c4d as part of the operation.
+
+Locations require `mk` because they declare a CLI alias for a c4d peer.
+The peer's address and trust are configured in c4d's config files;
+`c4 mk nas:` just creates the name binding.
 
 `c4 mk :` captures the initial snapshot and begins tracking. This is the
 entry point for undo/redo, history, and tags. On an already-established

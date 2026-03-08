@@ -1,8 +1,8 @@
 # User Stories
 
 Temporary document. Exploring how different users interact with
-c4 across the full range of features — local, mesh, bundle,
-sync, identity. These stories validate the design against real
+c4 across the full range of features — local, mesh, sync,
+identity. These stories validate the design against real
 workflows.
 
 ---
@@ -22,15 +22,15 @@ c4 cp /mnt/card-A/ today.c4m:A-cam/
 c4 cp /mnt/card-B/ today.c4m:B-cam/
 
 # She can see the full day's shoot described in one file
-c4 ls today.c4m:
+c4 ls -p today.c4m:
 # A-cam/
 #   A001_C001_0301.R3D    234.7 GB
 #   A001_C002_0301.R3D    189.2 GB
 # B-cam/
 #   B001_C001_0301.R3D    201.4 GB
 
-# Bundle for the lab. Shuttle drive.
-c4 bundle today.c4m: /mnt/shuttle-1/
+# Materialize to shuttle drive for the lab
+c4 cp today.c4m: /mnt/shuttle-1/
 
 # Print the c4m for the drive label
 c4 ls today.c4m: > /mnt/shuttle-1/MANIFEST.txt
@@ -38,20 +38,20 @@ c4 ls today.c4m: > /mnt/shuttle-1/MANIFEST.txt
 
 Maya hands the shuttle drive to a PA who drives it to the lab.
 The c4m on the drive is the chain of custody document. The lab
-imports it and can verify every frame against its C4 ID.
+can verify every frame against its C4 ID.
 
 **Next day — incremental:**
 ```
 # New day, same project
 c4 cp /mnt/card-A/ day2.c4m:A-cam/
 
-# Bundle to the SAME shuttle drive
-c4 bundle day2.c4m: /mnt/shuttle-1/
-# "bundled 342 blobs (1.2 TB), skipped 0 existing"
+# Materialize to the SAME shuttle drive (additive)
+c4 cp day2.c4m: /mnt/shuttle-1/
 ```
 
-If a card was accidentally re-inserted, CAS dedup catches it —
-the duplicate frames aren't re-bundled.
+Day 1 files are already on the drive. Day 2 files are added
+alongside. If a card was accidentally re-inserted, the files
+are identical — harmless overwrite.
 
 **Problem she'd have without c4:**
 Copying raw files to a shuttle drive with no manifest. No way
@@ -123,7 +123,7 @@ c4 mk studio-b:
 c4 cp studio-b:priya-inbox/grade-ref.c4m grade-b.c4m:
 
 # Studio C drops a shuttle drive at her office
-c4 import /mnt/studio-c-drive/
+c4 cp /mnt/studio-c-drive/ grade-c.c4m:
 ```
 
 Three studios, three delivery methods (Avalanche relay,
@@ -139,7 +139,7 @@ c4 cp graded-a.c4m: studio-a:
 c4 cp graded-b.c4m: studio-b:priya-delivery/
 
 # Studio C gets a shuttle drive back
-c4 bundle graded-c.c4m: /mnt/return-drive/
+c4 cp graded-c.c4m: /mnt/return-drive/
 ```
 
 **Syncing between her machines:**
@@ -210,15 +210,15 @@ c4 mk primary:
 **Vendor collaboration:**
 ```
 # Vendor needs to deliver VFX shots
-# Derek sets up a shared relay
+# Derek sets up a shared relay that trusts both CAs
 c4d serve --config /etc/c4d/vendor-relay.yaml
 # config: tls: ca: [studio-ca.pem, vendor-ca.pem]
 
-# Vendor pushes to relay
-c4 cp shots.c4m: relay.studio.com:vendor-delivery/
+# Vendor establishes the relay as a location and pushes
+c4 cp shots.c4m: vendor-relay:delivery/
 
 # Studio pulls from relay
-c4 cp vendor-relay:vendor-delivery/shots.c4m incoming.c4m:
+c4 cp vendor-relay:delivery/shots.c4m incoming.c4m:
 ```
 
 **Problem he'd have without c4:**
@@ -240,8 +240,8 @@ workstation with c4d.
 # Sync the latest VFX review package to her portable node
 c4 cp production:review-package.c4m local-review.c4m:
 
-# Bundle offline reference material
-c4 bundle reference.c4m: /mnt/portable-ssd/
+# Materialize offline reference material to SSD
+c4 cp reference.c4m: /mnt/portable-ssd/
 ```
 
 **On set (offline):**
@@ -293,8 +293,8 @@ c4 diff archive:titles/the-matrix.c4m: cold-storage:titles/the-matrix.c4m:
 c4 cp archive:titles/the-matrix.c4m:dcp/ delivery.c4m:
 c4 cp archive:titles/the-matrix.c4m:sound/ delivery.c4m:
 
-# Bundle for physical delivery
-c4 bundle delivery.c4m: /mnt/delivery-drive/
+# Materialize to delivery drive
+c4 cp delivery.c4m: /mnt/delivery-drive/
 
 # The c4m is the delivery manifest
 # Distributor can verify: "did I get everything?"
@@ -369,7 +369,6 @@ the assets.
 **Releasing:**
 ```
 # Tag the release assets
-c4 mk release-v2.3.c4m:
 c4 cp assets/ release-v2.3.c4m:
 c4 cp models/ release-v2.3.c4m:trained-models/
 
@@ -444,10 +443,10 @@ echo "model: $(c4 -i trained-model.bin)" >> experiment.log
 **Dataset diff:**
 ```
 # What changed between v4 and v5?
-c4 diff dataset-v4.c4m dataset-v5.c4m
-# +  new-samples/  (3,412 files, 12.3 GB)
-# ~  labels.csv    (size: 2.1 MB → 2.8 MB)
-# -  deprecated/   (removed)
+c4 diff dataset-v4.c4m: dataset-v5.c4m:
+# Output is a c4m patch: new entries (additions),
+# clobbered entries (modifications), re-emitted entries (removals)
+# All without downloading either dataset in full
 ```
 
 **Problem they'd have without c4:**
@@ -524,7 +523,7 @@ c4 cp selects/ johnson-wedding.c4m:selects/
 c4 cp finals/ johnson-wedding.c4m:delivery/
 
 # The c4m has everything: raw, selects, finals
-c4 ls johnson-wedding.c4m:
+c4 ls -p johnson-wedding.c4m:
 # raw/        12,847 files   382.4 GB
 # selects/       312 files    11.2 GB
 # delivery/      312 files     4.8 GB
@@ -536,7 +535,7 @@ c4 ls johnson-wedding.c4m:
 c4 cp johnson-wedding.c4m:delivery/ client@email.com:
 
 # Or a USB drive
-c4 bundle johnson-wedding.c4m:delivery/ /mnt/client-usb/
+c4 cp johnson-wedding.c4m:delivery/ /mnt/client-usb/
 ```
 
 **Archive:**
@@ -627,7 +626,6 @@ c4 mk pi:
 
 **Backup photos:**
 ```
-c4 mk photos.c4m:
 c4 cp ~/Photos/ photos.c4m:
 c4 cp photos.c4m: pi:
 
@@ -656,13 +654,13 @@ departments. All content moves via shuttle drives.
 c4 cp /mnt/card/ day5.c4m:
 
 # DIT → Editorial (shuttle drive)
-c4 bundle day5.c4m: /mnt/shuttle/
+c4 cp day5.c4m: /mnt/shuttle/
 
 # Editorial → Color (another shuttle drive)
-c4 bundle editorial-cut.c4m: /mnt/shuttle-2/
+c4 cp editorial-cut.c4m: /mnt/shuttle-2/
 
 # Each handoff has a c4m manifest
-# Each import verifies content
+# Each delivery can be verified against its c4m
 # Chain of custody is the sequence of c4m files
 ```
 
@@ -708,17 +706,17 @@ public relays, third-party CDN).
 urgent material goes over the wire.
 
 ```
-# Bundle the bulk
-c4 bundle delivery.c4m: /mnt/shuttle-1/
-c4 bundle delivery.c4m: /mnt/shuttle-2/  # incremental
+# Materialize bulk to shuttle drive
+c4 cp delivery.c4m: /mnt/shuttle/
 
-# Push the urgent shots over the wire
+# Push urgent shots over the wire
 c4 cp delivery.c4m:urgent/ client-relay:incoming/
 
-# Client imports shuttle drives as they arrive
-c4 import /mnt/shuttle-1/
-c4 import /mnt/shuttle-2/
+# Client accumulates from all sources into one c4m
+c4 cp client-relay:incoming/ received.c4m:    # wire (arrives first)
+c4 cp /mnt/shuttle/ received.c4m:             # shuttle (arrives later)
 
-# The c4m tracks what's been received across all bands
-# Client can see: "I have 92% of the delivery"
+# Check progress against the delivery manifest
+c4 diff delivery.c4m: received.c4m:
+# Shows exactly what's still missing across all bands
 ```
