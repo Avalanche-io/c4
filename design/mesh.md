@@ -373,9 +373,9 @@ They set up a shared relay — a c4d that trusts both CAs.
 
 ```
 # Shared relay trusts Studio-A-CA and Studio-B-CA
-# Both studios establish it as a location
+# Add relay as peer in c4d config, then create a CLI alias
 
-c4 mk partner-exchange: relay.example.com:7433
+c4 mk partner-exchange:
 
 # Studio A pushes
 c4 cp deliverables.c4m: partner-exchange:to-studio-b/

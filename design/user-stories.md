@@ -110,14 +110,16 @@ setup she takes to client facilities.
 
 **Receiving work:**
 ```
-# Studio A sends her a project via Avalanche.io
-c4 ls inbox:
+# Studio A sends to priya@email.com via Avalanche.io
+# Content lands on her cloud node (auto-established by c4 login)
+c4 ls cloud:incoming/
 # studio-a/color-package-v3.c4m    2026-03-07
 
-c4 cp inbox:studio-a/color-package-v3.c4m color-a.c4m:
+c4 cp cloud:incoming/studio-a/color-package-v3.c4m color-a.c4m:
 
-# Studio B has their own c4d — they added her cert
-c4 mk studio-b: studio-b-post.com:7433
+# Studio B has their own c4d — they issued her a cert
+# and she added their peer to her c4d config
+c4 mk studio-b:
 c4 cp studio-b:priya-inbox/grade-ref.c4m grade-b.c4m:
 
 # Studio C drops a shuttle drive at her office
@@ -130,8 +132,8 @@ the same: a c4m file she can work with.
 
 **Delivering work:**
 ```
-# Finished grades back to Studio A
-c4 cp graded-a.c4m: studio-a@avalanche.io:
+# Finished grades back to Studio A (via Avalanche.io relay)
+c4 cp graded-a.c4m: studio-a:
 
 # Back to Studio B via their c4d
 c4 cp graded-b.c4m: studio-b:priya-delivery/
@@ -199,8 +201,9 @@ c4 cp render-farm:finished/ archive:renders/
 # Issue a cert from the studio CA
 c4d pki issue --cn "new-artist@studio" --out ~/new-artist/
 
-# Artist configures their workstation
-c4 mk primary: storage.internal:7433
+# Artist installs cert, adds primary storage peer to c4d config
+# Then creates a CLI alias:
+c4 mk primary:
 # That's it. They can now push/pull from the studio mesh.
 ```
 
@@ -568,8 +571,8 @@ c4 cp /instrument/output/ experiment-2026-03.c4m:
 # Both labs use Avalanche.io for identity
 c4 cp experiment-2026-03.c4m: lab-b-pi@university.edu:
 
-# Lab B receives, can verify every byte
-c4 cp inbox:experiment-2026-03.c4m local.c4m:
+# Lab B receives on their cloud node
+c4 cp cloud:incoming/experiment-2026-03.c4m local.c4m:
 ```
 
 **Publication reproducibility:**
@@ -609,16 +612,17 @@ Pat has a laptop, a Raspberry Pi NAS, and wants simple backups.
 **Setup:**
 ```
 # Install c4 and c4d on both machines
-# Generate self-signed certs (c4d init handles this)
+# Generate self-signed key pair (c4d init handles this)
 c4d init
 # → created ~/.c4d/config.yaml
-# → generated CA, server cert, client cert
+# → generated key pair
 
-# On laptop, find the Pi
+# On laptop, find the Pi and trust it
 c4 ls net:/peers
-drwxr-xr-x - - pi-nas/ -
+drwxr-xr-x - - pi/ -
 
-c4 mk pi-nas:               # auto-resolves via net:/peers/pi-nas
+# Add pi's fingerprint to c4d config, then alias it
+c4 mk pi:
 ```
 
 **Backup photos:**
