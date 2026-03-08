@@ -37,9 +37,10 @@ only — there's no email fallback for a machine.
 Two tiers of trust:
 
 - **TOFU (zero-config):** `c4d init` generates a self-signed
-  key pair. On first contact via mDNS, prompt: "Trust desktop
-  (fingerprint abc123)?" Say yes, done. Like SSH — no CA, no
-  accounts, no setup beyond `c4d init`. For technical users
+  key pair. Discovered peers appear in `net:/peers` but aren't
+  trusted until their cert fingerprint is added to c4d's config.
+  Like SSH `known_hosts` — no CA, no accounts, no setup beyond
+  `c4d init` and adding a fingerprint. For technical users
   syncing their own machines.
 
 - **CA:** Issues certs to machines and people. Run your own
@@ -231,18 +232,18 @@ c4 ls net:/peers
 drwxr-xr-x - - nas/ -
 drwxr-xr-x - - desktop/ -
 
-# Trust on first use
-# "Trust nas (fingerprint abc123)?" → yes
+# Trust: add nas's fingerprint to c4d config
+# (like adding a key to SSH known_hosts)
 
-# Establish and sync
-c4 mk nas:                         # auto-resolves via net:/peers/nas
+# Establish a CLI alias for the peer
+c4 mk nas:                         # alias for the c4d peer
 c4 mk : --sync nas: desktop:
 
 # Every change propagates. Content materializes on each node.
 ```
 
-No accounts. No cloud. No CA. Just `c4d init` on each machine
-and say yes when they find each other.
+No accounts. No cloud. No CA. Just `c4d init` on each machine,
+add fingerprints to config, and they connect.
 
 ### Sending to a person
 
@@ -599,13 +600,13 @@ locked into a platform.
 - Incremental bundle (only export what destination is missing)
 
 ### Remote Operations
-- `c4 cp` to/from remote locations (HTTPS client)
-- `c4 ls location:` (list remote namespace)
-- `c4 cp location:path local.c4m:` (pull)
+- `c4 cp` to/from locations (via local c4d namespace)
+- `c4 ls location:` (list peer namespace through local c4d)
+- `c4 cp location:path local.c4m:` (pull through local c4d)
 
 ### Identity
 - `c4d init` (generate self-signed key pair, TOFU mode)
-- TOFU trust prompting on first contact
+- TOFU trust via config file (add fingerprint, like SSH known_hosts)
 - `c4 login` (provision cert from Avalanche.io CA)
 - `c4 logout` (revoke cert)
-- Self-signed CA setup tooling (for studios/teams)
+- Self-hosted CA setup tooling (for studios/teams)

@@ -24,9 +24,10 @@ working increment — the system is usable after every phase.
 - `putToC4d()` — push blob content to local c4d
 - cp handles Local, C4m, Container, Managed source/dest types
 
-**What's missing** is connecting these two halves: the CLI can
-parse `nas:` as a location, and c4d can talk to peers, but the
-CLI doesn't know how to push/pull to a remote location.
+**What's missing** is c4d routing namespace operations to peers.
+The CLI can parse `nas:` and talk to the local c4d. c4d can
+talk to peers. But c4d doesn't proxy namespace operations
+(PUT, GET, LIST) through to peers on the CLI's behalf.
 
 ---
 
@@ -102,10 +103,12 @@ namespace PUT targets a path owned by a peer, c4d forwards
 the operation. When a GET resolves to a peer's namespace, c4d
 proxies the response.
 
-Location entries map to c4d peer routing, not direct addresses.
-`c4 mk nas: nas.local:7433` tells c4d "the peer at
-nas.local:7433 is named nas" — the CLI stores the name, c4d
-stores the peer relationship.
+Peer relationships are configured on the c4d node — in
+config.yaml or equivalent config files. The CLI doesn't
+configure peers; it discovers what c4d already knows.
+`c4 mk nas:` creates a CLI-side alias for a peer that c4d
+is already connected to. The address lives in c4d config,
+not in the CLI's location registry.
 
 ### 1.6 Tests
 
@@ -116,11 +119,30 @@ stores the peer relationship.
 - Test pull with partial local content.
 - Test listing a remote peer's namespace through local c4d.
 
+### 1.7 Root namespace
+
+c4d needs a virtual root listing. `GET /` returns a c4m
+directory of top-level paths scoped to the authenticated
+identity:
+
+```
+drwxr-xr-x - - home/ -
+drwxr-xr-x - - peers/ -
+drwxr-xr-x - - route/ -
+drwxr-xr-x - - admin/ -
+```
+
+The current namespace stores flat paths — this synthesizes
+a root by aggregating top-level prefixes. The root listing
+is what makes the entire c4d API self-discoverable.
+
 ### Files to create/modify
 
 **Modify:**
 - `c4/cmd/c4/cp.go` — add Location cases to switch
 - `c4/cmd/c4/ls.go` — add Location case
+- `c4d/internal/server/server.go` — root c4m listing,
+  identity-scoped
 - `c4d/internal/server/namespace.go` — proxy to peers for
   non-local namespace paths
 - `c4d/internal/peer/router.go` — namespace routing (not just
@@ -473,7 +495,8 @@ Stored in `.c4/sync` internally.
 
 After every CLI operation that mutates a managed directory
 (cp, ln, mv, rm, patch), push the updated c4m to all sync
-targets. Reuse the remote client from Phase 1.
+targets via the local c4d (same namespace operations as
+Phase 1).
 
 In `managed.go`, add a post-mutation hook:
 
@@ -558,8 +581,8 @@ Phase 7 (Identity/Login) ← requires Phase 5
 ```
 
 Phase 4 is independent and can be done at any time.
-Phase 1 is the critical path — everything else builds on the
-remote client and location-based cp. Phase 3 uses the same
+Phase 1 is the critical path — everything else builds on
+c4d namespace routing and location-based cp. Phase 3 uses the same
 Location pathspec wiring from Phase 1 (`net:` is just another
 location).
 
@@ -579,12 +602,15 @@ uses its internal peer client for everything else.
 
 ### Location entries
 
-Locations map names to c4d peer relationships. Current
-`LocationEntry` has Address + CreatedAt. The address tells c4d
-which peer to route to, not the CLI where to connect. Future
-fields:
+Locations are CLI-side aliases for c4d peers. The CLI stores
+the name; c4d stores the peer address and connection state.
+`c4 mk nas:` creates an alias. The peer's address and trust
+are configured in c4d's config files.
+
+Current `LocationEntry` has Address + CreatedAt. For mesh,
+the Address field becomes optional (c4d knows the address).
+Future fields:
 - `Identity string` — identity of the remote node
-- `LastSeen time.Time` — from mDNS or announcement
 - `SyncPolicy string` — eager/lazy/none
 
 ### Namespace listing protocol
