@@ -354,7 +354,37 @@ metrics collection, topology assembly, and the API surface above.
 
 ---
 
-## 8. Design Principles
+## 8. Monetization Note
+
+The flow link primitive (c4m format, `->` / `<-` / `<>` syntax) is
+open source. The fulfillment engine in c4d is the natural open core
+gate:
+
+- **Free c4d**: outbound flow (`->`), manual `c4 cp` between
+  locations, basic peer connectivity. Enough for backup and
+  sneakernet workflows.
+- **Paid c4d**: inbound flow (`<-`), bidirectional sync (`<>`),
+  reconciliation engine, staleness metrics, `c4 mesh`, `c4 dig`,
+  fleet template deployment, channel approval workflows.
+
+The c4m format supports all three operators regardless of license.
+A free c4d doesn't fulfill `<-` and `<>` — the channels appear as
+"upgrade to activate" in `c4 status`. The declaration travels with
+the content. The fulfillment is licensed.
+
+This sits below the Cloud Relay ($9/mo) tier and captures value
+from self-hosting organizations that would never pay for a relay.
+
+Potential tiers:
+- **Free**: c4 CLI + c4d with outbound flow only
+- **Pro**: bidirectional sync, inbound flow, visibility tools
+- **Enterprise**: fleet management, staleness metrics, chain
+  detection, admin approval workflows, multi-site topology
+- **Cloud Relay**: Avalanche.io relay service (additive to any tier)
+
+---
+
+## 9. Design Principles
 
 1. **Declare in c4m, fulfill in c4d, observe everywhere.** The flow
    declaration is in the content. The reconciliation engine is in c4d.

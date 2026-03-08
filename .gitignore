@@ -63,3 +63,10 @@ cmd/c4-mcp/c4-mcp
 memory.md
 
 dist/
+
+# Superseded flow paper drafts
+design/flow-paper-draft.md
+design/flow-paper-draft.pdf
+design/flow-paper-v2.md
+design/flow-paper-v3.md
+design/flow.pdf

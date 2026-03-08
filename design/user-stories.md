@@ -53,6 +53,22 @@ Day 1 files are already on the drive. Day 2 files are added
 alongside. If a card was accidentally re-inserted, the files
 are identical — harmless overwrite.
 
+**With flow links (if connectivity exists):**
+```
+# Maya's project c4m has flow declarations on the entries:
+#   -w-------  ...  card-ingest/  -> lab:incoming/
+#   -rw-r--r-- ...  today.c4m     -> backup:dailies/
+#
+# card-ingest/ is write-only + outbound = drop slot.
+# Camera cards go in, flow to the lab, don't accumulate locally.
+# today.c4m mirrors to backup automatically.
+#
+# If satellite uplink is available, c4d fulfills the flows.
+# If not, content accumulates locally — shuttle drives are
+# the backup transport. When connectivity returns, c4d
+# pushes the delta. No gap in coverage either way.
+```
+
 **Problem she'd have without c4:**
 Copying raw files to a shuttle drive with no manifest. No way
 to verify the delivery is complete. No way to know if a frame
@@ -78,6 +94,22 @@ c4 ls production:vfx/v42/
 
 # He forwards to color in London
 c4 cp production:vfx/v42/ color:incoming/v42/
+```
+
+**With flow links (automated pipeline):**
+```
+# The production c4m has flow declarations:
+#   production:vfx/  <- vancouver:deliveries/   (inbound from VFX)
+#   production:vfx/  -> color:incoming/          (outbound to color)
+#
+# Vancouver pushes a delivery. It flows to LA automatically.
+# LA's outbound flow forwards it to London automatically.
+# Carlos sees it arrive in c4 status:
+c4 status
+#   <- vancouver:deliveries/  synced    (3 new shots)
+#   -> color:incoming/        pending   (forwarding 3 shots)
+#
+# No manual cp needed. The pipeline is declared, not scripted.
 ```
 
 The c4m (description) propagates instantly. The actual EXR files
@@ -118,8 +150,8 @@ c4 ls cloud:incoming/
 c4 cp cloud:incoming/studio-a/color-package-v3.c4m color-a.c4m:
 
 # Studio B has their own c4d — they issued her a cert
-# and she added their peer to her c4d config
-c4 mk studio-b:
+# and she added their peer to her c4d config.
+# studio-b auto-resolves from the peer entry.
 c4 cp studio-b:priya-inbox/grade-ref.c4m grade-b.c4m:
 
 # Studio C drops a shuttle drive at her office
@@ -144,8 +176,8 @@ c4 cp graded-c.c4m: /mnt/return-drive/
 
 **Syncing between her machines:**
 ```
-# Home workstation syncs to her portable setup
-c4 mk : --sync portable:
+# Home workstation syncs with her portable setup
+c4 ln <> portable: :
 
 # Everything she does at home propagates
 # When she takes the portable to a client facility,
@@ -172,7 +204,7 @@ Derek manages infrastructure for a mid-size VFX studio.
 
 # Primary artist storage
 c4d serve --config /etc/c4d/primary.yaml
-# config: peers: [render-farm, archive]
+# config: locations: [render-farm, archive]
 
 # Render farm (aggressive retention)
 c4d serve --config /etc/c4d/render.yaml
@@ -185,9 +217,9 @@ c4d serve --config /etc/c4d/archive.yaml
 
 **Policy-based content flow:**
 ```
-# Finished renders auto-archive after 24h (future: policy engine)
-# For now, cron job:
-c4 cp render-farm:finished/ archive:renders/
+# Finished renders flow to archive automatically via flow links.
+# The render c4m declares: -> archive:renders/
+# c4d fulfills this — no cron job, no scripts.
 
 # Artists' workstations are peers of primary storage
 # Content resolution cascades:
@@ -201,10 +233,9 @@ c4 cp render-farm:finished/ archive:renders/
 # Issue a cert from the studio CA
 c4d pki issue --cn "new-artist@studio" --out ~/new-artist/
 
-# Artist installs cert, adds primary storage peer to c4d config
-# Then creates a CLI alias:
-c4 mk primary:
-# That's it. They can now push/pull from the studio mesh.
+# Artist installs cert, adds primary as a peer in c4d config.
+# Location auto-resolves — no c4 mk needed.
+# They can now push/pull from the studio mesh.
 ```
 
 **Vendor collaboration:**
@@ -214,7 +245,7 @@ c4 mk primary:
 c4d serve --config /etc/c4d/vendor-relay.yaml
 # config: tls: ca: [studio-ca.pem, vendor-ca.pem]
 
-# Vendor establishes the relay as a location and pushes
+# Vendor pushes via the relay (auto-resolves from config)
 c4 cp shots.c4m: vendor-relay:delivery/
 
 # Studio pulls from relay
@@ -325,18 +356,17 @@ want their project files backed up without thinking about it.
 
 **Setup (once):**
 ```
-c4 ls net:/peers
-drwxr-xr-x - - nas/ -
+# NAS auto-discovered via mDNS (c4d advertises _c4d._tcp)
+c4 mesh
+# nas    connected   0 channels
 
-c4 mk nas:                  # auto-resolves via net:/peers/nas
+# Set up bidirectional sync for the project directory
+c4 ln <> nas: :
 ```
 
 **Daily workflow:**
 ```
-# In a project directory
-c4 mk : --sync nas:
-
-# Every change syncs automatically
+# Flow link keeps everything in sync automatically
 echo "new feature" >> README.md
 c4 cp README.md :
 
@@ -391,8 +421,8 @@ c4 cp assets.c4m: ./assets/
 
 **CI/CD integration:**
 ```
-# CI pipeline identifies build artifacts
-c4 build-output/ > build-artifacts.c4m
+# CI pipeline captures build artifacts
+c4 cp build-output/ build-artifacts.c4m:
 
 # Push to artifact storage
 c4 cp build-artifacts.c4m: ci-store:builds/$BUILD_ID/
@@ -540,8 +570,8 @@ c4 cp johnson-wedding.c4m:delivery/ /mnt/client-usb/
 
 **Archive:**
 ```
-# Archive to NAS (auto-synced)
-c4 mk : --sync nas:
+# Archive to NAS via flow link
+c4 ln -> nas: :
 # Everything auto-archives
 
 # Years later, client needs a reprint
@@ -616,12 +646,9 @@ c4d init
 # → created ~/.c4d/config.yaml
 # → generated key pair
 
-# On laptop, find the Pi and trust it
-c4 ls net:/peers
-drwxr-xr-x - - pi/ -
-
-# Add pi's fingerprint to c4d config, then alias it
-c4 mk pi:
+# On laptop, Pi auto-discovers via mDNS
+c4 mesh
+# pi    connected   0 channels
 ```
 
 **Backup photos:**
@@ -699,6 +726,252 @@ public relays, third-party CDN).
 # CAS means completed blobs don't re-transfer
 # Pick up exactly where you left off
 ```
+
+### The "project template with flow channels" scenario
+
+A studio creates a project template c4m with flow declarations
+baked in. Every workstation that receives it automatically gets
+the right backup and delivery channels.
+
+```
+# Studio admin creates the project template
+# The c4m has flow declarations on key directories:
+#
+#   -rw-r--r-- ...  work/         -> backup:projects/$PROJECT/
+#   --w-------  ...  card-ingest/  -> ingest:incoming/
+#   -r-xr-xr-x ...  reference/    <- library:shared/luts/
+#   -rw-rw-r-- ...  shared/       <> collaboration:projects/$PROJECT/
+#
+# Deploy to 10 artist workstations:
+for ws in artist-{01..10}; do
+  c4 cp project-template.c4m: $ws:projects/feature-film/
+done
+
+# Each workstation now exposes 4 channels:
+#   -> backup:     (work directory mirrors to backup server)
+#   -> ingest:     (card reader drains to media pipeline)
+#   <- library:    (reference LUTs arrive from shared library)
+#   <> collaboration: (shared files sync bidirectionally)
+#
+# The admin configures c4d once per location name.
+# The artists don't configure anything.
+# A new workstation gets the template and immediately has
+# all channels active.
+
+# Admin sees the mesh:
+c4 mesh
+# artist-01  connected  4 channels (all synced)
+# artist-02  connected  4 channels (3 synced, 1 pending)
+# ...
+# artist-10  connected  4 channels (all synced)
+# backup     connected  10 inbound channels
+# library    connected  10 outbound channels
+```
+
+---
+
+### The "naming conventions" scenario
+
+Two facilities collaborate on a film. Facility A uses RED cameras
+and organizes by camera magazine (A001/, A002/). Facility B uses
+ARRI and organizes by shooting day (Day01/, Day02/). Each facility
+has its own internal naming conventions, directory structures, and
+pipeline expectations. Neither will change for the other.
+
+```
+# Facility A (RED pipeline) — DIT labels entries with flow channels
+# The c4m has the camera manufacturer's directory structure:
+#
+#   A001/A001C001_220315.R3D   c4abc...  -> raw:
+#   A001/A001C001_220315.mov   c4def...  -> proxies:
+#   A001/A001C001_220315.wav   c4ghi...  -> audio:
+#   A002/A002C001_220315.R3D   c4jkl...  -> raw:
+#   ...
+#
+# The DIT doesn't restructure. She labels WHAT things are,
+# not WHERE they go. The flow channel names (raw:, proxies:,
+# audio:) are the semantic interface.
+
+# Facility B (ARRI pipeline) — receives the c4m
+# B's c4d is configured:
+#   raw:     -> /ingest/camera-raw/     (their raw storage path)
+#   proxies: -> /editorial/media/       (their editorial path)
+#   audio:   -> /audio/production/      (their sound dept path)
+#
+# The channel names resolve to B's internal structure.
+# B never sees A's directory layout. A never learns B's.
+# raw: is the contract between them.
+
+# What Facility B sees:
+c4 status
+#   <- raw:      synced    (42 files received)
+#   <- proxies:  synced    (42 files received)
+#   <- audio:    synced    (42 files received)
+
+# Content arrived in B's expected paths:
+ls /ingest/camera-raw/
+# A001C001_220315.R3D  A002C001_220315.R3D  ...
+#
+# The files are there. The RED naming is preserved in filenames
+# but the directory structure is B's own. No one had to rename
+# anything or write a mapping script.
+```
+
+**Why this matters:**
+
+Every cross-facility delivery today requires either:
+1. The sender restructures to match the receiver's naming
+   convention (labor-intensive, error-prone)
+2. The receiver runs an ingest script that maps the sender's
+   layout to their own (fragile, per-vendor)
+3. Both sides use an agreed-upon exchange format that neither
+   actually uses internally (friction, overhead)
+
+Flow channel names eliminate all three. The sender labels entries
+by WHAT they are (raw, proxies, audio, vfx, grades). The receiver
+maps channel names to their own paths. The channel vocabulary
+becomes the interoperability layer.
+
+This scales to any number of facilities. A VFX vendor in Mumbai,
+a color house in London, and a sound mix stage in LA all receive
+the same c4m with the same channel labels. Each maps the channels
+to their own internal paths. No one needs to know anyone else's
+directory conventions.
+
+```
+# Third facility joins the project
+# Just configure what the channel names mean locally:
+#   raw:     -> /SAN/projects/feature/camera/
+#   proxies: -> /SAN/projects/feature/editorial/avid-media/
+#   audio:   -> /SAN/projects/feature/sound/production-audio/
+#
+# Same c4m. Same channels. Different local paths.
+# Zero coordination with the other facilities.
+```
+
+---
+
+### The "cross-vendor VFX handoff" scenario
+
+A feature film has VFX split across three vendors. Vendor A does
+environment work (matte paintings, CG sets). Vendor B does creature
+work. Vendor C does final compositing. Vendor B needs Vendor A's
+environments as inputs. Vendor C needs both A and B's outputs as
+inputs. The production coordinates through a VFX supervisor at
+the studio.
+
+Each vendor has completely different pipeline conventions:
+
+- **Vendor A** (environments): organizes by sequence/shot, uses
+  EXR multi-layer with their own layer naming, delivers in
+  `build/` directories with version folders.
+- **Vendor B** (creatures): organizes by asset/variant, uses
+  Alembic caches + texture atlases, delivers in `publish/`
+  directories with `_v###` filename suffixes.
+- **Vendor C** (comp): expects inputs organized by shot with
+  `fg/`, `bg/`, `ref/` subdirectories, flat EXR sequences named
+  by shot code.
+
+None of them will restructure for the others. They can't —
+their render farms, review tools, and asset management systems
+depend on their internal conventions.
+
+```
+# Vendor A delivers environments.
+# Their c4m describes their internal layout:
+#
+#   build/seq010/shot0010/env_v003/
+#     env_diffuse.####.exr   c4aaa...  -> environments:
+#     env_reflect.####.exr   c4bbb...  -> environments:
+#     env_depth.####.exr     c4ccc...  -> environments:
+#   build/seq010/shot0020/env_v002/
+#     ...                              -> environments:
+#   build/seq020/shot0010/env_v001/
+#     ...                              -> environments:
+#
+# Everything is labeled -> environments:
+# A doesn't know or care who consumes this channel.
+
+# Vendor B needs A's environments as background plates for
+# creature lighting. B's c4d maps:
+#   environments: -> /assets/external/bg-plates/
+#
+# B receives A's files in B's expected location.
+# B's lighting artists open /assets/external/bg-plates/
+# and find the EXRs. The directory structure under bg-plates/
+# preserves A's layout — but B's pipeline doesn't care about
+# the structure, it just reads the EXRs.
+
+# Vendor B delivers creatures.
+# Their c4m describes their internal layout:
+#
+#   publish/dragon/hero_v012/
+#     dragon_hero.abc        c4ddd...  -> creatures:
+#     dragon_hero_diff.tx    c4eee...  -> creatures:
+#     dragon_hero_spec.tx    c4fff...  -> creatures:
+#   publish/dragon/wing_v008/
+#     ...                              -> creatures:
+#   publish/horse/gallop_v003/
+#     ...                              -> creatures:
+#
+# Everything labeled -> creatures:
+
+# Vendor C (comp) needs both environments and creatures.
+# C's c4d maps channels to their comp pipeline structure:
+#   environments: -> /shots/$SHOT/bg/
+#   creatures:    -> /shots/$SHOT/fg/
+#
+# C's compositors open a shot folder and find:
+#   /shots/seq010_shot0010/bg/   (A's environments)
+#   /shots/seq010_shot0010/fg/   (B's creatures)
+#   /shots/seq010_shot0010/ref/  (editorial reference, separate channel)
+#
+# Each vendor's content arrived in C's expected structure.
+# No renaming. No restructuring scripts. No FTP folders
+# full of ambiguously named files.
+```
+
+**The VFX supervisor's view:**
+```
+# The supervisor at the studio sees all the channels:
+c4 mesh
+#   vendor-a    connected   1 channel
+#     -> environments:      synced    (seq010: 3 shots, seq020: 1 shot)
+#   vendor-b    connected   1 channel
+#     -> creatures:         synced    (dragon: 2 variants, horse: 1)
+#   vendor-c    connected   2 channels
+#     <- environments:      synced
+#     <- creatures:         3 pending  (vendor-b delivered 20 min ago)
+
+# She can trace any piece of content:
+c4 dig vendor-c:shots/seq010_shot0010/bg/env_diffuse.0001.exr
+#   Source: vendor-a:build/seq010/shot0010/env_v003/env_diffuse.0001.exr
+#   Flow:   vendor-a -> environments: -> vendor-c
+#   Status: synced, Σ=0.0
+#   Chain depth: 1 (direct, through studio relay)
+
+# When Vendor A publishes a new environment version,
+# it flows through environments: to both B and C automatically.
+# The supervisor doesn't coordinate the handoff — it happens.
+# She just watches c4 status and sees the updates arrive.
+```
+
+**What this replaces:**
+
+Today this handoff involves: a coordinator emailing "v003 of
+seq010/shot0010 environments is on the FTP, please download
+and let me know when you have it." Vendor B downloads to a
+staging area, an ingest script tries to parse the directory
+names and map them to B's conventions, it fails on edge cases
+(shot name format mismatch, version folder depth), a TD fixes
+it manually, and 4 hours later the artist can start working.
+
+With flow channels: Vendor A publishes. Both B and C have it
+within minutes, in their own pipeline structure, verified by
+C4 ID. Nobody emails. Nobody runs an ingest script. Nobody
+waits.
+
+---
 
 ### The "multi-band delivery" scenario
 
