@@ -36,107 +36,95 @@ CLI doesn't know how to push/pull to a remote location.
 local.c4m:` work. Push c4m + blobs to a remote c4d, pull c4m +
 blobs from a remote c4d.
 
-### 1.1 Shared client package
+### 1.1 CLI talks to local c4d only
 
-`c4d/internal/peer/client.go` already implements the c4d HTTP
-protocol: Put, Get, Has, PutPath, GetPath. The CLI needs the
-same protocol — don't duplicate it.
+The CLI never talks to remote c4d nodes. All remote operations
+go through the local c4d — like kubectl to a local API server.
+The CLI authenticates to the local c4d with mTLS (client cert
+from `~/.c4d/config.yaml`). c4d handles all peer-to-peer
+communication.
 
-Move `peer.Client` to a shared package importable by both c4d
-and the CLI. The only difference is TLS configuration:
+The CLI already has `c4dVersionClient()` which builds an
+`*http.Client` with TLS config from `~/.c4d/config.yaml`. All
+remote operations reuse this same client, talking to the local
+c4d's endpoints.
 
-```go
-// c4d uses: peer.NewClient(addr, tlsConfig)         — from c4d config
-// CLI uses: peer.NewClient(addr, tlsFromC4dConfig()) — from ~/.c4d/config.yaml
-```
-
-Add to the shared client:
-```go
-func (c *Client) ListPath(path string) ([]*c4m.Entry, error)
-```
-
-`NewFromLocation` is a CLI-side helper that reads TLS config
-from `~/.c4d/config.yaml` and returns a `*peer.Client`. Falls
-back to plain HTTP if no TLS configured (development mode).
+Location resolution: when the CLI sees `nas:path`, it resolves
+`nas` to a local c4d namespace path. The location registry
+(`~/.c4/locations/`) maps names to c4d namespace prefixes, not
+to remote addresses. c4d knows how to reach the peer; the CLI
+doesn't need to.
 
 ### 1.2 Push: local → location
 
 Wire `pathspec.Location` as a destination in `cp.go`:
 
 ```
-case src.Type == pathspec.Local && dst.Type == pathspec.Location:
-    cpLocalToLocation(src, dst)
 case src.Type == pathspec.C4m && dst.Type == pathspec.Location:
     cpC4mToLocation(src, dst)
-case src.Type == pathspec.Managed && dst.Type == pathspec.Location:
-    cpManagedToLocation(src, dst)
 ```
 
 `cpC4mToLocation(src, dst)`:
 1. Load local c4m file
-2. Create peer client from location
-3. `Put` the c4m blob to remote
-4. `PutPath` to register the c4m at `dst.SubPath`
-5. The remote now has the description. It materializes blobs
-   from the sender's c4d (which is a peer) on its own schedule.
+2. Push c4m blob to local c4d (`putToC4d`)
+3. PUT to local c4d namespace at the location's path
+4. c4d handles forwarding to the peer. The peer materializes
+   blobs from the sender's c4d on its own schedule.
 
-For the source-colon case (`project.c4m:`), the sender also
-pushes all referenced blobs. For the no-colon case
-(`project.c4m`), only the c4m file blob is pushed.
-
-CAS deduplication: if a blob already exists on the remote,
-the PUT is a fast no-op.
+For the source-colon case (`project.c4m:`), the CLI also
+pushes all referenced blobs to local c4d. For the no-colon
+case (`project.c4m`), only the c4m file blob is pushed.
 
 ### 1.3 Pull: location → local
 
 ```
 case src.Type == pathspec.Location && dst.Type == pathspec.C4m:
     cpLocationToC4m(src, dst)
-case src.Type == pathspec.Location && dst.Type == pathspec.Local:
-    cpLocationToLocal(src, dst)
 ```
 
 `cpLocationToC4m(src, dst)`:
-1. `GetPath` to resolve the remote path to a C4 ID
-2. `Get` the c4m content
-3. Decode the c4m, check local c4d for missing blobs
-4. For each missing blob: `Get` from remote, put to local c4d
-5. Write the c4m file locally
-6. Establish and register if needed
+1. GET from local c4d namespace at the location's path
+2. c4d resolves the path (proxying to the peer if needed)
+3. Write the c4m file locally
+4. Blobs materialize through c4d's content resolution cascade
 
 ### 1.4 `c4 ls location:`
 
 Wire `pathspec.Location` in `ls.go`:
-1. Create peer client from location
-2. `ListPath(path)` → get entries (returns c4m format)
+1. GET from local c4d at the location's listing path
+2. c4d returns c4m-formatted entries (proxying if needed)
 3. Display as usual
 
-The listing endpoint already exists: `GET /path/` (trailing
-slash) returns c4m-formatted entries (`name\tC4ID\n`, Content-
-Type `text/c4m`). See `handleListDir` in namespace.go.
+### 1.5 c4d namespace routing
 
-### 1.5 Tests
+c4d needs to route namespace operations to peers. When a
+namespace PUT targets a path owned by a peer, c4d forwards
+the operation. When a GET resolves to a peer's namespace, c4d
+proxies the response.
+
+Location entries map to c4d peer routing, not direct addresses.
+`c4 mk nas: nas.local:7433` tells c4d "the peer at
+nas.local:7433 is named nas" — the CLI stores the name, c4d
+stores the peer relationship.
+
+### 1.6 Tests
 
 - Integration test: start two c4d instances (different ports,
-  shared CA), push c4m from one to the other via CLI remote
-  client, verify content resolves on both.
-- Unit tests for remote client methods.
+  shared CA), push c4m from one to the other via CLI, verify
+  content resolves on both.
 - Test push with some blobs already present (deduplication).
 - Test pull with partial local content.
+- Test listing a remote peer's namespace through local c4d.
 
 ### Files to create/modify
-
-**Move:**
-- `c4d/internal/peer/client.go` → shared package (importable
-  by both c4d and CLI)
-
-**Create:**
-- `c4/cmd/c4/internal/remote/remote.go` — thin helper:
-  `NewFromLocation` → `*peer.Client` with CLI TLS config
 
 **Modify:**
 - `c4/cmd/c4/cp.go` — add Location cases to switch
 - `c4/cmd/c4/ls.go` — add Location case
+- `c4d/internal/server/namespace.go` — proxy to peers for
+  non-local namespace paths
+- `c4d/internal/peer/router.go` — namespace routing (not just
+  blob routing)
 
 ---
 
@@ -539,7 +527,7 @@ Phase 1 (Remote Copy)
   ↓
 Phase 2 (Transit + Progress) ← builds on Phase 1 materialization
   ↓
-Phase 3 (LAN Discovery) ← requires Phase 1 (shared client + Location pathspec)
+Phase 3 (LAN Discovery) ← requires Phase 1 (Location pathspec)
   ↓
 Phase 4 (Bundle/Import) ← independent of 1-3, can parallelize
   ↓
@@ -558,21 +546,27 @@ location).
 
 ## Implementation Notes
 
-### mTLS reuse
+### CLI ↔ local c4d only
 
-The CLI already reads `~/.c4d/config.yaml` for TLS config (see
-`c4dVersionClient()` in `version.go`). The remote client reuses
-this same TLS config. No new cert provisioning needed for
-self-hosted meshes.
+The CLI authenticates to the local c4d with mTLS (client cert
+from `~/.c4d/config.yaml`, same as `c4dVersionClient()` in
+`version.go`). The CLI never talks to remote nodes. All remote
+operations are namespace operations on the local c4d, which
+proxies to peers as needed. Like kubectl to a local API server.
 
-### Location entry evolution
+This means no shared peer package between c4 and c4d. The CLI
+uses `net/http` with TLS config to talk to one endpoint. c4d
+uses its internal peer client for everything else.
 
-Current `LocationEntry` has Address + CreatedAt. Future fields:
+### Location entries
+
+Locations map names to c4d peer relationships. Current
+`LocationEntry` has Address + CreatedAt. The address tells c4d
+which peer to route to, not the CLI where to connect. Future
+fields:
 - `Identity string` — identity of the remote node
 - `LastSeen time.Time` — from mDNS or announcement
 - `SyncPolicy string` — eager/lazy/none
-
-These are additive (JSON, zero values are no-ops).
 
 ### Namespace listing protocol
 

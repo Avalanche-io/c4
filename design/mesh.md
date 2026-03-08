@@ -494,6 +494,41 @@ Sarah controls, always reachable, that her other nodes sync with.
 Content addressed to Sarah lands there because it's reachable.
 Avalanche.io runs the same thing as managed infrastructure.
 
+### Per-Identity Namespace (Plan 9 Heritage)
+
+c4d is a multi-tenant namespace server. The tenant boundary is
+the client cert. Every request is scoped to the authenticated
+identity — the same endpoint returns different results depending
+on whose cert is talking.
+
+```
+curl --cert josh.pem --key josh-key.pem https://localhost:7433/
+drwxr-xr-x - - home/ -
+drwxr-xr-x - - peers/ -
+drwxr-xr-x - - admin/ -
+```
+
+The root of c4d is itself a c4m listing. The API is the
+filesystem — self-discoverable, composable, no documentation
+needed. You browse it with `c4 ls` or curl.
+
+`/peers/` shows peers trusted by this identity. `/home/` shows
+this identity's namespace entries. Different users on the same
+c4d see different meshes. The mTLS cert is the namespace
+selector.
+
+This is Plan 9's per-process namespace applied at the identity
+level. Plan 9 gave each process its own filesystem view,
+constructed by mounting and binding. c4d gives each identity
+its own namespace view, constructed by trusting peers and
+establishing locations. The same mechanism provides both
+composition (build up a richer view by trusting more peers)
+and isolation (you only see what belongs to your identity).
+
+The CLI authenticates to the local c4d with mTLS — same as
+kubectl to a local API server. c4d handles all peer-to-peer
+communication. The CLI never talks to remote nodes directly.
+
 ### OSS vs Paid: Self-Hostable Everything
 
 Everything is self-hostable. A self-hosted mesh with its own CA
