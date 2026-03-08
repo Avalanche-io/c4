@@ -1,0 +1,936 @@
+% type-theory-analysis.tex — Companion analysis to C4-FLOW-2026
+% Flow Links Through the Lens of Type Theory and Substructural Logic
+% Working document — not for publication
+
+\documentclass[11pt]{article}
+\usepackage[margin=1.2in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathpartir}
+\usepackage{stmaryrd}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{observation}{Observation}
+\newtheorem{theorem}{Theorem}
+\newcommand{\sess}[1]{\mathsf{#1}}
+\newcommand{\tp}[1]{\mathsf{#1}}
+\newcommand{\kw}[1]{\mathbf{#1}}
+\newcommand{\Perms}{\mathsf{Perms}}
+\newcommand{\FlowDir}{\mathsf{FlowDir}}
+\newcommand{\Sem}{\mathsf{Sem}}
+\newcommand{\eventually}{\Diamond}
+\newcommand{\always}{\Box}
+
+\title{Flow Links Through the Lens of Type Theory\\and Substructural Logic}
+\author{Analysis companion to C4-FLOW-2026}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\bigskip
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Introduction and Summary of Findings}
+%% ═══════════════════════════════════════════════════════════════════
+
+This document examines whether the three filesystem link types---hard links,
+symbolic links, and flow links---admit a natural characterization in type
+theory, and whether such a characterization provides genuine insight beyond
+notational reformulation.
+
+\textbf{Summary of findings.} The type-theoretic analysis is not uniformly
+productive. Some angles yield real structure; others are notation shopping.
+Specifically:
+
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Substructural types: genuinely illuminating.} The three link
+    types correspond precisely to the structural rules of contraction,
+    weakening, and a delayed-contraction principle that does not appear in
+    standard substructural logics. This is the strongest finding.
+  \item \textbf{Session types: genuinely useful.} Flow links have a natural
+    session-typed protocol that distinguishes the three directional forms and
+    captures the ongoing, stateful interaction between endpoints. This could
+    directly inform API design.
+  \item \textbf{Modal/temporal logic: moderately illuminating.} The ``pending''
+    state of flow links has a clean reading in temporal logic ($\eventually$
+    convergence). This is real structure but somewhat obvious once stated.
+  \item \textbf{Effect systems: useful for API design.} An effect system can
+    track flow relationships and prevent invalid compositions. This is
+    engineering value, not deep theory.
+  \item \textbf{Dependent types: notation without insight.} The permission
+    composition table can be encoded as a dependent function, but the encoding
+    does not reveal structure that the table itself does not already show.
+  \item \textbf{Ownership/borrowing: partially illuminating.} The Rust analogy
+    is imperfect but clarifies one genuine point about aliasing semantics.
+\end{enumerate}
+
+We develop each in turn, noting where the formalization is load-bearing and
+where it is merely cosmetic.
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Substructural Types}
+%% ═══════════════════════════════════════════════════════════════════
+
+\subsection{Background: Structural Rules}
+
+In sequent calculus, three structural rules govern how hypotheses may be used:
+
+\begin{description}[style=nextline]
+  \item[Weakening] A hypothesis may be discarded (introduced without being
+    used). If $\Gamma \vdash C$, then $\Gamma, A \vdash C$.
+  \item[Contraction] A hypothesis may be duplicated (used more than once). If
+    $\Gamma, A, A \vdash C$, then $\Gamma, A \vdash C$.
+  \item[Exchange] Hypotheses may be reordered. If $\Gamma, A, B, \Delta \vdash
+    C$, then $\Gamma, B, A, \Delta \vdash C$.
+\end{description}
+
+Substructural logics restrict these rules. \emph{Linear} logic drops both
+weakening and contraction: every hypothesis must be used exactly once.
+\emph{Affine} logic drops contraction but keeps weakening: every hypothesis may
+be used at most once. \emph{Relevant} logic drops weakening but keeps
+contraction: every hypothesis must be used at least once.
+
+\subsection{Hard Links as Contraction}
+
+A hard link creates a second name for the same inode. The resource (the
+inode's data) can be accessed through either name, and removing one name does
+not affect the other. In type-theoretic terms, a hard link is \emph{contraction
+applied to a filesystem resource}: the single resource $r$ is duplicated into
+two bindings $r_1, r_2$ that share the same underlying value.
+
+\begin{definition}[Hard-link contraction]
+If $\Gamma, p : \tp{Inode}(i) \vdash C$, then
+$\Gamma, p_1 : \tp{Inode}(i), p_2 : \tp{Inode}(i) \vdash C$ where $p_1$ and
+$p_2$ are hard links to inode $i$.
+\end{definition}
+
+The key property is that contraction is \emph{free}: there is no cost, no
+delay, and no approximation. Both names resolve to exactly the same data at all
+times. This is because hard links operate within a single volume---there is no
+partition, no network, no propagation delay. Contraction is immediate because
+the duplication is purely in the namespace, not in the data.
+
+This also explains the volume-local scope constraint: contraction of a shared
+resource is only safe when the two names inhabit the same context (the same
+inode table). Cross-volume contraction would require the two inode tables to be
+a single coherent resource, which they are not.
+
+\subsection{Symbolic Links as Weakening}
+
+A symbolic link introduces a name that \emph{may not resolve}. The link
+exists, but its target may be missing, unmounted, or unreachable. In
+substructural terms, the link itself admits \emph{weakening}: the referenced
+resource may be absent from the context.
+
+\begin{definition}[Symlink weakening]
+A symbolic link $s$ with target path $t$ corresponds to an assumption
+$s : \tp{Ref}(t)$ where $t$ may or may not appear in the context $\Gamma$.
+If $t \notin \Gamma$, the link is ``dangling''---the reference exists but the
+resource does not. This is weakening: the reference was introduced without a
+corresponding resource to use.
+\end{definition}
+
+More precisely, a symbolic link is a name that \emph{requires} the
+infrastructure to resolve it, and that resolution may fail. In the standard
+structural rules, weakening allows $\Gamma \vdash C$ to imply $\Gamma, A
+\vdash C$---an unused hypothesis. The symlink is the dual: a \emph{used}
+reference to a possibly-absent resource. This corresponds to an \emph{option
+type}: a symlink has type $\tp{Ref}(t)$, and dereferencing it yields
+$\tp{Option}(\tp{Inode})$---either the resolved inode or an error.
+
+The symlink's consistency model (synchronous: resolve or fail) is the
+enforcement mechanism for this optional semantics. The link does not
+\emph{approximate} the target; it either provides the current state or refuses
+to provide anything. This is the CP choice in CAP terms, and in type-theoretic
+terms, it is the difference between an option type (definite yes-or-no) and a
+delayed type (yes, eventually).
+
+\subsection{Flow Links as Eventual Contraction}
+
+Flow links create a relationship between two paths such that the content at one
+path will \emph{eventually} appear at the other. This is neither standard
+contraction (which is immediate) nor weakening (which admits permanent
+absence). It is something else: a \emph{promise of future contraction}.
+
+\begin{definition}[Eventual contraction]
+An outbound flow link from $p_1$ to $p_2$ asserts: if $\Gamma, p_1 :
+\tp{Content}(v)$ holds at time $t$, then there exists a time $t' > t$ such
+that $\Gamma', p_2 : \tp{Content}(v)$ holds at $t'$, provided no further
+updates occur to $p_1$ after $t$.
+\end{definition}
+
+This is not a standard structural rule. It is a \emph{temporal} structural
+rule: contraction that holds not at the current time but at some future time.
+The resource is not immediately available at both names; it is available at the
+source name now and at the destination name eventually.
+
+\begin{observation}
+The three link types correspond to three regimes of the contraction rule:
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Link type} & \textbf{Structural rule} & \textbf{Character} \\
+\midrule
+Hard link & Contraction & Immediate, exact duplication \\
+Symbolic link & Weakening & Optional, may be absent \\
+Flow link & Eventual contraction & Delayed, guaranteed arrival \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{observation}
+
+\subsection{Does This Classification Carry Weight?}
+
+This is the critical question. A classification is useful only if it predicts
+something or rules something out.
+
+\textbf{What it predicts.} The substructural framing predicts that composition
+of link types should respect the structural rules. For example:
+\begin{itemize}
+  \item A hard link to a flow-linked path should yield ``eventual contraction
+    composed with immediate contraction''---the content is immediately available
+    at the hard-linked name and eventually propagated through the flow
+    link. This is correct.
+  \item A symbolic link to a flow-linked path should yield ``optional access to
+    eventually-contracted content''---the symlink may dangle, and if it
+    resolves, the content behind it may be pending. This is correct and
+    describes a real scenario (symlink to an inbound flow directory on an
+    unmounted volume).
+  \item A flow link to a hard-linked path treats the hard link transparently:
+    since all hard links to an inode are equivalent, the flow link propagates
+    the inode's content regardless of which name it was written through. This
+    falls directly out of contraction being upstream of eventual contraction.
+\end{itemize}
+
+\textbf{What it rules out.} The substructural framing suggests that
+``immediate contraction across a partition boundary'' is ill-typed---you cannot
+have a hard link across volumes, and the type system says this is because
+contraction requires the resource to be in the same context. This is not a new
+observation (it is the well-known volume-local constraint), but the type system
+\emph{derives} it from a general principle rather than stating it as an ad hoc
+rule.
+
+\textbf{What it does not do.} The substructural framing does not distinguish
+outbound from inbound from bidirectional flow. All three are ``eventual
+contraction'' with different directionality. To capture direction, we need
+session types (Section~\ref{sec:session}).
+
+\subsection{A Substructural Type System for Links}
+
+We can make the above precise with a small type system. Let $\tp{Path}$ be the
+type of filesystem paths, and let $\tp{Res}$ be the type of filesystem
+resources (inodes, directory entries, content). The three link types correspond
+to three type constructors:
+
+\begin{align}
+  \tp{HardLink}(p_1, p_2) &: p_1 =_{\tp{Res}} p_2
+    \tag{contraction: same resource, two names} \\
+  \tp{SymLink}(s, t) &: s \to \tp{Option}(\tp{Res}(t))
+    \tag{weakening: may not resolve} \\
+  \tp{FlowLink}(p, q, d) &: p \to_d \eventually \tp{Res}(q)
+    \tag{eventual contraction}
+\end{align}
+
+where $d \in \{\rightarrow, \leftarrow, \leftrightarrow\}$ is the direction and
+$\eventually$ is the temporal ``eventually'' modality (Section~\ref{sec:modal}).
+The hard link asserts propositional equality of resources. The symbolic link is
+a partial function (may fail). The flow link is a directional eventual mapping.
+
+This type system is minimal but makes the following well-typedness judgments:
+
+\begin{mathpar}
+  \inferrule
+    {\Gamma \vdash p_1 : \tp{Res}(i) \\ \Gamma \vdash p_2 : \tp{Res}(i) \\
+     \text{same volume}(p_1, p_2)}
+    {\Gamma \vdash \tp{HardLink}(p_1, p_2)}
+
+  \inferrule
+    {\Gamma \vdash s : \tp{Path} \\ t : \tp{Path}}
+    {\Gamma \vdash \tp{SymLink}(s, t) : \tp{Option}(\tp{Res}(t))}
+
+  \inferrule
+    {\Gamma \vdash p : \tp{Path} \\ q : \tp{RemotePath} \\ d : \FlowDir}
+    {\Gamma \vdash \tp{FlowLink}(p, q, d) : p \to_d \eventually \tp{Res}(q)}
+\end{mathpar}
+
+The ``same volume'' side condition on hard links is the substructural
+constraint that contraction requires a shared context.
+
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Session Types}\label{sec:session}
+%% ═══════════════════════════════════════════════════════════════════
+
+\subsection{Why Session Types}
+
+Session types, introduced by Honda (1993) and developed by Honda, Vasconcelos,
+and Kubo (1998), type the protocols of communicating processes. A session type
+describes the sequence of messages exchanged between two endpoints, including
+their types, directions, and branching structure.
+
+Flow links are a natural candidate for session typing because:
+\begin{enumerate}
+  \item They have two endpoints (local and remote).
+  \item Communication is directional.
+  \item The protocol is ongoing (not a single message but a stream of updates).
+  \item The endpoints maintain state (current content, pending changes).
+  \item The protocol has phases (quiescent, propagating, conflicted).
+\end{enumerate}
+
+\subsection{Session Types for the Three Flow Directions}
+
+We define session types for each flow direction. Let $!T$ denote sending a
+value of type $T$, $?T$ denote receiving a value of type $T$, $\oplus$ denote
+internal choice (the sender chooses), $\&$ denote external choice (the receiver
+offers), $\mu X$ denote recursion, and $\kw{end}$ denote session termination.
+
+\begin{definition}[Outbound flow session --- local endpoint]
+\begin{align*}
+  S_{\text{out}}^{\text{local}} &= \mu X.\; \oplus \{
+    \sess{update}: !\tp{Content}.\; ?(\sess{ack} \oplus \sess{nack}).\; X, \\
+    &\qquad\quad\;\;\,
+    \sess{quiescent}: X, \\
+    &\qquad\quad\;\;\,
+    \sess{close}: \kw{end}
+  \}
+\end{align*}
+\end{definition}
+
+The local endpoint of an outbound flow link repeatedly chooses to either send an
+update (and wait for acknowledgment), remain quiescent, or close the link.
+
+\begin{definition}[Inbound flow session --- local endpoint]
+\begin{align*}
+  S_{\text{in}}^{\text{local}} &= \mu X.\; \& \{
+    \sess{update}: ?\tp{Content}.\; !(\sess{ack} \oplus \sess{nack}).\; X, \\
+    &\qquad\quad\;\;\;\,
+    \sess{quiescent}: X, \\
+    &\qquad\quad\;\;\;\,
+    \sess{close}: \kw{end}
+  \}
+\end{align*}
+\end{definition}
+
+The inbound case is the dual: the local endpoint \emph{offers} to receive
+updates, and the remote endpoint chooses when to send.
+
+\begin{definition}[Bidirectional flow session --- local endpoint]
+\begin{align*}
+  S_{\text{bi}}^{\text{local}} &= \mu X.\; \oplus \{
+    \sess{send}: !\tp{Content}.\; ?(\sess{ack} \oplus \sess{nack} \oplus \sess{conflict}(\tp{Content})).\; X, \\
+    &\qquad\quad\;\;\,
+    \sess{recv}: ?\tp{Content}.\; !(\sess{ack} \oplus \sess{nack} \oplus \sess{conflict}(\tp{Content})).\; X, \\
+    &\qquad\quad\;\;\,
+    \sess{quiescent}: X, \\
+    &\qquad\quad\;\;\,
+    \sess{close}: \kw{end}
+  \}
+\end{align*}
+\end{definition}
+
+The bidirectional case introduces a $\sess{conflict}$ branch: when both
+endpoints have modified content concurrently, the protocol may enter a conflict
+resolution phase. This directly reflects the paper's observation that
+bidirectional flow admits conflicts while unidirectional flow does not.
+
+\subsection{Duality and the Remote Endpoint}
+
+A key property of session types is \emph{duality}: the remote endpoint's type
+is the dual of the local endpoint's type ($!$ becomes $?$, $\oplus$ becomes
+$\&$, etc.). This means:
+
+\begin{itemize}
+  \item For outbound flow, the remote endpoint has session type
+    $\overline{S_{\text{out}}^{\text{local}}}$: it \emph{offers} to receive
+    updates, awaits content, and responds with ack/nack.
+  \item For inbound flow, the remote endpoint has session type
+    $\overline{S_{\text{in}}^{\text{local}}}$: it \emph{chooses} when to send
+    updates.
+  \item For bidirectional flow, both endpoints share the same session type (it
+    is self-dual up to the choice of who initiates each exchange).
+\end{itemize}
+
+\begin{observation}
+Session type duality captures a key property of flow links: the ``outbound''
+endpoint's local session type is the ``inbound'' endpoint's remote session
+type, and vice versa. An outbound flow link at system A and an inbound flow
+link at system B, pointing at each other, form a well-typed session.
+\end{observation}
+
+\subsection{Asynchronous Session Types}
+
+The standard session types above assume synchronous communication. Flow links
+are asynchronous---the remote endpoint need not be reachable. Asynchronous
+session types (Gay and Vasconcelos, 2010; Mostrous and Vasconcelos, 2011)
+address this by allowing sends to be non-blocking and introducing explicit
+buffer types.
+
+Under asynchronous session types, the outbound flow session becomes:
+
+\begin{align*}
+  S_{\text{out,async}}^{\text{local}} &= \mu X.\; \oplus \{
+    \sess{update}: !\tp{Content}.\; X, \\
+    &\qquad\quad\;\;\,
+    \sess{ack\_recv}: ?(\sess{ack} \oplus \sess{nack}).\; X, \\
+    &\qquad\quad\;\;\,
+    \sess{quiescent}: X, \\
+    &\qquad\quad\;\;\,
+    \sess{close}: \kw{end}
+  \}
+\end{align*}
+
+The send and the acknowledgment are \emph{decoupled}: the local endpoint can
+send multiple updates before receiving any acknowledgment. This matches the
+reality of flow links, where multiple local modifications may accumulate during
+a partition and propagate as a batch when connectivity is restored.
+
+\subsection{What Session Types Buy You}
+
+The session-typed formulation has practical value for API design:
+
+\begin{enumerate}
+  \item \textbf{Protocol compliance.} A session-typed API ensures at compile
+    time that a flow link client follows the correct protocol. Sending data
+    through an inbound-only flow link is a type error.
+  \item \textbf{Deadlock freedom.} Well-typed sessions in the standard
+    (synchronous) theory are deadlock-free. In the asynchronous case,
+    progress guarantees are weaker but still meaningful.
+  \item \textbf{Conflict handling.} The bidirectional session type makes
+    conflict handling \emph{mandatory}: the $\sess{conflict}$ branch must be
+    handled. A client that ignores conflicts is ill-typed. This is a genuine
+    safety property.
+  \item \textbf{Resource linearity.} Session types are inherently linear (each
+    communication action is performed exactly once per iteration). This
+    prevents a common class of bugs: using a flow link handle after it has been
+    closed, or closing it twice.
+\end{enumerate}
+
+\textbf{Verdict.} Session types are the most directly useful formalism for a
+language designer implementing flow-aware filesystem APIs. They provide a type
+discipline that distinguishes the three directional forms, enforces correct
+protocol usage, and makes conflict handling non-optional.
+
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Effect Systems}\label{sec:effects}
+%% ═══════════════════════════════════════════════════════════════════
+
+\subsection{Flow as an Effect}
+
+An effect system (Gifford and Lucassen, 1986) tracks the computational effects
+of expressions---memory reads, writes, I/O, exceptions---as part of their
+types. Flow links introduce a new kind of effect: \emph{propagation}. Writing
+to a flow-linked path is not just a local write; it is a write that will
+eventually be visible at a remote location.
+
+We can model this as an effect annotation on filesystem operations:
+
+\begin{align*}
+  \tp{write} &: \tp{Path} \to \tp{Content} \to \{\varepsilon\}\; \tp{Unit} \\
+  \text{where } \varepsilon &=
+    \begin{cases}
+      \kw{local} & \text{if path has no flow link} \\
+      \kw{flow\_out}(q) & \text{if path has outbound flow to } q \\
+      \kw{flow\_in}(q) & \text{if path has inbound flow from } q \\
+      \kw{flow\_bi}(q) & \text{if path has bidirectional flow with } q
+    \end{cases}
+\end{align*}
+
+\subsection{What Effects Buy You}
+
+An effect system for flow links enables the following static checks:
+
+\textbf{Authorization.} Writing to a path with outbound flow implicitly causes
+data to leave the system. An effect system can enforce that $\kw{flow\_out}$
+effects are only permitted in contexts with appropriate authorization:
+
+\begin{mathpar}
+  \inferrule
+    {\Gamma \vdash e : \{\kw{flow\_out}(q)\}\; T \\
+     \Gamma \vdash \tp{authorized}(q)}
+    {\Gamma \vdash e : \{\kw{flow\_out}(q)\}\; T \;\text{ok}}
+\end{mathpar}
+
+This captures the security concern from the paper (Section 8.6): outbound flow
+links create data exfiltration risk, and the effect system makes this risk
+visible in the type.
+
+\textbf{Composition constraints.} Certain effect compositions should be
+flagged:
+\begin{itemize}
+  \item Writing to a path with inbound flow ($\kw{flow\_in}$) may be
+    overwritten by the next inbound propagation. The effect system can issue a
+    warning: ``local write to inbound-flow path will be superseded.''
+  \item Creating an outbound flow link on a path you do not own (no write
+    permission) should be rejected: the $\kw{flow\_out}$ effect requires the
+    $\kw{write}$ capability on the path.
+\end{itemize}
+
+\textbf{Effect polymorphism.} A function that operates on a path without
+knowing its flow status can be polymorphic in the flow effect:
+
+\[
+  \tp{process\_file} : \forall \varepsilon.\; \tp{Path} \to
+    \{\varepsilon\}\; \tp{Result}
+\]
+
+This allows generic code to work with both flow-linked and non-flow-linked
+paths, while callers that care about flow effects can instantiate $\varepsilon$
+and check it.
+
+\textbf{Verdict.} Effect systems provide engineering value---they make flow
+effects explicit in types and enable static checking of authorization and
+composition. This is useful for API design but does not reveal deep theoretical
+structure about flow links themselves. The effect system is a \emph{consumer}
+of the flow link semantics, not a \emph{source} of insight about them.
+
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Modal and Temporal Logic}\label{sec:modal}
+%% ═══════════════════════════════════════════════════════════════════
+
+\subsection{The ``Pending'' State as a Modal Assertion}
+
+A flow link that has been declared but not yet fulfilled---because the remote
+endpoint is unreachable, or because local changes have not yet propagated---is
+in a ``pending'' state. The paper distinguishes this from the ``broken'' state
+of a dangling symbolic link: a pending flow link is valid; a dangling symlink
+is degenerate.
+
+This distinction maps directly to temporal logic:
+
+\begin{description}
+  \item[Symbolic link (dangling):] ``The target exists \emph{now}, or access
+    fails.'' No temporal dimension. The assertion $\tp{Res}(t)$ either holds
+    in the current state or does not.
+  \item[Flow link (pending):] ``The content will \emph{eventually} be
+    consistent.'' This is the temporal modality $\eventually$: $\eventually
+    (\tp{Res}(p) = \tp{Res}(q))$.
+\end{description}
+
+\subsection{Temporal Logic Operators}
+
+In linear temporal logic (LTL), the relevant operators are:
+
+\begin{itemize}
+  \item $\eventually \varphi$ (``eventually $\varphi$''): $\varphi$ holds at
+    some future time.
+  \item $\always \varphi$ (``always $\varphi$''): $\varphi$ holds at all
+    future times.
+  \item $\varphi \;\mathcal{U}\; \psi$ (``$\varphi$ until $\psi$''):
+    $\varphi$ holds until $\psi$ becomes true.
+\end{itemize}
+
+The three link types have the following temporal characterizations:
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Link type} & \textbf{Temporal assertion} \\
+\midrule
+Hard link &
+  $\always (\tp{Res}(p_1) = \tp{Res}(p_2))$ \\
+  & Content is identical at all times (invariant). \\
+\addlinespace
+Symbolic link &
+  $\tp{reachable}(t) \Rightarrow \tp{Res}(s) = \tp{Res}(t)$ \\
+  & Consistency holds conditionally on reachability. No temporal modality---the
+    condition is evaluated at access time. \\
+\addlinespace
+Flow link (outbound) &
+  $\tp{quiescent}(p) \Rightarrow \eventually (\tp{Res}(q) = \tp{Res}(p))$ \\
+  & If the source stops changing, the destination eventually converges. \\
+\addlinespace
+Flow link (bidir.) &
+  $\tp{quiescent}(p) \land \tp{quiescent}(q) \Rightarrow \eventually
+    (\tp{Res}(p) = \tp{Res}(q))$ \\
+  & If both endpoints stop changing, they eventually converge. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Connection to Modal Type Systems}
+
+Modal type systems (Pfenning and Davies, 2001) internalize the $\always$ and
+$\eventually$ modalities as type constructors:
+
+\begin{itemize}
+  \item $\always A$ (``necessarily $A$''): a value of type $A$ that is
+    available in all contexts (all worlds, all times). In a distributed
+    setting, this corresponds to a replicated value.
+  \item $\eventually A$ (``possibly $A$''): a value of type $A$ that is
+    available in some context (some world, some time). This corresponds to a
+    promise or future.
+\end{itemize}
+
+Under this reading:
+\begin{align}
+  \tp{HardLink}(p_1, p_2) &: \always (\tp{Res}(p_1) =_{\tp{Res}} p_2)
+    \tag{necessary equality} \\
+  \tp{SymLink}(s, t) &: \tp{Res}(s) \to \tp{Option}(\tp{Res}(t))
+    \tag{no modality, just partiality} \\
+  \tp{FlowLink}(p, q) &: \tp{Res}(p) \to \eventually \tp{Res}(q)
+    \tag{eventual delivery}
+\end{align}
+
+The flow link's type, $\tp{Res}(p) \to \eventually \tp{Res}(q)$, is
+structurally a \emph{promise}: given content at $p$, you will eventually have
+content at $q$. This is the standard type of an asynchronous operation in
+languages with futures/promises, which suggests that flow links are, at the
+type level, \emph{filesystem-level futures}.
+
+\begin{observation}
+A flow link from $p$ to $q$ has the same type structure as a future/promise:
+it is a value that is not yet available but will eventually become available.
+The distinction is that filesystem futures are \emph{persistent} (they survive
+reboots, process termination, and system reconfiguration) and
+\emph{observable} (they appear in directory listings, metadata queries, and
+filesystem dumps). This makes them closer to \emph{persistent promises} in a
+distributed system than to in-process futures.
+\end{observation}
+
+\textbf{Verdict.} The modal/temporal reading is correct and clarifying. It
+provides a precise vocabulary (``eventual contraction,'' ``persistent promise,''
+``filesystem-level future'') and connects flow links to well-studied formal
+frameworks. But the insight is relatively shallow: the paper already says
+``eventual consistency,'' and the modal reading is essentially a
+type-theoretic restatement of that phrase. The value is in connecting the
+filesystem concept to the broader PL theory landscape, not in revealing
+hidden structure.
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Dependent Types and Permission Composition}\label{sec:dependent}
+%% ═══════════════════════════════════════════════════════════════════
+
+\subsection{The Permission Composition Table as a Dependent Function}
+
+The paper presents a table mapping (permissions $\times$ flow direction) to
+emergent behavior. Can dependent types add structure?
+
+Define:
+
+\begin{align*}
+  \FlowDir &= \{\rightarrow, \leftarrow, \leftrightarrow\} \\
+  \Perms &= \{r, w, x\}^3 \quad \text{(owner, group, other---simplified to a single rwx triple)} \\
+  \Sem &: \FlowDir \times \Perms \to \tp{Behavior}
+\end{align*}
+
+where $\tp{Behavior}$ is an enumeration of the emergent semantics:
+$\{\text{publishing-point}, \text{staging-area}, \text{collaborative-sync},
+  \text{read-cache}, \text{archive-export}, \text{drop-slot},
+  \text{blind-relay}, \ldots\}$
+
+As a dependent type:
+\[
+  \Sem : (d : \FlowDir) \to (p : \Perms) \to \tp{Behavior}(d, p)
+\]
+
+This is well-defined but tautological. The dependent type does not \emph{compute}
+the behavior---it merely indexes into a lookup table. The type family
+$\tp{Behavior}(d, p)$ is no more informative than the table itself. There is
+no algebraic structure to exploit: the behaviors do not form a lattice, the
+composition is not a homomorphism, and the indexing does not enable proofs
+beyond case analysis.
+
+\subsection{Where Dependent Types Could Add Value}
+
+Dependent types become non-trivially useful if we want to \emph{prove
+properties} about compositions. For example:
+
+\begin{proposition}[Drop-slot safety]
+If $\Perms = \texttt{-wx}$ and $\FlowDir = \rightarrow$, then no read
+operation on the local path can succeed, and all written content eventually
+appears at the remote path.
+\end{proposition}
+
+This is provable in a dependent type theory by case analysis on the permission
+bits and the flow direction, combined with the eventual contraction property.
+The proof is trivial but machine-checkable, which matters if the permission
+composition logic is embedded in a verified filesystem implementation.
+
+\textbf{Verdict.} Dependent types are overkill for understanding the
+permission-flow composition but not useless---they become relevant in a
+verified implementation where machine-checked proofs of composition properties
+are desired. For design-level analysis, the table in the paper is more
+informative than the type.
+
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Ownership, Borrowing, and the Rust Analogy}\label{sec:rust}
+%% ═══════════════════════════════════════════════════════════════════
+
+\subsection{Rust's Ownership Model}
+
+Rust distinguishes three relationships between a name and a value:
+
+\begin{description}
+  \item[Owned (\texttt{T}):] The name owns the value. When the name goes out
+    of scope, the value is dropped. Exactly one owner at a time (affine
+    semantics).
+  \item[Shared reference (\texttt{\&T}):] Multiple names can read the value
+    concurrently. No mutation allowed through shared references.
+  \item[Mutable reference (\texttt{\&mut T}):] Exactly one name can read and
+    write the value. No other references may coexist.
+\end{description}
+
+\subsection{Mapping to Link Types}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Rust concept} & \textbf{Link type} & \textbf{Quality of analogy} \\
+\midrule
+\texttt{Rc<T>} / shared ownership & Hard link & Good \\
+\texttt{\&T} / shared reference & Symbolic link (r-x) & Partial \\
+\texttt{\&mut T} / mutable reference & --- & No match \\
+Owned \texttt{T} & Single directory entry & Trivial \\
+\texttt{Arc<T>} / atomic shared ownership & Flow link (bidir.) & Strained \\
+\texttt{Channel<T>} & Flow link (outbound) & Better \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Hard links $\approx$ \texttt{Rc<T>}.} This is the cleanest analogy.
+\texttt{Rc<T>} (reference-counted pointer) allows multiple owners of the same
+heap allocation, with the allocation freed when the last owner drops it. Hard
+links allow multiple directory entries for the same inode, with the inode freed
+when the last link is removed. The reference count is literally the inode's
+link count. The analogy is almost isomorphic.
+
+\textbf{Symbolic links $\approx$ \texttt{\&T}? No.} A symbolic link is not
+a borrow---it does not prevent the target from being removed (there is no
+borrow checker enforcing lifetime constraints). A dangling symlink is a
+use-after-free in Rust terms, except it is allowed and even common. The analogy
+breaks because Rust's references are \emph{checked} (the borrow checker
+prevents dangling) while symlinks are \emph{unchecked} (dangling is a runtime
+condition, not a compile-time error). A better analogy is \texttt{Weak<T>}: a
+weak reference that may or may not still point to a live allocation, and that
+must be checked (\texttt{upgrade()}) before use.
+
+\begin{observation}
+Symbolic links are \texttt{Weak<T>}, not \texttt{\&T}. Both are references
+that may dangle, require runtime checking before use, and do not prevent the
+referent from being deallocated.
+\end{observation}
+
+\textbf{Flow links $\approx$ channels, not references.} Flow links do not fit
+the ownership/borrowing model because they are not about aliasing a single
+resource. They are about \emph{transferring} content from one location to
+another. This is a channel, not a reference:
+
+\begin{itemize}
+  \item An outbound flow link is a \texttt{Sender<Content>}: the local
+    endpoint sends content that arrives at the remote endpoint.
+  \item An inbound flow link is a \texttt{Receiver<Content>}: the local
+    endpoint receives content from the remote endpoint.
+  \item A bidirectional flow link is a pair
+    \texttt{(Sender<Content>, Receiver<Content>)}.
+\end{itemize}
+
+This is a more honest analogy than trying to force flow links into the
+reference/borrow framework. Flow links are communication primitives with
+persistence, not aliasing primitives.
+
+\textbf{Verdict.} The Rust analogy is useful for exactly one insight: hard
+links are \texttt{Rc<T>} and symbolic links are \texttt{Weak<T>}, which
+correctly captures the aliasing and dangling properties. For flow links, the
+ownership model is the wrong lens entirely; the channel model is more apt.
+This confirms the session-type analysis: flow links are fundamentally about
+\emph{communication}, not \emph{aliasing}.
+
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Synthesis: What the Formalisms Reveal}\label{sec:synthesis}
+%% ═══════════════════════════════════════════════════════════════════
+
+\subsection{The Two Natures of Filesystem Links}
+
+The type-theoretic analysis reveals that filesystem links have two distinct
+natures, and the three link types sit at different points on each axis:
+
+\begin{description}
+  \item[Aliasing axis] (substructural types): How many names can refer to the
+    same resource, and with what constraints?
+    \begin{itemize}
+      \item Hard link: unrestricted aliasing (contraction)
+      \item Symbolic link: conditional aliasing (weakening---the alias may be
+        vacuous)
+      \item Flow link: \emph{not aliasing at all}---two distinct resources that
+        converge over time
+    \end{itemize}
+  \item[Communication axis] (session types): What protocol governs the
+    interaction between the link's endpoints?
+    \begin{itemize}
+      \item Hard link: no protocol (same resource, no communication needed)
+      \item Symbolic link: request/response (resolve path, get result or error)
+      \item Flow link: ongoing asynchronous session (stream of updates,
+        acknowledgments, conflict resolution)
+    \end{itemize}
+\end{description}
+
+\begin{observation}
+Hard links are pure aliasing (contraction, no communication). Symbolic links
+are conditional aliasing (weakening, synchronous communication). Flow links
+are pure communication (no aliasing, asynchronous protocol). The three link
+types span from ``all aliasing, no communication'' to ``no aliasing, all
+communication.''
+\end{observation}
+
+This is the deepest structural finding of the analysis. It means that
+``flow link'' is a somewhat misleading name from the aliasing perspective---it
+is not a ``link'' in the sense of creating another name for the same thing. It
+is a \emph{channel} that happens to be declared in the filesystem namespace.
+The paper recognizes this when it says a flow link is ``a declaration of
+relationship, not a mechanism of fulfillment,'' but the type theory makes it
+precise: a flow link has the type of a communication channel, not the type of
+a reference.
+
+\subsection{Implications for Language Design}
+
+For a language designer implementing flow-aware filesystem APIs, the analysis
+suggests:
+
+\begin{enumerate}
+  \item \textbf{Use session types for the flow link API.} The three directional
+    forms should be distinct types with session-typed protocols. An outbound
+    flow handle should support only send operations; an inbound flow handle
+    should support only receive operations. The bidirectional handle should
+    require conflict handling.
+
+  \item \textbf{Track flow effects.} Writes to flow-linked paths should carry
+    an effect annotation indicating that the write has propagation
+    consequences. This enables static checking of authorization and prevents
+    accidental exfiltration.
+
+  \item \textbf{Do not try to unify hard links, symlinks, and flow links under
+    a single ``link'' abstraction.} The type-theoretic analysis shows they have
+    fundamentally different structure: contraction, weakening, and
+    communication. A unified ``Link'' type that covers all three would need to
+    be so abstract as to be useless. Instead, keep them as three distinct
+    abstractions with shared vocabulary (path, target) but different
+    operations and guarantees.
+
+  \item \textbf{Model the ``pending'' state explicitly.} A flow-linked path
+    should have an observable state that includes not just the current content
+    but the convergence status: synchronized, pending (with metadata about what
+    is pending), or conflicted. This is the $\eventually$ modality made
+    programmatically observable.
+
+  \item \textbf{Consider linear/affine types for flow link handles.} A flow
+    link handle should not be silently discarded (that would leave a flow link
+    without a managing process) or duplicated (that would create ambiguity
+    about which process is responsible for propagation). Affine or linear
+    types enforce this discipline.
+\end{enumerate}
+
+\subsection{A Sketch of a Flow-Aware Type System}
+
+Combining the above, a minimal flow-aware type system for filesystem operations
+might look like:
+
+\begin{align*}
+  \tp{Path} &: \tp{Type} \\
+  \tp{Content} &: \tp{Type} \\
+  \tp{FlowHandle}[d] &: \tp{Type} \quad \text{(linear, parameterized by direction } d \text{)} \\[6pt]
+  \tp{read} &: \tp{Path} \to \{\kw{read}\}\; \tp{Option}(\tp{Content}) \\
+  \tp{write} &: \tp{Path} \to \tp{Content} \to \{\kw{write} \cup \varepsilon_{\text{flow}}\}\; \tp{Unit} \\[6pt]
+  \tp{flow\_out} &: \tp{Path} \to \tp{RemotePath} \to
+    \{\kw{create\_flow}\}\; \tp{FlowHandle}[\rightarrow] \\
+  \tp{flow\_in} &: \tp{Path} \to \tp{RemotePath} \to
+    \{\kw{create\_flow}\}\; \tp{FlowHandle}[\leftarrow] \\
+  \tp{flow\_bi} &: \tp{Path} \to \tp{RemotePath} \to
+    \{\kw{create\_flow}\}\; \tp{FlowHandle}[\leftrightarrow] \\[6pt]
+  \tp{close\_flow} &: \tp{FlowHandle}[d] \to \{\kw{close\_flow}\}\; \tp{Unit}
+    \quad \text{(consumes the linear handle)}
+\end{align*}
+
+The effect $\varepsilon_{\text{flow}}$ on $\tp{write}$ is determined by the
+flow status of the path: $\kw{local}$ if no flow link exists, $\kw{flow\_out}(q)$
+if an outbound flow link to $q$ exists, etc. The $\tp{FlowHandle}$ is linear,
+ensuring it must be either closed or transferred, never silently dropped.
+
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Limitations and Non-Findings}
+%% ═══════════════════════════════════════════════════════════════════
+
+Several initially promising directions did not yield substantive results:
+
+\textbf{Homotopy type theory.} One might ask whether the three link types
+correspond to different notions of path/equality in HoTT (propositional
+equality, paths in a higher groupoid, etc.). We found no meaningful
+correspondence. HoTT paths are about identity of types, not about filesystem
+naming, and the analogy does not survive scrutiny.
+
+\textbf{Category theory.} Links can be modeled as morphisms in a category of
+filesystem states, but this does not add insight beyond what the direct
+type-theoretic analysis provides. Hard links are isomorphisms (symmetric,
+invertible). Symbolic links are partial morphisms. Flow links are morphisms
+in a Kleisli category for the $\eventually$ monad. These are all correct
+but do not tell a language designer anything they do not already know.
+
+\textbf{Game semantics.} The interactive nature of flow links suggests a game-
+semantic reading (local and remote as player and opponent), but the games are
+too simple---the strategies are essentially the session types we already
+derived, and game semantics adds overhead without additional precision.
+
+\textbf{Separation logic.} One might model flow links using separation logic's
+$*$ (separating conjunction) to reason about disjoint heaps at the two
+endpoints. This is viable but reduces to the distributed separation logic
+literature, which is well-developed but does not specifically illuminate flow
+links as opposed to any other distributed data structure.
+
+In all these cases, the formalism can \emph{express} flow links but does not
+\emph{illuminate} them. The two formalisms that provide genuine
+illumination---substructural types for the aliasing/structural rule
+classification, and session types for the communication protocol---remain the
+most productive lenses.
+
+
+%% ═══════════════════════════════════════════════════════════════════
+\section{Conclusion}
+%% ═══════════════════════════════════════════════════════════════════
+
+The type-theoretic analysis of flow links yields two principal insights and
+several secondary ones.
+
+The first principal insight is \textbf{substructural}: the three filesystem
+link types correspond to three structural rules---contraction (hard links),
+weakening (symbolic links), and eventual contraction (flow links). The third
+is genuinely new; it does not appear in standard substructural logics and
+arises from the combination of the contraction rule with a temporal modality.
+This classification predicts the composition behavior of link types and
+derives the volume-local constraint on hard links from a general principle
+rather than an ad hoc rule.
+
+The second principal insight is \textbf{communicative}: flow links are not
+links in the aliasing sense but channels in the session-type sense. They sit
+at the opposite end of a spectrum from hard links: hard links are pure
+aliasing without communication; flow links are pure communication without
+aliasing. Session types provide the correct formalism for their directional
+forms, naturally capture the distinction between unidirectional and
+bidirectional flow, and make conflict handling in the bidirectional case a
+type-level obligation.
+
+Together, these two insights characterize flow links as occupying a genuinely
+novel position in the type-theoretic landscape: \emph{persistent, filesystem-
+level asynchronous channels with eventual-contraction semantics}. This is not
+merely a restatement of the paper's informal description; it connects flow
+links to specific, well-studied formal frameworks (substructural logic, session
+types, temporal modalities) and identifies precisely where existing frameworks
+are sufficient and where flow links require extension (the eventual contraction
+rule).
+
+For a language designer, the actionable recommendations are: type the three
+directional forms as distinct session types; track propagation as an effect;
+use linear types for flow link handles; and resist the temptation to unify all
+three link types under a single abstraction, because the type theory says they
+are fundamentally different kinds of things.
+
+\end{document}
