@@ -24,10 +24,12 @@ working increment — the system is usable after every phase.
 - `putToC4d()` — push blob content to local c4d
 - cp handles Local, C4m, Container, Managed source/dest types
 
-**What's missing** is c4d routing namespace operations to peers.
-The CLI can parse `nas:` and talk to the local c4d. c4d can
-talk to peers. But c4d doesn't proxy namespace operations
-(PUT, GET, LIST) through to peers on the CLI's behalf.
+**What's missing** is the bridge between these two halves.
+The CLI talks to the local c4d. c4d talks to peers. But
+c4d doesn't yet route namespace operations (PUT, GET, LIST)
+to peers — it only routes blob fetches. Once c4d proxies
+namespace operations the same way it proxies content, the
+CLI gets remote access for free.
 
 ---
 
