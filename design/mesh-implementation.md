@@ -378,18 +378,28 @@ Serves double duty — liveness probe and routing refresh.
 
 ### 5.3 Peer routing
 
-When content is addressed to an identity:
+Routes are namespace paths, not a special API. `GET /route/`
+returns a browsable tree of all discovered routes to an
+identity:
 
 ```
-GET /route/sarah@gmail.com
-→ 10.42.5.7:7433       (directly reachable)
-→ via:nas.local:7433    (reachable through intermediary)
-→ 404                   (unknown)
+c4 ls net:/route/sarah@gmail.com
+drwxr-xr-x - - nas/ -
+drwxr-xr-x - - cloud/ -
+
+c4 ls net:/route/sarah@gmail.com/nas/
+drwxr-xr-x - - sarah-laptop/ -
+
+c4 ls net:/route/sarah@gmail.com/cloud/
+drwxr-xr-x - - sarah-laptop/ -
+drwxr-xr-x - - sarah-phone/ -
 ```
 
-Plain text response. The query cascades through peers (with
-hop limit). The first peer that can reach the target becomes
-the route.
+The full routing tree for an identity — every possible path,
+arbitrarily deep. c4d builds this by querying peers
+transitively (with hop limit). The result is a c4m listing at
+every level. c4d picks the best route automatically for
+transfers, but the user can inspect the full map.
 
 ### 5.4 Identity-based cp
 
@@ -448,7 +458,16 @@ locations automatically on every mutation.
 c4 mk : --sync nas: desktop:
 ```
 
-Stores sync targets in `.c4/sync` (one location name per line).
+Sync targets are visible as `:~.sync/` in the managed directory:
+
+```
+c4 ls :~.sync/
+-rw-r--r-- - - nas -
+-rw-r--r-- - - desktop -
+```
+
+Consistent with `:~` (history) and `:~.ignore` (patterns).
+Stored in `.c4/sync` internally.
 
 ### 6.2 Mutation propagation
 

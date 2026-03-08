@@ -85,9 +85,17 @@ language, no routing API — just `ls` on deeper paths.
 **Mesh (peer routing):** When c4d starts, it connects to
 configured peers. The mTLS handshake IS the announcement —
 identity from the cert, address from the connection. Peers
-remember. When you send to `sarah@gmail.com`, your node asks
-its peers "can you reach sarah@gmail.com?" The peer that can
-reach her becomes the route.
+remember. Routes are namespace paths — the full tree of all
+discovered routes to an identity is browsable:
+
+```
+c4 ls net:/route/sarah@gmail.com
+drwxr-xr-x - - nas/ -
+drwxr-xr-x - - cloud/ -
+```
+
+Each directory is a possible path. Drill in to see the next
+hop. c4d picks the best route automatically for transfers.
 
 This handles the hard cases naturally:
 - Sarah behind hotel NAT? She connected outbound to the home
@@ -147,6 +155,11 @@ Declared once, fulfilled automatically on every mutation.
 ```
 # Sync this managed directory to NAS and desktop
 c4 mk : --sync nas: desktop:
+
+# Sync targets are visible like history and ignore patterns
+c4 ls :~.sync/
+-rw-r--r-- - - nas -
+-rw-r--r-- - - desktop -
 
 # Every c4 cp, c4 ln, etc. now propagates to sync targets
 ```
@@ -477,14 +490,14 @@ checks its own store, it pulls what's missing. No explicit
 ### Discovery Is Relay
 
 There is no separate relay concept. Discovery and relay are the
-same operation: the node that can answer "can you reach
-sarah@gmail.com?" can also forward content to her. The discovery
-path IS the delivery path.
+same operation: the node that appears in `net:/route/sarah@gmail.com`
+can also forward content to her. The discovery path IS the
+delivery path.
 
 Every node in the mesh is a potential intermediary for any node
 it can reach. When you send to `sarah@gmail.com`, your node
-finds a route — possibly direct, possibly through one or more
-intermediaries. Content flows along that route, materializing
+browses the route tree — every possible path, all the
+intermediaries. Content flows along the best route, materializing
 into transit caches at each hop. No special relay software, no
 inbox model, no delivery queue. Just nodes forwarding to nodes
 they can reach, with transit TTLs cleaning up behind them.
@@ -563,7 +576,7 @@ locked into a platform.
 - mDNS/Bonjour advertisement (`_c4d._tcp` service type)
 - `net:` pseudo-location (browse LAN peers via `c4 ls net:/peers`)
 - Implicit peer announcement (mTLS connection = announcement)
-- Peer routing ("can you reach X?" → forward through intermediary)
+- Peer routing (`net:/route/{identity}` → browsable route tree)
 - Store-and-forward (transit namespace paths for offline peers)
 - Email fallback (c4m delivery via SMTP when no mesh route)
 - Directory registration/lookup (Avalanche.io integration)
