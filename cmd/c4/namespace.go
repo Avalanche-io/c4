@@ -28,11 +28,14 @@ func c4dConfigured() bool {
 // namespacePath maps a local c4m file path to a c4d namespace path.
 // Files under $HOME map to /home/{identity}/relative/path.
 // Files outside $HOME map to /mnt/local/absolute/path.
+// Namespace paths always use forward slashes regardless of OS.
 func namespacePath(c4mPath, identity string) (string, error) {
 	abs, err := filepath.Abs(c4mPath)
 	if err != nil {
 		return "", err
 	}
+	// Convert to forward slashes for namespace (virtual path)
+	abs = filepath.ToSlash(abs)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -40,7 +43,7 @@ func namespacePath(c4mPath, identity string) (string, error) {
 	}
 
 	// Normalize home to ensure clean prefix matching
-	home = filepath.Clean(home)
+	home = filepath.ToSlash(filepath.Clean(home))
 	if !strings.HasSuffix(home, "/") {
 		home += "/"
 	}
@@ -48,6 +51,11 @@ func namespacePath(c4mPath, identity string) (string, error) {
 	if strings.HasPrefix(abs, home) {
 		rel := strings.TrimPrefix(abs, home)
 		return "/home/" + identity + "/" + rel, nil
+	}
+
+	// Strip drive letter on Windows (e.g. "C:/tmp" -> "/tmp")
+	if len(abs) >= 2 && abs[1] == ':' {
+		abs = abs[2:]
 	}
 
 	return "/mnt/local" + abs, nil

@@ -467,7 +467,7 @@ func (ps *ProgressiveScanner) collectMetadata(entry *ScanEntry) {
 	if entry.FileMetadata.Mode()&os.ModeSymlink != 0 {
 		if bmd, ok := entry.FileMetadata.(*BasicFileMetadata); ok {
 			if target, err := os.Readlink(entry.Path); err == nil {
-				bmd.SetTarget(target)
+				bmd.SetTarget(filepath.ToSlash(target))
 			}
 		}
 	}

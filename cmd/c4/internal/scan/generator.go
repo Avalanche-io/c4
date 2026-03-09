@@ -250,11 +250,11 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 				// Create symlink metadata
 				md := g.generateMetadata(fullPath, info, childDepth)
 				
-				// Set symlink target
+				// Set symlink target (always forward slashes for c4m portability)
 				if bmd, ok := md.(*BasicFileMetadata); ok {
 					target, err := os.Readlink(fullPath)
 					if err == nil {
-						bmd.SetTarget(target)
+						bmd.SetTarget(filepath.ToSlash(target))
 						
 						// Compute C4 ID of symlink target if enabled
 						if g.computeC4IDs {

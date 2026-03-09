@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -11,7 +12,11 @@ import (
 // buildC4 builds the c4 binary for testing.
 func buildC4(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "c4")
+	binName := "c4"
+	if runtime.GOOS == "windows" {
+		binName = "c4.exe"
+	}
+	bin := filepath.Join(t.TempDir(), binName)
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Dir = filepath.Join(os.Getenv("PWD"))
 	if out, err := cmd.CombinedOutput(); err != nil {

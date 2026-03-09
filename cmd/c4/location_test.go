@@ -52,12 +52,12 @@ func TestLocationLs(t *testing.T) {
 	dir := t.TempDir()
 
 	// Establish the location
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	establish.EstablishLocation("testloc", "localhost:9999")
 
 	cmd := exec.Command(bin, "ls", "testloc:")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir, "C4D_ADDR="+mockURL)
+	cmd.Env = subprocEnv(dir, "C4D_ADDR="+mockURL)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("ls testloc: %v\n%s", err, out)
@@ -92,12 +92,12 @@ func TestLocationLsWithSubpath(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	establish.EstablishLocation("nas", "localhost:9999")
 
 	cmd := exec.Command(bin, "ls", "nas:footage/")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir, "C4D_ADDR="+mockURL)
+	cmd.Env = subprocEnv(dir, "C4D_ADDR="+mockURL)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("ls nas:footage/: %v\n%s", err, out)
@@ -123,12 +123,12 @@ func TestLocationLsPretty(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	establish.EstablishLocation("remote", "localhost:9999")
 
 	cmd := exec.Command(bin, "ls", "-p", "remote:")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir, "C4D_ADDR="+mockURL)
+	cmd.Env = subprocEnv(dir, "C4D_ADDR="+mockURL)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("ls -p remote: %v\n%s", err, out)
@@ -142,13 +142,13 @@ func TestLocationLsC4dNotRunning(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	establish.EstablishLocation("offline", "localhost:9999")
 
 	// Use a port that nothing listens on
 	cmd := exec.Command(bin, "ls", "offline:")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir, "C4D_ADDR=http://localhost:19999")
+	cmd.Env = subprocEnv(dir, "C4D_ADDR=http://localhost:19999")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatal("expected error when c4d is not running")
@@ -173,13 +173,13 @@ func TestLocationDiff(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	establish.EstablishLocation("loc1", "localhost:9999")
 
 	// Diff location against itself (should produce empty diff)
 	cmd := exec.Command(bin, "diff", "loc1:", "loc1:")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir, "C4D_ADDR="+mockURL)
+	cmd.Env = subprocEnv(dir, "C4D_ADDR="+mockURL)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("diff loc1: loc1: %v\n%s", err, out)
@@ -204,12 +204,12 @@ func TestLocationLsId(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	establish.EstablishLocation("idloc", "localhost:9999")
 
 	cmd := exec.Command(bin, "ls", "-i", "idloc:")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir, "C4D_ADDR="+mockURL)
+	cmd.Env = subprocEnv(dir, "C4D_ADDR="+mockURL)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("ls -i idloc: %v\n%s", err, out)

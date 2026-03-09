@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -57,7 +58,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	bin := filepath.Join(tmpDir, "c4")
+	binName := "c4"
+	if runtime.GOOS == "windows" {
+		binName = "c4.exe"
+	}
+	bin := filepath.Join(tmpDir, binName)
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		panic("build c4: " + err.Error() + "\n" + string(out))
@@ -68,6 +73,9 @@ func TestMain(m *testing.M) {
 	testHome := filepath.Join(tmpDir, "home")
 	os.MkdirAll(testHome, 0755)
 	os.Setenv("HOME", testHome)
+	if runtime.GOOS == "windows" {
+		os.Setenv("USERPROFILE", testHome)
+	}
 
 	code := m.Run()
 

@@ -3,12 +3,21 @@ package establish
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", dir)
+	}
+}
+
 func TestC4mEstablishment(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	dir := t.TempDir()
 	c4mPath := filepath.Join(dir, "project.c4m")
@@ -66,7 +75,7 @@ func TestC4mEstablishment(t *testing.T) {
 
 func TestC4mEstablishmentWithoutFile(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	dir := t.TempDir()
 	c4mPath := filepath.Join(dir, "new.c4m")
@@ -82,7 +91,7 @@ func TestC4mEstablishmentWithoutFile(t *testing.T) {
 }
 
 func TestC4mLegacyFormat(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 
 	c4mPath := filepath.Join(t.TempDir(), "legacy.c4m")
 	abs, _ := filepath.Abs(c4mPath)
@@ -109,7 +118,7 @@ func TestC4mLegacyFormat(t *testing.T) {
 
 func TestLocationEstablishment(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setHome(t, dir)
 
 	if IsLocationEstablished("studio") {
 		t.Error("should not be established before mk")
@@ -150,7 +159,7 @@ func TestLocationEstablishment(t *testing.T) {
 
 func TestGetLocationNotFound(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setHome(t, dir)
 
 	if entry := GetLocation("nonexistent"); entry != nil {
 		t.Error("GetLocation should return nil for nonexistent location")
@@ -159,7 +168,7 @@ func TestGetLocationNotFound(t *testing.T) {
 
 func TestListLocationsEmpty(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setHome(t, dir)
 
 	locs, err := ListLocations()
 	if err != nil {

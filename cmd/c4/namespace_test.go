@@ -3,12 +3,16 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestNamespacePath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
 
 	tests := []struct {
 		name     string
@@ -58,6 +62,9 @@ func TestNamespacePath(t *testing.T) {
 func TestC4dConfigured(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
 
 	// No config → not configured
 	if c4dConfigured() {
@@ -75,7 +82,11 @@ func TestC4dConfigured(t *testing.T) {
 
 func TestRegisterLocalOnlyMode(t *testing.T) {
 	// No c4d config → local-only mode → registration is a no-op
-	t.Setenv("HOME", t.TempDir())
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", tmpHome)
+	}
 
 	err := registerNamespacePath("/tmp/nonexistent.c4m")
 	if err != nil {

@@ -64,7 +64,7 @@ func TestMkLocation(t *testing.T) {
 	// Override HOME so location registry is in temp dir
 	cmd := exec.Command(bin, "mk", "studio:", "cloud.example.com:7433")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir)
+	cmd.Env = subprocEnv(dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("mk location: %v\n%s", err, out)
@@ -80,7 +80,7 @@ func TestMkLocationMissingAddress(t *testing.T) {
 
 	cmd := exec.Command(bin, "mk", "studio:")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir)
+	cmd.Env = subprocEnv(dir)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Error("expected error for location without address")
@@ -162,12 +162,12 @@ func TestRmLocation(t *testing.T) {
 	dir := t.TempDir()
 
 	// Set HOME to temp dir for this test and establish location
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	establish.EstablishLocation("studio", "cloud:7433")
 
 	cmd := exec.Command(bin, "rm", "studio:")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+dir)
+	cmd.Env = subprocEnv(dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("rm location: %v\n%s", err, out)
