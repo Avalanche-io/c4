@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,20 +16,14 @@ import (
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/container"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/establish"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/managed"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/pathspec"
 	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 )
 
-// c4dClient has proper timeouts: 10s to connect, 30s for response headers,
-// but unlimited time for body transfer (correct for large files).
-var c4dClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout: 10 * time.Second,
-		}).DialContext,
-		ResponseHeaderTimeout: 30 * time.Second,
-	},
-}
+// c4dClient is initialized in init() via c4d.go's buildC4dClient.
 
 // runCp implements "c4 cp" — the universal copy verb.
 //
@@ -108,6 +101,8 @@ func runCp(args []string) {
 		cpC4mToContainer(src, dst)
 	case src.Type == pathspec.Container && dst.Type == pathspec.C4m:
 		cpContainerToC4m(src, dst)
+	case src.Type == pathspec.Local && dst.Type == pathspec.Managed:
+		cpLocalToManaged(src, dst)
 	case src.Type == pathspec.Local && dst.Type == pathspec.Local:
 		fmt.Fprintf(os.Stderr, "Error: use OS cp for local-to-local copies\n")
 		os.Exit(1)
@@ -282,6 +277,41 @@ func cpLocalToC4m(src, dst pathspec.PathSpec) {
 		fmt.Fprintf(os.Stderr, "error: %d files not stored in c4d — materialization will fail for unstored content\n", pushFailed)
 		os.Exit(1)
 	}
+}
+
+// cpLocalToManaged snapshots a local directory into the managed directory.
+// The source must be the managed directory root (.) — copying an external
+// directory into a managed directory is not supported.
+func cpLocalToManaged(src, dst pathspec.PathSpec) {
+	// Resolve source to absolute path for comparison
+	srcAbs, err := filepath.Abs(src.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Open the managed directory (always rooted at cwd)
+	d, err := managed.Open(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Verify the source is the managed directory root
+	if srcAbs != d.Root() {
+		fmt.Fprintf(os.Stderr, "Error: source must be the managed directory (.), not an external path\n")
+		fmt.Fprintf(os.Stderr, "Use: c4 cp . :\n")
+		os.Exit(1)
+	}
+
+	id, err := d.Snapshot()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	m, _ := d.Current()
+	fmt.Printf("snapshot : (%d entries, id %s)\n", len(m.Entries), id.String()[:12]+"...")
 }
 
 // cpFileIntoC4m captures a single file into a c4m file.
@@ -532,13 +562,6 @@ func restoreMetadata(path string, entry *c4m.Entry) {
 }
 
 // c4d HTTP integration
-
-func c4dAddr() string {
-	if addr := os.Getenv("C4D_ADDR"); addr != "" {
-		return addr
-	}
-	return "http://localhost:17433"
-}
 
 // putToC4d pushes file content to c4d via PUT.
 func putToC4d(filePath string) error {
@@ -917,6 +940,18 @@ func openTarReader(r io.Reader, format string) (*tar.Reader, error) {
 		return tar.NewReader(gr), nil
 	case "bzip2":
 		return tar.NewReader(bzip2.NewReader(r)), nil
+	case "xz":
+		xr, err := xz.NewReader(r)
+		if err != nil {
+			return nil, err
+		}
+		return tar.NewReader(xr), nil
+	case "zstd":
+		zr, err := zstd.NewReader(r)
+		if err != nil {
+			return nil, err
+		}
+		return tar.NewReader(zr), nil
 	case "tar":
 		return tar.NewReader(r), nil
 	default:

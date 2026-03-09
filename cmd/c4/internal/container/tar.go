@@ -23,10 +23,12 @@ import (
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 )
 
 // ReadManifest reads a tar archive and returns a c4m manifest of its contents.
-// The format parameter specifies compression: "tar", "gzip", "bzip2".
+// The format parameter specifies compression: "tar", "gzip", "bzip2", "xz", "zstd".
 func ReadManifest(archivePath, format string) (*c4m.Manifest, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -347,6 +349,18 @@ func newTarReader(r io.Reader, format string) (*tar.Reader, error) {
 		return tar.NewReader(gr), nil
 	case "bzip2":
 		return tar.NewReader(bzip2.NewReader(r)), nil
+	case "xz":
+		xr, err := xz.NewReader(r)
+		if err != nil {
+			return nil, fmt.Errorf("xz: %w", err)
+		}
+		return tar.NewReader(xr), nil
+	case "zstd":
+		zr, err := zstd.NewReader(r)
+		if err != nil {
+			return nil, fmt.Errorf("zstd: %w", err)
+		}
+		return tar.NewReader(zr), nil
 	case "tar":
 		return tar.NewReader(r), nil
 	default:
@@ -359,10 +373,22 @@ func newTarWriter(w io.Writer, format string) (*tar.Writer, io.Closer, error) {
 	case "gzip":
 		gw := gzip.NewWriter(w)
 		return tar.NewWriter(gw), gw, nil
+	case "xz":
+		xw, err := xz.NewWriter(w)
+		if err != nil {
+			return nil, nil, fmt.Errorf("xz writer: %w", err)
+		}
+		return tar.NewWriter(xw), xw, nil
+	case "zstd":
+		zw, err := zstd.NewWriter(w)
+		if err != nil {
+			return nil, nil, fmt.Errorf("zstd writer: %w", err)
+		}
+		return tar.NewWriter(zw), zw, nil
 	case "tar":
 		return tar.NewWriter(w), nil, nil
 	default:
-		return nil, nil, fmt.Errorf("unsupported write format: %s (only tar and gzip)", format)
+		return nil, nil, fmt.Errorf("unsupported write format: %s (only tar, gzip, xz, zstd)", format)
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 )
 
 func TestReadManifest_Tar(t *testing.T) {
@@ -269,7 +271,189 @@ func TestWriteTar_Gzip(t *testing.T) {
 	}
 }
 
+func TestReadManifest_TarXz(t *testing.T) {
+	archive := createTestTarXz(t)
+
+	m, err := ReadManifest(archive, "xz")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(m.Entries) == 0 {
+		t.Fatal("expected entries in manifest")
+	}
+
+	names := entryNames(m)
+	for _, want := range []string{"hello.txt", "src/", "main.go"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected entry %q, got %v", want, names)
+		}
+	}
+}
+
+func TestReadManifest_TarZstd(t *testing.T) {
+	archive := createTestTarZstd(t)
+
+	m, err := ReadManifest(archive, "zstd")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(m.Entries) == 0 {
+		t.Fatal("expected entries in manifest")
+	}
+
+	names := entryNames(m)
+	for _, want := range []string{"hello.txt", "src/", "main.go"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected entry %q, got %v", want, names)
+		}
+	}
+}
+
+func TestWriteTar_Xz(t *testing.T) {
+	archive1 := createTestTar(t)
+	m, err := ReadManifest(archive1, "tar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	archive2 := filepath.Join(t.TempDir(), "output.tar.xz")
+	err = WriteTar(archive2, "xz", m, func(fullPath string, entry *c4m.Entry) (io.ReadCloser, error) {
+		return CatFile(archive1, "tar", fullPath)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m2, err := ReadManifest(archive2, "xz")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(m.Entries) != len(m2.Entries) {
+		t.Errorf("entry count mismatch: %d vs %d", len(m.Entries), len(m2.Entries))
+	}
+}
+
+func TestWriteTar_Zstd(t *testing.T) {
+	archive1 := createTestTar(t)
+	m, err := ReadManifest(archive1, "tar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	archive2 := filepath.Join(t.TempDir(), "output.tar.zst")
+	err = WriteTar(archive2, "zstd", m, func(fullPath string, entry *c4m.Entry) (io.ReadCloser, error) {
+		return CatFile(archive1, "tar", fullPath)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m2, err := ReadManifest(archive2, "zstd")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(m.Entries) != len(m2.Entries) {
+		t.Errorf("entry count mismatch: %d vs %d", len(m.Entries), len(m2.Entries))
+	}
+}
+
+func TestCatFile_Xz(t *testing.T) {
+	archive := createTestTarXz(t)
+
+	rc, err := CatFile(archive, "xz", "hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+
+	data, _ := io.ReadAll(rc)
+	if string(data) != "hello world" {
+		t.Errorf("got %q, want %q", data, "hello world")
+	}
+}
+
+func TestCatFile_Zstd(t *testing.T) {
+	archive := createTestTarZstd(t)
+
+	rc, err := CatFile(archive, "zstd", "hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+
+	data, _ := io.ReadAll(rc)
+	if string(data) != "hello world" {
+		t.Errorf("got %q, want %q", data, "hello world")
+	}
+}
+
 // Helpers
+
+func createTestTarXz(t *testing.T) string {
+	t.Helper()
+	archive := filepath.Join(t.TempDir(), "test.tar.xz")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xw, err := xz.NewWriter(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(xw)
+	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
+
+	addFile(tw, "hello.txt", "hello world", ts)
+	addDir(tw, "src/", ts)
+	addFile(tw, "src/main.go", "package main", ts)
+
+	tw.Close()
+	xw.Close()
+	f.Close()
+	return archive
+}
+
+func createTestTarZstd(t *testing.T) string {
+	t.Helper()
+	archive := filepath.Join(t.TempDir(), "test.tar.zst")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw, err := zstd.NewWriter(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(zw)
+	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
+
+	addFile(tw, "hello.txt", "hello world", ts)
+	addDir(tw, "src/", ts)
+	addFile(tw, "src/main.go", "package main", ts)
+
+	tw.Close()
+	zw.Close()
+	f.Close()
+	return archive
+}
 
 func createTestTar(t *testing.T) string {
 	t.Helper()
