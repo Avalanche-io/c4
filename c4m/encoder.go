@@ -94,6 +94,8 @@ func (e *Encoder) calculateC4IDColumn(m *Manifest) int {
 		lineLen := len(indent) + len(modeStr) + 1 + len(timeStr) + 1 + maxSizeWidth + 1 + len(nameStr)
 		if entry.Target != "" {
 			lineLen += 4 + len(entry.Target) // " -> " + target
+		} else if entry.FlowDirection != FlowNone {
+			lineLen += 1 + len(entry.FlowOperator()) + 1 + len(entry.FlowTarget)
 		}
 
 		if lineLen > maxLen {
@@ -149,7 +151,7 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 	// Build base line
 	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}
 
-	// Add symlink target or hard link marker
+	// Add symlink target, hard link marker, or flow link
 	if entry.Target != "" {
 		parts = append(parts, "->", formatTarget(entry.Target))
 	} else if entry.HardLink != 0 {
@@ -158,6 +160,8 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 		} else {
 			parts = append(parts, fmt.Sprintf("->%d", entry.HardLink))
 		}
+	} else if entry.FlowDirection != FlowNone {
+		parts = append(parts, entry.FlowOperator(), entry.FlowTarget)
 	}
 
 	baseLine := strings.Join(parts, " ")

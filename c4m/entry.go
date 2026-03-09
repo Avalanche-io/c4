@@ -10,6 +10,16 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
+// FlowDirection indicates the direction of a flow link.
+type FlowDirection int
+
+const (
+	FlowNone          FlowDirection = iota // No flow link
+	FlowOutbound                           // -> (content here propagates there)
+	FlowInbound                            // <- (content there propagates here)
+	FlowBidirectional                      // <> (bidirectional sync)
+)
+
 // Entry represents a single file or directory entry in a C4M manifest
 type Entry struct {
 	Mode      os.FileMode // Unix-style permissions
@@ -23,6 +33,10 @@ type Entry struct {
 	// Hard link marker: entries sharing the same C4 ID and marker are write-bound.
 	// 0 = not a hard link, -1 = ungrouped hard link (->), >0 = group number (->N)
 	HardLink int
+
+	// Flow link: declares a cross-location data relationship.
+	FlowDirection FlowDirection
+	FlowTarget    string // Location reference (e.g., "nas:", "studio:plates/")
 
 	// For sequences
 	IsSequence  bool
@@ -41,6 +55,25 @@ func (e *Entry) IsSymlink() bool {
 	return e.Mode&os.ModeSymlink != 0
 }
 
+// IsFlowLinked returns true if the entry has a flow link declaration.
+func (e *Entry) IsFlowLinked() bool {
+	return e.FlowDirection != FlowNone
+}
+
+// FlowOperator returns the string representation of the flow direction.
+func (e *Entry) FlowOperator() string {
+	switch e.FlowDirection {
+	case FlowOutbound:
+		return "->"
+	case FlowInbound:
+		return "<-"
+	case FlowBidirectional:
+		return "<>"
+	default:
+		return ""
+	}
+}
+
 // BaseName returns the base name without path
 func (e *Entry) BaseName() string {
 	return path.Base(e.Name)
@@ -55,7 +88,7 @@ func (e *Entry) String() string {
 func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	// Build indentation
 	indent := strings.Repeat(" ", e.Depth*indentWidth)
-	
+
 	// Format mode (handle null value)
 	var modeStr string
 	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
@@ -63,7 +96,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	} else {
 		modeStr = formatMode(e.Mode)
 	}
-	
+
 	// Format timestamp (handle null value)
 	var timeStr string
 	if e.Timestamp.Equal(NullTimestamp()) {
@@ -72,7 +105,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 		// Canonical format MUST be UTC only
 		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
 	}
-	
+
 	// Format size (handle null value)
 	var sizeStr string
 	if e.Size < 0 {
@@ -80,14 +113,14 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	} else {
 		sizeStr = formatSize(e.Size, displayFormat)
 	}
-	
+
 	// Format name (with quotes or escape notation if needed)
 	nameStr := formatName(e.Name, e.IsSequence)
-	
+
 	// Build the line
 	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}
 
-	// Add symlink target or hard link marker
+	// Add symlink target, hard link marker, or flow link
 	if e.Target != "" {
 		parts = append(parts, "->", formatTarget(e.Target))
 	} else if e.HardLink != 0 {
@@ -96,6 +129,8 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 		} else {
 			parts = append(parts, fmt.Sprintf("->%d", e.HardLink))
 		}
+	} else if e.FlowDirection != FlowNone {
+		parts = append(parts, e.FlowOperator(), e.FlowTarget)
 	}
 
 	// C4 ID or "-" is always the last field
@@ -144,6 +179,8 @@ func (e *Entry) Canonical() string {
 		} else {
 			parts = append(parts, fmt.Sprintf("->%d", e.HardLink))
 		}
+	} else if e.FlowDirection != FlowNone {
+		parts = append(parts, e.FlowOperator(), e.FlowTarget)
 	}
 
 	// C4 ID or "-" is always the last field
@@ -159,7 +196,7 @@ func (e *Entry) Canonical() string {
 // formatMode converts os.FileMode to Unix-style permission string
 func formatMode(mode os.FileMode) string {
 	var buf [10]byte
-	
+
 	// File type
 	switch mode & os.ModeType {
 	case 0: // regular file
@@ -179,7 +216,7 @@ func formatMode(mode os.FileMode) string {
 	default:
 		buf[0] = '?'
 	}
-	
+
 	// Permissions
 	rwx := "rwxrwxrwx"
 	for i := 0; i < 9; i++ {
@@ -189,7 +226,7 @@ func formatMode(mode os.FileMode) string {
 			buf[i+1] = '-'
 		}
 	}
-	
+
 	// Special bits
 	if mode&os.ModeSetuid != 0 {
 		if buf[3] == 'x' {
@@ -212,7 +249,7 @@ func formatMode(mode os.FileMode) string {
 			buf[9] = 'T'
 		}
 	}
-	
+
 	return string(buf[:])
 }
 
@@ -221,13 +258,13 @@ func formatSize(size int64, displayFormat bool) string {
 	if !displayFormat {
 		return fmt.Sprintf("%d", size)
 	}
-	
+
 	// Add thousands separators for display
 	s := fmt.Sprintf("%d", size)
 	if len(s) <= 3 {
 		return s
 	}
-	
+
 	var result []byte
 	for i, c := range s {
 		if i > 0 && (len(s)-i)%3 == 0 {

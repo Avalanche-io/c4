@@ -186,6 +186,30 @@ func WithTarget(target string) EntryOption {
 	}
 }
 
+// WithFlowOutbound sets outbound flow to a location.
+func WithFlowOutbound(target string) EntryOption {
+	return func(e *Entry) {
+		e.FlowDirection = FlowOutbound
+		e.FlowTarget = target
+	}
+}
+
+// WithFlowInbound sets inbound flow from a location.
+func WithFlowInbound(target string) EntryOption {
+	return func(e *Entry) {
+		e.FlowDirection = FlowInbound
+		e.FlowTarget = target
+	}
+}
+
+// WithFlowSync sets bidirectional flow with a location.
+func WithFlowSync(target string) EntryOption {
+	return func(e *Entry) {
+		e.FlowDirection = FlowBidirectional
+		e.FlowTarget = target
+	}
+}
+
 // WithAttrs sets multiple attributes at once
 func WithAttrs(c4id c4.ID, size int64, mode os.FileMode, timestamp time.Time) EntryOption {
 	return func(e *Entry) {

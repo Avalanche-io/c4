@@ -177,7 +177,7 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Timestamp = timestamp
 
 	// Parse remaining fields using character-level parsing
-	size, name, rawName, target, id, nameQuoted, hardLink, err := d.parseEntryFields(remainingLine)
+	size, name, rawName, target, id, nameQuoted, hardLink, flowDir, flowTarget, err := d.parseEntryFields(remainingLine)
 	if err != nil {
 		return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
 	}
@@ -187,6 +187,8 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	entry.Target = target
 	entry.C4ID = id
 	entry.HardLink = hardLink
+	entry.FlowDirection = flowDir
+	entry.FlowTarget = flowTarget
 
 	// Check for sequence notation: only unquoted names, and check the RAW
 	// name for unescaped brackets forming a valid range pattern.
@@ -204,9 +206,9 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 // scanning. This correctly handles quoted names with escapes, symlink targets
 // with spaces, and filenames with backslashes or leading spaces.
 //
-// The expected format is: SIZE NAME [-> TARGET] [C4ID]
-// Where NAME and TARGET may be quoted with backslash escapes.
-func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, target string, id c4.ID, nameQuoted bool, hardLink int, err error) {
+// The expected format is: SIZE NAME [LINK_OP TARGET] [C4ID]
+// Where LINK_OP is ->, <-, or <>, and NAME/TARGET may be quoted.
+func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, target string, id c4.ID, nameQuoted bool, hardLink int, flowDir FlowDirection, flowTarget string, err error) {
 	pos := 0
 	n := len(line)
 
@@ -265,8 +267,9 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 		pos++
 	}
 
-	// 3. Check for "->" (symlink target or hard link marker)
+	// 3. Check for link operator: ->, <-, or <>
 	if pos+1 < n && line[pos] == '-' && line[pos+1] == '>' {
+		// -> operator: hard link group, hard link, flow target, or symlink
 		pos += 2
 
 		// Check for hard link group number: ->N (no space)
@@ -286,13 +289,21 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 				pos++
 			}
 
-			// Determine if this is a hard link or symlink:
-			// Hard link: next token is C4 ID (c4...) or null ("-" at end)
-			// Symlink: next token is a path
+			// Determine type by examining token after ->
 			remaining := strings.TrimSpace(line[pos:])
 			if remaining == "-" || strings.HasPrefix(remaining, "c4") {
 				// Hard link (ungrouped)
 				hardLink = -1
+			} else if pos < n && isFlowTarget(line[pos:]) {
+				// Flow target (matches location:... pattern)
+				flowDir = FlowOutbound
+				flowTarget, pos, err = d.parseFlowTarget(line, pos)
+				if err != nil {
+					return
+				}
+				for pos < n && line[pos] == ' ' {
+					pos++
+				}
 			} else if pos < n {
 				// Symlink target
 				target, pos, err = d.parseTarget(line, pos)
@@ -304,6 +315,34 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 					pos++
 				}
 			}
+		}
+	} else if pos+1 < n && line[pos] == '<' && line[pos+1] == '-' {
+		// <- operator: always inbound flow
+		pos += 2
+		for pos < n && line[pos] == ' ' {
+			pos++
+		}
+		flowDir = FlowInbound
+		flowTarget, pos, err = d.parseFlowTarget(line, pos)
+		if err != nil {
+			return
+		}
+		for pos < n && line[pos] == ' ' {
+			pos++
+		}
+	} else if pos+1 < n && line[pos] == '<' && line[pos+1] == '>' {
+		// <> operator: always bidirectional flow
+		pos += 2
+		for pos < n && line[pos] == ' ' {
+			pos++
+		}
+		flowDir = FlowBidirectional
+		flowTarget, pos, err = d.parseFlowTarget(line, pos)
+		if err != nil {
+			return
+		}
+		for pos < n && line[pos] == ' ' {
+			pos++
 		}
 	}
 
@@ -322,7 +361,7 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 		}
 	}
 
-	return size, name, rawName, target, id, nameQuoted, hardLink, err
+	return
 }
 
 // parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
@@ -404,10 +443,12 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 			return buf.String(), pos, hasUnescapedBrackets, nil
 		}
 
-		// Check for boundary: space followed by -> or c4 prefix or -
+		// Check for boundary: space followed by link operator, c4 prefix, or -
 		if ch == ' ' {
 			rest := line[pos:]
-			if strings.HasPrefix(rest, " -> ") {
+			if strings.HasPrefix(rest, " -> ") ||
+				strings.HasPrefix(rest, " <- ") ||
+				strings.HasPrefix(rest, " <> ") {
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
 			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
@@ -504,6 +545,55 @@ func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 		pos++
 	}
 
+	return line[start:pos], pos, nil
+}
+
+// isFlowTarget returns true if the text at the current position matches
+// the flow target pattern: a location label ([a-zA-Z][a-zA-Z0-9_-]*) followed by ":".
+func isFlowTarget(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	ch := s[0]
+	if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if c == ':' {
+			return true
+		}
+		if c == ' ' {
+			return false
+		}
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return false
+}
+
+// parseFlowTarget reads a flow target (location:path) starting at pos.
+// The flow target ends at the next space followed by a C4 prefix or "-", or at end-of-line.
+func (d *Decoder) parseFlowTarget(line string, pos int) (string, int, error) {
+	n := len(line)
+	if pos >= n {
+		return "", pos, fmt.Errorf("expected flow target")
+	}
+	start := pos
+	for pos < n {
+		ch := line[pos]
+		if ch == ' ' {
+			rest := line[pos:]
+			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
+				return line[start:pos], pos, nil
+			}
+			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
+				return line[start:pos], pos, nil
+			}
+		}
+		pos++
+	}
 	return line[start:pos], pos, nil
 }
 
@@ -648,4 +738,3 @@ func parseMode(s string) (os.FileMode, error) {
 
 	return mode, nil
 }
-

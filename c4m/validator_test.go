@@ -507,7 +507,7 @@ func TestParseNameAndRest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v := NewValidator(false)
-			name, _, c4id := v.parseNameAndRest(tt.fields)
+			name, _, _, _, c4id := v.parseNameAndRest(tt.fields)
 
 			if name != tt.expectedName {
 				t.Errorf("parseNameAndRest() name = %q, want %q", name, tt.expectedName)

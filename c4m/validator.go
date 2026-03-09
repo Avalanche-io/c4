@@ -233,7 +233,7 @@ func (v *Validator) validateEntry(line string) {
 	}
 
 	// Extract name (handle quoted names)
-	name, symTarget, c4id := v.parseNameAndRest(fields[nameStart:])
+	name, symTarget, flowOp, flowTgt, c4id := v.parseNameAndRest(fields[nameStart:])
 	
 	// Update statistics
 	v.updateStats(depthLevel, mode, timestamp, size, name, c4id)
@@ -290,7 +290,18 @@ func (v *Validator) validateEntry(line string) {
 	if symTarget != "" && !strings.HasPrefix(mode, "l") {
 		v.addError(v.lineNum, 0, "symlink", "symlink target specified for non-symlink", false)
 	}
-	
+
+	// Validate flow link if present
+	if flowOp != "" {
+		if symTarget != "" {
+			v.addError(v.lineNum, 0, "flow", "flow link mutually exclusive with symlink target", false)
+		}
+		v.validateFlowTarget(flowTgt)
+		if (flowOp == "<-" || flowOp == "<>") && strings.HasPrefix(mode, "l") {
+			v.addError(v.lineNum, 0, "flow", fmt.Sprintf("%s flow link cannot have symlink mode", flowOp), false)
+		}
+	}
+
 	// Validate C4 ID if present
 	if c4id != "" {
 		v.validateC4ID(c4id)
@@ -442,14 +453,14 @@ func (v *Validator) validateC4ID(id string) {
 	}
 }
 
-func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id string) {
+func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, flowOp, flowTgt, c4id string) {
 	if len(fields) == 0 {
-		return "", "", ""
+		return "", "", "", "", ""
 	}
-	
+
 	// Join all fields first to handle directory names with spaces
 	allFields := strings.Join(fields, " ")
-	
+
 	// Check if it's a directory (ends with /)
 	if slashIdx := strings.LastIndex(allFields, "/"); slashIdx != -1 {
 		// Directory: everything up to and including the slash is the name
@@ -458,16 +469,12 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 
 		// Check if there's a quote after the slash (form: "dirname/")
 		if strings.HasPrefix(rest, `"`) && strings.HasPrefix(name, `"`) {
-			// The entire directory name including slash is quoted: "dirname/"
-			// Remove the leading quote from name and trailing quote from rest
 			name = strings.TrimPrefix(name, `"`)
 			rest = strings.TrimPrefix(rest, `"`)
 			v.addWarning(v.lineNum, 0, "name", "quoted directory names are non-canonical")
 		} else if strings.HasPrefix(name, `"`) {
-			// Check for form: "dirname"/
 			nameWithoutSlash := name[:len(name)-1]
 			if strings.HasSuffix(nameWithoutSlash, `"`) {
-				// Quotes don't include the slash
 				name = strings.TrimPrefix(nameWithoutSlash, `"`)
 				name = strings.TrimSuffix(name, `"`)
 				name = name + "/"
@@ -477,6 +484,23 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 		// Parse remaining fields after the directory name
 		if rest != "" {
 			restFields := strings.Fields(rest)
+			for i, field := range restFields {
+				if (field == "->" || field == "<-" || field == "<>") && i+1 < len(restFields) {
+					nextField := restFields[i+1]
+					if field == "->" && (strings.HasPrefix(nextField, "c4") || nextField == "-") {
+						break // hard link
+					}
+					if field == "->" && !strings.Contains(nextField, ":") {
+						break // symlink
+					}
+					if strings.Contains(nextField, ":") {
+						flowOp = field
+						flowTgt = nextField
+						restFields = append(restFields[:i], restFields[i+2:]...)
+					}
+					break
+				}
+			}
 			for _, field := range restFields {
 				if strings.HasPrefix(field, "c4") {
 					c4id = field
@@ -484,12 +508,11 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 				}
 			}
 		}
-		return name, "", c4id
+		return name, "", flowOp, flowTgt, c4id
 	}
-	
+
 	// Not a directory - handle quoted names for files
 	if strings.HasPrefix(fields[0], `"`) {
-		// Find end quote
 		nameFields := []string{fields[0]}
 		endIdx := 0
 		for i, field := range fields {
@@ -508,26 +531,69 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 		name = fields[0]
 		fields = fields[1:]
 	}
-	
-	// Look for symlink target
+
+	// Look for link operators: ->, <-, <>
 	for i, field := range fields {
-		if field == "->" && i+1 < len(fields) {
-			symTarget = fields[i+1]
+		if (field == "->" || field == "<-" || field == "<>") && i+1 < len(fields) {
+			nextField := fields[i+1]
+			if field == "->" {
+				if strings.HasPrefix(nextField, "c4") || nextField == "-" {
+					break // hard link
+				}
+				if strings.Contains(nextField, ":") {
+					flowOp = field
+					flowTgt = nextField
+					fields = append(fields[:i], fields[i+2:]...)
+					break
+				}
+				// symlink target
+				symTarget = nextField
+				fields = append(fields[:i], fields[i+2:]...)
+				break
+			}
+			// <- or <> are always flow
+			flowOp = field
+			flowTgt = nextField
 			fields = append(fields[:i], fields[i+2:]...)
 			break
 		}
 	}
-	
-	// Look for C4 ID - any remaining field could be a C4 ID (valid or not)
-	// We'll validate it later to determine if it's actually valid
+
+	// Look for C4 ID
 	if len(fields) > 0 {
-		// The last field after name and optional symlink target should be the C4 ID
 		c4id = fields[len(fields)-1]
 	}
 
-	return name, symTarget, c4id
+	return name, symTarget, flowOp, flowTgt, c4id
 }
 
+
+// flowLocationPattern matches a valid flow location label.
+var flowLocationPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+
+func (v *Validator) validateFlowTarget(target string) {
+	if target == "" {
+		v.addError(v.lineNum, 0, "flow", "empty flow target", false)
+		return
+	}
+	colonIdx := strings.Index(target, ":")
+	if colonIdx < 0 {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("flow target missing ':' separator: %q", target), false)
+		return
+	}
+	label := target[:colonIdx]
+	if !flowLocationPattern.MatchString(label) {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("invalid flow location label: %q", label), false)
+		return
+	}
+	path := target[colonIdx+1:]
+	if strings.HasPrefix(path, "/") {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("flow target path must not start with '/': %q", target), false)
+	}
+	if strings.Contains(path, "..") {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("flow target path must not contain '..': %q", target), false)
+	}
+}
 
 func (v *Validator) addError(line, col int, field, msg string, fatal bool) {
 	v.errors = append(v.errors, ValidationError{

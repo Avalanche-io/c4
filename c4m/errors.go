@@ -12,4 +12,7 @@ var (
 
 	// ErrPathTraversal indicates a path traversal attempt (../ or ./).
 	ErrPathTraversal = errors.New("c4m: path traversal")
+
+	// ErrInvalidFlowTarget indicates a malformed flow link target.
+	ErrInvalidFlowTarget = errors.New("c4m: invalid flow target")
 )
