@@ -14,7 +14,7 @@ func TestFolderStore(t *testing.T) {
 	path := os.TempDir()
 
 	path = filepath.Join(path, "folder_test")
-	err := os.Mkdir(path, 0755)
+	err := os.MkdirAll(path, 0755)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 func TestLoggerStore(t *testing.T) {
 	path := os.TempDir()
 	path = filepath.Join(path, "logger_test")
-	err := os.Mkdir(path, 0755)
+	err := os.MkdirAll(path, 0755)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-// +build !darwin,!freebsd,!openbsd,!windows
+//go:build !darwin && !freebsd && !openbsd && !windows
 
 package scan
 
