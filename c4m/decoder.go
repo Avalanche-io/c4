@@ -451,6 +451,10 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 				strings.HasPrefix(rest, " <> ") {
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
+			// Hard link group marker: " ->N" where N is a digit 1-9
+			if len(rest) >= 4 && rest[1] == '-' && rest[2] == '>' && rest[3] >= '1' && rest[3] <= '9' {
+				return buf.String(), pos, hasUnescapedBrackets, nil
+			}
 			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}

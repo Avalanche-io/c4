@@ -458,14 +458,15 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, flowOp, 
 		return "", "", "", "", ""
 	}
 
-	// Join all fields first to handle directory names with spaces
+	// Check if the first field is a directory name (contains /).
+	// Use the first "/" to find the directory name boundary, not the last,
+	// because flow targets may also contain "/" (e.g., "nas:raw/plates/").
 	allFields := strings.Join(fields, " ")
-
-	// Check if it's a directory (ends with /)
-	if slashIdx := strings.LastIndex(allFields, "/"); slashIdx != -1 {
-		// Directory: everything up to and including the slash is the name
-		name = allFields[:slashIdx+1]
-		rest := allFields[slashIdx+1:]
+	firstSlash := strings.Index(allFields, "/")
+	if firstSlash != -1 {
+		// Directory: everything up to and including the first slash is the name
+		name = allFields[:firstSlash+1]
+		rest := allFields[firstSlash+1:]
 
 		// Check if there's a quote after the slash (form: "dirname/")
 		if strings.HasPrefix(rest, `"`) && strings.HasPrefix(name, `"`) {
