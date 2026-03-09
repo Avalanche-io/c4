@@ -203,6 +203,7 @@ func formatRetain(d time.Duration) string {
 //	c4 rm studio:                   # remove location
 //	c4 rm project.c4m:              # remove c4m file establishment
 //	c4 rm project.c4m:renders/old/  # remove entry from c4m
+//	c4 rm --flow project.c4m:footage/ # clear flow link, keep entry
 //	c4 rm :                         # stop tracking, remove history
 //	c4 rm :~.ignore/data/           # remove ignore pattern
 //	c4 rm :~tagname                 # remove tag
@@ -213,11 +214,34 @@ func runRm(args []string) {
 		return
 	}
 
-	if len(args) != 1 {
+	// Check for --flow flag
+	var flowFlag bool
+	var filtered []string
+	for _, a := range args {
+		if a == "--flow" {
+			flowFlag = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+
+	if flowFlag {
+		if len(filtered) != 1 {
+			fmt.Fprintf(os.Stderr, "Usage: c4 rm --flow <target>\n")
+			fmt.Fprintf(os.Stderr, "\nExamples:\n")
+			fmt.Fprintf(os.Stderr, "  c4 rm --flow project.c4m:footage/  # clear flow link, keep entry\n")
+			os.Exit(1)
+		}
+		rmFlow(filtered[0])
+		return
+	}
+
+	if len(filtered) != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 rm <target>\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  c4 rm studio:                  # remove location\n")
 		fmt.Fprintf(os.Stderr, "  c4 rm project.c4m:renders/     # remove entry from c4m\n")
+		fmt.Fprintf(os.Stderr, "  c4 rm --flow project.c4m:path/ # clear flow link, keep entry\n")
 		fmt.Fprintf(os.Stderr, "  c4 rm :                        # stop tracking\n")
 		fmt.Fprintf(os.Stderr, "  c4 rm :~.ignore/data/          # remove ignore pattern\n")
 		fmt.Fprintf(os.Stderr, "  c4 rm :~tagname                # remove tag\n")
@@ -225,7 +249,7 @@ func runRm(args []string) {
 		os.Exit(1)
 	}
 
-	target := args[0]
+	target := filtered[0]
 
 	spec, err := pathspec.Parse(target, establish.IsLocationEstablished)
 	if err != nil {
@@ -374,6 +398,66 @@ func rmC4mEntry(spec pathspec.PathSpec) {
 		os.Exit(1)
 	}
 	fmt.Printf("removed %d entries from %s:\n", removed, spec.Source)
+}
+
+// rmFlow clears the flow link from an entry in a c4m file, leaving the entry itself intact.
+func rmFlow(target string) {
+	spec, err := pathspec.Parse(target, establish.IsLocationEstablished)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if spec.Type != pathspec.C4m {
+		fmt.Fprintf(os.Stderr, "Error: --flow requires a c4m path (e.g., project.c4m:footage/)\n")
+		os.Exit(1)
+	}
+	if spec.SubPath == "" {
+		fmt.Fprintf(os.Stderr, "Error: must specify a path within the c4m (e.g., project.c4m:footage/)\n")
+		os.Exit(1)
+	}
+
+	if !establish.IsC4mEstablished(spec.Source) {
+		fmt.Fprintf(os.Stderr, "Error: %s: is not established for writing\n", spec.Source)
+		fmt.Fprintf(os.Stderr, "Run: c4 mk %s:\n", spec.Source)
+		os.Exit(1)
+	}
+
+	unlock, err := lockC4mFile(spec.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locking %s: %v\n", spec.Source, err)
+		os.Exit(1)
+	}
+	defer unlock()
+
+	manifest, err := loadManifest(spec.Source)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	entry := findEntry(manifest, spec.SubPath)
+	if entry == nil {
+		fmt.Fprintf(os.Stderr, "Error: %s not found in %s\n", spec.SubPath, spec.Source)
+		os.Exit(1)
+	}
+
+	if !entry.IsFlowLinked() {
+		fmt.Fprintf(os.Stderr, "Error: %s has no flow link\n", spec.SubPath)
+		os.Exit(1)
+	}
+
+	oldOp := entry.FlowOperator()
+	oldTarget := entry.FlowTarget
+	entry.FlowDirection = c4m.FlowNone
+	entry.FlowTarget = ""
+
+	if err := writeManifest(spec.Source, manifest); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("cleared flow %s %s from %s:%s\n", oldOp, oldTarget, spec.Source, spec.SubPath)
 }
 
 // removeEntry removes an entry (and its children if a directory) from a manifest.
