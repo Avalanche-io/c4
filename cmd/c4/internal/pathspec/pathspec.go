@@ -99,13 +99,18 @@ func Parse(s string, isLocation func(string) bool) (PathSpec, error) {
 	left := s[:colonIdx]
 	right := s[colonIdx+1:]
 
+	// Rule 2a: Windows drive letter (single letter before colon) → local
+	if len(left) == 1 && ((left[0] >= 'A' && left[0] <= 'Z') || (left[0] >= 'a' && left[0] <= 'z')) {
+		return PathSpec{Type: Local, Source: s}, nil
+	}
+
 	// Rule 2b: bare colon or :~ prefix → managed directory
 	if left == "" {
 		return PathSpec{Type: Managed, SubPath: right}, nil
 	}
 
-	// Rule 3: left side contains / → local
-	if strings.Contains(left, "/") {
+	// Rule 3: left side contains / or \ → local
+	if strings.Contains(left, "/") || strings.Contains(left, "\\") {
 		return PathSpec{Type: Local, Source: s}, nil
 	}
 
