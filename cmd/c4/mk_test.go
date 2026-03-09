@@ -532,3 +532,162 @@ func TestEstablishmentLifecycle(t *testing.T) {
 		t.Error("expected error after rm — c4m file should not be established")
 	}
 }
+
+// --- rm --flow tests ---
+
+func TestRmFlowClearsFlowLink(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	// Set up: create c4m with a directory and flow link
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:footage/")
+	run(t, bin, dir, "ln", "->", "nas:", "project.c4m:footage/")
+
+	// Verify flow link exists
+	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
+	found := false
+	for _, e := range m.Entries {
+		if e.Name == "footage/" && e.IsFlowLinked() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("flow link not found on footage/ before rm --flow")
+	}
+
+	// Remove the flow link
+	run(t, bin, dir, "rm", "--flow", "project.c4m:footage/")
+
+	// Verify entry remains but flow link is cleared
+	m = loadTestManifest(t, filepath.Join(dir, "project.c4m"))
+	for _, e := range m.Entries {
+		if e.Name == "footage/" {
+			if e.IsFlowLinked() {
+				t.Error("flow link should be cleared after rm --flow")
+			}
+			if !e.IsDir() {
+				t.Error("entry should still be a directory")
+			}
+			return
+		}
+	}
+	t.Error("footage/ entry should still exist after rm --flow")
+}
+
+func TestRmFlowEntryNotFound(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:existing/")
+
+	cmd := exec.Command(bin, "rm", "--flow", "project.c4m:nonexistent/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for rm --flow on nonexistent entry")
+	}
+	if !strings.Contains(string(out), "not found") {
+		t.Errorf("expected 'not found' error, got %q", out)
+	}
+}
+
+func TestRmFlowNoFlowLink(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:renders/")
+
+	cmd := exec.Command(bin, "rm", "--flow", "project.c4m:renders/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for rm --flow on entry without flow link")
+	}
+	if !strings.Contains(string(out), "no flow link") {
+		t.Errorf("expected 'no flow link' error, got %q", out)
+	}
+}
+
+func TestRmFlowUsage(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	cmd := exec.Command(bin, "rm", "--flow")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for rm --flow without target")
+	}
+	if !strings.Contains(string(out), "Usage") {
+		t.Errorf("expected usage message, got %q", out)
+	}
+}
+
+func TestRmFlowNotEstablished(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	cmd := exec.Command(bin, "rm", "--flow", "project.c4m:footage/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for rm --flow on non-established c4m")
+	}
+	if !strings.Contains(string(out), "not established") {
+		t.Errorf("expected 'not established' error, got %q", out)
+	}
+}
+
+// --- Round-trip test: ln -> ls -> rm --flow -> ls ---
+
+func TestFlowRoundTrip(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:footage/")
+
+	// 1. Create flow link
+	run(t, bin, dir, "ln", "->", "nas:raw/", "project.c4m:footage/")
+
+	// 2. ls shows flow inline
+	cmd := exec.Command(bin, "ls", "project.c4m:")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ls: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "-> nas:raw/") {
+		t.Errorf("ls should show flow operator, got %q", out)
+	}
+
+	// 3. ls -p (pretty) also shows flow
+	cmd = exec.Command(bin, "ls", "-p", "project.c4m:")
+	cmd.Dir = dir
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ls -p: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "-> nas:raw/") {
+		t.Errorf("ls -p should show flow operator, got %q", out)
+	}
+
+	// 4. Remove flow link
+	run(t, bin, dir, "rm", "--flow", "project.c4m:footage/")
+
+	// 5. ls shows entry without flow
+	cmd = exec.Command(bin, "ls", "project.c4m:")
+	cmd.Dir = dir
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ls after rm --flow: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "-> nas:raw/") {
+		t.Errorf("ls should NOT show flow after rm --flow, got %q", out)
+	}
+	// Entry should still exist
+	if !strings.Contains(string(out), "footage/") {
+		t.Errorf("footage/ entry should remain after rm --flow, got %q", out)
+	}
+}

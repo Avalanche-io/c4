@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 func TestLnHardLink(t *testing.T) {
@@ -138,5 +139,197 @@ func TestLnSymlinkInSubdir(t *testing.T) {
 	}
 	if !found {
 		t.Error("config/settings.yaml symlink not found at depth 1")
+	}
+}
+
+// --- Flow link tests ---
+
+func TestLnFlowOutbound(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	// Create c4m file with a directory entry
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:footage/")
+
+	// Create outbound flow link
+	run(t, bin, dir, "ln", "->", "nas:", "project.c4m:footage/")
+
+	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
+
+	found := false
+	for _, e := range m.Entries {
+		if e.Name == "footage/" {
+			found = true
+			if e.FlowDirection != c4m.FlowOutbound {
+				t.Errorf("expected FlowOutbound, got %d", e.FlowDirection)
+			}
+			if e.FlowTarget != "nas:" {
+				t.Errorf("expected flow target %q, got %q", "nas:", e.FlowTarget)
+			}
+		}
+	}
+	if !found {
+		t.Error("footage/ not found in manifest")
+	}
+}
+
+func TestLnFlowInbound(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:incoming/")
+
+	// Create inbound flow link with subpath
+	run(t, bin, dir, "ln", "<-", "studio:dailies/", "project.c4m:incoming/")
+
+	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
+
+	found := false
+	for _, e := range m.Entries {
+		if e.Name == "incoming/" {
+			found = true
+			if e.FlowDirection != c4m.FlowInbound {
+				t.Errorf("expected FlowInbound, got %d", e.FlowDirection)
+			}
+			if e.FlowTarget != "studio:dailies/" {
+				t.Errorf("expected flow target %q, got %q", "studio:dailies/", e.FlowTarget)
+			}
+		}
+	}
+	if !found {
+		t.Error("incoming/ not found in manifest")
+	}
+}
+
+func TestLnFlowBidirectional(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:shared/")
+
+	// Create bidirectional flow link (shell-quoted <>)
+	run(t, bin, dir, "ln", "<>", "desktop:", "project.c4m:shared/")
+
+	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
+
+	found := false
+	for _, e := range m.Entries {
+		if e.Name == "shared/" {
+			found = true
+			if e.FlowDirection != c4m.FlowBidirectional {
+				t.Errorf("expected FlowBidirectional, got %d", e.FlowDirection)
+			}
+			if e.FlowTarget != "desktop:" {
+				t.Errorf("expected flow target %q, got %q", "desktop:", e.FlowTarget)
+			}
+		}
+	}
+	if !found {
+		t.Error("shared/ not found in manifest")
+	}
+}
+
+func TestLnFlowEntryNotFound(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+
+	cmd := exec.Command(bin, "ln", "->", "nas:", "project.c4m:nonexistent/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for flow link on nonexistent entry")
+	}
+	if !strings.Contains(string(out), "not found") {
+		t.Errorf("expected 'not found' error, got %q", out)
+	}
+}
+
+func TestLnFlowInvalidLocation(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:data/")
+
+	// Invalid location name (starts with number)
+	cmd := exec.Command(bin, "ln", "->", "123bad:", "project.c4m:data/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for invalid location name")
+	}
+	if !strings.Contains(string(out), "invalid location") {
+		t.Errorf("expected 'invalid location' error, got %q", out)
+	}
+}
+
+func TestLnFlowNoRemoteColon(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	run(t, bin, dir, "mk", "project.c4m:")
+	run(t, bin, dir, "mkdir", "project.c4m:data/")
+
+	// Remote ref missing colon
+	cmd := exec.Command(bin, "ln", "->", "nas", "project.c4m:data/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for remote ref without colon")
+	}
+	if !strings.Contains(string(out), ":") {
+		t.Errorf("expected colon-related error, got %q", out)
+	}
+}
+
+func TestLnFlowUsage(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	// Too few arguments
+	cmd := exec.Command(bin, "ln", "->", "nas:")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for missing local target")
+	}
+	if !strings.Contains(string(out), "Usage") {
+		t.Errorf("expected usage message, got %q", out)
+	}
+}
+
+func TestLnFlowManagedDirError(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	// Set up a managed directory
+	run(t, bin, dir, "mk", ":")
+
+	cmd := exec.Command(bin, "ln", "->", "nas:", ":footage/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for flow link on managed directory")
+	}
+	if !strings.Contains(string(out), "not yet supported") {
+		t.Errorf("expected 'not yet supported' error, got %q", out)
+	}
+}
+
+func TestLnFlowNotEstablished(t *testing.T) {
+	bin := buildTestBinary(t)
+	dir := t.TempDir()
+
+	cmd := exec.Command(bin, "ln", "->", "nas:", "project.c4m:footage/")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error for non-established c4m file")
+	}
+	if !strings.Contains(string(out), "not established") {
+		t.Errorf("expected 'not established' error, got %q", out)
 	}
 }
