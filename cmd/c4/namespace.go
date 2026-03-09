@@ -56,8 +56,9 @@ func namespacePath(c4mPath, identity string) (string, error) {
 // identityFromConfig extracts the caller identity from the TLS client cert
 // configured in ~/.c4d/config.yaml.
 func identityFromConfig() (string, error) {
-	client, _ := c4dVersionClient()
-	if client.Transport == nil {
+	initC4dConnection()
+	client := c4dClient
+	if client == nil || client.Transport == nil {
 		return "", fmt.Errorf("no TLS configured in c4d config")
 	}
 	transport, ok := client.Transport.(*http.Transport)
@@ -111,7 +112,26 @@ func registerNamespacePath(c4mPath string, retain ...*time.Duration) error {
 
 	id := c4.Identify(f)
 
-	client, addr := c4dVersionClient()
+	// Push the c4m blob to c4d's content store so the flow engine
+	// (and any other consumer) can retrieve it via store.Get().
+	if _, err := f.Seek(0, 0); err != nil {
+		return fmt.Errorf("seek c4m file for push: %w", err)
+	}
+	client, addr := c4dClient, c4dAddr()
+	putReq, err := http.NewRequest(http.MethodPut, addr+"/", f)
+	if err != nil {
+		return fmt.Errorf("c4m blob push: %w", err)
+	}
+	putReq.Header.Set("Content-Type", "application/octet-stream")
+	putResp, err := client.Do(putReq)
+	if err != nil {
+		return fmt.Errorf("c4m blob push: %w", err)
+	}
+	putResp.Body.Close()
+	if putResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("c4d PUT c4m blob: %s", putResp.Status)
+	}
+
 	req, err := http.NewRequest("PUT", addr+nsPath, strings.NewReader(id.String()))
 	if err != nil {
 		return fmt.Errorf("namespace registration: %w", err)
@@ -140,7 +160,7 @@ func runPurge() {
 		os.Exit(1)
 	}
 
-	client, addr := c4dVersionClient()
+	client, addr := c4dClient, c4dAddr()
 	req, err := http.NewRequest("POST", addr+"/admin/purge", nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -195,7 +215,7 @@ func unregisterNamespacePath(c4mPath string) error {
 		return fmt.Errorf("namespace path: %w", err)
 	}
 
-	client, addr := c4dVersionClient()
+	client, addr := c4dClient, c4dAddr()
 	req, err := http.NewRequest("DELETE", addr+nsPath, nil)
 	if err != nil {
 		return fmt.Errorf("namespace unregistration: %w", err)

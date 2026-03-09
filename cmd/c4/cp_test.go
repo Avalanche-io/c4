@@ -261,6 +261,21 @@ func TestWriteManifestRoundTrip(t *testing.T) {
 	}
 }
 
+// setTestC4d overrides the package-level c4d connection for testing.
+// Returns a cleanup function that restores the original values.
+func setTestC4d(t *testing.T, addr string) {
+	t.Helper()
+	origClient := c4dClient
+	origAddr := c4dCachedAddr
+	c4dOnce.Do(func() {}) // ensure Once is "done" so real init doesn't fire
+	c4dClient = &http.Client{}
+	c4dCachedAddr = addr
+	t.Cleanup(func() {
+		c4dClient = origClient
+		c4dCachedAddr = origAddr
+	})
+}
+
 // --- c4d HTTP integration tests ---
 
 func TestPutToC4d(t *testing.T) {
@@ -276,7 +291,7 @@ func TestPutToC4d(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("C4D_ADDR", ts.URL)
+	setTestC4d(t, ts.URL)
 
 	// Create a temp file to push
 	dir := t.TempDir()
@@ -301,7 +316,7 @@ func TestPutToC4dError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("C4D_ADDR", ts.URL)
+	setTestC4d(t, ts.URL)
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.txt")
@@ -320,7 +335,7 @@ func TestWriteFileContentStreams(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("C4D_ADDR", ts.URL)
+	setTestC4d(t, ts.URL)
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "out.txt")
@@ -351,7 +366,7 @@ func TestWriteFileContentFailsOnNotFound(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("C4D_ADDR", ts.URL)
+	setTestC4d(t, ts.URL)
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "out.txt")
@@ -369,18 +384,10 @@ func TestWriteFileContentFailsOnNotFound(t *testing.T) {
 	}
 }
 
-func TestC4dAddr(t *testing.T) {
-	// Default
-	t.Setenv("C4D_ADDR", "")
-	os.Unsetenv("C4D_ADDR")
-	if got := c4dAddr(); got != "http://localhost:17433" {
-		t.Errorf("default c4dAddr = %q, want http://localhost:17433", got)
-	}
-
-	// Custom
-	t.Setenv("C4D_ADDR", "http://myhost:9999")
+func TestC4dAddrOverride(t *testing.T) {
+	setTestC4d(t, "http://myhost:9999")
 	if got := c4dAddr(); got != "http://myhost:9999" {
-		t.Errorf("custom c4dAddr = %q, want http://myhost:9999", got)
+		t.Errorf("c4dAddr = %q, want http://myhost:9999", got)
 	}
 }
 
@@ -502,7 +509,7 @@ func TestCpC4mToLocalIntegration(t *testing.T) {
 		w.Write([]byte("restored content"))
 	}))
 	defer ts.Close()
-	t.Setenv("C4D_ADDR", ts.URL)
+	setTestC4d(t, ts.URL)
 
 	// Create a c4m file with a file entry
 	c4mPath := filepath.Join(dir, "project.c4m")
@@ -557,7 +564,7 @@ func TestWriteFileContentErrorsOnFetchFailure(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer ts.Close()
-	t.Setenv("C4D_ADDR", ts.URL)
+	setTestC4d(t, ts.URL)
 
 	fileID := identifyString("some content")
 	entry := &c4m.Entry{
@@ -609,7 +616,7 @@ func TestCpC4mToLocalWithDirectories(t *testing.T) {
 		w.Write([]byte("file data"))
 	}))
 	defer ts.Close()
-	t.Setenv("C4D_ADDR", ts.URL)
+	setTestC4d(t, ts.URL)
 
 	// Create a c4m file with a nested directory structure
 	c4mPath := filepath.Join(dir, "project.c4m")

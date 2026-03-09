@@ -23,7 +23,7 @@ func runDU(args []string) {
 		fmt.Fprintf(os.Stderr, "Run: c4d init\n")
 		os.Exit(1)
 	}
-	client, addr := c4dVersionClient()
+	client, addr := c4dClient, c4dAddr()
 	resp, err := client.Get(addr + "/du")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "c4d not reachable: %v\n", err)

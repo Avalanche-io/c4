@@ -274,20 +274,38 @@ func (m *Manifest) Validate() error {
 		return fmt.Errorf("missing version")
 	}
 	
-	// Check for duplicate paths
+	// Check for duplicate paths by computing full paths from the tree.
 	seen := make(map[string]bool)
+	var dirStack []string
 	for _, e := range m.Entries {
-		if seen[e.Name] {
-			return fmt.Errorf("%w: %s", ErrDuplicatePath, e.Name)
-		}
-		seen[e.Name] = true
-
 		// Validate entry — name must be a bare filename, never a path
 		if e.Name == "" {
 			return fmt.Errorf("%w: empty name", ErrInvalidEntry)
 		}
 		if isPathName(e.Name) {
 			return fmt.Errorf("%w: %s", ErrPathTraversal, e.Name)
+		}
+
+		// Build full path from parent context
+		if e.Depth < len(dirStack) {
+			dirStack = dirStack[:e.Depth]
+		}
+		var fullPath string
+		if len(dirStack) > 0 {
+			fullPath = strings.Join(dirStack, "") + e.Name
+		} else {
+			fullPath = e.Name
+		}
+		if seen[fullPath] {
+			return fmt.Errorf("%w: %s", ErrDuplicatePath, fullPath)
+		}
+		seen[fullPath] = true
+
+		if e.IsDir() {
+			for len(dirStack) <= e.Depth {
+				dirStack = append(dirStack, "")
+			}
+			dirStack[e.Depth] = e.Name
 		}
 	}
 
@@ -375,6 +393,24 @@ func (m *Manifest) sortSiblingsHierarchically() {
 
 			// This is an immediate child
 			children = append(children, child{entry, i})
+		}
+
+		// Deduplicate siblings by name, keeping the last occurrence
+		// (most recently added entry wins). Mark replaced entries as
+		// used so they don't reappear as orphans.
+		{
+			seen := make(map[string]int) // name -> index in children
+			deduped := children[:0]
+			for _, c := range children {
+				if idx, ok := seen[c.entry.Name]; ok {
+					used[deduped[idx].index] = true // mark replaced entry
+					deduped[idx] = c
+				} else {
+					seen[c.entry.Name] = len(deduped)
+					deduped = append(deduped, c)
+				}
+			}
+			children = deduped
 		}
 
 		// Sort the children (files before dirs, then natural sort)

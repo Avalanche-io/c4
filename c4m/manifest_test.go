@@ -43,6 +43,54 @@ func TestManifestAddEntry(t *testing.T) {
 	}
 }
 
+func TestManifestSortDeduplicates(t *testing.T) {
+	m := NewManifest()
+
+	// Simulate running "c4 cp . project.c4m:" twice — entries are appended
+	m.AddEntry(&Entry{Name: "data.txt", Size: 10})
+	m.AddEntry(&Entry{Name: "hello.txt", Size: 20})
+	m.AddEntry(&Entry{Name: "data.txt", Size: 18})  // duplicate, newer
+	m.AddEntry(&Entry{Name: "hello.txt", Size: 17}) // duplicate, newer
+
+	m.SortEntries()
+
+	if len(m.Entries) != 2 {
+		t.Fatalf("expected 2 entries after dedup, got %d", len(m.Entries))
+	}
+	// Last occurrence should win (most recently added)
+	for _, e := range m.Entries {
+		switch e.Name {
+		case "data.txt":
+			if e.Size != 18 {
+				t.Errorf("data.txt size: got %d, want 18", e.Size)
+			}
+		case "hello.txt":
+			if e.Size != 17 {
+				t.Errorf("hello.txt size: got %d, want 17", e.Size)
+			}
+		default:
+			t.Errorf("unexpected entry: %s", e.Name)
+		}
+	}
+}
+
+func TestManifestSortDeduplicatesNested(t *testing.T) {
+	m := NewManifest()
+
+	// Same-name files in different directories are NOT duplicates
+	m.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir, Size: -1, Depth: 0})
+	m.AddEntry(&Entry{Name: "data.txt", Size: 10, Depth: 1})
+	m.AddEntry(&Entry{Name: "dir2/", Mode: os.ModeDir, Size: -1, Depth: 0})
+	m.AddEntry(&Entry{Name: "data.txt", Size: 20, Depth: 1})
+
+	m.SortEntries()
+
+	// Should have 4 entries: dir1/, data.txt(d1), dir2/, data.txt(d1)
+	if len(m.Entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(m.Entries))
+	}
+}
+
 func TestManifestSort(t *testing.T) {
 	m := NewManifest()
 	

@@ -9,32 +9,19 @@ a trigger condition for when it should be revisited.
 
 ---
 
-## 1. Bidirectional Reconciliation
+## 1. ~~Bidirectional Reconciliation~~ (DONE)
 
-**What**: `<>` operator fulfillment — three-way merge with ancestor
-tracking, conflict detection, conflict resolution policies
-(last-writer-wins, flag-conflict, manual resolution).
+**Implemented**: Last-writer-wins bidirectional with CAS semantics.
+The engine runs both outbound push and inbound pull in a single worker,
+using compare-and-swap to prevent silent overwrites of concurrent
+changes. Local-side CAS uses `namespace.CompareAndPut` (atomic).
+Remote-side CAS uses read-verify-before-write (best-effort over HTTP).
+Conflict policy: local wins when both sides change between cycles.
 
-**Why deferred**: Highest-risk phase. Requires ancestor tracking,
-dual-watch goroutines (local Subscribe + remote long-poll), three-way
-c4m merge, and a conflict data model. The CAP theorem guarantees that
-bidirectional sync across partitions will produce conflicts. Building
-the conflict resolution machinery before anyone has used unidirectional
-flow in production is premature.
-
-**What ships instead**: The `<>` operator parses and round-trips in
-c4m files. c4d recognizes bidirectional channels in the registry. But
-the reconciliation engine does not fulfill them — they appear as
-"direction not yet supported" in channel status. Users who need
-bidirectional can achieve it with paired outbound+inbound channels on
-non-overlapping subtrees.
-
-**Revisit when**: Users report needing true bidirectional sync on
-overlapping paths, OR operational experience with outbound+inbound
-reveals patterns that inform the conflict resolution design.
-
-**Design docs**: `flow-c4d-design.md` §F (bidirectional section),
-`flow-paper-v4.md` (CAP analysis, DPI bounds).
+**Still deferred**: Three-way merge with ancestor tracking, conflict
+flagging, manual resolution UI. These require a conflict data model
+and user-facing conflict workflow. Revisit when users encounter
+conflicts that last-writer-wins handles incorrectly.
 
 ---
 

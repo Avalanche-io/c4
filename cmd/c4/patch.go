@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -214,22 +215,63 @@ func patchLocalPath(targetDir, source string) {
 
 	desiredPaths := manifestPaths(desired)
 
-	// Pre-flight: verify all required content exists on disk before touching anything.
-	// One copy is enough — content can always be copied from wherever it is.
+	// Pre-flight: verify all required content is reachable before touching anything.
+	// Try local sources first, then fall back to c4d for missing blobs.
 	availableIDs := make(map[string]bool)
 	for k := range idIndex {
 		availableIDs[k] = true
 	}
-	var missing []string
+
+	// Collect IDs not available locally (dedup by ID).
+	missingIDs := make(map[string]bool)
 	for _, dp := range desiredPaths {
 		if dp.entry.IsDir() || dp.entry.IsSymlink() || dp.entry.C4ID.IsNil() {
 			continue
 		}
-		if !availableIDs[dp.entry.C4ID.String()] {
-			missing = append(missing, dp.path)
+		idStr := dp.entry.C4ID.String()
+		if !availableIDs[idStr] {
+			missingIDs[idStr] = true
 		}
 	}
-	if len(missing) > 0 {
+
+	// Fetch missing blobs from c4d when available.
+	var fetchTmpDir string
+	if len(missingIDs) > 0 && c4dConfigured() {
+		fetchTmpDir, err = os.MkdirTemp("", "c4-patch-fetch-*")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating temp dir: %v\n", err)
+			os.Exit(1)
+		}
+		defer os.RemoveAll(fetchTmpDir)
+
+		var unreachable []string
+		for idStr := range missingIDs {
+			tmpPath, fetchErr := fetchBlobFromC4d(idStr, fetchTmpDir)
+			if fetchErr != nil {
+				unreachable = append(unreachable, idStr)
+				continue
+			}
+			idIndex[idStr] = append(idIndex[idStr], tmpPath)
+			availableIDs[idStr] = true
+		}
+		if len(unreachable) > 0 {
+			fmt.Fprintf(os.Stderr, "%d files not available locally or from c4d:\n", len(unreachable))
+			for _, id := range unreachable {
+				fmt.Fprintf(os.Stderr, "  %s\n", id[:16]+"...")
+			}
+			os.Exit(1)
+		}
+	} else if len(missingIDs) > 0 {
+		// No c4d configured — report missing files by path.
+		var missing []string
+		for _, dp := range desiredPaths {
+			if dp.entry.IsDir() || dp.entry.IsSymlink() || dp.entry.C4ID.IsNil() {
+				continue
+			}
+			if !availableIDs[dp.entry.C4ID.String()] {
+				missing = append(missing, dp.path)
+			}
+		}
 		fmt.Fprintf(os.Stderr, "%d files not available locally:\n", len(missing))
 		for _, m := range missing {
 			fmt.Fprintf(os.Stderr, "  %s\n", m)
@@ -346,12 +388,14 @@ func patchLocalPath(targetDir, source string) {
 }
 
 // loadSourceManifest loads a manifest from a c4m file or stdin.
+// Accepts "foo.c4m" or "foo.c4m:" (trailing colon stripped).
 func loadSourceManifest(source string) (*c4m.Manifest, error) {
 	if source == "-" {
 		return c4m.NewDecoder(os.Stdin).Decode()
 	}
-	if strings.HasSuffix(source, ".c4m") {
-		return loadManifest(source)
+	s := strings.TrimSuffix(source, ":")
+	if strings.HasSuffix(s, ".c4m") {
+		return loadManifest(s)
 	}
 	return nil, fmt.Errorf("source must be a .c4m file or -")
 }
@@ -411,6 +455,38 @@ func identifyFile(path string) c4.ID {
 	}
 	defer f.Close()
 	return c4.Identify(f)
+}
+
+// fetchBlobFromC4d fetches content by C4 ID from c4d and writes it to a temp
+// file in tmpDir. Returns the path to the temp file on success.
+func fetchBlobFromC4d(idStr, tmpDir string) (string, error) {
+	resp, err := c4dClient.Get(c4dAddr() + "/" + idStr)
+	if err != nil {
+		return "", fmt.Errorf("c4d not reachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", fmt.Errorf("content not found for %s", idStr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("c4d returned %s", resp.Status)
+	}
+
+	tmp, err := os.CreateTemp(tmpDir, "blob-*")
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	return tmp.Name(), nil
 }
 
 func copyFile(src, dst string) error {
