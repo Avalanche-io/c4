@@ -136,6 +136,18 @@ func runLs(args []string) {
 		}
 		enc.Encode(manifest)
 
+	case pathspec.Location:
+		manifest := getLocationManifest(spec)
+		if *id {
+			fmt.Println(manifest.ComputeC4ID())
+			return
+		}
+		enc := c4m.NewEncoder(os.Stdout)
+		if *pretty {
+			enc.SetPretty(true)
+		}
+		enc.Encode(manifest)
+
 	default:
 		fmt.Fprintf(os.Stderr, "Error: %s not yet supported for ls\n", spec.Type)
 		os.Exit(1)

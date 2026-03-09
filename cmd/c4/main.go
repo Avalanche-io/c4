@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -350,6 +351,9 @@ func getManifest(pathArg string) *c4m.Manifest {
 	case pathspec.Managed:
 		return getManagedManifest(spec.SubPath)
 
+	case pathspec.Location:
+		return getLocationManifest(spec)
+
 	default:
 		// Local filesystem path — scan it
 		gen := scan.NewGeneratorWithOptions(scan.WithC4IDs(true))
@@ -360,6 +364,36 @@ func getManifest(pathArg string) *c4m.Manifest {
 		}
 		return manifest
 	}
+}
+
+// getLocationManifest fetches a manifest from a remote location via the local c4d proxy.
+// Route: GET {c4dAddr}/~{location}/mnt/{subpath}
+func getLocationManifest(spec pathspec.PathSpec) *c4m.Manifest {
+	addr := c4dAddr()
+	url := fmt.Sprintf("%s/~%s/mnt/", addr, spec.Source)
+	if spec.SubPath != "" {
+		url += spec.SubPath
+	}
+
+	resp, err := c4dClient.Get(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: c4d not reachable at %s\n", addr)
+		fmt.Fprintf(os.Stderr, "Location pathspecs require a running c4d.\n")
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error: c4d returned %s for %s:%s\n", resp.Status, spec.Source, spec.SubPath)
+		os.Exit(1)
+	}
+
+	manifest, err := c4m.NewDecoder(resp.Body).Decode()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error decoding response from %s: %v\n", spec.Source, err)
+		os.Exit(1)
+	}
+	return manifest
 }
 
 // getManagedManifest resolves a managed directory reference (:, :~1, :~name).
