@@ -542,7 +542,7 @@ func TestRmFlowClearsFlowLink(t *testing.T) {
 	// Set up: create c4m with a directory and flow link
 	run(t, bin, dir, "mk", "project.c4m:")
 	run(t, bin, dir, "mkdir", "project.c4m:footage/")
-	run(t, bin, dir, "ln", "->", "nas:", "project.c4m:footage/")
+	run(t, bin, dir, "ln", "->", "project.c4m:footage/", "nas:")
 
 	// Verify flow link exists
 	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
@@ -649,7 +649,7 @@ func TestFlowRoundTrip(t *testing.T) {
 	run(t, bin, dir, "mkdir", "project.c4m:footage/")
 
 	// 1. Create flow link
-	run(t, bin, dir, "ln", "->", "nas:raw/", "project.c4m:footage/")
+	run(t, bin, dir, "ln", "->", "project.c4m:footage/", "nas:raw/")
 
 	// 2. ls shows flow inline
 	cmd := exec.Command(bin, "ls", "project.c4m:")

@@ -18,9 +18,9 @@ import (
 //	c4 ln project.c4m:master.exr project.c4m:backup.exr     # hard link
 //	c4 ln -s ../shared/config.yaml project.c4m:config.yaml   # symlink
 //	c4 ln :~2 :~release-v1                                   # tag snapshot
-//	c4 ln -> nas: project.c4m:footage/                       # outbound flow
-//	c4 ln <- studio:dailies/ :incoming/                      # inbound flow
-//	c4 ln '<>' desktop: :projects/                           # bidirectional flow
+//	c4 ln -> project.c4m:footage/ nas:                        # outbound flow
+//	c4 ln <- :incoming/ studio:dailies/                      # inbound flow
+//	c4 ln '<>' :projects/ desktop:                           # bidirectional flow
 func runLn(args []string) {
 	// Check for flow direction as first argument: ->, <-, <>
 	if len(args) >= 1 {
@@ -77,23 +77,23 @@ func parseFlowDirection(s string) c4m.FlowDirection {
 
 // lnFlow creates a flow link on an entry in a c4m file or managed directory.
 //
-// Syntax: c4 ln DIRECTION REMOTE_REF LOCAL_TARGET
+// Syntax: c4 ln DIRECTION LOCAL_TARGET REMOTE_REF
 //
-//	c4 ln -> nas: project.c4m:footage/
-//	c4 ln <- studio:dailies/ :incoming/
-//	c4 ln '<>' desktop: :projects/
+//	c4 ln -> project.c4m:footage/ nas:
+//	c4 ln <- :incoming/ studio:dailies/
+//	c4 ln '<>' :projects/ desktop:
 func lnFlow(dir c4m.FlowDirection, args []string) {
 	if len(args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 ln <direction> <location:path> <local-target>\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 ln <direction> <local-target> <location:path>\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  c4 ln -> nas: project.c4m:footage/\n")
-		fmt.Fprintf(os.Stderr, "  c4 ln <- studio:dailies/ :incoming/\n")
-		fmt.Fprintf(os.Stderr, "  c4 ln '<>' desktop: :projects/\n")
+		fmt.Fprintf(os.Stderr, "  c4 ln -> project.c4m:footage/ nas:\n")
+		fmt.Fprintf(os.Stderr, "  c4 ln <- :incoming/ studio:dailies/\n")
+		fmt.Fprintf(os.Stderr, "  c4 ln '<>' :projects/ desktop:\n")
 		os.Exit(1)
 	}
 
-	remoteRef := args[0]  // location:path (e.g., "nas:", "nas:raw/")
-	localSpec := args[1]  // c4m path or managed dir path
+	localSpec := args[0]  // c4m path or managed dir path
+	remoteRef := args[1]  // location:path (e.g., "nas:", "nas:raw/")
 
 	// Validate remote reference contains ":"
 	colonIdx := strings.IndexByte(remoteRef, ':')
@@ -188,7 +188,7 @@ func lnFlowManaged(dir c4m.FlowDirection, flowTarget string, spec pathspec.PathS
 	// are metadata that don't exist on the filesystem). For now, flow links
 	// are supported on c4m file entries.
 	fmt.Fprintf(os.Stderr, "Error: flow links on managed directories require c4d (not yet supported)\n")
-	fmt.Fprintf(os.Stderr, "Use a c4m file instead: c4 ln %s %s project.c4m:path/\n",
+	fmt.Fprintf(os.Stderr, "Use a c4m file instead: c4 ln %s project.c4m:path/ %s\n",
 		(&c4m.Entry{FlowDirection: dir}).FlowOperator(), flowTarget)
 	os.Exit(1)
 }

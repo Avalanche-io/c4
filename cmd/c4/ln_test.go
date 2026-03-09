@@ -153,7 +153,7 @@ func TestLnFlowOutbound(t *testing.T) {
 	run(t, bin, dir, "mkdir", "project.c4m:footage/")
 
 	// Create outbound flow link
-	run(t, bin, dir, "ln", "->", "nas:", "project.c4m:footage/")
+	run(t, bin, dir, "ln", "->", "project.c4m:footage/", "nas:")
 
 	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
 
@@ -182,7 +182,7 @@ func TestLnFlowInbound(t *testing.T) {
 	run(t, bin, dir, "mkdir", "project.c4m:incoming/")
 
 	// Create inbound flow link with subpath
-	run(t, bin, dir, "ln", "<-", "studio:dailies/", "project.c4m:incoming/")
+	run(t, bin, dir, "ln", "<-", "project.c4m:incoming/", "studio:dailies/")
 
 	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
 
@@ -211,7 +211,7 @@ func TestLnFlowBidirectional(t *testing.T) {
 	run(t, bin, dir, "mkdir", "project.c4m:shared/")
 
 	// Create bidirectional flow link (shell-quoted <>)
-	run(t, bin, dir, "ln", "<>", "desktop:", "project.c4m:shared/")
+	run(t, bin, dir, "ln", "<>", "project.c4m:shared/", "desktop:")
 
 	m := loadTestManifest(t, filepath.Join(dir, "project.c4m"))
 
@@ -238,7 +238,7 @@ func TestLnFlowEntryNotFound(t *testing.T) {
 
 	run(t, bin, dir, "mk", "project.c4m:")
 
-	cmd := exec.Command(bin, "ln", "->", "nas:", "project.c4m:nonexistent/")
+	cmd := exec.Command(bin, "ln", "->", "project.c4m:nonexistent/", "nas:")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -257,7 +257,7 @@ func TestLnFlowInvalidLocation(t *testing.T) {
 	run(t, bin, dir, "mkdir", "project.c4m:data/")
 
 	// Invalid location name (starts with number)
-	cmd := exec.Command(bin, "ln", "->", "123bad:", "project.c4m:data/")
+	cmd := exec.Command(bin, "ln", "->", "project.c4m:data/", "123bad:")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -276,7 +276,7 @@ func TestLnFlowNoRemoteColon(t *testing.T) {
 	run(t, bin, dir, "mkdir", "project.c4m:data/")
 
 	// Remote ref missing colon
-	cmd := exec.Command(bin, "ln", "->", "nas", "project.c4m:data/")
+	cmd := exec.Command(bin, "ln", "->", "project.c4m:data/", "nas")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -308,7 +308,7 @@ func TestLnFlowManagedDirError(t *testing.T) {
 	// Set up a managed directory
 	run(t, bin, dir, "mk", ":")
 
-	cmd := exec.Command(bin, "ln", "->", "nas:", ":footage/")
+	cmd := exec.Command(bin, "ln", "->", ":footage/", "nas:")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -323,7 +323,7 @@ func TestLnFlowNotEstablished(t *testing.T) {
 	bin := buildTestBinary(t)
 	dir := t.TempDir()
 
-	cmd := exec.Command(bin, "ln", "->", "nas:", "project.c4m:footage/")
+	cmd := exec.Command(bin, "ln", "->", "project.c4m:footage/", "nas:")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil {
