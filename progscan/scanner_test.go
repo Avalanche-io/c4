@@ -198,6 +198,104 @@ func TestThreePhases(t *testing.T) {
 	}
 }
 
+func TestProgressReadback(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "a.txt", "hello")
+	writeFile(t, root, "b.txt", "world")
+	mkDir(t, root, "sub")
+	writeFile(t, root, "sub/c.txt", "data")
+
+	outPath := filepath.Join(t.TempDir(), "test.c4m")
+	sc, err := New(root, outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sc.Close()
+
+	// Phase 0: structure only.
+	if err := sc.Phase0(); err != nil {
+		t.Fatal(err)
+	}
+
+	p0, err := ReadProgress(outPath)
+	if err != nil {
+		t.Fatal("read progress phase 0:", err)
+	}
+	if p0.Total != 4 { // 3 files + 1 dir
+		t.Errorf("phase 0 total: got %d, want 4", p0.Total)
+	}
+	if p0.Files != 3 {
+		t.Errorf("phase 0 files: got %d, want 3", p0.Files)
+	}
+	if p0.HasMeta != 0 {
+		t.Errorf("phase 0 hasMeta: got %d, want 0", p0.HasMeta)
+	}
+	if p0.HasC4ID != 0 {
+		t.Errorf("phase 0 hasC4ID: got %d, want 0", p0.HasC4ID)
+	}
+	if p0.Phase() != 0 {
+		t.Errorf("phase 0 phase: got %d, want 0", p0.Phase())
+	}
+
+	// Phase 1: metadata.
+	if err := sc.Phase1(); err != nil {
+		t.Fatal(err)
+	}
+
+	p1, err := ReadProgress(outPath)
+	if err != nil {
+		t.Fatal("read progress phase 1:", err)
+	}
+	if p1.HasMeta != 4 {
+		t.Errorf("phase 1 hasMeta: got %d, want 4", p1.HasMeta)
+	}
+	if p1.HasC4ID != 0 {
+		t.Errorf("phase 1 hasC4ID: got %d, want 0", p1.HasC4ID)
+	}
+	if p1.Phase() != 1 {
+		t.Errorf("phase 1 phase: got %d, want 1", p1.Phase())
+	}
+
+	// Phase 2: identity.
+	if err := sc.Phase2(); err != nil {
+		t.Fatal(err)
+	}
+
+	p2, err := ReadProgress(outPath)
+	if err != nil {
+		t.Fatal("read progress phase 2:", err)
+	}
+	if p2.HasC4ID != 3 {
+		t.Errorf("phase 2 hasC4ID: got %d, want 3", p2.HasC4ID)
+	}
+	if p2.Phase() != 2 {
+		t.Errorf("phase 2 phase: got %d, want 2", p2.Phase())
+	}
+
+	t.Logf("Phase 0: %d/%d meta, %d/%d c4id, frac=%.2f (phase %d)",
+		p0.HasMeta, p0.Total, p0.HasC4ID, p0.Files, p0.Fraction(), p0.Phase())
+	t.Logf("Phase 0 bar: %s", p0.Bar(40))
+
+	t.Logf("Phase 1: %d/%d meta, %d/%d c4id, bytes=%d, frac=%.2f (phase %d)",
+		p1.HasMeta, p1.Total, p1.HasC4ID, p1.Files, p1.TotalBytes, p1.Fraction(), p1.Phase())
+	t.Logf("Phase 1 bar: %s", p1.Bar(40))
+
+	t.Logf("Phase 2: %d/%d meta, %d/%d c4id, bytes=%d, frac=%.2f (phase %d)",
+		p2.HasMeta, p2.Total, p2.HasC4ID, p2.Files, p2.TotalBytes, p2.Fraction(), p2.Phase())
+	t.Logf("Phase 2 bar: %s", p2.Bar(40))
+
+	// Verify fraction monotonically increases.
+	if p0.Fraction() > p1.Fraction() {
+		t.Errorf("fraction decreased from phase 0 (%.2f) to phase 1 (%.2f)", p0.Fraction(), p1.Fraction())
+	}
+	if p1.Fraction() > p2.Fraction() {
+		t.Errorf("fraction decreased from phase 1 (%.2f) to phase 2 (%.2f)", p1.Fraction(), p2.Fraction())
+	}
+	if p2.Fraction() != 1.0 {
+		t.Errorf("phase 2 fraction should be 1.0, got %.4f", p2.Fraction())
+	}
+}
+
 // TestRealDirectory scans a real directory when SCAN_DIR is set.
 // Run with: SCAN_DIR=~/ws go test -run TestRealDirectory -v -timeout 600s
 func TestRealDirectory(t *testing.T) {

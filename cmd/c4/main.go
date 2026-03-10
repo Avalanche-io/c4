@@ -63,6 +63,7 @@ Usage:
   c4 unrm :                        # List/recover removed items
   c4 du                            # Show store disk usage
   c4 scan <path>                   # Progressive filesystem scan
+  c4 compact <file.c4m>            # Remove padding from c4m file
 
 Examples:
   c4 file.txt                      # c4m entry for file
@@ -134,6 +135,9 @@ func main() {
 			return
 		case "scan":
 			runScan(os.Args[2:])
+			return
+		case "compact":
+			runCompact(os.Args[2:])
 			return
 		}
 	}

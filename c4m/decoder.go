@@ -183,8 +183,8 @@ func (d *Decoder) parseEntry() (*Entry, error) {
 	}
 
 	entry.Size = size
-	entry.Name = name
-	entry.Target = target
+	entry.Name = UnsafeName(name)
+	entry.Target = UnsafeName(target)
 	entry.C4ID = id
 	entry.HardLink = hardLink
 	entry.FlowDirection = flowDir
@@ -372,6 +372,14 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 // Unquoted names: support \[→[, \]→], \\→\, \ →space, \"→", \,→,, \-→- escapes.
 //   - For directory names (trailing /): read until / then stop
 //   - For file names: read until space followed by ->, c4 prefix, or end-of-line
+// parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
+// Returns the parsed string, new position, whether unescaped brackets were found
+// (indicating potential sequence notation), and error.
+//
+// Quoted names: only \" is handled (for quote delimiting). All other
+// backslash sequences pass through for UnsafeName.
+// Unquoted names: only \[ and \] are handled (c4m bracket escaping).
+// All other backslash sequences pass through for UnsafeName.
 func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, error) {
 	n := len(line)
 	if pos >= n {
@@ -379,24 +387,13 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 	}
 
 	if line[pos] == '"' {
-		// Quoted name: process escape sequences
+		// Quoted name: only handle \" for quote delimiting.
 		pos++ // skip opening quote
 		var buf strings.Builder
 		for pos < n {
 			ch := line[pos]
-			if ch == '\\' && pos+1 < n {
-				next := line[pos+1]
-				switch next {
-				case '\\':
-					buf.WriteByte('\\')
-				case '"':
-					buf.WriteByte('"')
-				case 'n':
-					buf.WriteByte('\n')
-				default:
-					buf.WriteByte('\\')
-					buf.WriteByte(next)
-				}
+			if ch == '\\' && pos+1 < n && line[pos+1] == '"' {
+				buf.WriteByte('"')
 				pos += 2
 			} else if ch == '"' {
 				pos++ // skip closing quote
@@ -409,23 +406,25 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 		return "", pos, false, fmt.Errorf("unterminated quoted name")
 	}
 
-	// Unquoted name: scan for boundary, processing escape sequences.
-	// Track unescaped brackets — their presence indicates potential sequence notation.
-	// Escaped brackets (\[ \]) produce literal brackets that are NOT sequence indicators.
+	// Unquoted name: scan for boundary.
+	// Only handle \[ and \] (c4m bracket escaping for sequence notation).
+	// All other backslash sequences pass through for UnsafeName.
 	var buf strings.Builder
 	hasUnescapedBrackets := false
 	for pos < n {
 		ch := line[pos]
 
-		// Process escape sequences: \[ \] \\ \  \" \, \-
+		// c4m bracket escapes only.
 		if ch == '\\' && pos+1 < n {
 			next := line[pos+1]
-			switch next {
-			case '[', ']':
+			if next == '[' || next == ']' {
 				buf.WriteByte(next)
 				pos += 2
 				continue
-			case '\\', ' ', '"', ',', '-':
+			}
+			// Legacy c4m escapes: \ , \", \,, \- — still consumed
+			// for backwards compatibility with hand-written c4m files.
+			if next == ' ' || next == '"' || next == ',' || next == '-' {
 				buf.WriteByte(next)
 				pos += 2
 				continue
@@ -501,24 +500,13 @@ func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 	}
 
 	if line[pos] == '"' {
-		// Quoted target: same logic as quoted name
+		// Quoted target: only handle \" for quote delimiting.
 		pos++ // skip opening quote
 		var buf strings.Builder
 		for pos < n {
 			ch := line[pos]
-			if ch == '\\' && pos+1 < n {
-				next := line[pos+1]
-				switch next {
-				case '\\':
-					buf.WriteByte('\\')
-				case '"':
-					buf.WriteByte('"')
-				case 'n':
-					buf.WriteByte('\n')
-				default:
-					buf.WriteByte('\\')
-					buf.WriteByte(next)
-				}
+			if ch == '\\' && pos+1 < n && line[pos+1] == '"' {
+				buf.WriteByte('"')
 				pos += 2
 			} else if ch == '"' {
 				pos++ // skip closing quote
@@ -537,11 +525,9 @@ func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 		ch := line[pos]
 		if ch == ' ' {
 			rest := line[pos:]
-			// Space followed by c4 prefix
 			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
 				return line[start:pos], pos, nil
 			}
-			// Space followed by "-" and then end-of-line or space (null C4 ID)
 			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
 				return line[start:pos], pos, nil
 			}

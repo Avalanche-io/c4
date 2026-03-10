@@ -278,88 +278,57 @@ func formatSize(size int64, displayFormat bool) string {
 // formatName adds quotes or escape notation if the name contains special characters.
 // For non-sequence names, brackets are escaped as \[ and \] to prevent
 // them from being interpreted as sequence notation on re-parse.
+// formatName applies SafeName encoding and then handles c4m-specific
+// syntax: quoting for names with spaces or double-quotes, and bracket
+// escaping for non-sequence names. SafeName handles all control
+// characters and non-printable bytes; formatName only adds c4m
+// field-boundary syntax on top.
 func formatName(name string, isSequence bool) string {
-	if strings.HasSuffix(name, "/") {
-		// Directory names: check if quoting is needed
-		base := name[:len(name)-1]
-		needsQuotes := false
-		for _, c := range base {
-			if c == ' ' || c == '"' || c == '\\' || c == '\n' {
-				needsQuotes = true
-				break
-			}
-		}
+	safe := SafeName(name)
+
+	if strings.HasSuffix(safe, "/") {
+		base := safe[:len(safe)-1]
+		needsQuotes := strings.ContainsRune(base, ' ') || strings.ContainsRune(base, '"')
 		if base != strings.TrimSpace(base) {
 			needsQuotes = true
 		}
 		if !needsQuotes {
-			// Escape brackets in non-sequence directory names
 			if !isSequence && (strings.ContainsRune(base, '[') || strings.ContainsRune(base, ']')) {
-				escaped := strings.ReplaceAll(base, `\`, `\\`)
-				escaped = strings.ReplaceAll(escaped, "[", `\[`)
+				escaped := strings.ReplaceAll(base, "[", `\[`)
 				escaped = strings.ReplaceAll(escaped, "]", `\]`)
 				return escaped + "/"
 			}
-			return name
+			return safe
 		}
-		escaped := strings.ReplaceAll(base, `\`, `\\`)
-		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+		escaped := strings.ReplaceAll(base, `"`, `\"`)
 		return fmt.Sprintf(`"%s/"`, escaped)
 	}
 
-	// Sequence names must stay unquoted so they are still recognized as
-	// sequences on re-parse. Use backslash-escape notation per spec.
 	if isSequence {
 		return formatSequenceName(name)
 	}
 
-	// For non-sequence file names with brackets but no other special chars,
-	// use bracket escape notation instead of quoting
-	if strings.ContainsRune(name, '[') || strings.ContainsRune(name, ']') {
-		needsQuotes := false
-		for _, c := range name {
-			if c == ' ' || c == '"' || c == '\n' {
-				needsQuotes = true
-				break
-			}
-		}
-		if name != strings.TrimSpace(name) {
+	if strings.ContainsRune(safe, '[') || strings.ContainsRune(safe, ']') {
+		needsQuotes := strings.ContainsRune(safe, ' ') || strings.ContainsRune(safe, '"')
+		if safe != strings.TrimSpace(safe) {
 			needsQuotes = true
 		}
 		if !needsQuotes {
-			// Use escape notation for brackets (no quoting needed)
-			escaped := strings.ReplaceAll(name, `\`, `\\`)
-			escaped = strings.ReplaceAll(escaped, "[", `\[`)
+			escaped := strings.ReplaceAll(safe, "[", `\[`)
 			escaped = strings.ReplaceAll(escaped, "]", `\]`)
 			return escaped
 		}
-		// Fall through to quoting
 	}
 
-	// For files, check if quoting is needed
-	needsQuotes := false
-	for _, c := range name {
-		if c == ' ' || c == '"' || c == '\\' || c == '\n' {
-			needsQuotes = true
-			break
-		}
-	}
-
-	// Check for leading/trailing whitespace
-	if name != strings.TrimSpace(name) {
+	needsQuotes := strings.ContainsRune(safe, ' ') || strings.ContainsRune(safe, '"')
+	if safe != strings.TrimSpace(safe) {
 		needsQuotes = true
 	}
-
 	if !needsQuotes {
-		return name
+		return safe
 	}
 
-	// Escape special characters and quote
-	escaped := strings.ReplaceAll(name, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
-
+	escaped := strings.ReplaceAll(safe, `"`, `\"`)
 	return fmt.Sprintf(`"%s"`, escaped)
 }
 
@@ -382,22 +351,15 @@ func formatSequenceName(name string) string {
 // Unlike formatName, targets don't get directory treatment (no trailing slash logic)
 // since a target path like "/usr/lib/" is a full path, not a name.
 func formatTarget(target string) string {
-	needsQuotes := false
-	for _, c := range target {
-		if c == ' ' || c == '"' || c == '\\' || c == '\n' {
-			needsQuotes = true
-			break
-		}
-	}
-	if target != strings.TrimSpace(target) {
+	safe := SafeName(target)
+	needsQuotes := strings.ContainsRune(safe, ' ') || strings.ContainsRune(safe, '"')
+	if safe != strings.TrimSpace(safe) {
 		needsQuotes = true
 	}
 	if !needsQuotes {
-		return target
+		return safe
 	}
-	escaped := strings.ReplaceAll(target, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+	escaped := strings.ReplaceAll(safe, `"`, `\"`)
 	return fmt.Sprintf(`"%s"`, escaped)
 }
 

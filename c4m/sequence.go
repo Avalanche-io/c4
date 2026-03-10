@@ -47,13 +47,16 @@ func unescapeSequenceNotation(s string) string {
 // escapeSequenceNotation escapes characters in a sequence prefix or suffix
 // that require backslash escaping per the spec: space, brackets, backslash, quote.
 // Commas and hyphens are not escaped outside range notation (they are unambiguous).
+// escapeSequenceNotation escapes c4m-specific syntax characters in the
+// prefix/suffix parts of a sequence name. Backslash escapes from SafeName
+// are preserved as-is; only space, quote, and bracket literals need c4m
+// escaping.
 func escapeSequenceNotation(s string) string {
+	safe := SafeName(s)
 	var buf strings.Builder
-	buf.Grow(len(s))
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '\\':
-			buf.WriteString(`\\`)
+	buf.Grow(len(safe))
+	for i := 0; i < len(safe); i++ {
+		switch safe[i] {
 		case ' ':
 			buf.WriteString(`\ `)
 		case '"':
@@ -63,7 +66,7 @@ func escapeSequenceNotation(s string) string {
 		case ']':
 			buf.WriteString(`\]`)
 		default:
-			buf.WriteByte(s[i])
+			buf.WriteByte(safe[i])
 		}
 	}
 	return buf.String()

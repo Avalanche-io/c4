@@ -36,6 +36,11 @@ type Scanner struct {
 	entries []entryRec
 	pos     int64 // current write position in file
 
+	// Display is an optional writer that receives display-format lines
+	// during Phase 0. When set, entries stream to this writer as they
+	// are discovered, providing immediate output. Set before Phase0().
+	Display io.Writer
+
 	// Stats
 	Dirs  int
 	Files int
@@ -102,7 +107,7 @@ func (s *Scanner) walkDir(dir string, depth int) error {
 
 	// Write files first.
 	for _, e := range files {
-		name := e.Name()
+		name := c4m.SafeName(e.Name())
 		mode := typeOnlyMode(e.Type())
 		if err := s.writeEntry(depth, mode, name, filepath.Join(dir, e.Name()), false); err != nil {
 			return err
@@ -112,7 +117,7 @@ func (s *Scanner) walkDir(dir string, depth int) error {
 
 	// Write each directory entry, then recurse into it.
 	for _, e := range dirs {
-		name := e.Name() + "/"
+		name := c4m.SafeName(e.Name()) + "/"
 		mode := typeOnlyMode(e.Type())
 		if err := s.writeEntry(depth, mode, name, filepath.Join(dir, e.Name()), true); err != nil {
 			return err
@@ -143,6 +148,14 @@ func (s *Scanner) writeEntry(depth int, mode os.FileMode, name, fsPath string, i
 	}
 	s.pos += int64(len(line))
 	s.entries = append(s.entries, rec)
+
+	// Stream display-format line if a display writer is set.
+	if s.Display != nil {
+		dl := DisplayLine(depth, mode, time.Time{}, -1, name, c4.ID{})
+		if _, err := io.WriteString(s.Display, dl); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -323,18 +336,25 @@ func (s *Scanner) Phase2() error {
 	return s.f.Sync()
 }
 
-// Compact writes a canonical c4m (no padding, no gaps) to w by parsing
-// the working file through the standard c4m decoder and re-encoding.
-func (s *Scanner) Compact(w io.Writer) error {
-	// Seek to start and decode.
+// DecodeWorking decodes the working c4m file and returns the manifest.
+func (s *Scanner) DecodeWorking() (*c4m.Manifest, error) {
 	if _, err := s.f.Seek(0, io.SeekStart); err != nil {
-		return err
+		return nil, err
 	}
 	m, err := c4m.NewDecoder(s.f).Decode()
 	if err != nil {
-		return fmt.Errorf("decode working file: %w", err)
+		return nil, fmt.Errorf("decode working file: %w", err)
 	}
+	return m, nil
+}
 
+// Compact writes a canonical c4m (no padding, no gaps) to w by parsing
+// the working file through the standard c4m decoder and re-encoding.
+func (s *Scanner) Compact(w io.Writer) error {
+	m, err := s.DecodeWorking()
+	if err != nil {
+		return err
+	}
 	enc := c4m.NewEncoder(w)
 	return enc.Encode(m)
 }

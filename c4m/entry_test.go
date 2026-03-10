@@ -374,8 +374,10 @@ func TestFormatName(t *testing.T) {
 		{"simple name", "file.txt", "file.txt"},
 		{"with spaces", "my file.txt", `"my file.txt"`},
 		{"with quotes", `file"test".txt`, `"file\"test\".txt"`},
-		{"with backslash", `file\test.txt`, `"file\\test.txt"`},
-		{"with newline", "file\ntest.txt", `"file\ntest.txt"`},
+		// Backslash is SafeName-encoded as \\, no quoting needed.
+		{"with backslash", `file\test.txt`, `file\\test.txt`},
+		// Newline is SafeName-encoded as \n, no quoting needed.
+		{"with newline", "file\ntest.txt", `file\ntest.txt`},
 		{"leading space", " file.txt", `" file.txt"`},
 		{"trailing space", "file.txt ", `"file.txt "`},
 		{"multiple special", `my "special"\file.txt`, `"my \"special\"\\file.txt"`},
@@ -383,8 +385,10 @@ func TestFormatName(t *testing.T) {
 		{"dir simple", "mydir/", "mydir/"},
 		{"dir with spaces", "my dir/", `"my dir/"`},
 		{"dir with quotes", `dir"test"/`, `"dir\"test\"/"`},
-		{"dir with backslash", `dir\test/`, `"dir\\test/"`},
-		{"dir with newline", "dir\ntest/", `"dir\ntest/"`},
+		// Backslash SafeName-encoded, no quoting needed.
+		{"dir with backslash", `dir\test/`, `dir\\test/`},
+		// Newline SafeName-encoded, no quoting needed.
+		{"dir with newline", "dir\ntest/", `dir\ntest/`},
 		{"dir leading space", " dir/", `" dir/"`},
 		{"brackets escaped", "file[1].txt", `file\[1\].txt`},
 		{"brackets with backslash", `file\[1].txt`, `file\\\[1\].txt`},
