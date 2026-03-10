@@ -268,6 +268,64 @@ func TestEncodePatchRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDecodeEmptyPatchAtEOF(t *testing.T) {
+	// A bare C4 ID followed by nothing (empty patch) must be rejected.
+	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
+	base := &Manifest{
+		Version: "1.0",
+		Entries: []*Entry{
+			{Name: "a.txt", Mode: 0644, Timestamp: ts, Size: 100,
+				C4ID: c4.Identify(strings.NewReader("aaa")), Depth: 0},
+		},
+	}
+
+	var baseBuf bytes.Buffer
+	NewEncoder(&baseBuf).Encode(base)
+	baseText := baseBuf.String()
+	baseID := base.ComputeC4ID()
+
+	// Stream: base entries, then checkpoint with nothing after.
+	input := baseText + baseID.String() + "\n"
+
+	_, err := Unmarshal([]byte(input))
+	if err == nil {
+		t.Fatal("expected ErrEmptyPatch, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty patch") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestDecodeEmptyPatchBetweenIDs(t *testing.T) {
+	// Two consecutive bare C4 IDs (empty patch section between them).
+	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
+	base := &Manifest{
+		Version: "1.0",
+		Entries: []*Entry{
+			{Name: "a.txt", Mode: 0644, Timestamp: ts, Size: 100,
+				C4ID: c4.Identify(strings.NewReader("aaa")), Depth: 0},
+		},
+	}
+
+	var baseBuf bytes.Buffer
+	NewEncoder(&baseBuf).Encode(base)
+	baseText := baseBuf.String()
+	baseID := base.ComputeC4ID()
+
+	// Stream: base entries, checkpoint, empty, checkpoint again.
+	input := baseText +
+		baseID.String() + "\n" +
+		baseID.String() + "\n"
+
+	_, err := Unmarshal([]byte(input))
+	if err == nil {
+		t.Fatal("expected ErrEmptyPatch, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty patch") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestDecodeMetadataOnlyPatch(t *testing.T) {
 	// Patch changes only metadata (chmod), not content.
 	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)

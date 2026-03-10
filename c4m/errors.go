@@ -19,4 +19,7 @@ var (
 	// ErrPatchIDMismatch indicates a bare C4 ID line does not match the
 	// canonical C4 ID of the accumulated manifest content above it.
 	ErrPatchIDMismatch = errors.New("c4m: patch ID does not match prior content")
+
+	// ErrEmptyPatch indicates a patch section contains no entries.
+	ErrEmptyPatch = errors.New("c4m: empty patch section")
 )

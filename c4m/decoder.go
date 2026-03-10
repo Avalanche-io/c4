@@ -72,6 +72,11 @@ func (d *Decoder) Decode() (*Manifest, error) {
 				// First line of file: external base reference.
 				m.Base = id
 			} else {
+				// Reject empty patch sections.
+				if patchMode && len(section) == 0 {
+					return nil, fmt.Errorf("%w (line %d)", ErrEmptyPatch, d.lineNum)
+				}
+
 				// Subsequent bare ID: must match canonical ID of accumulated state.
 				// Flush current section into the manifest.
 				if !patchMode {
@@ -115,6 +120,9 @@ func (d *Decoder) Decode() (*Manifest, error) {
 	} else if len(section) > 0 {
 		patch := &Manifest{Version: "1.0", Entries: section}
 		m = ApplyPatch(m, patch)
+	} else if patchMode {
+		// Patch mode was entered but no entries followed — empty patch.
+		return nil, fmt.Errorf("%w (at end of input)", ErrEmptyPatch)
 	}
 
 	return m, nil
