@@ -477,6 +477,58 @@ func TestPatchDiffModification(t *testing.T) {
 	}
 }
 
+func TestPatchDiffMetadataOnly(t *testing.T) {
+	content := "same content"
+	id := c4.Identify(strings.NewReader(content))
+
+	old := &Manifest{Entries: []*Entry{{
+		Name:      "a.txt",
+		Mode:      0644,
+		Timestamp: time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC),
+		Size:      int64(len(content)),
+		C4ID:      id,
+		Depth:     0,
+	}}}
+
+	// Same content (same C4 ID) but different mode and timestamp (touch + chmod)
+	new := &Manifest{Entries: []*Entry{{
+		Name:      "a.txt",
+		Mode:      0755,
+		Timestamp: time.Date(2026, 3, 7, 8, 0, 0, 0, time.UTC),
+		Size:      int64(len(content)),
+		C4ID:      id,
+		Depth:     0,
+	}}}
+
+	result := PatchDiff(old, new)
+	if len(result.Patch.Entries) != 1 {
+		t.Fatalf("expected 1 patch entry for metadata change, got %d", len(result.Patch.Entries))
+	}
+	pe := result.Patch.Entries[0]
+	if pe.Mode != 0755 {
+		t.Errorf("patch entry mode = %v, want 0755", pe.Mode)
+	}
+	if !pe.Timestamp.Equal(time.Date(2026, 3, 7, 8, 0, 0, 0, time.UTC)) {
+		t.Errorf("patch entry timestamp = %v, want 2026-03-07T08:00:00Z", pe.Timestamp)
+	}
+	if pe.C4ID != id {
+		t.Error("patch entry should preserve original C4 ID")
+	}
+
+	// Round-trip: applying the patch should produce the new state
+	applied := ApplyPatch(old, result.Patch)
+	if len(applied.Entries) != 1 {
+		t.Fatalf("applied manifest has %d entries, want 1", len(applied.Entries))
+	}
+	ae := applied.Entries[0]
+	if ae.Mode != 0755 {
+		t.Errorf("applied mode = %v, want 0755", ae.Mode)
+	}
+	if !ae.Timestamp.Equal(time.Date(2026, 3, 7, 8, 0, 0, 0, time.UTC)) {
+		t.Errorf("applied timestamp = %v, want 2026-03-07T08:00:00Z", ae.Timestamp)
+	}
+}
+
 func TestPatchDiffNested(t *testing.T) {
 	// Old: src/ contains main.go and util.go
 	srcOldID := c4.Identify(strings.NewReader("src-old"))

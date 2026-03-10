@@ -99,9 +99,24 @@ func diffTree(old, new *Manifest, oldChildren, newChildren []*Entry, depth int, 
 			continue
 		}
 
-		// Both exist — compare C4 IDs
-		if !oldEntry.C4ID.IsNil() && !newEntry.C4ID.IsNil() && oldEntry.C4ID == newEntry.C4ID {
-			// Same C4 ID — skip entire subtree
+		// Both exist — check if completely identical (content + metadata)
+		if entriesIdentical(oldEntry, newEntry) {
+			if !oldEntry.IsDir() {
+				// Identical file — skip
+				continue
+			}
+			// Identical directory entry — but children may differ, so recurse
+			oldChildren := old.Children(oldEntry)
+			newChildren := new.Children(newEntry)
+			var childEntries []*Entry
+			diffTree(old, new, oldChildren, newChildren, depth+1, &childEntries)
+			if len(childEntries) == 0 {
+				// No child differences — skip entirely
+				continue
+			}
+			// Children differ — emit dir entry and child diffs
+			*result = append(*result, entryAtDepth(newEntry, depth))
+			*result = append(*result, childEntries...)
 			continue
 		}
 
