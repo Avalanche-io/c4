@@ -29,46 +29,122 @@ func NewDecoder(r io.Reader) *Decoder {
 
 // Decode reads and decodes a manifest from the input stream.
 // The format is entry-only: no @c4m header, no directives.
+//
+// A bare C4 ID on its own line acts as a patch boundary:
+//   - First line: references an external base manifest (set on Manifest.Base)
+//   - Subsequent lines: must match the canonical C4 ID of all content above.
+//     Entries after the boundary are applied as a patch (add/modify/delete).
 func (d *Decoder) Decode() (*Manifest, error) {
 	m := &Manifest{
 		Version: "1.0",
 		Entries: make([]*Entry, 0),
 	}
 
+	// Current section accumulates entries between patch boundaries.
+	var section []*Entry
+	firstLine := true
+	patchMode := false
+
 	for {
-		entry, err := d.parseEntry()
+		line, err := d.readLine()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return nil, fmt.Errorf("%w: %v", ErrInvalidEntry, err)
+			return nil, err
 		}
-		if entry == nil {
-			continue // blank line
+
+		// Skip blank lines.
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			firstLine = false
+			continue
 		}
-		m.Entries = append(m.Entries, entry)
+
+		// Check for bare C4 ID line (exactly 90 chars starting with "c4").
+		if isBareC4ID(trimmed) {
+			id, parseErr := c4.Parse(trimmed)
+			if parseErr != nil {
+				return nil, fmt.Errorf("line %d: invalid C4 ID: %w", d.lineNum, parseErr)
+			}
+
+			if firstLine && len(section) == 0 {
+				// First line of file: external base reference.
+				m.Base = id
+			} else {
+				// Subsequent bare ID: must match canonical ID of accumulated state.
+				// Flush current section into the manifest.
+				if !patchMode {
+					m.Entries = append(m.Entries, section...)
+				} else {
+					patch := &Manifest{Version: "1.0", Entries: section}
+					m = ApplyPatch(m, patch)
+				}
+				section = nil
+
+				expected := m.ComputeC4ID()
+				if id != expected {
+					return nil, fmt.Errorf("%w: line %d: got %s, want %s",
+						ErrPatchIDMismatch, d.lineNum, id, expected)
+				}
+				patchMode = true
+			}
+			firstLine = false
+			continue
+		}
+
+		// Reject directive lines.
+		if strings.HasPrefix(trimmed, "@") {
+			return nil, fmt.Errorf("%w: directives not supported (line %d): %s", ErrInvalidEntry, d.lineNum, line)
+		}
+
+		// Parse as a normal entry.
+		entry, parseErr := d.parseEntryFromLine(line)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidEntry, parseErr)
+		}
+		if entry != nil {
+			section = append(section, entry)
+		}
+		firstLine = false
+	}
+
+	// Flush remaining section.
+	if !patchMode {
+		m.Entries = append(m.Entries, section...)
+	} else if len(section) > 0 {
+		patch := &Manifest{Version: "1.0", Entries: section}
+		m = ApplyPatch(m, patch)
 	}
 
 	return m, nil
 }
 
-// parseEntry parses a single manifest entry
+// isBareC4ID returns true if the line is exactly a C4 ID (90 chars, starts with "c4").
+func isBareC4ID(s string) bool {
+	return len(s) == 90 && s[0] == 'c' && s[1] == '4'
+}
+
+// parseEntry reads a line and parses a single manifest entry.
 func (d *Decoder) parseEntry() (*Entry, error) {
 	line, err := d.readLine()
 	if err != nil {
 		return nil, err
 	}
 
-	// Skip blank lines
 	if strings.TrimSpace(line) == "" {
 		return nil, nil
 	}
 
-	// Reject directive lines
 	if strings.HasPrefix(strings.TrimSpace(line), "@") {
 		return nil, fmt.Errorf("directives not supported (line %d): %s", d.lineNum, line)
 	}
 
+	return d.parseEntryFromLine(line)
+}
+
+// parseEntryFromLine parses a manifest entry from a pre-read line.
+func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 	// Detect indentation
 	indent := 0
 	for i, c := range line {

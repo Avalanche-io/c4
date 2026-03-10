@@ -15,4 +15,8 @@ var (
 
 	// ErrInvalidFlowTarget indicates a malformed flow link target.
 	ErrInvalidFlowTarget = errors.New("c4m: invalid flow target")
+
+	// ErrPatchIDMismatch indicates a bare C4 ID line does not match the
+	// canonical C4 ID of the accumulated manifest content above it.
+	ErrPatchIDMismatch = errors.New("c4m: patch ID does not match prior content")
 )

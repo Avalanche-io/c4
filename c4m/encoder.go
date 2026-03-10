@@ -177,6 +177,18 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 	return baseLine + strings.Repeat(" ", padding) + "-"
 }
 
+// EncodePatch writes a patch-format c4m: the old manifest's C4 ID on a bare
+// line followed by the patch entries. The result is a valid c4m stream that,
+// when decoded, produces the patched manifest.
+func (e *Encoder) EncodePatch(pr *PatchResult) error {
+	// Write the base C4 ID as a bare line.
+	if _, err := fmt.Fprintf(e.w, "%s\n", pr.OldID); err != nil {
+		return err
+	}
+	// Write patch entries.
+	return e.Encode(pr.Patch)
+}
+
 // ----------------------------------------------------------------------------
 // Convenience Functions
 // ----------------------------------------------------------------------------

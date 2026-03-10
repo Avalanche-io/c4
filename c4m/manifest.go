@@ -22,6 +22,7 @@ func NullTimestamp() time.Time { return nullTimestamp }
 // Manifest represents a complete C4M manifest
 type Manifest struct {
 	Version    string
+	Base       c4.ID        // External base manifest (from first-line bare C4 ID)
 	Entries    []*Entry
 	DataBlocks []*DataBlock // Embedded data blocks (for sequence ID lists)
 	index      *treeIndex   // Lazily-built tree index for O(1) navigation
@@ -169,6 +170,7 @@ func (m *Manifest) Canonicalize() {
 func (m *Manifest) Copy() *Manifest {
 	cp := &Manifest{
 		Version: m.Version,
+		Base:    m.Base,
 		Entries: make([]*Entry, len(m.Entries)),
 	}
 
