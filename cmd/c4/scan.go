@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -14,20 +17,28 @@ func runScan(args []string) {
 	fs := flag.NewFlagSet("scan", flag.ExitOnError)
 
 	var (
-		outFile string
-		level   int
-		compact bool
+		outFile    string
+		level      int
+		compact    bool
+		background bool
+		status     bool
+		stop       string
 	)
 
 	fs.StringVarP(&outFile, "output", "o", "", "Write c4m to file (default: stdout)")
 	fs.IntVar(&level, "level", 2, "Stop after phase: 0=structure, 1=metadata, 2=identity")
 	fs.BoolVar(&compact, "compact", false, "Output canonical c4m without padding")
+	fs.BoolVarP(&background, "background", "b", false, "Run scan in c4d background")
+	fs.BoolVar(&status, "status", false, "Show active scan jobs from c4d")
+	fs.StringVar(&stop, "stop", "", "Cancel a running scan job by ID")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, `c4 scan - Progressive filesystem scan
 
 Usage:
-  c4 scan [options] <path>
+  c4 scan [options] <path>        # Scan a directory
+  c4 scan --status                # List active scans from c4d
+  c4 scan --stop <job-id>         # Cancel a running scan
 
 Scans a directory tree and produces a c4m file in three phases:
   Phase 0: Structure discovery (readdir, no stat)
@@ -36,6 +47,9 @@ Scans a directory tree and produces a c4m file in three phases:
 
 The working file is always a valid c4m — null fields indicate
 unresolved data. Use --level to stop early for faster results.
+
+With -b, the scan runs in c4d's background and the CLI returns
+immediately. Query progress with --status.
 
 Options:
 `)
@@ -47,10 +61,25 @@ Examples:
   c4 scan ~/projects --level 0          # Structure only (fastest)
   c4 scan ~/projects --level 1          # Structure + metadata
   c4 scan ~/projects --compact          # Canonical c4m output
+  c4 scan ~/projects -o p.c4m -b        # Background via c4d
+  c4 scan --status                      # List active scans
+  c4 scan --stop abc123                 # Cancel a scan
 `)
 	}
 
 	fs.Parse(args)
+
+	// Status mode: query c4d for active scans.
+	if status {
+		runScanStatus()
+		return
+	}
+
+	// Stop mode: cancel a running scan.
+	if stop != "" {
+		runScanStop(stop)
+		return
+	}
 
 	if fs.NArg() != 1 {
 		fs.Usage()
@@ -75,6 +104,22 @@ Examples:
 		os.Exit(1)
 	}
 
+	// Background mode: send to c4d.
+	if background {
+		if outFile == "" {
+			fmt.Fprintf(os.Stderr, "c4 scan: -o required for background mode\n")
+			os.Exit(1)
+		}
+		absOut, _ := filepath.Abs(outFile)
+		runScanBackground(absRoot, absOut, level)
+		return
+	}
+
+	// Foreground mode: scan locally.
+	runScanForeground(absRoot, outFile, level, compact)
+}
+
+func runScanForeground(absRoot, outFile string, level int, compact bool) {
 	// Determine output: file or temp file (for stdout mode).
 	workFile := outFile
 	toStdout := outFile == ""
@@ -134,6 +179,105 @@ Examples:
 		time.Since(start).Round(time.Millisecond))
 
 	outputResult(sc, workFile, toStdout, compact)
+}
+
+func runScanBackground(root, outPath string, level int) {
+	if !c4dConfigured() {
+		fmt.Fprintf(os.Stderr, "c4 scan: c4d not configured — background scan requires c4d\n")
+		os.Exit(1)
+	}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"root":     root,
+		"out_path": outPath,
+		"level":    level,
+	})
+
+	initC4dConnection()
+	resp, err := c4dClient.Post(c4dAddr()+"/etc/scans", "application/json", bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "c4 scan: c4d not reachable: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		fmt.Fprintf(os.Stderr, "c4 scan: c4d: %s\n", resp.Status)
+		os.Exit(1)
+	}
+
+	var result struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	fmt.Printf("Scan started: %s\n", result.ID)
+	fmt.Printf("Output: %s\n", outPath)
+	fmt.Fprintf(os.Stderr, "Query progress: c4 scan --status\n")
+}
+
+func runScanStatus() {
+	if !c4dConfigured() {
+		fmt.Fprintf(os.Stderr, "c4 scan: c4d not configured\n")
+		os.Exit(1)
+	}
+
+	initC4dConnection()
+	resp, err := c4dClient.Get(c4dAddr() + "/etc/scans")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "c4 scan: c4d not reachable: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	var jobs []struct {
+		ID      string `json:"id"`
+		Root    string `json:"root"`
+		OutPath string `json:"out_path"`
+		Status  string `json:"status"`
+		Files   int    `json:"files"`
+		Dirs    int    `json:"dirs"`
+		Error   string `json:"error,omitempty"`
+	}
+
+	json.NewDecoder(resp.Body).Decode(&jobs)
+
+	if len(jobs) == 0 {
+		fmt.Println("No active scans")
+		return
+	}
+
+	for _, j := range jobs {
+		fmt.Printf("%-18s %-10s %d files, %d dirs  %s\n", j.ID, j.Status, j.Files, j.Dirs, j.Root)
+		if j.Error != "" {
+			fmt.Printf("  error: %s\n", j.Error)
+		}
+	}
+}
+
+func runScanStop(id string) {
+	if !c4dConfigured() {
+		fmt.Fprintf(os.Stderr, "c4 scan: c4d not configured\n")
+		os.Exit(1)
+	}
+
+	initC4dConnection()
+	req, _ := http.NewRequest("DELETE", c4dAddr()+"/etc/scans/"+id, nil)
+	resp, err := c4dClient.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "c4 scan: c4d not reachable: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Fprintf(os.Stderr, "c4 scan: job %s not found\n", id)
+		os.Exit(1)
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		fmt.Fprintf(os.Stderr, "c4 scan: %s\n", resp.Status)
+		os.Exit(1)
+	}
+	fmt.Printf("Canceled: %s\n", id)
 }
 
 func outputResult(sc *progscan.Scanner, workFile string, toStdout, compact bool) {
