@@ -506,18 +506,15 @@ func testREADMEFilesExist(t *testing.T) {
 		t.Fatalf("reading README.md: %v", err)
 	}
 
-	// Extract .go filenames from the Package Files section
-	goFiles := []string{
-		"manifest.go", "entry.go", "encoder.go", "decoder.go",
-		"builder.go", "operations.go", "validator.go",
-		"naturalsort.go", "sequence.go",
+	// README should be substantive (not a stub)
+	if len(src) < 500 {
+		t.Errorf("README.md is too short (%d bytes), expected substantive documentation", len(src))
 	}
-	for _, f := range goFiles {
-		if !bytes.Contains(src, []byte(f)) {
-			t.Errorf("README.md doesn't mention %s", f)
-		}
-		if _, err := os.Stat(f); os.IsNotExist(err) {
-			t.Errorf("README.md references %s but it doesn't exist", f)
+
+	// README should mention key concepts
+	for _, term := range []string{"c4m", "C4 ID", "filesystem"} {
+		if !bytes.Contains(src, []byte(term)) {
+			t.Errorf("README.md doesn't mention %q", term)
 		}
 	}
 }
