@@ -1064,14 +1064,14 @@ func TestDecoderSequenceEscaping(t *testing.T) {
 			wantSeq:  false,
 		},
 		{
-			name:     "escaped comma",
-			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 data\\,backup.[01-05].csv",
+			name:     "literal comma in prefix",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 data,backup.[01-05].csv",
 			wantName: "data,backup.[01-05].csv",
 			wantSeq:  true,
 		},
 		{
-			name:     "escaped hyphen",
-			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file\\-name.[01-05].csv",
+			name:     "literal hyphen in prefix",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file-name.[01-05].csv",
 			wantName: "file-name.[01-05].csv",
 			wantSeq:  true,
 		},

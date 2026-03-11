@@ -127,21 +127,53 @@ The backslash character (0x5C) is encoded as `\\` per Tier 2 conventions. This i
 
 **Canonicalization:** The encoding produces a canonical form. For any input *B*, encode(*B*) is unique. Bytes eligible for Tier 1 must be encoded via Tier 1 (the highest-priority tier). Bytes eligible for Tier 2 must use Tier 2. All remaining bytes use Tier 3. This priority ordering eliminates representational ambiguity.
 
-## 7. Security Properties
+## 7. Security Analysis
 
-### 7.1. Anomalous Byte Salience
+### 7.1. The Problem of Ambiguous Responsibility
 
-A critical property of this encoding is that anomalous bytes are visually conspicuous. Because Tier 1 preserves all printable Unicode literally, the encoding does not generate visual noise around legitimate characters. The Braille escape sequences are visually alien against readable text, which means that injected or unexpected bytes are immediately apparent to human inspection.
+In conventional systems, the security boundary between filename transport and filename interpretation is poorly defined. Shells assume filenames won't contain metacharacters. Log parsers assume filenames won't contain newlines. Path resolvers assume filenames won't contain `/`. Each consumer makes implicit assumptions about what bytes it will encounter, and each assumption is a potential attack surface.
 
-This contrasts with encodings such as percent-encoding or C-style hex escapes, which mangle all non-ASCII bytes uniformly. In those schemes, a malicious 0x01 byte hiding among escaped accented characters is camouflaged by the noise the encoding itself creates. In this encoding, legitimate Unicode passes through readable while anomalous bytes receive distinctive visual markers.
+The root cause is that no layer formally declares what it guarantees and what it delegates. The kernel permits nearly all byte values but doesn't fully exercise that permissiveness in its own constructions. Userspace tools restrict filenames in ad hoc, inconsistent ways — some reject control characters, some escape them, some silently mangle them. When every layer applies its own informal sanitization, no layer can be reasoned about in isolation, and an attacker can exploit the gaps between the inconsistent assumptions.
 
-### 7.2. Self-Contained Range Boundaries
+This specification formalizes the boundary. The transport layer has exactly two obligations: faithful byte preservation and honest error reporting. It makes no assumptions about what bytes are "safe" or "expected." Everything else — shell safety, SQL safety, display rendering, access control — is explicitly and exclusively the responsibility of the interpretation layer.
 
-The use of symmetric ¤ delimiters for Tier 3 ranges ensures that the boundaries of a byte-encoded region are determinable without reference to surrounding context. An attacker who controls part of a filename cannot influence where the parser believes a byte range begins or ends. This property would be absent with an implicit-exit parsing strategy where byte mode terminates upon encountering a non-Braille character.
+This separation does not make a system secure on its own. What it does is make the security properties of each layer *decidable*. An engineer can reason about the transport layer without knowing what application will consume the output. An engineer can reason about the interpretation layer knowing exactly what the transport layer guarantees. The attack surface becomes enumerable rather than emergent.
 
-### 7.3. Non-Conflation of Encoding Levels
+### 7.2. Attacks Structurally Eliminated by the Transport Layer
 
-Tier 2 (character-level escapes) and Tier 3 (byte-level encoding) use distinct syntactic markers: backslash and ¤ respectively. This prevents confusion between character semantics and byte semantics in the encoded output.
+**Null byte injection.** The zero byte (0x00) is the sole value excluded from the encoding domain. It also serves as the path delimiter. There is no mechanism by which a null byte can appear within a name component. Attacks that exploit null byte termination in C-string APIs to truncate filenames or bypass extension checks have no purchase here.
+
+**Directory traversal.** The conventional path separator `/` (0x2F) is remapped to 0x00 at the abstraction layer. Within a name component, 0x2F is an ordinary byte that passes through Tier 1 as a literal character. A filename component containing `../../../etc/passwd` is a string of dots and slashes with no structural meaning to the path parser, which splits exclusively on zero. The traversal attack depends on the separator appearing within a name component; this encoding makes that structurally impossible.
+
+### 7.3. Attacks Surfaced by the Transport Layer
+
+**Control character smuggling.** Injecting a newline (0x0A) to split a log entry, a carriage return (0x0D) to overwrite terminal output, or an escape byte (0x1B) to inject ANSI control sequences are common attack patterns that rely on the literal control byte reaching a downstream consumer. In this encoding, these bytes are never emitted literally. A newline appears as `\n` (Tier 2) or as a Braille character within a Tier 3 range. The encoded form can be safely embedded in any text stream without corrupting its structure. The attack payload is transported faithfully but rendered inert in the encoded representation.
+
+**Non-printable byte injection.** Any byte outside printable Unicode receives Tier 3 Braille encoding, which is visually alien against readable text. An attacker cannot hide an injected byte in the visual noise of the encoding because the encoding generates no noise around legitimate content. The Braille characters function as an involuntary marker: any byte that requires Tier 3 encoding is, by definition, conspicuous. This contrasts sharply with percent-encoding or hex-escape schemes, where a malicious `%01` is camouflaged among `%C3%A9%73%75%6D` — the encoding's own output provides cover for the attacker. This encoding denies that cover.
+
+### 7.4. Attacks Outside the Transport Layer's Scope
+
+The following classes of attack involve printable Unicode characters that pass through Tier 1 unchanged. They are interpretation-layer concerns and are explicitly not addressed by this encoding.
+
+**Shell injection.** Characters such as `$`, `` ` ``, `|`, `;`, `'`, and `"` are printable Unicode. A filename containing `; rm -rf /` is transported faithfully. If a consumer passes it to a shell unsanitized, the encoding fulfilled its contract — the bytes arrived intact. The shell's failure to sanitize its input is an interpretation-layer bug.
+
+**SQL injection.** `' OR 1=1 --` is composed entirely of printable characters. The encoding carries it without modification. Database query construction is an interpretation-layer responsibility.
+
+**Unicode homoglyph attacks.** A Cyrillic `а` (U+0430) and a Latin `a` (U+0061) are both legitimate printable code points. Both pass through Tier 1. The encoding has no opinion on visual similarity between valid code points; homoglyph detection is an interpretation-layer concern.
+
+### 7.5. The Boundary as a Security Property
+
+The value of this formalization is not that it prevents all attacks — no single layer can. The value is that it makes the *location* of each vulnerability unambiguous. When an attack succeeds, there are exactly two questions: did the transport layer preserve the bytes faithfully, and did the interpretation layer handle them correctly? If the transport layer round-tripped the bytes and reported no backend errors, it is not at fault. If the interpretation layer received a well-defined byte sequence and mishandled it, the bug is localized.
+
+In the conventional ecosystem, a filename injection might exploit ambiguity across the kernel, the filesystem, the shell, the application, and the logging system simultaneously. Determining which layer failed — and which layer *should have* caught it — is often unresolvable because no layer has a formal contract. This specification eliminates that class of ambiguity for the transport layer. It cannot eliminate it for interpretation layers, but it gives them a stable, well-defined input contract to build on.
+
+### 7.6. Encoding-Level Structural Properties
+
+**Anomalous byte salience.** Tier 3 Braille encoding is visually distinct from all Tier 1 content. Syntax highlighters can trivially color-code Tier 3 ranges, making anomalous regions immediately identifiable in any display context.
+
+**Self-contained range boundaries.** The symmetric ¤ delimiters ensure that Tier 3 range boundaries are determinable without reference to surrounding context. An attacker who controls part of a filename cannot influence where the parser believes a byte range begins or ends.
+
+**Non-conflation of encoding levels.** Tier 2 (character-level, backslash) and Tier 3 (byte-level, ¤) use distinct syntactic markers. A reader or parser always knows which semantic domain it is operating in.
 
 ## 8. Efficiency Analysis
 

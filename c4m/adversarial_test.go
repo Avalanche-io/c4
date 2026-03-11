@@ -121,42 +121,32 @@ func TestAdversarial_LongNames(t *testing.T) {
 	}
 }
 
-// TestAdversarial_QuotedNameEdgeCases tests tricky quoting scenarios.
-func TestAdversarial_QuotedNameEdgeCases(t *testing.T) {
+// TestAdversarial_BackslashEscapedNameEdgeCases tests backslash-escape scenarios.
+func TestAdversarial_BackslashEscapedNameEdgeCases(t *testing.T) {
 	cases := []struct {
 		name     string
 		entry    string
 		wantName string
 	}{
 		{
-			"empty quoted name",
-			`-rw-r--r-- 2024-01-01T00:00:00Z 100 ""`,
-			"",
-		},
-		{
-			"quoted with escaped backslash",
-			`-rw-r--r-- 2024-01-01T00:00:00Z 100 "back\\slash"`,
+			"escaped backslash via SafeName",
+			`-rw-r--r-- 2024-01-01T00:00:00Z 100 back\\slash`,
 			`back\slash`,
 		},
 		{
-			"quoted with escaped quote",
-			`-rw-r--r-- 2024-01-01T00:00:00Z 100 "has\"quote"`,
+			"escaped quote",
+			`-rw-r--r-- 2024-01-01T00:00:00Z 100 has\"quote`,
 			`has"quote`,
 		},
 		{
-			"quoted with escaped newline",
-			`-rw-r--r-- 2024-01-01T00:00:00Z 100 "has\nnewline"`,
-			"has\nnewline",
-		},
-		{
-			"quoted with spaces",
-			`-rw-r--r-- 2024-01-01T00:00:00Z 100 "my file name.txt"`,
+			"escaped spaces",
+			`-rw-r--r-- 2024-01-01T00:00:00Z 100 my\ file\ name.txt`,
 			"my file name.txt",
 		},
 		{
-			"quoted with arrow in name",
-			`-rw-r--r-- 2024-01-01T00:00:00Z 100 "file -> not a link"`,
-			"file -> not a link",
+			"escaped brackets",
+			`-rw-r--r-- 2024-01-01T00:00:00Z 100 file\[v2\].txt`,
+			"file[v2].txt",
 		},
 	}
 
@@ -216,17 +206,19 @@ func TestAdversarial_NullFieldCombinations(t *testing.T) {
 	}
 }
 
-// TestAdversarial_UnterminatedQuotedTarget tests that an unterminated quoted
-// symlink target produces an error rather than a panic.
-func TestAdversarial_UnterminatedQuotedTarget(t *testing.T) {
-	input := "lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"unterminated\n"
+// TestAdversarial_BackslashEscapedTarget tests backslash-escaped symlink targets.
+func TestAdversarial_BackslashEscapedTarget(t *testing.T) {
+	input := `lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> path\ with\ spaces` + "\n"
 	d := NewDecoder(strings.NewReader(input))
-	_, err := d.Decode()
-	if err == nil {
-		t.Fatal("expected error for unterminated quoted target")
+	m, err := d.Decode()
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "unterminated") {
-		t.Errorf("error = %q, want containing 'unterminated'", err.Error())
+	if len(m.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(m.Entries))
+	}
+	if m.Entries[0].Target != "path with spaces" {
+		t.Errorf("Target = %q, want %q", m.Entries[0].Target, "path with spaces")
 	}
 }
 
@@ -253,10 +245,10 @@ func TestAdversarial_TargetWithNullC4ID(t *testing.T) {
 	}
 }
 
-// TestAdversarial_QuotedTargetWithEscapes tests a quoted symlink target with
-// escape sequences.
-func TestAdversarial_QuotedTargetWithEscapes(t *testing.T) {
-	input := "lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> \"path with \\\"quotes\\\" and \\\\backslash\"\n"
+// TestAdversarial_TargetWithEscapes tests a backslash-escaped symlink target
+// with embedded quotes and backslashes.
+func TestAdversarial_TargetWithEscapes(t *testing.T) {
+	input := `lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> path\ with\ \"quotes\"\ and\ \\backslash` + "\n"
 	d := NewDecoder(strings.NewReader(input))
 	m, err := d.Decode()
 	if err != nil {

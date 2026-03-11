@@ -54,7 +54,7 @@ func TestDecoder_parseEntry(t *testing.T) {
 		},
 		{
 			name:  "file_with_spaces",
-			input: "-rw-r--r-- 2023-01-01T12:00:00Z 2048 \"my file.txt\"\n",
+			input: "-rw-r--r-- 2023-01-01T12:00:00Z 2048 my\\ file.txt\n",
 			want: &Entry{
 				Mode:      0644,
 				Timestamp: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
@@ -227,7 +227,7 @@ drwxr-xr-x 2024-01-01T00:00:00Z 0 dir/`,
 		},
 		{
 			name:  "symlink with spaces in target",
-			input: `lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> "target with spaces"`,
+			input: `lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> target\ with\ spaces`,
 			check: func(t *testing.T, m *Manifest) {
 				if len(m.Entries) != 1 {
 					t.Fatalf("Expected 1 entry, got %d", len(m.Entries))
@@ -396,9 +396,9 @@ func TestParseTimestamp(t *testing.T) {
 	}
 }
 
-func TestQuotedNameNotSequence(t *testing.T) {
-	// A quoted name containing brackets must NOT be treated as a sequence
-	input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 \"render[v2].exr\"\n"
+func TestEscapedBracketsNotSequence(t *testing.T) {
+	// A name with escaped brackets must NOT be treated as a sequence
+	input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 render\\[v2\\].exr\n"
 	manifest, err := NewDecoder(strings.NewReader(input)).Decode()
 	if err != nil {
 		t.Fatalf("Decode() error = %v", err)
@@ -411,7 +411,7 @@ func TestQuotedNameNotSequence(t *testing.T) {
 		t.Errorf("Name = %q, want %q", entry.Name, "render[v2].exr")
 	}
 	if entry.IsSequence {
-		t.Error("Quoted name with brackets should not be flagged as sequence")
+		t.Error("Escaped brackets should not be flagged as sequence")
 	}
 }
 

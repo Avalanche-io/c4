@@ -279,57 +279,62 @@ func formatSize(size int64, displayFormat bool) string {
 // For non-sequence names, brackets are escaped as \[ and \] to prevent
 // them from being interpreted as sequence notation on re-parse.
 // formatName applies SafeName encoding and then handles c4m-specific
-// syntax: quoting for names with spaces or double-quotes, and bracket
-// escaping for non-sequence names. SafeName handles all control
-// characters and non-printable bytes; formatName only adds c4m
-// field-boundary syntax on top.
+// escaping for c4m field boundaries. SafeName handles all control
+// characters and non-printable bytes; formatName adds c4m-level
+// backslash escaping for spaces, double-quotes, and brackets on top.
+// No quoting is needed — all unsafe characters are backslash-escaped.
 func formatName(name string, isSequence bool) string {
 	safe := SafeName(name)
-
-	if strings.HasSuffix(safe, "/") {
-		base := safe[:len(safe)-1]
-		needsQuotes := strings.ContainsRune(base, ' ') || strings.ContainsRune(base, '"')
-		if base != strings.TrimSpace(base) {
-			needsQuotes = true
-		}
-		if !needsQuotes {
-			if !isSequence && (strings.ContainsRune(base, '[') || strings.ContainsRune(base, ']')) {
-				escaped := strings.ReplaceAll(base, "[", `\[`)
-				escaped = strings.ReplaceAll(escaped, "]", `\]`)
-				return escaped + "/"
-			}
-			return safe
-		}
-		escaped := strings.ReplaceAll(base, `"`, `\"`)
-		return fmt.Sprintf(`"%s/"`, escaped)
-	}
 
 	if isSequence {
 		return formatSequenceName(name)
 	}
 
-	if strings.ContainsRune(safe, '[') || strings.ContainsRune(safe, ']') {
-		needsQuotes := strings.ContainsRune(safe, ' ') || strings.ContainsRune(safe, '"')
-		if safe != strings.TrimSpace(safe) {
-			needsQuotes = true
-		}
-		if !needsQuotes {
-			escaped := strings.ReplaceAll(safe, "[", `\[`)
-			escaped = strings.ReplaceAll(escaped, "]", `\]`)
-			return escaped
-		}
+	if strings.HasSuffix(safe, "/") {
+		base := safe[:len(safe)-1]
+		return escapeC4MName(base, false) + "/"
 	}
 
-	needsQuotes := strings.ContainsRune(safe, ' ') || strings.ContainsRune(safe, '"')
-	if safe != strings.TrimSpace(safe) {
-		needsQuotes = true
+	return escapeC4MName(safe, false)
+}
+
+// escapeC4MName backslash-escapes characters that are unsafe in c4m
+// field-boundary context: spaces, double-quotes, and (for non-sequence
+// names) brackets.
+func escapeC4MName(s string, isSequence bool) string {
+	needsEscape := strings.ContainsAny(s, " \"")
+	if !isSequence && strings.ContainsAny(s, "[]") {
+		needsEscape = true
 	}
-	if !needsQuotes {
-		return safe
+	if !needsEscape {
+		return s
 	}
 
-	escaped := strings.ReplaceAll(safe, `"`, `\"`)
-	return fmt.Sprintf(`"%s"`, escaped)
+	var b strings.Builder
+	b.Grow(len(s) + 4)
+	for _, r := range s {
+		switch r {
+		case ' ':
+			b.WriteString(`\ `)
+		case '"':
+			b.WriteString(`\"`)
+		case '[':
+			if !isSequence {
+				b.WriteString(`\[`)
+			} else {
+				b.WriteRune(r)
+			}
+		case ']':
+			if !isSequence {
+				b.WriteString(`\]`)
+			} else {
+				b.WriteRune(r)
+			}
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // formatSequenceName formats a sequence name using backslash escaping
@@ -347,20 +352,27 @@ func formatSequenceName(name string) string {
 	return escapeSequenceNotation(prefix) + rangePart + escapeSequenceNotation(suffix)
 }
 
-// formatTarget quotes a symlink target if it contains special characters.
-// Unlike formatName, targets don't get directory treatment (no trailing slash logic)
-// since a target path like "/usr/lib/" is a full path, not a name.
+// formatTarget backslash-escapes a symlink target for c4m output.
+// Unlike formatName, targets don't get bracket escaping since path
+// separators and brackets in target paths are literal.
 func formatTarget(target string) string {
 	safe := SafeName(target)
-	needsQuotes := strings.ContainsRune(safe, ' ') || strings.ContainsRune(safe, '"')
-	if safe != strings.TrimSpace(safe) {
-		needsQuotes = true
-	}
-	if !needsQuotes {
+	if !strings.ContainsAny(safe, " \"") {
 		return safe
 	}
-	escaped := strings.ReplaceAll(safe, `"`, `\"`)
-	return fmt.Sprintf(`"%s"`, escaped)
+	var b strings.Builder
+	b.Grow(len(safe) + 4)
+	for _, r := range safe {
+		switch r {
+		case ' ':
+			b.WriteString(`\ `)
+		case '"':
+			b.WriteString(`\"`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // IsDevice returns true if the entry represents a device

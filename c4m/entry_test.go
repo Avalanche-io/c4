@@ -160,7 +160,7 @@ func TestEntryFormat(t *testing.T) {
 			want:          "lrwxrwxrwx 2024-01-15T10:30:00Z 0 link -> target.txt -",
 		},
 		{
-			name: "file with spaces needs quotes",
+			name: "file with spaces escaped",
 			entry: &Entry{
 				Mode:      0644,
 				Timestamp: testTime,
@@ -170,7 +170,7 @@ func TestEntryFormat(t *testing.T) {
 			},
 			indentWidth:   2,
 			displayFormat: false,
-			want:          `-rw-r--r-- 2024-01-15T10:30:00Z 100 "my file.txt" -`,
+			want:          `-rw-r--r-- 2024-01-15T10:30:00Z 100 my\ file.txt -`,
 		},
 		{
 			name: "display format with commas",
@@ -242,14 +242,14 @@ func TestEntryCanonical(t *testing.T) {
 			want: "lrwxrwxrwx 2024-01-15T10:30:00Z 0 link -> target.txt -",
 		},
 		{
-			name: "file with spaces (quoted)",
+			name: "file with spaces (escaped)",
 			entry: &Entry{
 				Mode:      0644,
 				Timestamp: testTime,
 				Size:      100,
 				Name:      "my file.txt",
 			},
-			want: `-rw-r--r-- 2024-01-15T10:30:00Z 100 "my file.txt" -`,
+			want: `-rw-r--r-- 2024-01-15T10:30:00Z 100 my\ file.txt -`,
 		},
 		{
 			name: "null timestamp renders as dash",
@@ -372,24 +372,24 @@ func TestFormatName(t *testing.T) {
 		want     string
 	}{
 		{"simple name", "file.txt", "file.txt"},
-		{"with spaces", "my file.txt", `"my file.txt"`},
-		{"with quotes", `file"test".txt`, `"file\"test\".txt"`},
+		{"with spaces", "my file.txt", `my\ file.txt`},
+		{"with quotes", `file"test".txt`, `file\"test\".txt`},
 		// Backslash is SafeName-encoded as \\, no quoting needed.
 		{"with backslash", `file\test.txt`, `file\\test.txt`},
 		// Newline is SafeName-encoded as \n, no quoting needed.
 		{"with newline", "file\ntest.txt", `file\ntest.txt`},
-		{"leading space", " file.txt", `" file.txt"`},
-		{"trailing space", "file.txt ", `"file.txt "`},
-		{"multiple special", `my "special"\file.txt`, `"my \"special\"\\file.txt"`},
+		{"leading space", " file.txt", `\ file.txt`},
+		{"trailing space", "file.txt ", `file.txt\ `},
+		{"multiple special", `my "special"\file.txt`, `my\ \"special\"\\file.txt`},
 		{"no special chars", "file_test-123.txt", "file_test-123.txt"},
 		{"dir simple", "mydir/", "mydir/"},
-		{"dir with spaces", "my dir/", `"my dir/"`},
-		{"dir with quotes", `dir"test"/`, `"dir\"test\"/"`},
+		{"dir with spaces", "my dir/", `my\ dir/`},
+		{"dir with quotes", `dir"test"/`, `dir\"test\"/`},
 		// Backslash SafeName-encoded, no quoting needed.
 		{"dir with backslash", `dir\test/`, `dir\\test/`},
 		// Newline SafeName-encoded, no quoting needed.
 		{"dir with newline", "dir\ntest/", `dir\ntest/`},
-		{"dir leading space", " dir/", `" dir/"`},
+		{"dir leading space", " dir/", `\ dir/`},
 		{"brackets escaped", "file[1].txt", `file\[1\].txt`},
 		{"brackets with backslash", `file\[1].txt`, `file\\\[1\].txt`},
 	}

@@ -668,9 +668,9 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 		}
 	})
 
-	// Test: quoted filename with spaces
-	t.Run("quoted_filename_spaces", func(t *testing.T) {
-		input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 \"my file.txt\"\n"
+	// Test: backslash-escaped filename with spaces
+	t.Run("escaped_filename_spaces", func(t *testing.T) {
+		input := "-rw-r--r-- 2024-01-01T00:00:00Z 100 my\\ file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)

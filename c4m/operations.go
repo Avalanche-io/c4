@@ -258,15 +258,18 @@ func applyPatchTree(base, patch *patchNode) {
 	}
 }
 
-// entriesIdentical checks if two entries are exactly the same
-// (same mode, timestamp, size, name, C4 ID, target). Used to detect removals.
+// entriesIdentical checks if two entries are exactly the same across all
+// metadata fields. Used by patch semantics: an exact duplicate signals removal.
 func entriesIdentical(a, b *Entry) bool {
 	return a.Name == b.Name &&
 		a.Mode == b.Mode &&
 		a.Timestamp.Equal(b.Timestamp) &&
 		a.Size == b.Size &&
 		a.C4ID == b.C4ID &&
-		a.Target == b.Target
+		a.Target == b.Target &&
+		a.HardLink == b.HardLink &&
+		a.FlowDirection == b.FlowDirection &&
+		a.FlowTarget == b.FlowTarget
 }
 
 // flattenPatchTree converts a tree back to a flat entry list.

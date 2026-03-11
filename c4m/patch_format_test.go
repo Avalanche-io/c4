@@ -48,6 +48,26 @@ func TestDecodeFirstLineBareID(t *testing.T) {
 	}
 }
 
+func TestDecodeFirstLineBareIDWithLeadingBlankLines(t *testing.T) {
+	// Blank lines before a bare C4 ID should not prevent it being
+	// recognized as an external base reference (first non-blank line).
+	baseID := c4.Identify(strings.NewReader("base content"))
+
+	input := "\n\n" + baseID.String() + "\n" +
+		"-rw-r--r-- 2026-03-06T12:00:00Z 100 new.txt\n"
+
+	m, err := Unmarshal([]byte(input))
+	if err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if m.Base != baseID {
+		t.Errorf("Base = %s, want %s", m.Base, baseID)
+	}
+	if len(m.Entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(m.Entries))
+	}
+}
+
 func TestDecodeInlinePatchAdd(t *testing.T) {
 	// Build a base manifest, compute its ID, then write a stream with
 	// the base entries, a bare C4 ID checkpoint, and a patch that adds a file.

@@ -188,6 +188,18 @@ func TestFlowArrowDisambiguation(t *testing.T) {
 			wantFlow:  FlowOutbound,
 			wantFlowT: "backup:",
 		},
+		{
+			name:      "flow target with c4-prefixed location name",
+			input:     "drwxr-xr-x 2024-01-01T00:00:00Z 0 outbox/ -> c4studio:inbox/ -\n",
+			wantFlow:  FlowOutbound,
+			wantFlowT: "c4studio:inbox/",
+		},
+		{
+			name:      "flow target with c4-only location name",
+			input:     "drwxr-xr-x 2024-01-01T00:00:00Z 0 footage/ -> c4:renders/ -\n",
+			wantFlow:  FlowOutbound,
+			wantFlowT: "c4:renders/",
+		},
 	}
 
 	for _, tt := range tests {
@@ -216,7 +228,7 @@ func TestFlowArrowDisambiguation(t *testing.T) {
 	}
 }
 
-func TestFlowQuotedNamesNotMisinterpreted(t *testing.T) {
+func TestFlowEscapedNamesNotMisinterpreted(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -224,26 +236,26 @@ func TestFlowQuotedNamesNotMisinterpreted(t *testing.T) {
 		wantFlow FlowDirection
 	}{
 		{
-			name:     "quoted name containing <- is not a flow operator",
-			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 \"a <- b\" -\n",
+			name:     "escaped name containing <- is not a flow operator",
+			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 a\\ <-\\ b -\n",
 			wantName: "a <- b",
 			wantFlow: FlowNone,
 		},
 		{
-			name:     "quoted name containing <> is not a flow operator",
-			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 \"a <> b\" -\n",
+			name:     "escaped name containing <> is not a flow operator",
+			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 a\\ <>\\ b -\n",
 			wantName: "a <> b",
 			wantFlow: FlowNone,
 		},
 		{
-			name:     "quoted name containing -> is not a flow operator",
-			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 \"report -> draft\" -\n",
+			name:     "escaped name containing -> is not a flow operator",
+			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 report\\ ->\\ draft -\n",
 			wantName: "report -> draft",
 			wantFlow: FlowNone,
 		},
 		{
-			name:     "quoted name with <- followed by flow operator",
-			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 \"report <- draft\" <- edits: -\n",
+			name:     "escaped name with <- followed by flow operator",
+			input:    "-rw-r--r-- 2024-01-01T00:00:00Z 100 report\\ <-\\ draft <- edits: -\n",
 			wantName: "report <- draft",
 			wantFlow: FlowInbound,
 		},

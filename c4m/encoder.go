@@ -40,8 +40,10 @@ func (e *Encoder) SetIndent(width int) *Encoder {
 
 // Encode writes the manifest to the encoder's output stream.
 // Output is entry-only: no header, no directives.
+// The manifest is not modified; a sorted copy is used for output.
 func (e *Encoder) Encode(m *Manifest) error {
-	// Ensure entries are properly sorted before output
+	// Sort a copy to avoid mutating the caller's manifest.
+	m = m.Copy()
 	m.SortEntries()
 
 	// Calculate formatting parameters if pretty-printing

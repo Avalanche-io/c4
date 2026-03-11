@@ -54,10 +54,9 @@ func (d *Decoder) Decode() (*Manifest, error) {
 			return nil, err
 		}
 
-		// Skip blank lines.
+		// Skip blank lines (do not clear firstLine — spec says "first non-blank line").
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
-			firstLine = false
 			continue
 		}
 
@@ -261,7 +260,7 @@ func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 	entry.Timestamp = timestamp
 
 	// Parse remaining fields using character-level parsing
-	size, name, rawName, target, id, nameQuoted, hardLink, flowDir, flowTarget, err := d.parseEntryFields(remainingLine)
+	size, name, rawName, target, id, hardLink, flowDir, flowTarget, err := d.parseEntryFields(remainingLine, mode)
 	if err != nil {
 		return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
 	}
@@ -274,11 +273,10 @@ func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 	entry.FlowDirection = flowDir
 	entry.FlowTarget = flowTarget
 
-	// Check for sequence notation: only unquoted names, and check the RAW
-	// name for unescaped brackets forming a valid range pattern.
-	// This correctly handles names like file\[test\].[001-010].dat where
-	// some brackets are escaped (literal) and others form range notation.
-	if !nameQuoted && hasUnescapedSequenceNotation(rawName) {
+	// Check for sequence notation in the RAW name (before unescaping).
+	// Escaped brackets (\[, \]) are excluded; only unescaped brackets
+	// forming a valid range pattern trigger sequence detection.
+	if hasUnescapedSequenceNotation(rawName) {
 		entry.IsSequence = true
 		entry.Pattern = entry.Name
 	}
@@ -287,12 +285,15 @@ func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 }
 
 // parseEntryFields parses the remaining line after timestamp using character-level
-// scanning. This correctly handles quoted names with escapes, symlink targets
-// with spaces, and filenames with backslashes or leading spaces.
+// scanning. Names and targets use backslash escaping for spaces and
+// double-quotes. No quoting mechanism is supported.
 //
 // The expected format is: SIZE NAME [LINK_OP TARGET] [C4ID]
-// Where LINK_OP is ->, <-, or <>, and NAME/TARGET may be quoted.
-func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, target string, id c4.ID, nameQuoted bool, hardLink int, flowDir FlowDirection, flowTarget string, err error) {
+// Where LINK_OP is ->, <-, or <>, and NAME/TARGET use backslash escaping.
+//
+// The mode parameter is used to disambiguate the overloaded -> operator:
+// when mode indicates a symlink, -> is always parsed as a symlink target.
+func (d *Decoder) parseEntryFields(line string, mode os.FileMode) (size int64, name, rawName, target string, id c4.ID, hardLink int, flowDir FlowDirection, flowTarget string, err error) {
 	pos := 0
 	n := len(line)
 
@@ -336,8 +337,7 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 		return
 	}
 
-	// 2. Parse name (quoted or unquoted)
-	nameQuoted = pos < n && line[pos] == '"'
+	// 2. Parse name
 	nameStart := pos
 	name, pos, _, err = d.parseNameOrTarget(line, pos)
 	rawName = line[nameStart:pos]
@@ -352,12 +352,27 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 	}
 
 	// 3. Check for link operator: ->, <-, or <>
+	isSymlink := mode&os.ModeSymlink != 0
 	if pos+1 < n && line[pos] == '-' && line[pos+1] == '>' {
-		// -> operator: hard link group, hard link, flow target, or symlink
 		pos += 2
 
-		// Check for hard link group number: ->N (no space)
-		if pos < n && line[pos] >= '1' && line[pos] <= '9' {
+		if isSymlink {
+			// Symlink mode: -> is always a symlink target. No ambiguity.
+			for pos < n && line[pos] == ' ' {
+				pos++
+			}
+			if pos < n {
+				target, pos, err = d.parseTarget(line, pos)
+				if err != nil {
+					err = fmt.Errorf("parsing symlink target: %w", err)
+					return
+				}
+				for pos < n && line[pos] == ' ' {
+					pos++
+				}
+			}
+		} else if pos < n && line[pos] >= '1' && line[pos] <= '9' {
+			// Hard link group number: ->N (digit immediately after ->)
 			groupStart := pos
 			for pos < n && line[pos] >= '0' && line[pos] <= '9' {
 				pos++
@@ -374,11 +389,9 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 			}
 
 			// Determine type by examining token after ->
-			remaining := strings.TrimSpace(line[pos:])
-			if remaining == "-" || strings.HasPrefix(remaining, "c4") {
-				// Hard link (ungrouped)
-				hardLink = -1
-			} else if pos < n && isFlowTarget(line[pos:]) {
+			// Check flow target BEFORE c4 prefix to avoid misclassifying
+			// location names starting with "c4" (e.g., "c4studio:inbox/").
+			if pos < n && isFlowTarget(line[pos:]) {
 				// Flow target (matches location:... pattern)
 				flowDir = FlowOutbound
 				flowTarget, pos, err = d.parseFlowTarget(line, pos)
@@ -388,8 +401,11 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 				for pos < n && line[pos] == ' ' {
 					pos++
 				}
+			} else if remaining := strings.TrimSpace(line[pos:]); remaining == "-" || strings.HasPrefix(remaining, "c4") {
+				// Hard link (ungrouped) — remaining is null C4 ID or a C4 ID
+				hardLink = -1
 			} else if pos < n {
-				// Symlink target
+				// Fallback: treat as symlink target
 				target, pos, err = d.parseTarget(line, pos)
 				if err != nil {
 					err = fmt.Errorf("parsing symlink target: %w", err)
@@ -448,67 +464,34 @@ func (d *Decoder) parseEntryFields(line string) (size int64, name, rawName, targ
 	return
 }
 
-// parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
+// parseNameOrTarget parses a backslash-escaped name starting at pos.
 // Returns the parsed string, new position, whether unescaped brackets were found
 // (indicating potential sequence notation), and error.
 //
-// Quoted names: "..." with \\→\, \"→", \n→newline
-// Unquoted names: support \[→[, \]→], \\→\, \ →space, \"→", \,→,, \-→- escapes.
-//   - For directory names (trailing /): read until / then stop
-//   - For file names: read until space followed by ->, c4 prefix, or end-of-line
-// parseNameOrTarget parses a quoted or unquoted name/target starting at pos.
-// Returns the parsed string, new position, whether unescaped brackets were found
-// (indicating potential sequence notation), and error.
+// c4m field-boundary escapes: \<space>→space, \"→", \[→[, \]→]
+// All other backslash sequences (SafeName tier-2 escapes like \\, \t, \n, \r, \0,
+// and tier-3 braille sequences) pass through for UnsafeName to decode.
 //
-// Quoted names: only \" is handled (for quote delimiting). All other
-// backslash sequences pass through for UnsafeName.
-// Unquoted names: only \[ and \] are handled (c4m bracket escaping).
-// All other backslash sequences pass through for UnsafeName.
+// Boundary detection:
+//   - Directory names end at / (inclusive)
+//   - File names end at space followed by ->, <-, <>, c4 prefix, or -
 func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, error) {
 	n := len(line)
 	if pos >= n {
 		return "", pos, false, fmt.Errorf("unexpected end of line")
 	}
 
-	if line[pos] == '"' {
-		// Quoted name: only handle \" for quote delimiting.
-		pos++ // skip opening quote
-		var buf strings.Builder
-		for pos < n {
-			ch := line[pos]
-			if ch == '\\' && pos+1 < n && line[pos+1] == '"' {
-				buf.WriteByte('"')
-				pos += 2
-			} else if ch == '"' {
-				pos++ // skip closing quote
-				return buf.String(), pos, false, nil
-			} else {
-				buf.WriteByte(ch)
-				pos++
-			}
-		}
-		return "", pos, false, fmt.Errorf("unterminated quoted name")
-	}
-
-	// Unquoted name: scan for boundary.
-	// Only handle \[ and \] (c4m bracket escaping for sequence notation).
-	// All other backslash sequences pass through for UnsafeName.
+	// Scan for boundary with backslash-escape handling.
+	// c4m field-boundary escapes are consumed here; SafeName escapes pass through.
 	var buf strings.Builder
 	hasUnescapedBrackets := false
 	for pos < n {
 		ch := line[pos]
 
-		// c4m bracket escapes only.
+		// c4m field-boundary escapes.
 		if ch == '\\' && pos+1 < n {
 			next := line[pos+1]
-			if next == '[' || next == ']' {
-				buf.WriteByte(next)
-				pos += 2
-				continue
-			}
-			// Legacy c4m escapes: \ , \", \,, \- — still consumed
-			// for backwards compatibility with hand-written c4m files.
-			if next == ' ' || next == '"' || next == ',' || next == '-' {
+			if next == ' ' || next == '"' || next == '[' || next == ']' {
 				buf.WriteByte(next)
 				pos += 2
 				continue
@@ -576,50 +559,47 @@ func hasUnescapedSequenceNotation(raw string) bool {
 // parseTarget parses a symlink target starting at pos.
 // Unlike parseNameOrTarget, this does NOT treat / as a boundary because
 // symlink targets can be absolute paths or contain path separators.
-// For unquoted targets, the boundary is a space followed by a c4 prefix or end-of-line.
+// Targets do not get bracket escaping since brackets in paths are literal.
+//
+// c4m field-boundary escapes: \<space>→space, \"→"
+// All other backslash sequences pass through for UnsafeName.
+// Boundary: space followed by c4 prefix, null marker (-), or end-of-line.
 func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 	n := len(line)
 	if pos >= n {
 		return "", pos, fmt.Errorf("unexpected end of line")
 	}
 
-	if line[pos] == '"' {
-		// Quoted target: only handle \" for quote delimiting.
-		pos++ // skip opening quote
-		var buf strings.Builder
-		for pos < n {
-			ch := line[pos]
-			if ch == '\\' && pos+1 < n && line[pos+1] == '"' {
-				buf.WriteByte('"')
-				pos += 2
-			} else if ch == '"' {
-				pos++ // skip closing quote
-				return buf.String(), pos, nil
-			} else {
-				buf.WriteByte(ch)
-				pos++
-			}
-		}
-		return "", pos, fmt.Errorf("unterminated quoted target")
-	}
-
-	// Unquoted target: scan until c4 prefix or end-of-line
-	start := pos
+	// Scan with backslash-escape handling.
+	// \<space> and \" are consumed as literal characters (not boundaries).
+	var buf strings.Builder
 	for pos < n {
 		ch := line[pos]
+
+		// Backslash escapes: consume space and quote escapes.
+		if ch == '\\' && pos+1 < n {
+			next := line[pos+1]
+			if next == ' ' || next == '"' {
+				buf.WriteByte(next)
+				pos += 2
+				continue
+			}
+		}
+
 		if ch == ' ' {
 			rest := line[pos:]
 			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
-				return line[start:pos], pos, nil
+				return buf.String(), pos, nil
 			}
 			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
-				return line[start:pos], pos, nil
+				return buf.String(), pos, nil
 			}
 		}
+		buf.WriteByte(ch)
 		pos++
 	}
 
-	return line[start:pos], pos, nil
+	return buf.String(), pos, nil
 }
 
 // isFlowTarget returns true if the text at the current position matches

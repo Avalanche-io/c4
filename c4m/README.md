@@ -1,196 +1,91 @@
-# C4M - C4 Manifest Format
+# C4M — C4 Manifest Format
 
-C4M is a human-readable, text-based format for describing filesystem contents with cryptographic content addressing using C4 IDs. It enables efficient tracking, comparison, and verification of directory structures and file contents.
+A c4m file is a complete description of a filesystem. It captures the full tree structure — every file, directory, symlink, permission, timestamp, size, and content identity — in a plain text document you can read, email, diff, and pipe through Unix tools.
 
-## Documentation Structure
+```
+-rw-r--r-- 2025-01-15T10:30:00Z  1,234 readme.txt   c41j3C6Jqga95PL2zmZVBW...
+-rw-r--r-- 2025-01-15T10:30:00Z 12,800 main.go      c43pCP9e69EGD253L3pcwc...
+drwxr-xr-x 2025-01-15T10:30:00Z 48,200 assets/      c4RgFeXFYL1FjFueMKjPjn...
+  -rw-r--r-- 2025-01-15T10:30:00Z 48,200 logo.png   c42RgFeXFYL1FjFueMKjPjn...
+```
 
-- **README.md** (this file) - User guide and quick start
-- **[SPECIFICATION.md](./SPECIFICATION.md)** - Formal C4M format specification v1.0
-- **[WORKFLOWS.md](./WORKFLOWS.md)** - Common workflows and usage patterns
-- **[IMPLEMENTATION_NOTES.md](./IMPLEMENTATION_NOTES.md)** - Implementation clarifications and edge cases
+Every file has a C4 ID — a cryptographic content identifier (SMPTE ST 2114:2017). Every directory has one too, computed from its contents. If two directories have the same C4 ID, they contain exactly the same data, no matter where they are or how they got there.
 
-## What is C4M?
+## What c4m captures
 
-C4M (C4 Manifest) treats filesystems as documents, providing:
-- **Content-addressable storage** - Every file and directory has a unique C4 ID based on its content
-- **Human-readable format** - Plain text UTF-8 format that's easy to read and process
-- **Efficient comparisons** - Boolean operations to diff, merge, and compare directory structures
-- **Cryptographic verification** - Verify file integrity using C4 IDs (SHA-512 based)
+A c4m file represents the complete POSIX-like filesystem tree: regular files, directories, symlinks, hard links, named pipes, sockets, and device nodes — with permissions, timestamps, sizes, content C4 IDs, and support for arbitrary filenames including non-printable bytes and invalid UTF-8 (via [Universal Filename Encoding](../design/filename-encoding.md)). Media file sequences like `frame.[0001-0100].exr` get compact notation.
 
-## Quick Start
+This covers the structural and content information of any filesystem you are likely to encounter. Environment-specific metadata like ownership and extended attributes is not part of the format but can be associated with c4m entries through external systems using paths or C4 IDs as join keys. See [METADATA_COVERAGE.md](METADATA_COVERAGE.md) for details.
 
-### Generate a C4 ID for a directory
+## What c4m makes possible
+
+These are capabilities that did not exist before c4m and C4 IDs:
+
+- **Filesystem-as-document**: A c4m file *is* the filesystem, but can email it, diff it, version it, and reconstruct the full tree from it plus the content store.
+- **Content-addressed deduplication**: Identical files anywhere in the tree (or across trees) share a single C4 ID. Storage and transfer only need one copy.
+- **Cryptographic diff**: Comparing two directory trees is comparing two c4m files. Changed files have different C4 IDs. Unchanged subtrees can be skipped entirely (their directory C4 IDs match).
+- **Incremental patches**: The [patch format](SPECIFICATION.md#patch-format) describes changes between states as inline entries. A million-file tree with one changed file produces a patch touching only the path to that file.
+- **Progressive resolution**: Start with just filenames. Add permissions and sizes later. Add C4 IDs when content is hashed. Each stage is a valid c4m file.
+- **Human editability**: It's text with a familiar structure that looks a lot like `ls -l`. You can write a c4m file by hand, fix one in a text editor, or generate one from a script.
+- **Composability**: c4m output is plain text with one entry per line. `grep`, `awk`, `sort`, `diff`, and every other Unix tool works on it natively.
+
+## Quick start
+
 ```bash
+# View a directory as a c4m listing
+c4 myproject/
+
 # Get the C4 ID of a directory
 c4 -i myproject/
 
-# Output: c42RgFeXFYL1FjFueMKjPjnwwjyJKnHVasmfEVmrWBekjiCVNjL5xBMtZePcchNPdf8AV8pUwp6L5BTbWfx6J7s7jr
-```
+# Save a c4m file
+c4 myproject/ > snapshot.c4m
 
-### View a directory's c4m listing
-```bash
-# Full recursive c4m output
-c4 myproject/
-```
-
-### Verify integrity
-```bash
-# The C4 ID is computed from the canonical c4m listing
-c4 -i myproject/
-```
-
-## C4M Format
-
-A C4M manifest is a plain text file with a simple structure:
-
-```
--rw-r--r-- 2024-01-15T10:30:00Z 1234 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB
-drwxr-xr-x 2024-01-15T10:30:00Z 4096 docs/ c43pCP9e69EGD253L3pcwcjvzVFHntBMsC7V12jJz83ptDNUoNAa2k3BiafC6UAUgYkyaGk7Z1cbgPvx9zezLagD9M
-```
-
-Each line contains:
-- Unix permissions
-- ISO 8601 timestamp (UTC)
-- Size in bytes
-- Filename (directories end with `/`)
-- C4 ID (content hash)
-
-## Comparing Directories
-
-```bash
-# Show what changed between two directories
+# Compare two directories
 c4 diff dir1/ dir2/
 
-# Compare a directory against a saved c4m file
-c4 diff dir1/ backup.c4m:
+# Compare against a saved snapshot
+c4 diff myproject/ snapshot.c4m:
 ```
 
-## Use Cases
+## Format overview
 
-### Backup Verification
-Create c4m files of important directories and verify backups haven't changed:
-```bash
-# Create c4m file
-c4 ~/Documents > documents.c4m
+Each entry occupies one line:
 
-# Later, verify nothing changed
-c4 diff ~/Documents documents.c4m:
+```
+<mode> <timestamp> <size> <name> [link-operator target] <c4id>
 ```
 
-### Build Reproducibility
-Track build outputs to ensure reproducible builds:
-```bash
-# Generate c4m file of build artifacts
-c4 build/ > build-v1.0.0.c4m
+- **Mode**: Unix permissions (`-rw-r--r--`, `drwxr-xr-x`, `lrwxrwxrwx`, etc.) or `-` for unspecified
+- **Timestamp**: RFC 3339 UTC (`2025-01-15T10:30:00Z`) or `-` for unspecified
+- **Size**: Bytes as integer, or `-` for unspecified
+- **Name**: Bare filename (directories end with `/`), backslash-escaped for spaces and special characters
+- **C4 ID**: 90-character SMPTE ST 2114 identifier, or `-` for uncomputed
 
-# Verify next build produces identical output
-c4 diff build/ build-v1.0.0.c4m:
+Nesting is expressed through indentation:
+
+```
+drwxr-xr-x 2025-01-15T10:30:00Z 50000 project/
+  -rw-r--r-- 2025-01-15T10:30:00Z  1234 readme.txt c4...
+  drwxr-xr-x 2025-01-15T10:30:00Z 48766 src/
+    -rw-r--r-- 2025-01-15T10:30:00Z 12800 main.go c4...
 ```
 
-### Data Transfer Validation
-Ensure data integrity when transferring files:
-```bash
-# On source machine
-c4 data/ > transfer.c4m
+For the complete format definition, see [SPECIFICATION.md](SPECIFICATION.md). For the formal standard with ABNF grammar, see [C4M-STANDARD.md](C4M-STANDARD.md).
 
-# On destination machine (after transfer)
-c4 diff data/ transfer.c4m:
-```
-
-### Change Detection
-Monitor filesystem changes over time:
-```bash
-# Create baseline
-c4 project/ > baseline.c4m
-
-# Check what changed
-c4 diff project/ baseline.c4m:
-
-# Update baseline
-c4 project/ > baseline.c4m
-```
-
-## Advanced Features
-
-### Piping and Composition
-c4m output is plain text, native to Unix tools:
-```bash
-# Filter c4m entries with grep
-c4 dir/ | grep "\.jpg"
-
-# Extract all C4 IDs with awk
-c4 dir/ | awk '{ print $NF }'
-
-# Files over 1MB
-c4 dir/ | awk '$3+0 > 1048576'
-```
-
-### Canonical Form
-Directories compute their C4 ID from a canonical representation where subdirectories are represented by their computed C4 ID:
-```bash
-# The C4 ID of a directory is deterministic
-c4 mydir/
-# Always produces the same ID for the same content
-```
-
-## CLI Integration
-
-The `c4` CLI provides built-in filesystem operations using the same c4m format:
-
-```bash
-c4 cp ./src/ project.c4m:src/    # Copy into a c4m file
-c4 diff dir1/ dir2/              # Compare directories
-c4 patch desired.c4m :           # Converge filesystem to target state
-```
-
-See the [CLI Reference](../docs/cli-reference.md) for the full command vocabulary.
-
-## Technical Details
-
-- **C4 IDs**: SMPTE ST 2114:2017 compliant identifiers using SHA-512
-- **Format**: UTF-8 text, Unix line endings
-- **Permissions**: Standard Unix file mode representation
-- **Timestamps**: ISO 8601 format in UTC
-- **Natural Sort**: Intelligent ordering (file2.txt before file10.txt)
-
-## Specification
-
-For complete format details, see [SPECIFICATION.md](SPECIFICATION.md).
-
-## Contributing
-
-C4M is part of the C4 reference implementation. We welcome contributions for:
-- Additional language implementations
-- Tool integrations
-- Workflow examples
-- Documentation improvements
-
-## Package Files
-
-### Core API
-- `manifest.go` - Manifest type, sorting, canonicalization, tree index, metadata propagation
-- `entry.go` - Entry type, formatting, mode/name/size encoding
-- `encoder.go` - Encoder, Marshal, MarshalPretty, Format, Unmarshal
-- `decoder.go` - Decoder with character-level parser, timestamp/mode parsing
-- `builder.go` - Fluent manifest builder API
-- `operations.go` - Diff, Union, Intersect, Subtract, Resolver, ManifestCache
-- `validator.go` - Streaming validator with configurable strictness
-- `naturalsort.go` - Natural sort (text before numeric, ASCII digits only)
-- `sequence.go` - Media file sequence detection and compression
-
-### API Examples
+## Go package
 
 ```go
-// Decode a manifest
+// Decode
 m, err := c4m.NewDecoder(reader).Decode()
 
-// Encode canonical
+// Encode (canonical)
 err = c4m.NewEncoder(writer).Encode(m)
 
-// Encode pretty
+// Encode (pretty-printed)
 err = c4m.NewEncoder(writer).SetPretty(true).Encode(m)
 
-// Build a manifest
+// Build programmatically
 m := c4m.NewBuilder().
     AddFile("readme.txt", c4m.WithSize(100), c4m.WithMode(0644)).
     AddDir("src", c4m.WithMode(os.ModeDir|0755)).
@@ -198,16 +93,20 @@ m := c4m.NewBuilder().
     End().
     MustBuild()
 
-// Look up an entry (O(1) indexed)
-entry := m.GetEntry("main.go")
-
-// Sort entries for output
-m.SortEntries()
-
 // Compute deterministic C4 ID
 id := m.ComputeC4ID()
+
+// Diff two manifests
+patch := c4m.PatchDiff(old, new)
 ```
+
+## Documentation
+
+- **[SPECIFICATION.md](SPECIFICATION.md)** — Format specification (user-facing)
+- **[C4M-STANDARD.md](C4M-STANDARD.md)** — Formal standard with ABNF grammar
+- **[METADATA_COVERAGE.md](METADATA_COVERAGE.md)** — What c4m captures, what it doesn't, and how to extend it
+- **[../design/filename-encoding.md](../design/filename-encoding.md)** — Universal Filename Encoding specification
 
 ## License
 
-Same as the C4 project - see [LICENSE](../LICENSE).
+Same as the C4 project — see [LICENSE](../LICENSE).
