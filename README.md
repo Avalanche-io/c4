@@ -9,8 +9,10 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 C4 gives every file an ID derived from its content — not its name,
-path, or location. Same bytes, same ID, everywhere, forever. It's
-a universal fingerprint for data.
+path, or location. Two people on opposite sides of the world, who
+have never met, will independently produce the same ID for the same
+file. No registry, no coordination, no central authority. The content
+itself is the agreement.
 
 ```bash
 $ echo "hello" | c4
@@ -18,9 +20,11 @@ c447Fm3BJZQ62765jMZJH4m28hrDM7Szbj9CUmj4F4gnvyDYXYz4WfnK2nYRhFvRgYEectEXYBYWLDpL
 ```
 
 That 90-character string is a [SMPTE ST 2114:2017](https://ieeexplore.ieee.org/document/7971777)
-identifier — an international standard built on SHA-512. Run it again
-on any machine, in any language, ten years from now. Same input, same
-ID. That's the invariant everything else builds on.
+identifier — an international standard built on SHA-512. Run it on
+any machine, in any language, ten years from now. Same input, same ID.
+Unlike a UUID, which is assigned arbitrarily and requires coordination
+to be meaningful, a C4 ID is discovered from the data itself. If you
+have the same file, you already agree on its identity.
 
 C4 extends this idea to entire filesystems. `c4 id` produces a c4m
 file — a plain-text manifest that captures the identity of every file
