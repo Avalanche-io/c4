@@ -1,324 +1,109 @@
-# C4M - C4 Manifest Format
+# C4M — C4 Manifest Format
 
-C4M is a human-readable, text-based format for describing filesystem contents with cryptographic content addressing using C4 IDs. It enables efficient tracking, comparison, and verification of directory structures and file contents.
+A c4m file is a complete description of a filesystem. It captures the full tree structure — every file, directory, symlink, permission, timestamp, size, and content identity — in a plain text document you can read, email, diff, and pipe through Unix tools.
 
-## Documentation Structure
+```
+-rw-r--r-- 2025-01-15T10:30:00Z  1,234 readme.txt   c41j3C6Jqga95PL2zmZVBW...
+-rw-r--r-- 2025-01-15T10:30:00Z 12,800 main.go      c43pCP9e69EGD253L3pcwc...
+drwxr-xr-x 2025-01-15T10:30:00Z 48,200 assets/      c4RgFeXFYL1FjFueMKjPjn...
+  -rw-r--r-- 2025-01-15T10:30:00Z 48,200 logo.png   c42RgFeXFYL1FjFueMKjPjn...
+```
 
-- **README.md** (this file) - User guide and quick start
-- **[SPECIFICATION.md](./SPECIFICATION.md)** - Formal C4M format specification v1.0
-- **[IMPLEMENTATION_NOTES.md](./IMPLEMENTATION_NOTES.md)** - Implementation clarifications and edge cases
+Every file has a C4 ID — a cryptographic content identifier (SMPTE ST 2114:2017). Every directory has one too, computed from its contents. If two directories have the same C4 ID, they contain exactly the same data, no matter where they are or how they got there.
 
-## What is C4M?
+## What c4m captures
 
-C4M (C4 Manifest) treats filesystems as documents, providing:
-- **Content-addressable storage** - Every file and directory has a unique C4 ID based on its content
-- **Human-readable format** - Plain text UTF-8 format that's easy to read and process
-- **Efficient comparisons** - Boolean operations to diff, merge, and compare directory structures
-- **Cryptographic verification** - Verify file integrity using C4 IDs (SHA-512 based)
+A c4m file represents the complete POSIX-like filesystem tree: regular files, directories, symlinks, hard links, named pipes, sockets, and device nodes — with permissions, timestamps, sizes, content C4 IDs, and support for arbitrary filenames including non-printable bytes and invalid UTF-8. Media file sequences like `frame.[0001-0100].exr` get compact notation.
 
-## Quick Start
+This covers the structural and content information of any filesystem you are likely to encounter. Environment-specific metadata like ownership and extended attributes is not part of the format but can be associated with c4m entries through external systems using paths or C4 IDs as join keys. See [METADATA_COVERAGE.md](METADATA_COVERAGE.md) for details.
 
-### Generate a C4 ID for a directory
+## What c4m makes possible
+
+These are capabilities that did not exist before c4m and C4 IDs:
+
+- **Filesystem-as-document**: A c4m file *is* the filesystem, but can email it, diff it, version it, and reconstruct the full tree from it plus the content store.
+- **Content-addressed deduplication**: Identical files anywhere in the tree (or across trees) share a single C4 ID. Storage and transfer only need one copy.
+- **Cryptographic diff**: Comparing two directory trees is comparing two c4m files. Changed files have different C4 IDs. Unchanged subtrees can be skipped entirely (their directory C4 IDs match).
+- **Incremental patches**: The [patch format](SPECIFICATION.md#patch-format) describes changes between states as inline entries. A million-file tree with one changed file produces a patch touching only the path to that file.
+- **Progressive resolution**: Start with just filenames. Add permissions and sizes later. Add C4 IDs when content is hashed. Each stage is a valid c4m file.
+- **Human editability**: It's text with a familiar structure that looks a lot like `ls -l`. You can write a c4m file by hand, fix one in a text editor, or generate one from a script.
+- **Composability**: c4m output is plain text with one entry per line. `grep`, `awk`, `sort`, `diff`, and every other Unix tool works on it natively.
+
+## Quick start
+
 ```bash
-# Get the C4 ID of a directory (computed from its C4M manifest)
-c4 myproject/
+# View a directory as a c4m listing
+c4 id myproject/
 
-# Output: c42RgFeXFYL1FjFueMKjPjnwwjyJKnHVasmfEVmrWBekjiCVNjL5xBMtZePcchNPdf8AV8pUwp6L5BTbWfx6J7s7jr
+# Save a c4m file
+c4 id myproject/ > snapshot.c4m
+
+# Get the tree's C4 ID (pipe c4m through stdin)
+c4 id myproject/ | c4
+
+# Compare two snapshots
+c4 diff old.c4m new.c4m
 ```
 
-### View a directory's manifest
-```bash
-# Show one-level manifest
-c4 -m myproject/
+## Format overview
 
-# Show recursive manifest
-c4 -mr myproject/
-```
-
-### Verify manifest integrity
-```bash
-# These should produce the same C4 ID
-c4 myproject/
-c4 -m myproject/ | c4
-```
-
-## C4M Format
-
-A C4M manifest is a plain text file with a simple structure:
+Each entry occupies one line:
 
 ```
-@c4m 1.0
--rw-r--r-- 2024-01-15T10:30:00Z 1234 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB
-drwxr-xr-x 2024-01-15T10:30:00Z 4096 docs/ c43pCP9e69EGD253L3pcwcjvzVFHntBMsC7V12jJz83ptDNUoNAa2k3BiafC6UAUgYkyaGk7Z1cbgPvx9zezLagD9M
+<mode> <timestamp> <size> <name> [link-operator target] <c4id>
 ```
 
-Each line contains:
-- Unix permissions
-- ISO 8601 timestamp (UTC)
-- Size in bytes
-- Filename (directories end with `/`)
-- C4 ID (content hash)
+- **Mode**: Unix permissions (`-rw-r--r--`, `drwxr-xr-x`, `lrwxrwxrwx`, etc.) or `-` for unspecified
+- **Timestamp**: RFC 3339 UTC (`2025-01-15T10:30:00Z`) or `-` for unspecified
+- **Size**: Bytes as integer, or `-` for unspecified
+- **Name**: Bare filename (directories end with `/`), backslash-escaped for spaces and special characters
+- **C4 ID**: 90-character SMPTE ST 2114 identifier, or `-` for uncomputed
 
-## Boolean Operations
+Nesting is expressed through indentation:
 
-C4M supports set operations for powerful manifest manipulation:
-
-### Compare directories (diff)
-```bash
-# Show files that differ between two directories
-c4 diff dir1/ dir2/
-
-# Compare a directory against a saved manifest
-c4 diff dir1/ backup.c4m
+```
+drwxr-xr-x 2025-01-15T10:30:00Z 50000 project/
+  -rw-r--r-- 2025-01-15T10:30:00Z  1234 readme.txt c4...
+  drwxr-xr-x 2025-01-15T10:30:00Z 48766 src/
+    -rw-r--r-- 2025-01-15T10:30:00Z 12800 main.go c4...
 ```
 
-### Combine manifests (union)
-```bash
-# Merge manifests from multiple sources
-c4 union source1/ source2/ > combined.c4m
+For the complete format definition, see [SPECIFICATION.md](SPECIFICATION.md). For the formal standard with ABNF grammar, see [C4M-STANDARD.md](C4M-STANDARD.md).
+
+## Go package
+
+```go
+// Decode
+m, err := c4m.NewDecoder(reader).Decode()
+
+// Encode (canonical)
+err = c4m.NewEncoder(writer).Encode(m)
+
+// Encode (pretty-printed)
+err = c4m.NewEncoder(writer).SetPretty(true).Encode(m)
+
+// Build programmatically
+m := c4m.NewBuilder().
+    AddFile("readme.txt", c4m.WithSize(100), c4m.WithMode(0644)).
+    AddDir("src", c4m.WithMode(os.ModeDir|0755)).
+        AddFile("main.go", c4m.WithSize(1024)).
+    End().
+    MustBuild()
+
+// Compute deterministic C4 ID
+id := m.ComputeC4ID()
+
+// Diff two manifests
+patch := c4m.PatchDiff(old, new)
 ```
 
-### Find common files (intersect)
-```bash
-# Show files present in both directories
-c4 intersect project-v1/ project-v2/
-```
-
-### Exclude files (subtract)
-```bash
-# Show files in dir1 that aren't in dir2
-c4 subtract dir1/ dir2/
-```
-
-## Use Cases
-
-### Backup Verification
-Create manifests of important directories and verify backups haven't changed:
-```bash
-# Create manifest
-c4 -m ~/Documents > documents.c4m
-
-# Later, verify nothing changed
-c4 diff ~/Documents documents.c4m
-```
-
-### Build Reproducibility
-Track build outputs to ensure reproducible builds:
-```bash
-# Generate manifest of build artifacts
-c4 -m build/ > build-v1.0.0.c4m
-
-# Verify next build produces identical output
-c4 diff build/ build-v1.0.0.c4m
-```
-
-### Data Transfer Validation
-Ensure data integrity when transferring files:
-```bash
-# On source machine
-c4 -m data/ > transfer.c4m
-
-# On destination machine (after transfer)
-c4 diff data/ transfer.c4m
-```
-
-### Change Detection
-Monitor filesystem changes over time:
-```bash
-# Create baseline
-c4 -m project/ > baseline.c4m
-
-# Check what changed
-c4 diff project/ baseline.c4m
-
-# Update baseline
-c4 -m project/ > baseline.c4m
-```
-
-## Advanced Features
-
-### Piping and Composition
-C4M auto-detects format when piped:
-```bash
-# Filter and process manifests
-c4 -m dir/ | grep "\.jpg" | c4
-```
-
-### Recursive Manifests
-View complete directory structure:
-```bash
-c4 -mr project/
-```
-Output shows nested structure with proper indentation.
-
-### Canonical Form
-Directories compute their C4 ID from a canonical representation where subdirectories are represented by their computed C4 ID:
-```bash
-# The C4 ID of a directory is deterministic
-c4 mydir/
-# Always produces the same ID for the same content
-```
-
-## Integration Ideas
-
-We're exploring filesystem tool integration for seamless C4 workflows:
-- `c4-cp` - Copy with automatic C4 verification
-- `c4-mv` - Move with manifest updates
-- `c4-rm` - Remove with manifest tracking
-- `c4-sync` - Sync directories using C4M manifests
-
-These would maintain standard Unix tool interfaces while adding C4 integrity tracking.
-
-## Technical Details
-
-- **C4 IDs**: SMPTE ST 2114:2017 compliant identifiers using SHA-512
-- **Format**: UTF-8 text, Unix line endings
-- **Permissions**: Standard Unix file mode representation
-- **Timestamps**: ISO 8601 format in UTC
-- **Natural Sort**: Intelligent ordering (file2.txt before file10.txt)
-
-## Specification
-
-For complete format details, see [SPECIFICATION.md](SPECIFICATION.md).
-
-## Contributing
-
-C4M is part of the C4 reference implementation. We welcome contributions for:
-- Additional language implementations
-- Tool integrations
-- Workflow examples
-- Documentation improvements
-
-## Package Contents
-
-### Complexity Analysis
-
-The c4m package contains approximately 7,500 lines of Go code (excluding tests). The areas of highest complexity are:
-
-#### High Complexity Components (>500 lines)
-
-1. **`progressive_scanner.go` (700 lines, 18 functions)** - The most complex component, implementing concurrent three-phase scanning with:
-   - Parallel directory traversal using worker pools
-   - Three-stage pipeline: structure discovery → metadata collection → C4 ID computation
-   - Signal handling for progress reporting (Ctrl+T on macOS)
-   - Complex synchronization with channels and wait groups
-   - Platform-specific optimizations
-
-2. **`generator.go` (543 lines, 19 functions)** - Traditional recursive manifest generator with:
-   - Configurable C4 ID computation strategies
-   - Media sequence detection and compression
-   - Symlink handling with cycle detection
-   - Multiple output formats (canonical, ergonomic, recursive)
-
-3. **`parser.go` (540 lines, 12 functions)** - Comprehensive C4M format parser handling:
-   - Multiple timestamp formats and timezone parsing
-   - Escape sequence processing in quoted strings
-   - Null value representation (-)
-   - All @-directives (version, base, data, layer)
-   - Error recovery and line tracking
-
-4. **`manifest.go` (500 lines)** - Core data structure with:
-   - Multiple serialization formats
-   - Entry sorting algorithms
-   - Canonical form generation for C4 ID computation
-   - Layer management for incremental updates
-
-5. **`bundle.go` (485 lines, 16 functions)** - Bundle storage system managing:
-   - Atomic file operations with temporary files
-   - Scan session lifecycle
-   - Chunk management with @base linking
-   - Progress tracking and resumption
-
-6. **`bundle_scanner_v2.go` (486 lines, 11 functions)** - Production scanner with:
-   - Three-phase architecture (count → scan → chunk)
-   - Collapsed directory handling (>70K entries)
-   - Depth tracking and natural sorting
-   - Independent scan contexts for large directories
-
-#### Medium Complexity Components (200-500 lines)
-
-- **`progressive_cli.go` (417 lines)** - CLI orchestration with progress display
-- **`operations.go` (234 lines)** - Set operations on manifests
-- **`entry.go` (237 lines)** - Entry formatting and serialization
-- **`sequence.go` (204 lines)** - Media sequence detection algorithms
-
-#### Lower Complexity Utilities (<200 lines)
-
-- **`naturalsort.go` (154 lines)** - Natural sorting algorithm
-- **`manifest_sort.go` (115 lines)** - Hierarchical sibling sorting
-- **`timing.go` (45 lines)** - Simple timing helpers
-- **Platform-specific files** - Signal handling and system call optimizations
-
-### Core Components
-
-- **`manifest.go`** *(500 lines, high complexity)* - Core manifest data structure and operations. Implements the C4M format with version handling, entry management, and canonical form generation for C4 ID computation. Contains multiple serialization strategies and sorting algorithms.
-
-- **`entry.go`** *(237 lines, medium complexity)* - Individual filesystem entry representation. Handles file/directory metadata including permissions, timestamps, sizes, names, symlink targets, and C4 IDs. Includes formatting logic for different output modes.
-
-- **`parser.go`** *(540 lines, high complexity)* - Robust C4M format parser. Handles all @-directives, multiple timestamp formats, quoted filenames, escape sequences, and null values. One of the most complex components due to format flexibility requirements.
-
-### Bundle System
-
-- **`bundle.go`** *(485 lines, high complexity)* - Content-addressed storage container for large filesystem scans. Manages chunked manifests, scan sessions, progress tracking, and atomic file operations. Complex due to concurrent access patterns and atomic operations.
-
-- **`bundle_scanner_v2.go`** *(486 lines, high complexity)* - Current production scanner with three-phase architecture (count, scan, chunk). Handles collapsed directories as separate scan contexts. Critical component with intricate depth tracking and chunking logic.
-
-
-### CLI Components
-
-
-- **`bundle_cli_simple.go`** - Simplified CLI wrapper using ScannerV2 for bundle creation.
-
-
-- **`progressive_cli.go`** *(417 lines, medium complexity)* - CLI for progressive scanning with real-time output and signal handling. Manages output coordination and user interaction.
-
-### Scanning Infrastructure
-
-- **`progressive_scanner.go`** *(700 lines, highest complexity)* - Multi-stage concurrent scanner with three phases: structure discovery, metadata collection, and C4 ID computation. Most complex component due to concurrent worker pools, channel orchestration, and signal handling.
-
-- **`scanner_darwin.go`** *(low complexity)* - macOS-specific optimizations using Darwin system calls.
-
-- **`scanner_linux.go`** *(low complexity)* - Linux-specific optimizations for efficient filesystem traversal.
-
-- **`scanner_generic.go`** *(low complexity)* - Fallback implementation for other platforms.
-
-- **`generator.go`** *(543 lines, high complexity)* - Traditional filesystem-to-manifest generator with configurable options for C4 ID computation, symlink following, and sequence detection. Complex due to recursive traversal and multiple configuration options.
-
-### Streaming Components
-
-
-### Utilities
-
-- **`naturalsort.go`** *(154 lines, low complexity)* - Natural sorting implementation for mixed alphanumeric filenames (file2 before file10).
-
-- **`sequence.go`** *(204 lines, medium complexity)* - Media file sequence detection and compression. Handles patterns like `frame[0001-0100].png`. Contains pattern matching algorithms.
-
-- **`operations.go`** *(234 lines, medium complexity)* - Manifest comparison and set operations: diff, union, intersect, subtract. Implements efficient set algorithms.
-
-- **`manifest_sort.go`** *(115 lines, low complexity)* - Sorting utilities for manifest entries maintaining C4M format rules.
-
-- **`timing.go`** *(45 lines, minimal complexity)* - Performance timing utilities for debugging and optimization.
-
-### Platform Support
-
-- **`signal_darwin.go`** - macOS signal handling (SIGINFO/Ctrl+T for progress).
-
-- **`signal_other.go`** - Signal handling for non-Darwin platforms.
-
-### Documentation
-
-- **`doc.go`** - Package documentation and API overview.
-
-### Test Files
-
-The package includes comprehensive test coverage:
-- **Test files** (>3,800 lines total):
-  - `generator_test.go` (947 lines) - Comprehensive generator testing
-  - `parser_test.go` (632 lines) - Parser edge cases and error handling
-  - `operations_test.go` (597 lines) - Set operation testing
-  - `manifest_test.go` (574 lines) - Core manifest functionality
-  - Additional specialized tests for sorting, sequences, and null values
+## Documentation
+
+- **[SPECIFICATION.md](SPECIFICATION.md)** — Format specification (user-facing)
+- **[C4M-STANDARD.md](C4M-STANDARD.md)** — Formal standard with ABNF grammar
+- **[WORKFLOWS.md](WORKFLOWS.md)** — Common workflows: patches, sequences, extraction
+- **[METADATA_COVERAGE.md](METADATA_COVERAGE.md)** — What c4m captures, what it doesn't, and how to extend it
 
 ## License
 
-Same as the C4 project - see [LICENSE](../LICENSE).
+Same as the C4 project — see [LICENSE](../LICENSE).

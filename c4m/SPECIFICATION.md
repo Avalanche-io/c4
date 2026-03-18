@@ -1,423 +1,458 @@
 # C4 Manifest Format (C4M) Specification v1.0
 
-> **Note**: This is the formal C4M specification. For implementation notes and edge cases, see [IMPLEMENTATION_NOTES.md](./IMPLEMENTATION_NOTES.md). For user documentation, see [README.md](./README.md).
+> **Note**: This is the formal C4M specification. For user documentation, see [README.md](./README.md).
 
 ## Overview
 
 The C4 Manifest Format (.c4m) is a text-based (UTF-8) format for describing filesystem contents with content-addressed identification using C4 IDs (SMPTE ST 2114:2017). It preserves filesystem metadata while enabling content verification, deduplication, and distributed workflows.
 
-## Core Requirements
+A c4m file is an encapsulation of a filesystem: a small, self-contained description that behaves exactly like the full filesystem without needing the file content it describes.
+
+## Core Format
 
 ### File Structure
 
-1. **Mandatory Version Header**: First line must be `@c4m 1.0`
+1. **Entry-only format**: A c4m file is a sequence of entry lines. There is no header line and no directives. Lines beginning with `@` are rejected.
 2. **Character Encoding**: UTF-8 only, no BOM
-3. **Line Endings**: LF (0x0A) only, no CR
-4. **Line Format**: `<indentation><mode> <timestamp> <size> <name> [-> target] [c4id]`
+3. **Line Endings**: LF (0x0A) only. CR (0x0D) is forbidden.
+4. **Blank lines**: Ignored by the parser.
 
-### Field Specifications
+### Entry Line Format
 
-- **Indentation**: Spaces indicating nesting level (consistent width throughout file)
-- **Mode**: Unix-style permissions (10 characters, e.g., `-rw-r--r--`, `drwxr-xr-x`)
-- **Timestamp**: ISO 8601 format ending in 'Z' (UTC only): `YYYY-MM-DDTHH:MM:SSZ`
-- **Size**: File size in bytes (decimal digits only in canonical form)
-- **Name**: File/directory name (directories end with `/`)
-- **Target**: For symlinks, preceded by ` -> `
-- **C4 ID**: Optional but typical, linking to content (see Symlinks section for special rules)
+Each entry occupies one line:
+
+```
+<indentation><mode> <timestamp> <size> <name> [link-operator target] <c4id>
+```
+
+All four metadata fields (mode, timestamp, size, name) are required. The C4 ID or `-` (null) is always the last field. Between the name and C4 ID, an optional link operator may appear.
+
+### Indentation
+
+- Indentation is expressed as leading spaces.
+- The indent width is detected from the first indented line and must remain consistent.
+- Depth = indent / width. Depth 0 = top-level entries.
+- Children of a directory appear at depth+1 immediately following their parent.
+
+## Field Specifications
+
+### Mode (10 characters)
+
+Standard Unix file mode string:
+
+| Position | Meaning |
+|----------|---------|
+| 0 | File type: `-` regular, `d` directory, `l` symlink, `p` pipe, `s` socket, `b` block device, `c` char device |
+| 1-3 | Owner permissions: `rwx` / `-` |
+| 4-6 | Group permissions: `rwx` / `-` |
+| 7-9 | Other permissions: `rwx` / `-` |
+
+Special bits: setuid (`s`/`S` at position 3), setgid (`s`/`S` at position 6), sticky (`t`/`T` at position 9).
+
+**Null mode**: `-` (single dash) or `----------` (ten dashes). Represents unspecified permissions.
+
+### Timestamp
+
+Canonical format: `YYYY-MM-DDTHH:MM:SSZ` (RFC 3339, UTC only, must end with `Z`).
+
+**Null timestamp**: `-` (single dash) or `0`. Internally represented as Unix epoch (1970-01-01T00:00:00Z).
+
+**Parser flexibility**: The decoder also accepts RFC 3339 with timezone offset (`2025-01-01T10:00:00-08:00`), Unix date format, and pretty-print format (`Jan  2 15:04:05 2006 MST`). All are converted to UTC internally.
+
+### Size
+
+File size in bytes as a decimal integer. No leading zeros except for `0` itself.
+
+**Null size**: `-` (single dash). Internally represented as -1.
+
+**Directory sizes**: Sum of all content within the directory (recursive). See [Directory C4 IDs and Metadata](#directory-c4-ids-and-metadata).
+
+### Name
+
+The bare filename (not a path). Entry names never contain `/` or `\` as separators — nesting is expressed through indentation and depth. Directory names end with a trailing `/`.
+
+**Filename encoding (SafeName)**: Names are first encoded using the Universal Filename Encoding (see `SafeName`/`UnsafeName` in the c4m package), a three-tier system that represents arbitrary byte sequences as printable UTF-8:
+
+- **Tier 1**: Printable UTF-8 passes through unchanged (except `¤` and `\`)
+- **Tier 2**: Backslash escapes for `\0` (null), `\t` (tab), `\n` (newline), `\r` (CR), `\\` (backslash)
+- **Tier 3**: Non-printable bytes encoded as braille codepoints (U+2800–U+28FF) between `¤` delimiters
+
+**c4m field-boundary escaping**: After SafeName encoding, the following characters are backslash-escaped to prevent ambiguity with c4m field delimiters:
+
+| Character | Escape | Reason |
+|-----------|--------|--------|
+| Space (U+0020) | `\ ` | Field delimiter |
+| Double-quote (U+0022) | `\"` | Reserved |
+| `[` | `\[` | Sequence notation (non-sequence names only) |
+| `]` | `\]` | Sequence notation (non-sequence names only) |
+
+No quoting mechanism exists. All field-boundary characters are backslash-escaped.
+
+**Invalid names**: `.`, `..`, `/`, empty string, names containing null bytes or path separators.
+
+### C4 ID
+
+A C4 ID (SMPTE ST 2114:2017) is a 90-character base58 string starting with `c4`. It always appears as the last field on the line.
+
+**Null C4 ID**: `-` (single dash) or omitted. Represents uncomputed or unavailable content hash.
+
+## Link Operators
+
+Between the name and C4 ID, an optional link operator specifies a relationship:
+
+### Symlinks
+
+```
+lrwxrwxrwx 2025-01-01T00:00:00Z 0 link.txt -> target.txt c4...
+```
+
+- `->` followed by the target path
+- Target uses backslash escaping (`\ ` for spaces, `\"` for quotes)
+- C4 ID is computed from the **target file's content** (not the link itself)
+- Symlinks to symlinks or broken symlinks: nil C4 ID
+- Symlinks to directories: C4 ID of the target directory's manifest
+
+### Hard Links
+
+```
+-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt -> c4...
+-rw-r--r-- 2025-01-01T00:00:00Z 100 link.txt ->2 c4...
+```
+
+- `->` (no target path, no space after) = ungrouped hard link
+- `->N` (digit immediately after `->`) = hard link group N
+
+### Flow Links
+
+Flow links declare cross-location data relationships:
+
+```
+drwxr-xr-x 2025-01-01T00:00:00Z 4096 outbox/ -> studio:inbox/ c4...
+drwxr-xr-x 2025-01-01T00:00:00Z 4096 inbox/  <- nas:renders/  c4...
+drwxr-xr-x 2025-01-01T00:00:00Z 4096 shared/ <> peer:shared/  c4...
+```
+
+| Operator | Direction | Meaning |
+|----------|-----------|---------|
+| `->` | Outbound | Content here propagates there |
+| `<-` | Inbound | Content there propagates here |
+| `<>` | Bidirectional | Two-way sync |
+
+The target is a location reference: `<location-name>:<path>`. Location names match `[a-zA-Z][a-zA-Z0-9_-]*`.
+
+**Disambiguation**: The `->` operator is overloaded but unambiguous. The parser uses the entry's **mode** (already parsed) as the primary discriminator:
+1. **Symlink mode** (`l`): `->` is always a symlink target — no further checks needed
+2. **Non-symlink mode**: examine what follows `->`:
+   - A digit 1-9 immediately (no space): hard link group
+   - A location reference (`name:...`): outbound flow link
+   - `-` or `c4...` (the C4 ID): ungrouped hard link
 
 ## Canonical Form
 
-For computing directory C4 IDs, content must be transformed to canonical form:
+For computing C4 IDs, content must be in canonical form:
 
-1. Remove all leading indentation
+1. No leading indentation
 2. Single space between fields
-3. No padding or alignment spaces
+3. No padding or alignment
 4. No comma separators in sizes
-5. No leading zeros in sizes (except "0" itself)
-6. Natural sort ordering (see below)
+5. No leading zeros in sizes (except `0`)
+6. UTC timestamps with `Z` suffix
+7. Null mode: `-` (single dash, not `----------`)
+8. Null timestamp: `-`
+9. Null size: `-`
+10. Null C4 ID: `-`
+11. Natural sort ordering (files before directories, then natural sort within each group)
 
 ## Ergonomic Forms
 
-While the canonical form is required for C4 ID computation, parsers SHOULD accept and tools MAY output ergonomic forms for improved human readability:
+Parsers accept and tools may output ergonomic variations for human readability:
 
-### Allowed Ergonomic Variations
+### Padded Size Fields
 
-1. **Padded Size Fields**: Right-align size values with spaces to match the width of the largest size in the manifest
-   ```
-   -rw-r--r-- 2024-01-01T00:00:00Z     100 small.txt
-   -rw-r--r-- 2024-01-01T00:00:00Z   1,234 medium.txt
-   -rw-r--r-- 2024-01-01T00:00:00Z 100,000 large.txt
-   ```
+Right-align sizes with spaces; use comma separators for thousands:
+```
+-rw-r--r-- 2025-01-01T00:00:00Z     100 small.txt
+-rw-r--r-- 2025-01-01T00:00:00Z   1,234 medium.txt
+-rw-r--r-- 2025-01-01T00:00:00Z 100,000 large.txt
+```
 
-2. **Local Timestamps**: Display in human-readable format with timezone (must still parse to UTC internally)
-   ```
-   # ISO 8601 format with timezone offset
-   -rw-r--r-- 2024-01-01T10:00:00-08:00 1024 file.txt
-   
-   # Unix ls-style format (preferred for ergonomic display)
-   -rw-r--r-- Jan  1 10:00:00 2024 PST 1024 file.txt
-   -rw-r--r-- Sep 15 14:30:45 2024 CDT 1024 file2.txt
-   ```
-   
-   The Unix ls-style format provides better readability while preserving second precision for accurate conversion.
+### Local Timestamps
 
-3. **Column-Aligned C4 IDs**: Align all C4 IDs at a consistent column position
-   ```
-   -rw-r--r-- 2024-01-01T00:00:00Z 100 a.txt          c41abc...
-   -rw-r--r-- 2024-01-01T00:00:00Z 200 longer.txt     c41def...
-   -rw-r--r-- 2024-01-01T00:00:00Z 300 very_long.txt  c41ghi...
-   ```
+Display timestamps with timezone for readability:
+```
+-rw-r--r-- 2025-01-01T10:00:00-08:00 1024 file.txt
+-rw-r--r-- Jan  1 10:00:00 2025 PST  1024 file.txt
+```
 
-### Column Alignment Rules
+### Column-Aligned C4 IDs
 
-For column-aligned C4 IDs:
-- Start at column 80 by default
-- If the longest line (excluding C4 ID) exceeds column 70, shift to the next 10-column boundary
-- Maintain at least 2 spaces between the rightmost content and the C4 ID column
-- Example column positions: 80, 90, 100, 110, etc.
+```
+-rw-r--r-- 2025-01-01T00:00:00Z 100 a.txt          c41abc...
+-rw-r--r-- 2025-01-01T00:00:00Z 200 longer.txt     c41def...
+```
+
+**Column alignment rules**:
+- Default C4 ID column: 80
+- If longest line + 10 exceeds 80, shift to next 10-column boundary (90, 100, ...)
+- Minimum 10 spaces between content and C4 ID
+- Sizes right-aligned and padded to widest value
 
 ### Parser Requirements
 
-Parsers MUST:
-- Accept all ergonomic forms as valid input
-- Convert to canonical form before computing C4 IDs
-- Preserve ergonomic formatting in pass-through operations when possible
-
-### Pretty-Print Mode
-
-Tools SHOULD offer a pretty-print mode that outputs ergonomic form with:
-- Padded size fields with comma separators for thousands
-- Column-aligned C4 IDs based on content width
-- Consistent indentation for nested entries
-- Optional local timezone display
+Parsers MUST accept all ergonomic forms and convert to canonical form before computing C4 IDs.
 
 ## Natural Sort Algorithm
 
-Files are sorted using natural ordering that handles numeric sequences intelligently:
+Entries are sorted using natural ordering:
 
-1. Split filenames into alternating text/numeric segments
-2. Compare segments left-to-right:
+1. Files sort before directories at the same depth level
+2. Within each group, split names into alternating text/numeric segments
+3. Compare segments left-to-right:
    - Numeric segments: compare as integers
-   - Equal integers: shorter representation first (e.g., "1" < "01" < "001")
+   - Equal integers: shorter representation first (`1` < `01` < `001`)
    - Text segments: UTF-8 codepoint comparison
    - Mixed types: text sorts before numeric
-3. Files sort before directories at same level
 
 ### Examples
 ```
 file1.txt
 file2.txt
-file10.txt      # Not file1.txt, file10.txt, file2.txt
+file10.txt      # Not file1, file10, file2
 render.1.exr
-render.01.exr   # Sorted after render.1.exr (equal value, longer)
+render.01.exr   # After render.1.exr (equal value, longer)
 render.2.exr
 render.10.exr
 ```
 
-## Quoting and Escaping
-
-### Quoted Names
-Names must be quoted when containing:
-- Spaces
-- Quotes (escaped as `\"`)
-- Backslashes (escaped as `\\`)
-- Newlines (escaped as `\n`)
-- Leading/trailing whitespace
-
-### Unquoted Names
-- No spaces allowed (except escaped in sequence notation, see below)
-- No special character escaping outside of sequence notation
-
-### Escaping in Sequence Notation
-In unquoted sequence patterns, backslash escapes are required for characters that would be ambiguous:
-
-**Must be escaped**:
-- Space: `\ ` 
-- Square brackets: `\[`, `\]` (when literal, not part of range)
-- Backslash itself: `\\`
-- Quote marks: `\"`
-- Comma: `\,` (when literal, not a range separator)
-- Hyphen: `\-` (when literal, not a range indicator)
-
-**Examples**:
-```
-# Spaces in base filename
-my\ animation.[001-100].exr         # Expands to "my animation.001.exr"
-
-# Literal brackets in filename
-file\[test\].[001-010].dat         # Expands to "file[test].001.dat"
-
-# Literal comma in base name
-data\,backup.[01-05].csv           # Expands to "data,backup.01.csv"
-
-# Multiple escapes
-my\ file\[v2\].[001-100].exr       # Expands to "my file[v2].001.exr"
-
-# Backslash itself
-path\\to\\file.[001-010].txt       # Expands to "path\to\file.001.txt"
-```
-
-**Note**: Quoted filenames are never interpreted as sequences - they are always literal. Use quoting when the entire filename should be treated as-is, use unquoted with escapes when you need sequence expansion.
-
-## Symlinks (Symbolic Links)
-
-Symlinks are preserved as distinct filesystem entities with special C4 ID handling:
-
-### C4 ID Rules for Symlinks
-
-1. **Symlink to regular file**: The C4 ID is computed from the **target file's content**
-   ```
-   lrwxrwxrwx 2024-01-01T00:00:00Z 0 link.txt -> file.txt c41abc...
-   # c41abc... is the C4 ID of file.txt's content
-   ```
-
-2. **Symlink to symlink**: Empty/nil C4 ID (prevents infinite recursion)
-   ```
-   lrwxrwxrwx 2024-01-01T00:00:00Z 0 link1 -> link2
-   # No C4 ID or empty C4 ID shown
-   ```
-
-3. **Broken symlink**: Empty/nil C4 ID (target doesn't exist)
-   ```
-   lrwxrwxrwx 2024-01-01T00:00:00Z 0 broken -> nonexistent
-   # No C4 ID or empty C4 ID shown
-   ```
-
-4. **Symlink to directory**: C4 ID computed from target directory's manifest
-   ```
-   lrwxrwxrwx 2024-01-01T00:00:00Z 0 linkdir -> targetdir/ c42xyz...
-   # c42xyz... is the C4 ID of targetdir's manifest
-   ```
-
-### Symlink Preservation
-
-- Symlinks are preserved as-is, including circular references, out-of-scope targets, and broken links
-- The manifest documents the filesystem state without judgment or correction
-- Target paths are stored exactly as they appear in the filesystem (relative or absolute)
-
-### Symlink Ranges
-
-When multiple symlinks follow a numeric pattern, they can be represented as ranges:
-
-**Uniform target mapping** (all follow the same pattern):
-```
-lrwxrwxrwx 2024-01-01T00:00:00Z 0 render.[0001-0100].exr -> /cache/source.[0001-0100].exr
-```
-
-**Non-uniform targets** (mixed or irregular patterns):
-```
-lrwxrwxrwx 2024-01-01T00:00:00Z 0 render.[0001-0100].exr -> ...
-```
-
-The `...` notation indicates that individual symlinks have different target patterns that cannot be expressed as a single range. The `@expand` directive or referenced C4 ID provides the complete mapping.
-
-### Generator Options
-
-Implementations should provide options for symlink handling:
-- **Preserve mode** (default): Keep symlinks as symlinks with target C4 IDs
-- **Follow mode**: Resolve symlinks to their targets (collapse symlinks)
-
 ## Media File Sequences
 
-Sequences provide compact representation of numbered files:
+Sequences provide compact representation of numbered files common in media workflows.
 
-### Notation Patterns
+### Notation
 - Contiguous: `frame.[0001-0100].exr`
 - Stepped: `frame.[0001-0100:2].exr` (every other frame)
 - Discontinuous: `frame.[0001-0050,0075-0100].exr`
 - Individual: `frame.[0001,0005,0010].exr`
-
-### Sequence C4 IDs
-The C4 ID of a sequence is computed exactly like a directory C4 ID - from the canonical form of its expanded entries:
-1. Expand the sequence to individual entries
-2. Create canonical form (sorted, one entry per line)
-3. Compute C4 ID from the canonical form
-
-This treats the sequence as a virtual container of its members.
-
-### Size and Timestamp Rules
-**Size**: The size of a sequence is the sum of all member file sizes
-```
-frame.[001-003].exr 300  # If frame.001.exr=100, frame.002.exr=100, frame.003.exr=100
-```
-
-**Timestamp**: The timestamp of a sequence is the most recent modification time among all members
-```
-# If frame.001.exr modified at 10:00, frame.002.exr at 11:00, frame.003.exr at 10:30
-frame.[001-003].exr  # Uses 11:00 (most recent)
-```
+- Directory sequences: `shot_[001-100]/`
 
 ### Rules
-- Quoted names are never sequences (always literal)
-- Sequence C4 ID references expansion (inline or external)
-- Files in sequence need not share modification times or C4 IDs
-- Directory sequences supported: `shot_[001-100]/`
+
+- Names with escaped brackets (`\[`, `\]`) are never interpreted as sequences
+- **C4 ID**: Hash of the bare-concatenated member C4 IDs (90 chars per ID, no separators). This ID list content is a regular file — it can be stored in the content store or inlined as a trailing line in the c4m file (see [Inline Range Data](#inline-range-data)).
+- **Size**: Sum of all member file sizes
+- **Timestamp**: Most recent modification time among all members
 - All members must be the same entry type (all files, all directories, or all symlinks)
-
-## Layer System
-
-Layers enable changeset representation without duplicating unchanged content:
-
-### Layer Types
-
-#### @base
-References a base manifest:
-```
-@base c4<ID of base manifest>
-```
-
-#### @remove
-Lists entries to remove:
-```
-@remove
-@by "Joshua Kolden"
-@note "Removing deprecated files"
-drwxr-xr-x 2023-01-01T12:00:00Z 1024 old-lib/
-```
-
-#### @layer
-Adds/modifies entries:
-```
-@layer
-@by "Jane Smith"
-@time 2025-02-27T15:00:00Z
-@note "Security update"
-drwxr-xr-x 2023-01-01T12:00:00Z 4096 lib/
-  -rw-r--r-- 2023-01-01T12:00:00Z 2048 secure.so c4ABC...
-```
-
-#### @expand
-Provides inline expansion of sequences:
-```
--rw-r--r-- 2023-01-01T12:00:00Z 10000 frames.[01-03].exr c4XYZ...
-
-@expand c4XYZ
--rw-r--r-- 2023-01-01T12:00:00Z 3000 frames.01.exr c4AAA...
--rw-r--r-- 2023-01-01T12:00:00Z 3500 frames.02.exr c4BBB...
--rw-r--r-- 2023-01-01T12:00:00Z 3500 frames.03.exr c4CCC...
-```
-
-## Metadata Keywords
-
-Can follow any @ directive that starts a section:
-
-- `@by`: Who made the change
-- `@time`: When the change occurred (ISO 8601/RFC 3339)
-- `@note`: Human-readable comment
-- `@data`: C4 ID reference to application-specific metadata
+- Sequences with any null (uncomputed) member C4 IDs cannot be folded
 
 ## Directory C4 IDs and Metadata
 
-### Directory Sizes
-The size field for a directory should represent the **total size of all contents** (recursive):
-- Sum of all file sizes within the directory and all subdirectories
-- Does not include filesystem metadata overhead
-- Example: A directory containing two 100-byte files shows size 200
-
-### Directory Timestamps
-Directory timestamps come directly from the filesystem's modification time for the directory itself (not derived from contents).
-
 ### Computing Directory C4 IDs
 
-Directory C4 IDs are computed from a **one-level canonical C4M representation**:
+Directory C4 IDs use a **one-level canonical representation**:
 
-1. **Generate one-level manifest**:
-   - List direct children only (files and subdirectories)
-   - For files: compute C4 ID from content
-   - For subdirectories: recursively compute their C4 ID using this same algorithm
-   - Do NOT expand subdirectory contents inline
+1. List direct children only (files and subdirectories)
+2. For files: use their content C4 ID
+3. For subdirectories: recursively compute their C4 ID using this same algorithm
+4. Sort: files before directories, then natural sort within each group
+5. Format as canonical entries (no indentation, single space between fields)
+6. Compute C4 ID from the UTF-8 bytes of this canonical text
 
-2. **Create canonical form**:
-   - Use only depth-0 entries (top level)
-   - Sort: files before directories, then natural sort within each group
-   - Format without indentation: `<mode> <timestamp> <size> <name> [c4id]`
-   - Single space between fields, no alignment
+This creates a Merkle tree where each directory's identity depends on its contents.
 
-3. **Compute C4 ID**:
-   - Generate C4 ID from the UTF-8 bytes of the canonical form
+### Directory Sizes
 
-### Example
-```
-# Directory structure:
-mydir/
-  file1.txt    # C4 ID: c41abc...
-  subdir/      # Contains files
-    file2.txt  # C4 ID: c41def...
+The size field for a directory is the **total size of all contents** (recursive sum of file sizes). Does not include filesystem metadata overhead.
 
-# One-level manifest for mydir:
--rw-r--r-- 2024-01-01T00:00:00Z 100 file1.txt c41abc...
-drwxr-xr-x 2024-01-01T00:00:00Z 4096 subdir/ c42xyz...
+#### Nil-Infectious Propagation
 
-# The C4 ID c42xyz... for subdir is computed from its own one-level manifest
-```
+If **any** child entry has null size (-1), the parent directory's size is also null. This applies recursively to the root. The same rule applies to timestamps.
 
-This approach ensures:
-- Each directory has a unique C4 ID based on its contents
-- Subdirectories are represented by their computed C4 IDs (merkle-tree structure)
-- The command `c4 <dir>` equals `c4 -m <dir> | c4`
+### Directory Timestamps
+
+Directory timestamps come from the filesystem's modification time for the directory itself.
 
 ## Null and Zero Values
 
-C4M supports null/zero values for fields to enable boolean set operations and manual manifest creation:
+C4M supports null values to enable progressive resolution and manual editing:
 
-### Null Value Representations
-
-1. **Mode**: 
-   - `-` (single dash) or `----------` (ten dashes)
-   - Represents unspecified permissions (zero value)
-   - Used when only file existence matters, not permissions
-
-2. **Timestamp**:
-   - `-` (single dash) or `0` (zero)
-   - Parsed as Unix epoch (1970-01-01T00:00:00Z)
-   - Used for comparison operations where oldest-first ordering is desired
-
-3. **Size**:
-   - `-` (single dash)
-   - Internally represented as -1
-   - Used when file size is unknown or irrelevant
-
-4. **C4 ID**:
-   - `-` (single dash) or omitted
-   - Represents zero/nil C4 ID
-   - Used for incomplete manifests in set operations
-
-5. **Name**:
-   - Cannot be null (required field)
+| Field | Null representation | Internal value |
+|-------|-------------------|----------------|
+| Mode | `-` or `----------` | 0 |
+| Timestamp | `-` or `0` | Unix epoch |
+| Size | `-` | -1 |
+| C4 ID | `-` or omitted | nil |
+| Name | (cannot be null) | — |
 
 ### Use Cases
 
-- **Boolean Operations**: Create manifests with only names to define sets
-- **Comparison Operations**: Use zero timestamps to ensure "oldest" ordering
-- **Manual Editing**: Leave fields unspecified when exact values are unknown
-- **Template Manifests**: Create patterns for matching operations
+- **Progressive resolution**: Start with just names, fill in metadata as it becomes available
+- **Boolean set operations**: Create manifests with only names to define sets
+- **Manual editing**: Leave fields unspecified when exact values are unknown
 
-### Example
+## Patch Format
+
+A c4m stream can contain inline patches, enabling incremental updates without duplicating unchanged content.
+
+### Bare C4 ID Lines
+
+A line containing only a C4 ID (exactly 90 characters, starting with `c4`) acts as a **patch boundary**. There are two cases:
+
+#### First-Line Bare C4 ID (External Base Reference)
 
 ```
-@c4m 1.0
----------- - - important.txt -
--rw-r--r-- 0 100 oldest.txt
-- 2024-01-01T00:00:00Z - template.txt
+c4<90-char-id>
+-rw-r--r-- 2025-01-01T00:00:00Z 200 new.txt c4...
 ```
+
+A bare C4 ID on the **first non-blank line** of the stream (before any entries) references an **external base manifest**. The consumer must fetch this manifest by its C4 ID to know the starting state. The entries that follow are a patch applied against it.
+
+This is stored on `Manifest.Base`.
+
+#### Subsequent Bare C4 ID (Inline Checkpoint)
+
+```
+-rw-r--r-- 2025-01-01T00:00:00Z 100 a.txt c4...
+c4<90-char-id>
+-rw-r--r-- 2025-01-01T00:00:00Z 200 b.txt c4...
+```
+
+A bare C4 ID appearing **after entries** is an inline checkpoint. It **must match** the canonical C4 ID of all accumulated content above it. If it doesn't match, the stream is malformed (`ErrPatchIDMismatch`).
+
+Entries following the checkpoint are interpreted as a patch against the accumulated state.
+
+### Why the First-Line Rule Differs
+
+A first-line bare C4 ID cannot be verified against accumulated content (there is none yet), so it serves purely as a reference. The human reader knows they need to fetch the base manifest. For subsequent bare C4 IDs, verification is mandatory — this prevents a malicious stream from claiming to represent one state while actually describing another.
+
+### Patch Entry Semantics
+
+Patch entries are matched against the current state **by name (and path)**:
+
+| Condition | Interpretation |
+|-----------|---------------|
+| Name exists only in patch | **Addition** — entry is added |
+| Name exists in both, any metadata differs | **Modification** — patch entry replaces the original |
+| Name exists in both, all fields identical | **Removal** — entry is deleted |
+
+"All fields identical" means: same name, mode, timestamp, size, C4 ID, and target. This enables removal by restating an entry exactly — there is no separate delete syntax.
+
+For directories, patch entries may contain children. The children are applied recursively using the same rules.
+
+### Empty Patch Rejection
+
+Every patch section must contain at least one entry. A bare C4 ID followed by nothing (EOF) or by another bare C4 ID (consecutive checkpoints) is rejected as `ErrEmptyPatch`.
+
+### Multiple Patches
+
+A stream may contain multiple successive patches:
+
+```
+<base entries>
+c4<id-of-base>
+<patch-1 entries>
+c4<id-after-patch-1>
+<patch-2 entries>
+```
+
+Each checkpoint verifies the state after all preceding patches have been applied.
+
+### Encoding Patches
+
+`EncodePatch` writes a patch section: the old manifest's C4 ID as a bare line, followed by the patch entries. `PatchDiff` computes the patch between two manifests.
+
+### Example: Streaming Updates
+
+```
+-rw-r--r-- 2025-03-06T12:00:00Z 100 a.txt c4abc...
+c449ByTh8Hkx...  # C4 ID of the manifest containing just a.txt
+-rw-r--r-- 2025-03-06T12:00:00Z 200 b.txt c4def...
+c4Rq7Jm2Pnk...  # C4 ID of the manifest containing a.txt + b.txt
+-rw-r--r-- 2025-03-06T12:00:00Z 100 a.txt c4abc...
+```
+
+This stream:
+1. Starts with `a.txt`
+2. First checkpoint verifies the base state
+3. Adds `b.txt` (patch 1)
+4. Second checkpoint verifies state after adding `b.txt`
+5. Restates `a.txt` identically → removes it (patch 2)
+6. Final state: only `b.txt`
+
+## Inline Range Data
+
+When a c4m file contains sequence (range) entries and no external content store is available, the per-member ID lists can be inlined as trailing lines.
+
+### Format
+
+An inline ID list is a single line containing the bare concatenation of all member C4 IDs in range order. Each C4 ID is exactly 90 characters; the line length is always a multiple of 90 and greater than 90 (minimum 270 for 3-member sequences).
+
+### Disambiguation
+
+- **Patch boundary**: exactly 90 characters, starts with `c4`
+- **Inline ID list**: >90 characters, multiple of 90, every 90-char chunk is a valid C4 ID
+- **Entry line**: starts with mode characters or indentation
+
+These are unambiguous by length alone.
+
+### Position in Stream
+
+Inline ID list lines appear after entries within a patch section, before the closing patch boundary:
+
+```
+<entries>
+<inline ID list lines>
+c4<patch boundary>
+```
+
+### Identity
+
+Inline ID list lines are **not part of the manifest identity**. Adding, removing, or reordering them does not change the manifest's C4 ID or patch boundaries. They are transport data — the content backing a range entry's C4 ID, inlined for portability.
+
+The C4 ID of an inline ID list line (computed by hashing the line content) matches the C4 ID of the corresponding sequence entry. This is self-verifying.
+
+### Lifecycle
+
+- **With store**: ID lists are stored as regular objects. No inline lines in the c4m.
+- **Without store**: ID lists are appended as inline lines for self-containment.
+- **Decompose**: Extract inline lines to files named by the range expression (e.g., `frames.[0001-0100].exr`). The file content is the bare-concatenated ID list.
+- **Compose**: Read range expression files and inline them back.
+
+The line content is byte-identical to the store object, so migration between the two forms is trivial.
 
 ## Validation Requirements
 
 Parsers MUST:
-- Verify first line is `@c4m X.Y`
+- Reject lines beginning with `@` (directives are not supported)
 - Reject invalid UTF-8 sequences
+- Reject CR (carriage return) characters
 - Apply canonical transformation consistently
-- Verify C4 IDs match content (when available)
-- Accept null values as specified above
+- Verify bare C4 IDs match accumulated content (except first-line base reference)
+- Reject empty patch sections
+- Accept null values as specified
+- Reject path traversal attempts (`../`, `./`, names containing `/` or `\`)
+- Reject duplicate paths within the same scope
 
 Parsers MAY:
-- Accept non-sorted entries (with warning)
+- Accept non-sorted entries (re-sorting when processing)
 - Accept inconsistent indentation (with warning)
-- Resort entries when processing
+- Accept ergonomic format variations
 
 ## Security Considerations
 
-- No path traversal (`../`, `./`)
+- No path traversal: `../`, `./`, names containing path separators
 - No null bytes in names
-- Control characters forbidden (0x00-0x1F except tab)
+- Control characters forbidden (0x00-0x1F) — encoded via Universal Filename Encoding
 - Maximum line length: implementation-defined (suggested 1MB)
+- Patch C4 ID verification prevents substitution attacks (a stream cannot claim to represent one manifest while containing another)
+- First-line external base reference is explicitly visible to human readers
+
+## Error Types
+
+| Error | Meaning |
+|-------|---------|
+| `ErrInvalidEntry` | Malformed entry line |
+| `ErrDuplicatePath` | Duplicate path in manifest |
+| `ErrPathTraversal` | Path traversal attempt |
+| `ErrInvalidFlowTarget` | Malformed flow link target |
+| `ErrPatchIDMismatch` | Bare C4 ID does not match accumulated content |
+| `ErrEmptyPatch` | Patch section contains no entries |

@@ -85,15 +85,16 @@ func TestValidatingStore(t *testing.T) {
 	var badID c4.ID
 
 	// sneek in some wrong data
-	idmap := (map[c4.ID][]byte)(*ramst)
-	if len(idmap) != len(testdata) {
+	ramst.mu.Lock()
+	if len(ramst.data) != len(testdata) {
 		t.Error("test data and ram store length do not match")
 	}
-	for k := range idmap {
-		idmap[k] = []byte("bad data")
+	for k := range ramst.data {
+		ramst.data[k] = []byte("bad data")
 		badID = k
 		break
 	}
+	ramst.mu.Unlock()
 
 	// Test Validating store `Open` method
 	for _, v := range testdata {

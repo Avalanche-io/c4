@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,11 +43,8 @@ type ValidationStats struct {
 	NewestTime      time.Time
 	NullTimes       int64 // Entries with null timestamps
 	NullSizes       int64 // Entries with null sizes
-	Layers          int64 // Number of @layer directives
 	Chunks          int64 // Number of referenced chunks
 	MaxDepth        int   // Maximum directory depth
-	ChunkedManifests int64 // Number of .c4m chunks found
-	CollapsedDirs   []string // Names of collapsed directories
 }
 
 // Validator validates C4M manifests and bundles
@@ -62,7 +58,6 @@ type Validator struct {
 	lastDepth    int
 	depthStack   []string // Track parent directories
 	seenDirAtDepth map[int]bool // Track if we've seen a directory at each depth
-	inLayer      bool // Whether we're in a @layer section
 	stats        ValidationStats
 	isErgonomic  bool // Whether the file uses ergonomic format
 	formatDetected bool // Whether we've detected the format yet
@@ -82,7 +77,8 @@ func NewValidator(strict bool) *Validator {
 	}
 }
 
-// ValidateManifest validates a C4M manifest from a reader
+// ValidateManifest validates a C4M manifest from a reader.
+// The format is entry-only: no header, no directives.
 func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.errors = nil
 	v.warnings = nil
@@ -95,258 +91,44 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.formatDetected = false
 	v.isErgonomic = false
 	v.lastPathAtDepth = make(map[int]string)
-	
+
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB max line
-	
-	// Check first line for version
-	if !scanner.Scan() {
-		v.addError(0, 0, "header", "missing @c4m version header", true)
-		return v.getResult()
-	}
-	
-	v.lineNum = 1
-	firstLine := scanner.Text()
-	if !v.validateHeader(firstLine) {
-		return v.getResult()
-	}
-	
+
 	// Process entries
 	for scanner.Scan() {
 		v.lineNum++
 		line := scanner.Text()
-		
+
 		// Skip empty lines
 		if line == "" {
 			continue
 		}
-		
-		// Handle directives
-		if strings.HasPrefix(line, "@") {
-			v.handleDirective(line)
+
+		// Reject directive lines
+		if strings.HasPrefix(strings.TrimSpace(line), "@") {
+			v.addError(v.lineNum, 0, "directive", fmt.Sprintf("directives not supported: %s", line), false)
 			continue
 		}
-		
+
 		// Detect format on first entry if not yet detected
 		if !v.formatDetected && !strings.HasPrefix(line, "#") {
 			v.detectFormat(line)
 		}
-		
+
 		v.validateEntry(line)
-		
+
 		if v.MaxErrors > 0 && len(v.errors) >= v.MaxErrors {
 			v.addError(v.lineNum, 0, "", fmt.Sprintf("stopping after %d errors", v.MaxErrors), true)
 			break
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		v.addError(v.lineNum, 0, "", fmt.Sprintf("scan error: %v", err), true)
 	}
-	
+
 	return v.getResult()
-}
-
-// ValidateBundle validates a C4M bundle directory
-func (v *Validator) ValidateBundle(bundlePath string) error {
-	// Reset statistics for bundle validation
-	v.errors = nil
-	v.warnings = nil
-	v.stats = ValidationStats{}
-	v.formatDetected = false
-	v.isErgonomic = false
-	
-	fmt.Fprintf(os.Stderr, "Validating C4M bundle: %s\n", bundlePath)
-	
-	// Check if bundle directory exists
-	info, err := os.Stat(bundlePath)
-	if err != nil {
-		return fmt.Errorf("cannot access bundle: %w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("bundle path is not a directory")
-	}
-	
-	// Check for header.c4 file
-	headerPath := filepath.Join(bundlePath, "header.c4")
-	headerData, err := os.ReadFile(headerPath)
-	if err != nil {
-		v.addError(0, 0, "bundle", "missing or unreadable header.c4", true)
-		return v.getResult()
-	}
-	
-	// Parse header to get manifest C4 ID
-	headerID := strings.TrimSpace(string(headerData))
-	if !strings.HasPrefix(headerID, "c4") {
-		v.addError(0, 0, "header", "invalid C4 ID in header.c4", true)
-		return v.getResult()
-	}
-	
-	// Read the header manifest from c4 directory
-	manifestPath := filepath.Join(bundlePath, "c4", headerID)
-	manifestData, err := os.ReadFile(manifestPath)
-	if err != nil {
-		v.addError(0, 0, "bundle", fmt.Sprintf("cannot read header manifest %s: %v", headerID, err), true)
-		return v.getResult()
-	}
-	
-	// Parse header manifest to find all chunks
-	chunkIDs := v.extractChunkIDs(string(manifestData))
-	
-	// Create an aggregated stats tracker
-	aggregatedStats := ValidationStats{}
-	
-	// Validate header manifest
-	headerReader := strings.NewReader(string(manifestData))
-	if err := v.ValidateManifest(headerReader); err != nil {
-		v.addError(0, 0, "header", "invalid header manifest format", false)
-	}
-	// Add header stats to aggregated
-	aggregatedStats = v.addStats(aggregatedStats, v.stats)
-	
-	// Validate each chunk
-	aggregatedStats.ChunkedManifests = int64(len(chunkIDs))
-	for i, chunkID := range chunkIDs {
-		chunkPath := filepath.Join(bundlePath, "c4", chunkID)
-		chunkData, err := os.ReadFile(chunkPath)
-		if err != nil {
-			v.addError(0, 0, "chunk", fmt.Sprintf("cannot read chunk %d (%s): %v", i+1, chunkID, err), false)
-			continue
-		}
-		
-		// Create a new validator for each chunk to avoid state contamination
-		chunkValidator := NewValidator(v.Strict)
-		chunkValidator.MaxErrors = 0 // Don't limit errors in chunks
-		
-		// Validate chunk manifest
-		chunkReader := strings.NewReader(string(chunkData))
-		if err := chunkValidator.ValidateManifest(chunkReader); err != nil {
-			// Don't report individual chunk validation errors as they can be numerous
-			// Just note that the chunk had issues
-			v.addWarning(0, 0, "chunk", fmt.Sprintf("chunk %d has %d validation issues", i+1, len(chunkValidator.GetErrors())))
-		}
-		
-		// Add chunk stats to aggregated
-		aggregatedStats = v.addStats(aggregatedStats, chunkValidator.stats)
-	}
-	
-	// Set final aggregated stats
-	v.stats = aggregatedStats
-	
-	return v.getResult()
-}
-
-// extractChunkIDs finds all C4 IDs referenced in .c4m files within a manifest
-func (v *Validator) extractChunkIDs(manifestContent string) []string {
-	var chunkIDs []string
-	lines := strings.Split(manifestContent, "\n")
-	
-	for _, line := range lines {
-		// Skip empty lines and directives
-		if line == "" || strings.HasPrefix(line, "@") {
-			continue
-		}
-		
-		// Look for .c4m files and extract directory names
-		if strings.Contains(line, ".c4m ") {
-			// Extract the directory name if this is in a progress/ subdirectory
-			if strings.Contains(line, "progress/") {
-				// Find the parent directory name
-				trimmed := strings.TrimSpace(line)
-				if idx := strings.LastIndex(trimmed, "progress/"); idx > 0 {
-					// Look backwards to find the parent directory
-					for i := idx-1; i >= 0; i-- {
-						if trimmed[i] == '/' || trimmed[i] == ' ' {
-							parentName := trimmed[i+1:idx]
-							if parentName != "" && !contains(v.stats.CollapsedDirs, parentName) {
-								v.stats.CollapsedDirs = append(v.stats.CollapsedDirs, parentName)
-							}
-							break
-						}
-					}
-				}
-			}
-			
-			// Extract the C4 ID at the end of the line
-			fields := strings.Fields(line)
-			for _, field := range fields {
-				if strings.HasPrefix(field, "c4") && len(field) > 10 {
-					chunkIDs = append(chunkIDs, field)
-					break
-				}
-			}
-		}
-	}
-	
-	return chunkIDs
-}
-
-// contains checks if a string slice contains a value
-func contains(slice []string, val string) bool {
-	for _, item := range slice {
-		if item == val {
-			return true
-		}
-	}
-	return false
-}
-
-// addStats combines two ValidationStats structures
-func (v *Validator) addStats(a, b ValidationStats) ValidationStats {
-	result := ValidationStats{
-		TotalEntries:     a.TotalEntries + b.TotalEntries,
-		Files:            a.Files + b.Files,
-		Directories:      a.Directories + b.Directories,
-		Symlinks:         a.Symlinks + b.Symlinks,
-		SpecialFiles:     a.SpecialFiles + b.SpecialFiles,
-		TotalSize:        a.TotalSize + b.TotalSize,
-		NullTimes:        a.NullTimes + b.NullTimes,
-		NullSizes:        a.NullSizes + b.NullSizes,
-		Layers:           a.Layers + b.Layers,
-		Chunks:           a.Chunks + b.Chunks,
-		MaxDepth:         a.MaxDepth,
-		ChunkedManifests: a.ChunkedManifests + b.ChunkedManifests,
-		CollapsedDirs:    append(a.CollapsedDirs, b.CollapsedDirs...),
-	}
-	
-	if b.MaxDepth > result.MaxDepth {
-		result.MaxDepth = b.MaxDepth
-	}
-	
-	// Handle time comparisons
-	if a.OldestTime.IsZero() || (!b.OldestTime.IsZero() && b.OldestTime.Before(a.OldestTime)) {
-		result.OldestTime = b.OldestTime
-	} else {
-		result.OldestTime = a.OldestTime
-	}
-	
-	if a.NewestTime.IsZero() || (!b.NewestTime.IsZero() && b.NewestTime.After(a.NewestTime)) {
-		result.NewestTime = b.NewestTime
-	} else {
-		result.NewestTime = a.NewestTime
-	}
-	
-	return result
-}
-
-func (v *Validator) validateHeader(line string) bool {
-	if !strings.HasPrefix(line, "@c4m ") {
-		v.addError(1, 1, "header", "first line must start with '@c4m '", true)
-		return false
-	}
-	
-	parts := strings.Fields(line)
-	if len(parts) != 2 {
-		v.addError(1, 1, "header", "invalid header format", true)
-		return false
-	}
-	
-	version := parts[1]
-	if version != "1.0" {
-		v.addWarning(1, 6, "version", fmt.Sprintf("unknown version: %s", version))
-	}
-	
-	return true
 }
 
 func (v *Validator) validateEntry(line string) {
@@ -437,11 +219,24 @@ func (v *Validator) validateEntry(line string) {
 	// Validate size
 	v.validateSize(size)
 	
+	// Validate raw name field before parsing — catch path separators that
+	// parseNameAndRest would otherwise silently interpret.
+	rawName := strings.Join(fields[nameStart:], " ")
+	if !strings.HasPrefix(mode, "d") && !strings.HasPrefix(mode, "l") {
+		// For files (not directories/symlinks), the name must not contain "/"
+		if strings.Contains(rawName, "/") {
+			v.addError(v.lineNum, 0, "name", fmt.Sprintf("file name contains path separator '/': '%s' — use depth/indentation for hierarchy", rawName), false)
+		}
+	}
+	if strings.Contains(rawName, "\\") {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains backslash: '%s' — backslash is not allowed in c4m names", rawName), false)
+	}
+
 	// Extract name (handle quoted names)
-	name, symTarget, c4id := v.parseNameAndRest(fields[nameStart:])
+	name, symTarget, flowOp, flowTgt, c4id := v.parseNameAndRest(fields[nameStart:])
 	
 	// Update statistics
-	v.updateStats(mode, timestamp, size, name, c4id)
+	v.updateStats(depthLevel, mode, timestamp, size, name, c4id)
 	
 	// Check files-before-directories rule at same depth
 	isDir := strings.HasSuffix(name, "/")
@@ -484,15 +279,10 @@ func (v *Validator) validateEntry(line string) {
 		v.lastPathAtDepth[depthLevel] = v.currentPath
 	}
 
-	// Check for duplicates (unless in a layer which can override)
-	if !v.inLayer {
-		if prevLine, exists := v.seenPaths[v.currentPath]; exists {
-			v.addError(v.lineNum, 0, "duplicate", fmt.Sprintf("duplicate path '%s' (first seen at line %d)", v.currentPath, prevLine), false)
-		} else {
-			v.seenPaths[v.currentPath] = v.lineNum
-		}
+	// Check for duplicates
+	if prevLine, exists := v.seenPaths[v.currentPath]; exists {
+		v.addError(v.lineNum, 0, "duplicate", fmt.Sprintf("duplicate path '%s' (first seen at line %d)", v.currentPath, prevLine), false)
 	} else {
-		// In layers, duplicates override previous entries
 		v.seenPaths[v.currentPath] = v.lineNum
 	}
 	
@@ -500,7 +290,18 @@ func (v *Validator) validateEntry(line string) {
 	if symTarget != "" && !strings.HasPrefix(mode, "l") {
 		v.addError(v.lineNum, 0, "symlink", "symlink target specified for non-symlink", false)
 	}
-	
+
+	// Validate flow link if present
+	if flowOp != "" {
+		if symTarget != "" {
+			v.addError(v.lineNum, 0, "flow", "flow link mutually exclusive with symlink target", false)
+		}
+		v.validateFlowTarget(flowTgt)
+		if (flowOp == "<-" || flowOp == "<>") && strings.HasPrefix(mode, "l") {
+			v.addError(v.lineNum, 0, "flow", fmt.Sprintf("%s flow link cannot have symlink mode", flowOp), false)
+		}
+	}
+
 	// Validate C4 ID if present
 	if c4id != "" {
 		v.validateC4ID(c4id)
@@ -565,7 +366,7 @@ func (v *Validator) validateTimestamp(ts string) {
 	}
 	
 	// Try to parse canonical format
-	_, err := time.Parse("2006-01-02T15:04:05Z", ts)
+	_, err := time.Parse(TimestampFormat, ts)
 	if err != nil {
 		v.addError(v.lineNum, 0, "timestamp", fmt.Sprintf("invalid ISO 8601 timestamp: %v", err), false)
 	}
@@ -596,21 +397,31 @@ func (v *Validator) validateName(name string, depth int) {
 		v.addError(v.lineNum, 0, "name", "name cannot be empty", false)
 		return
 	}
-	
-	// Check for path traversal
-	if strings.Contains(name, "../") || strings.Contains(name, "./") {
-		v.addError(v.lineNum, 0, "name", "path traversal not allowed", false)
+
+	// A c4m entry name is a bare filename, never a path. Strip the
+	// trailing "/" directory marker and validate the base name.
+	base := strings.TrimSuffix(name, "/")
+
+	if base == "" {
+		v.addError(v.lineNum, 0, "name", "name cannot be '/' — the c4m file itself is the root", false)
+		return
 	}
-	
-	// Check for null bytes
-	if strings.Contains(name, "\x00") {
+
+	if base == "." || base == ".." {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("'%s' is a path component, not a valid entry name", name), false)
+		return
+	}
+
+	if strings.Contains(base, "/") {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains path separator '/': '%s' — use depth/indentation for hierarchy", name), false)
+	}
+
+	if strings.Contains(base, "\\") {
+		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains backslash: '%s' — backslash is not allowed in c4m names", name), false)
+	}
+
+	if strings.Contains(base, "\x00") {
 		v.addError(v.lineNum, 0, "name", "null bytes not allowed in names", false)
-	}
-	
-	// Check directory naming
-	isDir := strings.HasSuffix(name, "/")
-	if isDir && len(name) == 1 {
-		v.addError(v.lineNum, 0, "name", "directory name cannot be just '/'", false)
 	}
 }
 
@@ -642,32 +453,29 @@ func (v *Validator) validateC4ID(id string) {
 	}
 }
 
-func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id string) {
+func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, flowOp, flowTgt, c4id string) {
 	if len(fields) == 0 {
-		return "", "", ""
+		return "", "", "", "", ""
 	}
-	
-	// Join all fields first to handle directory names with spaces
+
+	// Check if the first field is a directory name (contains /).
+	// Use the first "/" to find the directory name boundary, not the last,
+	// because flow targets may also contain "/" (e.g., "nas:raw/plates/").
 	allFields := strings.Join(fields, " ")
-	
-	// Check if it's a directory (ends with /)
-	if slashIdx := strings.LastIndex(allFields, "/"); slashIdx != -1 {
-		// Directory: everything up to and including the slash is the name
-		name = allFields[:slashIdx+1]
-		rest := allFields[slashIdx+1:]
+	firstSlash := strings.Index(allFields, "/")
+	if firstSlash != -1 {
+		// Directory: everything up to and including the first slash is the name
+		name = allFields[:firstSlash+1]
+		rest := allFields[firstSlash+1:]
 
 		// Check if there's a quote after the slash (form: "dirname/")
 		if strings.HasPrefix(rest, `"`) && strings.HasPrefix(name, `"`) {
-			// The entire directory name including slash is quoted: "dirname/"
-			// Remove the leading quote from name and trailing quote from rest
 			name = strings.TrimPrefix(name, `"`)
 			rest = strings.TrimPrefix(rest, `"`)
 			v.addWarning(v.lineNum, 0, "name", "quoted directory names are non-canonical")
 		} else if strings.HasPrefix(name, `"`) {
-			// Check for form: "dirname"/
 			nameWithoutSlash := name[:len(name)-1]
 			if strings.HasSuffix(nameWithoutSlash, `"`) {
-				// Quotes don't include the slash
 				name = strings.TrimPrefix(nameWithoutSlash, `"`)
 				name = strings.TrimSuffix(name, `"`)
 				name = name + "/"
@@ -677,6 +485,23 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 		// Parse remaining fields after the directory name
 		if rest != "" {
 			restFields := strings.Fields(rest)
+			for i, field := range restFields {
+				if (field == "->" || field == "<-" || field == "<>") && i+1 < len(restFields) {
+					nextField := restFields[i+1]
+					if field == "->" && (strings.HasPrefix(nextField, "c4") || nextField == "-") {
+						break // hard link
+					}
+					if field == "->" && !strings.Contains(nextField, ":") {
+						break // symlink
+					}
+					if strings.Contains(nextField, ":") {
+						flowOp = field
+						flowTgt = nextField
+						restFields = append(restFields[:i], restFields[i+2:]...)
+					}
+					break
+				}
+			}
 			for _, field := range restFields {
 				if strings.HasPrefix(field, "c4") {
 					c4id = field
@@ -684,12 +509,11 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 				}
 			}
 		}
-		return name, "", c4id
+		return name, "", flowOp, flowTgt, c4id
 	}
-	
+
 	// Not a directory - handle quoted names for files
 	if strings.HasPrefix(fields[0], `"`) {
-		// Find end quote
 		nameFields := []string{fields[0]}
 		endIdx := 0
 		for i, field := range fields {
@@ -708,26 +532,69 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, c4id str
 		name = fields[0]
 		fields = fields[1:]
 	}
-	
-	// Look for symlink target
+
+	// Look for link operators: ->, <-, <>
 	for i, field := range fields {
-		if field == "->" && i+1 < len(fields) {
-			symTarget = fields[i+1]
+		if (field == "->" || field == "<-" || field == "<>") && i+1 < len(fields) {
+			nextField := fields[i+1]
+			if field == "->" {
+				if strings.HasPrefix(nextField, "c4") || nextField == "-" {
+					break // hard link
+				}
+				if strings.Contains(nextField, ":") {
+					flowOp = field
+					flowTgt = nextField
+					fields = append(fields[:i], fields[i+2:]...)
+					break
+				}
+				// symlink target
+				symTarget = nextField
+				fields = append(fields[:i], fields[i+2:]...)
+				break
+			}
+			// <- or <> are always flow
+			flowOp = field
+			flowTgt = nextField
 			fields = append(fields[:i], fields[i+2:]...)
 			break
 		}
 	}
-	
-	// Look for C4 ID - any remaining field could be a C4 ID (valid or not)
-	// We'll validate it later to determine if it's actually valid
+
+	// Look for C4 ID
 	if len(fields) > 0 {
-		// The last field after name and optional symlink target should be the C4 ID
 		c4id = fields[len(fields)-1]
 	}
 
-	return name, symTarget, c4id
+	return name, symTarget, flowOp, flowTgt, c4id
 }
 
+
+// flowLocationPattern matches a valid flow location label.
+var flowLocationPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+
+func (v *Validator) validateFlowTarget(target string) {
+	if target == "" {
+		v.addError(v.lineNum, 0, "flow", "empty flow target", false)
+		return
+	}
+	colonIdx := strings.Index(target, ":")
+	if colonIdx < 0 {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("flow target missing ':' separator: %q", target), false)
+		return
+	}
+	label := target[:colonIdx]
+	if !flowLocationPattern.MatchString(label) {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("invalid flow location label: %q", label), false)
+		return
+	}
+	path := target[colonIdx+1:]
+	if strings.HasPrefix(path, "/") {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("flow target path must not start with '/': %q", target), false)
+	}
+	if strings.Contains(path, "..") {
+		v.addError(v.lineNum, 0, "flow", fmt.Sprintf("flow target path must not contain '..': %q", target), false)
+	}
+}
 
 func (v *Validator) addError(line, col int, field, msg string, fatal bool) {
 	v.errors = append(v.errors, ValidationError{
@@ -837,39 +704,25 @@ func (v *Validator) detectFormat(line string) {
 		// Check for canonical format (ISO 8601 with Z)
 		if strings.Contains(field, "T") && strings.HasSuffix(field, "Z") {
 			v.isErgonomic = false
-			fmt.Fprintf(os.Stderr, "Validating canonical format C4M manifest\n")
 			return
 		}
-		
+
 		// Check for ergonomic format (month name)
 		months := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 		for _, month := range months {
 			if field == month {
 				v.isErgonomic = true
-				fmt.Fprintf(os.Stderr, "Validating ergonomic format C4M manifest\n")
 				return
 			}
 		}
 	}
 }
 
-// handleDirective processes @ directives
-func (v *Validator) handleDirective(line string) {
-	if strings.HasPrefix(line, "@layer") {
-		v.inLayer = true
-		v.stats.Layers++
-	} else if strings.HasPrefix(line, "@end") {
-		v.inLayer = false
-	}
-	// Other directives are allowed but not validated in detail
-}
-
 // updateStats updates validation statistics based on an entry
-func (v *Validator) updateStats(mode, timestamp, sizeStr, name, c4id string) {
+func (v *Validator) updateStats(depth int, mode, timestamp, sizeStr, name, c4id string) {
 	v.stats.TotalEntries++
-	
+
 	// Track depth
-	depth := v.lastDepth
 	if depth > v.stats.MaxDepth {
 		v.stats.MaxDepth = depth
 	}
@@ -905,7 +758,7 @@ func (v *Validator) updateStats(mode, timestamp, sizeStr, name, c4id string) {
 	// Track timestamp
 	if timestamp == "-" || timestamp == "0" {
 		v.stats.NullTimes++
-	} else if t, err := time.Parse("2006-01-02T15:04:05Z", timestamp); err == nil {
+	} else if t, err := time.Parse(TimestampFormat, timestamp); err == nil {
 		if v.stats.OldestTime.IsZero() || t.Before(v.stats.OldestTime) {
 			v.stats.OldestTime = t
 		}
@@ -920,21 +773,15 @@ func (v *Validator) updateStats(mode, timestamp, sizeStr, name, c4id string) {
 	}
 }
 
-// ValidateFile validates a C4M or bundle file
+// ValidateFile validates a C4M manifest file
 func ValidateFile(path string, strict bool) error {
 	validator := NewValidator(strict)
-	
-	// Check if it's a bundle
-	if strings.HasSuffix(path, ".c4m_bundle") || strings.HasSuffix(path, "_bundle") {
-		return validator.ValidateBundle(path)
-	}
-	
-	// Otherwise treat as manifest
+
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	
+
 	return validator.ValidateManifest(file)
 }

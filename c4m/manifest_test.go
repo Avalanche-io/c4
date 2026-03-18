@@ -43,6 +43,54 @@ func TestManifestAddEntry(t *testing.T) {
 	}
 }
 
+func TestManifestSortDeduplicates(t *testing.T) {
+	m := NewManifest()
+
+	// Simulate running "c4 cp . project.c4m:" twice — entries are appended
+	m.AddEntry(&Entry{Name: "data.txt", Size: 10})
+	m.AddEntry(&Entry{Name: "hello.txt", Size: 20})
+	m.AddEntry(&Entry{Name: "data.txt", Size: 18})  // duplicate, newer
+	m.AddEntry(&Entry{Name: "hello.txt", Size: 17}) // duplicate, newer
+
+	m.SortEntries()
+
+	if len(m.Entries) != 2 {
+		t.Fatalf("expected 2 entries after dedup, got %d", len(m.Entries))
+	}
+	// Last occurrence should win (most recently added)
+	for _, e := range m.Entries {
+		switch e.Name {
+		case "data.txt":
+			if e.Size != 18 {
+				t.Errorf("data.txt size: got %d, want 18", e.Size)
+			}
+		case "hello.txt":
+			if e.Size != 17 {
+				t.Errorf("hello.txt size: got %d, want 17", e.Size)
+			}
+		default:
+			t.Errorf("unexpected entry: %s", e.Name)
+		}
+	}
+}
+
+func TestManifestSortDeduplicatesNested(t *testing.T) {
+	m := NewManifest()
+
+	// Same-name files in different directories are NOT duplicates
+	m.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir, Size: -1, Depth: 0})
+	m.AddEntry(&Entry{Name: "data.txt", Size: 10, Depth: 1})
+	m.AddEntry(&Entry{Name: "dir2/", Mode: os.ModeDir, Size: -1, Depth: 0})
+	m.AddEntry(&Entry{Name: "data.txt", Size: 20, Depth: 1})
+
+	m.SortEntries()
+
+	// Should have 4 entries: dir1/, data.txt(d1), dir2/, data.txt(d1)
+	if len(m.Entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(m.Entries))
+	}
+}
+
 func TestManifestSort(t *testing.T) {
 	m := NewManifest()
 	
@@ -52,10 +100,10 @@ func TestManifestSort(t *testing.T) {
 	m.AddEntry(&Entry{Name: "file1.txt"})
 	m.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir})
 	
-	m.Sort()
-	
-	// Check natural sort order - directories come first
-	expected := []string{"dir1/", "file1.txt", "file2.txt", "file10.txt"}
+	m.SortEntries()
+
+	// Check natural sort order - files before directories at same depth
+	expected := []string{"file1.txt", "file2.txt", "file10.txt", "dir1/"}
 	for i, e := range m.Entries {
 		if e.Name != expected[i] {
 			t.Errorf("Entry[%d] = %q, want %q", i, e.Name, expected[i])
@@ -63,11 +111,10 @@ func TestManifestSort(t *testing.T) {
 	}
 }
 
-func TestManifestWriteTo(t *testing.T) {
+func TestManifestEncode(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	testID, _ := c4.Parse("c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
-	dataID, _ := c4.Parse("c42j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
-	
+
 	tests := []struct {
 		name     string
 		manifest *Manifest
@@ -88,40 +135,19 @@ func TestManifestWriteTo(t *testing.T) {
 					},
 				},
 			},
-			want: "@c4m 1.0\n-rw-r--r-- 2024-01-15T10:30:00Z 100 file1.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
-		},
-		{
-			name: "manifest with metadata",
-			manifest: &Manifest{
-				Version: "1.0",
-				Data:    dataID,
-				Entries: []*Entry{},
-			},
-			want: "@c4m 1.0\n@data c42j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
-		},
-		{
-			name: "manifest with base",
-			manifest: &Manifest{
-				Version: "1.0",
-				Base:    testID,
-				Entries: []*Entry{},
-			},
-			want: "@c4m 1.0\n@base c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
+			want: "-rw-r--r-- 2024-01-15T10:30:00Z 100 file1.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB\n",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			n, err := tt.manifest.WriteTo(&buf)
+			err := NewEncoder(&buf).Encode(tt.manifest)
 			if err != nil {
-				t.Fatalf("WriteTo() error = %v", err)
-			}
-			if n != int64(len(tt.want)) {
-				t.Errorf("WriteTo() wrote %d bytes, want %d", n, len(tt.want))
+				t.Fatalf("Encode() error = %v", err)
 			}
 			if got := buf.String(); got != tt.want {
-				t.Errorf("WriteTo() = %q, want %q", got, tt.want)
+				t.Errorf("Encode() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -187,7 +213,7 @@ func TestManifestCanonical(t *testing.T) {
 						Mode:      0644,
 						Timestamp: testTime,
 						Size:      200,
-						Name:      "dir1/file2.txt",
+						Name:      "file2.txt",
 						C4ID:      fileID,
 						Depth:     1, // Should be excluded
 					},
@@ -254,20 +280,22 @@ func TestManifestComputeC4ID(t *testing.T) {
 
 func TestManifestGetEntry(t *testing.T) {
 	m := NewManifest()
-	e1 := &Entry{Name: "file1.txt"}
-	e2 := &Entry{Name: "dir1/file2.txt"}
+	e1 := &Entry{Name: "file1.txt", Depth: 0}
+	eDir := &Entry{Name: "dir1/", Depth: 0, Mode: os.ModeDir}
+	e2 := &Entry{Name: "file2.txt", Depth: 1}
 	m.AddEntry(e1)
+	m.AddEntry(eDir)
 	m.AddEntry(e2)
-	
+
 	tests := []struct {
 		path string
 		want *Entry
 	}{
 		{"file1.txt", e1},
-		{"dir1/file2.txt", e2},
+		{"file2.txt", e2},
 		{"nonexistent.txt", nil},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			got := m.GetEntry(tt.path)
@@ -282,23 +310,27 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 	m := NewManifest()
 	e0a := &Entry{Name: "file1.txt", Depth: 0}
 	e0b := &Entry{Name: "file2.txt", Depth: 0}
-	e1a := &Entry{Name: "dir/file3.txt", Depth: 1}
-	e1b := &Entry{Name: "dir/file4.txt", Depth: 1}
-	e2 := &Entry{Name: "dir/sub/file5.txt", Depth: 2}
-	
+	eDir := &Entry{Name: "dir/", Depth: 0, Mode: os.ModeDir}
+	e1a := &Entry{Name: "file3.txt", Depth: 1}
+	e1b := &Entry{Name: "file4.txt", Depth: 1}
+	eSub := &Entry{Name: "sub/", Depth: 1, Mode: os.ModeDir}
+	e2 := &Entry{Name: "file5.txt", Depth: 2}
+
 	m.AddEntry(e0a)
 	m.AddEntry(e0b)
+	m.AddEntry(eDir)
 	m.AddEntry(e1a)
 	m.AddEntry(e1b)
+	m.AddEntry(eSub)
 	m.AddEntry(e2)
 	
 	tests := []struct {
 		depth int
 		want  int
 	}{
-		{0, 2},
-		{1, 2},
-		{2, 1},
+		{0, 3}, // file1.txt, file2.txt, dir/
+		{1, 3}, // file3.txt, file4.txt, sub/
+		{2, 1}, // file5.txt
 		{3, 0},
 	}
 	
@@ -310,155 +342,6 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestWriteLayer(t *testing.T) {
-	tests := []struct {
-		name     string
-		layer    *Layer
-		wantOut  []string
-		wantErr  bool
-	}{
-		{
-			name: "add layer",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-			},
-			wantOut: []string{"@layer"},
-		},
-		{
-			name: "remove layer",
-			layer: &Layer{
-				Type: LayerTypeRemove,
-			},
-			wantOut: []string{"@remove"},
-		},
-		{
-			name: "layer with by",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				By:   "user@example.com",
-			},
-			wantOut: []string{"@layer", "@by user@example.com"},
-		},
-		{
-			name: "layer with time",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				Time: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			},
-			wantOut: []string{"@layer", "@time 2024-01-01T00:00:00Z"},
-		},
-		{
-			name: "layer with note",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				Note: "Test note",
-			},
-			wantOut: []string{"@layer", "@note Test note"},
-		},
-		{
-			name: "layer with data",
-			layer: &Layer{
-				Type: LayerTypeAdd,
-				Data: mustParseC4("c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN"),
-			},
-			wantOut: []string{"@layer", "@data c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN"},
-		},
-		{
-			name: "layer with all fields",
-			layer: &Layer{
-				Type: LayerTypeRemove,
-				By:   "admin@example.com",
-				Time: time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC),
-				Note: "Cleanup old files",
-				Data: mustParseC4("c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN"),
-			},
-			wantOut: []string{
-				"@remove",
-				"@by admin@example.com",
-				"@time 2024-06-15T10:30:00Z",
-				"@note Cleanup old files",
-				"@data c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := &Manifest{}
-			var buf bytes.Buffer
-			
-			n, err := m.writeLayer(&buf, tt.layer)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("writeLayer() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			
-			if n == 0 && len(tt.wantOut) > 0 {
-				t.Error("writeLayer() wrote 0 bytes")
-			}
-			
-			output := buf.String()
-			for _, want := range tt.wantOut {
-				if !strings.Contains(output, want) {
-					t.Errorf("Output missing %q", want)
-				}
-			}
-		})
-	}
-}
-
-func TestManifestWithLayers(t *testing.T) {
-	m := &Manifest{
-		Version: "1.0",
-		Layers: []*Layer{
-			{
-				Type: LayerTypeAdd,
-				By:   "user@example.com",
-			},
-		},
-		Entries: []*Entry{
-			{
-				Mode:      0644,
-				Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-				Size:      100,
-				Name:      "new.txt",
-			},
-		},
-	}
-
-	var buf bytes.Buffer
-	n, err := m.WriteTo(&buf)
-	if err != nil {
-		t.Fatalf("WriteTo() error = %v", err)
-	}
-	if n == 0 {
-		t.Error("WriteTo() wrote 0 bytes")
-	}
-
-	output := buf.String()
-	expected := []string{
-		"@c4m 1.0",
-		"@layer",
-		"@by user@example.com",
-		"-rw-r--r-- 2024-01-01T00:00:00Z 100 new.txt",
-	}
-	
-	for _, want := range expected {
-		if !strings.Contains(output, want) {
-			t.Errorf("Output missing %q\nGot:\n%s", want, output)
-		}
-	}
-}
-
-// Helper function to parse C4 ID
-func mustParseC4(s string) c4.ID {
-	id, err := c4.Parse(s)
-	if err != nil {
-		panic(err)
-	}
-	return id
 }
 
 func TestManifestValidate(t *testing.T) {
@@ -516,26 +399,24 @@ func TestManifestValidate(t *testing.T) {
 			errMsg:  "empty name",
 		},
 		{
-			name: "zero timestamp",
+			name: "null timestamp is valid",
 			manifest: &Manifest{
 				Version: "1.0",
 				Entries: []*Entry{
 					{Name: "file.txt", Size: 100},
 				},
 			},
-			wantErr: true,
-			errMsg:  "zero timestamp",
+			wantErr: false,
 		},
 		{
-			name: "negative size",
+			name: "null size is valid",
 			manifest: &Manifest{
 				Version: "1.0",
 				Entries: []*Entry{
 					{Name: "file.txt", Timestamp: testTime, Size: -1},
 				},
 			},
-			wantErr: true,
-			errMsg:  "negative size",
+			wantErr: false,
 		},
 		{
 			name: "path traversal ../",
@@ -573,3 +454,513 @@ func TestManifestValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestManifestHasNullValues(t *testing.T) {
+	testTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		entries []*Entry
+		want    bool
+	}{
+		{
+			name:    "empty manifest",
+			entries: nil,
+			want:    false,
+		},
+		{
+			name: "all valid entries",
+			entries: []*Entry{
+				{Mode: 0644, Timestamp: testTime, Size: 100, Name: "a.txt"},
+				{Mode: 0644, Timestamp: testTime, Size: 200, Name: "b.txt"},
+			},
+			want: false,
+		},
+		{
+			name: "one entry with null size",
+			entries: []*Entry{
+				{Mode: 0644, Timestamp: testTime, Size: 100, Name: "a.txt"},
+				{Mode: 0644, Timestamp: testTime, Size: -1, Name: "b.txt"},
+			},
+			want: true,
+		},
+		{
+			name: "one entry with null timestamp",
+			entries: []*Entry{
+				{Mode: 0644, Timestamp: time.Unix(0, 0), Size: 100, Name: "a.txt"},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manifest{Version: "1.0", Entries: tt.entries}
+			if got := m.HasNullValues(); got != tt.want {
+				t.Errorf("HasNullValues() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCanonicalize(t *testing.T) {
+	t.Run("null mode stays null after canonicalize", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "file.txt",
+			Size:      100,
+			Timestamp: time.Now().UTC(),
+			Mode:      0, // Null mode
+			C4ID:      c4.Identify(strings.NewReader("test")),
+		})
+
+		m.Canonicalize()
+
+		if m.Entries[0].Mode != 0 {
+			t.Errorf("expected null mode to stay 0, got %o", m.Entries[0].Mode)
+		}
+	})
+
+	t.Run("null dir mode stays null after canonicalize", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "dir/",
+			Size:      0,
+			Timestamp: time.Now().UTC(),
+			Mode:      0, // Null mode
+			C4ID:      c4.ID{},
+		})
+
+		m.Canonicalize()
+
+		if m.Entries[0].Mode != 0 {
+			t.Errorf("expected null mode to stay 0, got %o", m.Entries[0].Mode)
+		}
+	})
+
+	t.Run("null timestamps stay null after canonicalize", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "file.txt",
+			Size:      100,
+			Timestamp: NullTimestamp(),
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader("test")),
+		})
+
+		m.Canonicalize()
+
+		if !m.Entries[0].Timestamp.Equal(NullTimestamp()) {
+			t.Errorf("expected null timestamp to stay null, got %v", m.Entries[0].Timestamp)
+		}
+	})
+
+	t.Run("null size stays null after canonicalize", func(t *testing.T) {
+		m := NewManifest()
+		m.AddEntry(&Entry{
+			Name:      "file.txt",
+			Size:      -1, // Null size
+			Timestamp: time.Now().UTC(),
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader("test")),
+		})
+
+		m.Canonicalize()
+
+		if m.Entries[0].Size != -1 {
+			t.Errorf("expected null size to stay -1, got %d", m.Entries[0].Size)
+		}
+	})
+
+	t.Run("propagates metadata from children to parents", func(t *testing.T) {
+		now := time.Now().UTC()
+		m := NewManifest()
+
+		// Add directory with null values
+		m.AddEntry(&Entry{
+			Name:      "dir/",
+			Size:      -1,
+			Timestamp: time.Unix(0, 0),
+			Mode:      os.ModeDir,
+			Depth:     0,
+		})
+
+		// Add child file with real values
+		m.AddEntry(&Entry{
+			Name:      "file.txt",
+			Size:      100,
+			Timestamp: now,
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader("test")),
+			Depth:     1,
+		})
+
+		m.Canonicalize()
+
+		// Directory should have size propagated
+		if m.Entries[0].Size != 100 {
+			t.Errorf("expected dir size 100, got %d", m.Entries[0].Size)
+		}
+	})
+}
+// ----------------------------------------------------------------------------
+// Propagate Tests (merged from propagate_test.go)
+// ----------------------------------------------------------------------------
+
+func TestGetDirectoryChildren(t *testing.T) {
+	// Create a hierarchy:
+	// root/       (depth 0)
+	//   file1.txt (depth 1)
+	//   subdir/   (depth 1)
+	//     file2.txt (depth 2)
+	//   file3.txt (depth 1)
+	// other/      (depth 0)
+
+	root := &Entry{Name: "root/", Mode: os.ModeDir, Depth: 0}
+	file1 := &Entry{Name: "file1.txt", Size: 100, Depth: 1}
+	subdir := &Entry{Name: "subdir/", Mode: os.ModeDir, Depth: 1}
+	file2 := &Entry{Name: "file2.txt", Size: 200, Depth: 2}
+	file3 := &Entry{Name: "file3.txt", Size: 300, Depth: 1}
+	other := &Entry{Name: "other/", Mode: os.ModeDir, Depth: 0}
+
+	entries := []*Entry{root, file1, subdir, file2, file3, other}
+
+	tests := []struct {
+		name     string
+		dir      *Entry
+		expected []*Entry
+	}{
+		{
+			name:     "root children",
+			dir:      root,
+			expected: []*Entry{file1, subdir, file3},
+		},
+		{
+			name:     "subdir children",
+			dir:      subdir,
+			expected: []*Entry{file2},
+		},
+		{
+			name:     "other children (empty)",
+			dir:      other,
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			children := getDirectoryChildren(entries, tt.dir)
+			if len(children) != len(tt.expected) {
+				t.Errorf("got %d children, want %d", len(children), len(tt.expected))
+				return
+			}
+			for i, child := range children {
+				if child != tt.expected[i] {
+					t.Errorf("child %d: got %s, want %s", i, child.Name, tt.expected[i].Name)
+				}
+			}
+		})
+	}
+}
+
+func TestCalculateDirectorySize(t *testing.T) {
+	tests := []struct {
+		name     string
+		entries  []*Entry
+		expected int64
+	}{
+		{
+			name:     "empty",
+			entries:  []*Entry{},
+			expected: 0,
+		},
+		{
+			name: "single file",
+			entries: []*Entry{
+				{Name: "file.txt", Size: 100},
+			},
+			expected: 100,
+		},
+		{
+			name: "multiple files",
+			entries: []*Entry{
+				{Name: "a.txt", Size: 100},
+				{Name: "b.txt", Size: 200},
+				{Name: "c.txt", Size: 300},
+			},
+			expected: 600,
+		},
+		{
+			name: "with null sizes (nil-infectious)",
+			entries: []*Entry{
+				{Name: "a.txt", Size: 100},
+				{Name: "b.txt", Size: -1}, // null
+				{Name: "c.txt", Size: 300},
+			},
+			expected: -1, // any null makes total null
+		},
+		{
+			name: "all null sizes",
+			entries: []*Entry{
+				{Name: "a.txt", Size: -1},
+				{Name: "b.txt", Size: -1},
+			},
+			expected: -1,
+		},
+		{
+			name: "zero size files",
+			entries: []*Entry{
+				{Name: "empty.txt", Size: 0},
+				{Name: "also_empty.txt", Size: 0},
+			},
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateDirectorySize(tt.entries)
+			if result != tt.expected {
+				t.Errorf("got %d, want %d", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetMostRecentModtime(t *testing.T) {
+	t1 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	t3 := time.Date(2024, 3, 10, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name     string
+		entries  []*Entry
+		expected time.Time
+	}{
+		{
+			name:     "empty returns null timestamp",
+			entries:  []*Entry{},
+			expected: NullTimestamp(),
+		},
+		{
+			name: "single timestamp",
+			entries: []*Entry{
+				{Name: "a.txt", Timestamp: t1},
+			},
+			expected: t1,
+		},
+		{
+			name: "multiple timestamps",
+			entries: []*Entry{
+				{Name: "a.txt", Timestamp: t1},
+				{Name: "b.txt", Timestamp: t2},
+				{Name: "c.txt", Timestamp: t3},
+			},
+			expected: t2, // most recent
+		},
+		{
+			name: "with null timestamps (nil-infectious)",
+			entries: []*Entry{
+				{Name: "a.txt", Timestamp: t1},
+				{Name: "b.txt", Timestamp: time.Unix(0, 0)}, // null (epoch)
+				{Name: "c.txt", Timestamp: t3},
+			},
+			expected: NullTimestamp(), // any null makes result null
+		},
+		{
+			name: "all null timestamps returns null timestamp",
+			entries: []*Entry{
+				{Name: "a.txt", Timestamp: time.Unix(0, 0)},
+				{Name: "b.txt", Timestamp: time.Unix(0, 0)},
+			},
+			expected: NullTimestamp(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getMostRecentModtime(tt.entries)
+			if !result.Equal(tt.expected) {
+				t.Errorf("got %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPropagateMetadata(t *testing.T) {
+	t1 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	t3 := time.Date(2024, 3, 10, 12, 0, 0, 0, time.UTC)
+
+	t.Run("propagates size to directory", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: t1, Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t1, Depth: 1}
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		if dir.Size != 300 {
+			t.Errorf("dir size: got %d, want 300", dir.Size)
+		}
+	})
+
+	t.Run("propagates timestamp to directory", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: 0, Timestamp: time.Unix(0, 0), Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1}
+		file3 := &Entry{Name: "c.txt", Size: 300, Timestamp: t3, Depth: 1}
+
+		entries := []*Entry{dir, file1, file2, file3}
+		propagateMetadata(entries)
+
+		if !dir.Timestamp.Equal(t2) {
+			t.Errorf("dir timestamp: got %v, want %v", dir.Timestamp, t2)
+		}
+	})
+
+	t.Run("propagates both size and timestamp", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1}
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		if dir.Size != 300 {
+			t.Errorf("dir size: got %d, want 300", dir.Size)
+		}
+		if !dir.Timestamp.Equal(t2) {
+			t.Errorf("dir timestamp: got %v, want %v", dir.Timestamp, t2)
+		}
+	})
+
+	t.Run("does not overwrite explicit values", func(t *testing.T) {
+		explicitTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: 999, Timestamp: explicitTime, Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t2, Depth: 1}
+
+		entries := []*Entry{dir, file1}
+		propagateMetadata(entries)
+
+		// Values should remain unchanged
+		if dir.Size != 999 {
+			t.Errorf("dir size should not change: got %d, want 999", dir.Size)
+		}
+		if !dir.Timestamp.Equal(explicitTime) {
+			t.Errorf("dir timestamp should not change: got %v, want %v", dir.Timestamp, explicitTime)
+		}
+	})
+
+	t.Run("handles nested directories", func(t *testing.T) {
+		root := &Entry{Name: "root/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		subdir := &Entry{Name: "sub/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 1}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 2}
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1}
+
+		entries := []*Entry{root, subdir, file1, file2}
+		propagateMetadata(entries)
+
+		// subdir should get file1's info (its only direct child)
+		if subdir.Size != 100 {
+			t.Errorf("subdir size: got %d, want 100", subdir.Size)
+		}
+		if !subdir.Timestamp.Equal(t1) {
+			t.Errorf("subdir timestamp: got %v, want %v", subdir.Timestamp, t1)
+		}
+
+		// With reverse-order iteration, subdir is resolved first,
+		// so root correctly includes subdir's propagated size + file2's size
+		if root.Size != 300 {
+			t.Errorf("root size: got %d, want 300 (subdir=100 + file2=200)", root.Size)
+		}
+		// root timestamp should be t2 (most recent of direct children)
+		if !root.Timestamp.Equal(t2) {
+			t.Errorf("root timestamp: got %v, want %v", root.Timestamp, t2)
+		}
+	})
+
+	t.Run("skips non-directory entries", func(t *testing.T) {
+		file := &Entry{Name: "file.txt", Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		entries := []*Entry{file}
+		propagateMetadata(entries)
+
+		// File should not be modified (null values preserved)
+		if file.Size != -1 {
+			t.Errorf("file size should remain null: got %d", file.Size)
+		}
+	})
+
+	t.Run("handles empty entries", func(t *testing.T) {
+		entries := []*Entry{}
+		propagateMetadata(entries) // Should not panic
+	})
+
+	t.Run("nil-infectious size: one child null makes parent null", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: t1, Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
+		file2 := &Entry{Name: "b.txt", Size: -1, Timestamp: t2, Depth: 1} // null size
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		if dir.Size != -1 {
+			t.Errorf("dir size should be null (-1) when child has null size, got %d", dir.Size)
+		}
+	})
+
+	t.Run("nil-infectious timestamp: one child null makes parent null", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: time.Unix(0, 0), Depth: 1} // null timestamp
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		if !dir.Timestamp.Equal(NullTimestamp()) {
+			t.Errorf("dir timestamp should be null when child has null timestamp, got %v", dir.Timestamp)
+		}
+		// Size should still be computed since all child sizes are known
+		if dir.Size != 300 {
+			t.Errorf("dir size should be 300 (size is independent of timestamp), got %d", dir.Size)
+		}
+	})
+
+	t.Run("nil-infectious deep nesting: grandchild null propagates to root", func(t *testing.T) {
+		root := &Entry{Name: "root/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		subdir := &Entry{Name: "sub/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 1}
+		file1 := &Entry{Name: "a.txt", Size: -1, Timestamp: t1, Depth: 2}  // null size in grandchild
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1} // known size at depth 1
+
+		entries := []*Entry{root, subdir, file1, file2}
+		propagateMetadata(entries)
+
+		// subdir gets null size from its child
+		if subdir.Size != -1 {
+			t.Errorf("subdir size should be null (-1), got %d", subdir.Size)
+		}
+		// root gets null size because subdir (a direct child) has null size
+		if root.Size != -1 {
+			t.Errorf("root size should be null (-1) due to grandchild nil propagation, got %d", root.Size)
+		}
+	})
+
+	t.Run("nil-infectious mixed: size null but timestamp known", func(t *testing.T) {
+		dir := &Entry{Name: "dir/", Mode: os.ModeDir, Size: -1, Timestamp: time.Unix(0, 0), Depth: 0}
+		file1 := &Entry{Name: "a.txt", Size: -1, Timestamp: t1, Depth: 1}  // null size, known timestamp
+		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1} // known size, known timestamp
+
+		entries := []*Entry{dir, file1, file2}
+		propagateMetadata(entries)
+
+		// Size should be null (one child has null size)
+		if dir.Size != -1 {
+			t.Errorf("dir size should be null (-1), got %d", dir.Size)
+		}
+		// Timestamp should be computed (all children have known timestamps)
+		if !dir.Timestamp.Equal(t2) {
+			t.Errorf("dir timestamp should be %v (most recent), got %v", t2, dir.Timestamp)
+		}
+	})
+}
+
