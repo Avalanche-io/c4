@@ -78,3 +78,7 @@ func (f ShardedFolder) Has(id c4.ID) bool {
 	_, err := os.Stat(filepath.Join(string(f), id.String()))
 	return err == nil
 }
+
+func (f ShardedFolder) Put(r io.Reader) (c4.ID, error) {
+	return defaultPut(f, r)
+}

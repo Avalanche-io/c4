@@ -51,7 +51,13 @@ c4 id -s myproject/ > project.c4m
 c4 cat c43zYcLni5LF... > restored-file.jpg
 ```
 
-On first use of `-s`, the CLI offers to create a default store at `~/.c4/store`. You can also set `C4_STORE=/path/to/store` explicitly.
+On first use of `-s`, the CLI offers to create a default store at `~/.c4/store`. You can also configure it explicitly:
+
+```bash
+C4_STORE=/path/to/store                                        # local
+C4_STORE=s3://bucket/prefix?region=us-west-2                   # S3
+C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2             # multiple
+```
 
 ## 4. Compare Directories
 

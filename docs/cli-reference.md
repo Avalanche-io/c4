@@ -312,8 +312,19 @@ c4 1.0.0 (darwin/arm64, go1.24.5)
 
 The content store holds file content addressed by C4 ID. Configure via:
 
-1. `C4_STORE` environment variable (path or `s3://bucket/prefix`)
-2. `~/.c4/config` file (`store = /path/to/store`)
+1. `C4_STORE` environment variable — a path, `s3://` URI, or comma-separated list
+2. `~/.c4/config` file — one or more `store = ...` lines
+
+Multiple stores can be configured. Writes go to the first store. Reads
+check all stores in order, returning the first hit:
+
+```bash
+# Single store
+C4_STORE=/data/store
+
+# Multiple stores — local SSD for writes, S3 and NAS for reads
+C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
+```
 
 On first use of `-s` without a configured store, the CLI offers to
 create `~/.c4/store`.

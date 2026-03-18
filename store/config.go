@@ -3,15 +3,17 @@ package store
 import (
 	"bufio"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 // OpenConfigured returns a TreeStore based on configuration.
+// For S3-backed stores, use OpenStore instead.
 // Resolution order:
-//  1. C4_STORE environment variable
-//  2. ~/.c4/config file (store setting)
+//  1. C4_STORE environment variable (local paths only)
+//  2. ~/.c4/config file (store setting, local paths only)
 //  3. Returns nil, nil if no store configured.
 func OpenConfigured() (*TreeStore, error) {
 	path := configuredPath()
@@ -21,9 +23,83 @@ func OpenConfigured() (*TreeStore, error) {
 	return NewTreeStore(path)
 }
 
+// OpenStore returns a Store based on configuration, supporting local
+// filesystem and S3 backends. Multiple stores can be configured —
+// writes go to the first, reads check all in order.
+//
+// C4_STORE can be a single path/URI or comma-separated list:
+//
+//	C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
+//
+// Alternatively, ~/.c4/config can have multiple store lines:
+//
+//	store = /fast/ssd
+//	store = s3://bucket/c4?region=us-west-2
+//
+// Returns nil, nil if no store configured.
+func OpenStore() (Store, error) {
+	endpoints := configuredEndpoints()
+	if len(endpoints) == 0 {
+		return nil, nil
+	}
+
+	var stores []Store
+	for _, ep := range endpoints {
+		var s Store
+		var err error
+		if strings.HasPrefix(ep, "s3://") {
+			s, err = openS3Configured(ep)
+		} else {
+			s, err = NewTreeStore(ep)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("store %q: %w", ep, err)
+		}
+		stores = append(stores, s)
+	}
+
+	if len(stores) == 1 {
+		return stores[0], nil
+	}
+	return NewMultiStore(stores...), nil
+}
+
+// openS3Configured parses an s3:// URI and returns an S3Store.
+// Format: s3://bucket/prefix?region=X&endpoint=Y
+// Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars.
+func openS3Configured(raw string) (*S3Store, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse S3 URI: %w", err)
+	}
+	bucket := u.Host
+	if bucket == "" {
+		return nil, fmt.Errorf("S3 URI missing bucket: %s", raw)
+	}
+	prefix := strings.TrimPrefix(u.Path, "/")
+
+	region := u.Query().Get("region")
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	endpoint := u.Query().Get("endpoint")
+	if endpoint == "" {
+		endpoint = os.Getenv("C4_S3_ENDPOINT")
+	}
+
+	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
+	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	if accessKey == "" || secretKey == "" {
+		return nil, fmt.Errorf("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set for S3 store")
+	}
+
+	return NewS3Store(bucket, prefix, region, endpoint, accessKey, secretKey), nil
+}
+
 // IsConfigured reports whether a content store is configured.
 func IsConfigured() bool {
-	return configuredPath() != ""
+	return configuredRaw() != ""
 }
 
 // AutoStoreEnabled reports whether auto-store is enabled.
@@ -84,21 +160,40 @@ func SetupDefaultStore() (*TreeStore, error) {
 	return s, os.WriteFile(configPath, []byte(strings.Join(lines, "\n")+"\n"), 0644)
 }
 
-func configuredPath() string {
+// configuredEndpoints returns all configured store endpoints.
+// C4_STORE can be comma-separated. Config file can have multiple store lines.
+func configuredEndpoints() []string {
 	if v := os.Getenv("C4_STORE"); v != "" {
-		// S3 URIs are not handled by TreeStore.
-		if strings.HasPrefix(v, "s3://") {
-			return "" // S3 backend not yet implemented
+		var endpoints []string
+		for _, ep := range strings.Split(v, ",") {
+			ep = strings.TrimSpace(ep)
+			if ep != "" {
+				endpoints = append(endpoints, ep)
+			}
 		}
-		return v
+		return endpoints
 	}
-	if v := configValue("store"); v != "" {
-		if strings.HasPrefix(v, "s3://") {
-			return ""
-		}
-		return v
+	return configValues("store")
+}
+
+// configuredRaw returns the first configured store value.
+// Returns "" if no store is configured.
+func configuredRaw() string {
+	eps := configuredEndpoints()
+	if len(eps) == 0 {
+		return ""
 	}
-	return ""
+	return eps[0]
+}
+
+// configuredPath returns the local filesystem path for the store, or ""
+// if no local store is configured (e.g., S3 URIs return "").
+func configuredPath() string {
+	raw := configuredRaw()
+	if strings.HasPrefix(raw, "s3://") {
+		return ""
+	}
+	return raw
 }
 
 func configFilePath() string {
@@ -107,6 +202,41 @@ func configFilePath() string {
 		return ""
 	}
 	return filepath.Join(home, ".c4", "config")
+}
+
+// configValues returns all values for a key from the config file.
+func configValues(key string) []string {
+	path := configFilePath()
+	if path == "" {
+		return nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var values []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		var k, v string
+		if idx := strings.IndexByte(line, '='); idx >= 0 {
+			k = strings.TrimSpace(line[:idx])
+			v = strings.TrimSpace(line[idx+1:])
+		} else if idx := strings.IndexByte(line, ' '); idx >= 0 {
+			k = strings.TrimSpace(line[:idx])
+			v = strings.TrimSpace(line[idx+1:])
+		} else {
+			continue
+		}
+		if k == key && v != "" {
+			values = append(values, v)
+		}
+	}
+	return values
 }
 
 func configValue(key string) string {

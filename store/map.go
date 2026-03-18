@@ -7,7 +7,7 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
-var _ Store = &MAP{}
+var _ Store = MAP{}
 
 // A MAP store is an implementation of the Store interface that stores all data
 // in ram.
@@ -31,6 +31,15 @@ func (s MAP) Create(id c4.ID) (io.WriteCloser, error) {
 
 // Remove removes the c4 id and it's assoceated data from memory, an error is
 // returned if the id does not exist.
+func (s MAP) Has(id c4.ID) bool {
+	_, ok := s[id]
+	return ok
+}
+
+func (s MAP) Put(r io.Reader) (c4.ID, error) {
+	return defaultPut(s, r)
+}
+
 func (s MAP) Remove(id c4.ID) error {
 	return os.Remove(s[id])
 }

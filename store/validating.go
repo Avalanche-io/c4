@@ -122,6 +122,10 @@ func (v *Validating) Create(id c4.ID) (io.WriteCloser, error) {
 	return &validatingWriter{sha512.New(), id, w, v.s.Remove}, nil
 }
 
+func (v *Validating) Has(id c4.ID) bool { return v.s.Has(id) }
+
+func (v *Validating) Put(r io.Reader) (c4.ID, error) { return v.s.Put(r) }
+
 func (v *Validating) Remove(id c4.ID) error {
 	return v.s.Remove(id)
 }

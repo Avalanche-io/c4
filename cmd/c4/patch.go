@@ -153,7 +153,7 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeR
 	}
 
 	// Store the pre-patch manifest if -s is set (enables -r reversal later).
-	s, _ := store.OpenConfigured()
+	s, _ := store.OpenStore()
 	if storeRemovals && s != nil {
 		storeManifestAsContent(currentManifest, s)
 	}
@@ -248,7 +248,7 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 	}
 
 	// Store the pre-patch manifest if -s is set.
-	s, _ := store.OpenConfigured()
+	s, _ := store.OpenStore()
 	if storeRemovals && s != nil {
 		storeManifestAsContent(destManifest, s)
 	}
@@ -408,7 +408,7 @@ func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun b
 	}
 
 	// Load the pre-patch manifest from the store.
-	s, _ := store.OpenConfigured()
+	s, _ := store.OpenStore()
 	if s == nil {
 		fatalf("Error: no content store configured (needed to load pre-patch manifest)")
 	}
@@ -501,7 +501,7 @@ func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun b
 
 // storeManifestAsContent stores a manifest's canonical c4m as content in the store.
 // This enables future -r reversal by storing the pre-patch state keyed by its C4 ID.
-func storeManifestAsContent(m *c4m.Manifest, s *store.TreeStore) {
+func storeManifestAsContent(m *c4m.Manifest, s store.Store) {
 	data, err := c4m.Marshal(m)
 	if err != nil {
 		return

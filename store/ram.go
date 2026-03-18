@@ -80,6 +80,17 @@ func (s *RAM) Create(id c4.ID) (io.WriteCloser, error) {
 	return &ramfile{s, id, false, []byte{}}, nil
 }
 
+func (s *RAM) Has(id c4.ID) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.data[id]
+	return ok
+}
+
+func (s *RAM) Put(r io.Reader) (c4.ID, error) {
+	return defaultPut(s, r)
+}
+
 // Remove removes the c4 id and its associated data from memory.
 func (s *RAM) Remove(id c4.ID) error {
 	s.mu.Lock()

@@ -18,15 +18,19 @@ type Sink interface {
 	Create(id c4.ID) (io.WriteCloser, error)
 }
 
-// Store - Defines an interface to a data sources that can Open readonly or
-// Create write only data accessed via c4 id. The interface includes a Remove
-// fucntion, but implementation is optional. Implementations should return an
-// appropreate error if Remove is diregarded, such as ErrNotImplemented,
-// os.ErrPermission, etc.
+// Store defines the interface for a content-addressed data store.
 type Store interface {
 	Source
 	Sink
 
+	// Has reports whether the store contains content for the given ID.
+	Has(id c4.ID) bool
+
+	// Put reads all content, computes its C4 ID, stores it, and returns the ID.
+	Put(r io.Reader) (c4.ID, error)
+
+	// Remove deletes content by ID. Implementation is optional — return
+	// ErrNotImplemented or os.ErrPermission if unsupported.
 	Remove(id c4.ID) error
 }
 

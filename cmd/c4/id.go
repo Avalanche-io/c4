@@ -214,8 +214,8 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 	}
 }
 
-func getOrSetupStore() *store.TreeStore {
-	s, err := store.OpenConfigured()
+func getOrSetupStore() store.Store {
+	s, err := store.OpenStore()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: store error: %v\n", err)
 		return nil
@@ -224,7 +224,7 @@ func getOrSetupStore() *store.TreeStore {
 		return s
 	}
 
-	// No store configured — offer to create default.
+	// No store configured — offer to create default (local only).
 	if !isTerminal() {
 		return nil
 	}

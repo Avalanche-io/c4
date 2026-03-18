@@ -31,7 +31,10 @@ Formally specified manifest format (SMPTE ST 2114:2017) for describing filesyste
 
 ### Content Store
 
-Adaptive trie-sharded content store with atomic writes and configurable split threshold.
+- Local: adaptive trie-sharded directory with atomic writes
+- S3: any S3-compatible object store (AWS, MinIO, Backblaze, Wasabi, Ceph)
+- Multi-store: write to first, read from all (`C4_STORE=a,b,c`)
+- Zero external dependencies — S3 SigV4 signing implemented with stdlib
 
 ### Filesystem Reconciliation
 

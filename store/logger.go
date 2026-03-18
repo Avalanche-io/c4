@@ -94,6 +94,10 @@ func (l *Logger) Create(id c4.ID) (io.WriteCloser, error) {
 	return &loggingWriter{w, l.logout, idstr, l.flags}, nil
 }
 
+func (l *Logger) Has(id c4.ID) bool { return l.s.Has(id) }
+
+func (l *Logger) Put(r io.Reader) (c4.ID, error) { return l.s.Put(r) }
+
 // Remove logs and calls the Remove method of the contained Store.
 func (l *Logger) Remove(id c4.ID) error {
 	fname := "Remove"

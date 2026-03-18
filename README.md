@@ -1,166 +1,189 @@
 
-# C4 - Universal Content Identification
+# C4 — Content-Addressable Identification
 
 [![CI](https://github.com/Avalanche-io/c4/actions/workflows/ci.yml/badge.svg)](https://github.com/Avalanche-io/c4/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Avalanche-io/c4)](https://goreportcard.com/report/github.com/Avalanche-io/c4)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Avalanche-io/c4.svg)](https://pkg.go.dev/github.com/Avalanche-io/c4)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-C4 implements **SMPTE ST 2114:2017** — the international standard for
-content-addressable asset identification. It gives every file a
-universally unique, unforgeable ID derived from its content. Two files
-with the same content always produce the same ID, regardless of where
-they live or what they're named.
+C4 gives every file an ID based on what it contains — not where it lives
+or what it's called. Same content, same ID, always. Different content,
+different ID, always.
 
-C4 works with any file type: source code, documents, images, video,
-render passes, genomic data, build artifacts — anything that's bytes.
-A single ID can represent one file or an entire directory tree.
-
-Zero external dependencies. Go 1.16+.
-
-### Install
-
-```bash
-brew install Avalanche-io/tap/c4
+```
+$ c4 id .
+-rw-r--r-- Mar 18 13:38:54 2026 CDT   1,846 CHANGELOG.md                c424v...
+-rw-r--r-- Aug 29 17:29:44 2025 CDT   3,215 CODE_OF_CONDUCT.md          c43WS...
+-rw-r--r-- Mar 18 13:38:54 2026 CDT   4,214 CONTRIBUTING.md             c414p...
+-rw-r--r-- Aug 29 17:29:44 2025 CDT     197 CONTRIBUTORS                c44nd...
+-rw-r--r-- Aug 29 17:29:44 2025 CDT   1,132 LICENSE                     c42js...
+-rw-r--r-- Mar 18 17:28:25 2026 CDT   5,744 README.md                   c42xS...
+-rw-r--r-- Aug 29 17:29:44 2025 CDT   2,500 SECURITY.md                 c44GH...
+-rw-r--r-- Mar 16 18:06:52 2026 CDT     565 doc.go                      c43yb...
+-rw-r--r-- Mar 18 13:38:54 2026 CDT      43 go.mod                      c44nz...
+-rw-r--r-- Mar 18 13:38:54 2026 CDT       0 go.sum                      c459d...
+-rw-r--r-- Mar 18 13:38:54 2026 CDT   5,069 id.go                       c45MH...
+-rw-r--r-- Mar 18 13:38:54 2026 CDT  19,439 id_test.go                  c42U9...
+-rw-r--r-- Mar 18 13:38:54 2026 CDT   4,014 internals_test.go           c45m2...
+-rw-r--r-- Aug 29 17:29:44 2025 CDT   4,299 tree.go                     c447F...
+-rw-r--r-- Mar 18 13:38:54 2026 CDT   2,043 tree_test.go                c43Md...
+-rw-r--r-- Aug 29 17:29:44 2025 CDT   1,928 treeslice_bench_test.go     c45vX...
+drwxr-xr-x Mar 18 13:38:54 2026 CDT 642,792 c4m/                        c443Z...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT  34,799 C4M-STANDARD.md           c421X...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT   4,492 METADATA_COVERAGE.md      c43Ep...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT   5,179 README.md                 c418B...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT  17,910 SPECIFICATION.md          c41Ep...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT   6,408 WORKFLOWS.md              c4189...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT   8,137 adversarial_test.go       c41iW...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT   5,732 benchmarks_test.go        c41Cq...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT   4,928 builder.go                c4621...
+  -rw-r--r-- Mar 18 13:38:54 2026 CDT  13,005 builder_test.go           c43ui...
+#...
 ```
 
-Or with Go (1.16+):
+The output is a c4m file — a plain-text description of the filesystem.
+One line per entry. Pipe it, grep it, diff it, email it. It's just text.
+
+C4 IDs implement [SMPTE ST 2114:2017](https://ieeexplore.ieee.org/document/7971777),
+an international standard for content identification based on SHA-512.
+
+## Install
 
 ```bash
 go install github.com/Avalanche-io/c4/cmd/c4@latest
 ```
 
-### Quick Start
+## What can you do with it?
 
-```bash
-# Identify a file
-c4 id document.pdf
-
-# Identify a directory tree
-c4 id myproject/ > project.c4m
-
-# Pipe data (bare C4 ID)
-echo "hello" | c4
-
-# Compare two snapshots
-c4 diff before.c4m after.c4m
-
-# Version a directory over time
-c4 diff project.c4m <(c4 id myproject/) >> project.c4m
-c4 log project.c4m
-```
-
-### What Can You Do With It?
-
-**Track what changed.** Compare two directory trees — or two snapshots
-of the same tree taken at different times. Changed files have different
-C4 IDs. Unchanged subtrees are skipped entirely.
+**Track what changed.** Save a snapshot, come back later, diff it:
 
 ```bash
 c4 id ./deliverables/ > monday.c4m
-# ... time passes ...
-c4 diff monday.c4m <(c4 id ./deliverables/)
+# ... work happens ...
+c4 id ./deliverables/ > friday.c4m
+c4 diff monday.c4m friday.c4m
 ```
 
-**Know what you have.** Identify a render farm output, a code release,
-a dataset, a backup — and know with cryptographic certainty whether it
-matches what you expect.
+When both sides are c4m files, the diff compares IDs — not file
+contents — so it completes in milliseconds regardless of how large the
+underlying files are. Everything is a file, including the manifest.
+
+**Build version history.** A c4m file can accumulate patches over time:
 
 ```bash
-c4 id -s ./final_delivery/ > delivery.c4m
-# The c4m file is a receipt. The store holds the content.
-# Verify later: c4 cat <id> recovers any file by its ID.
+c4 id ./project/ > project.c4m                                     # snapshot
+c4 diff project.c4m ./project/ >> project.c4m                      # append changes
+
+c4 log project.c4m          # see what changed
+c4 patch -n 1 project.c4m   # recover the original state
 ```
 
-**Deduplicate.** If two files anywhere in the tree have the same content,
-they have the same C4 ID. Find duplicates across millions of files:
+**Reconcile directories.** Declare the state you want. c4 figures out
+the rest:
 
 ```bash
-awk '{print $NF}' project.c4m | sort | uniq -d
+c4 patch target.c4m ./dir/
 ```
 
-**Scan fast, hash later.** Structure-only scans are instant. Filter
-the c4m to remove what you don't need, then hash only what matters:
+This diffs the current directory against the target, then applies only
+what's different — creating, moving, and removing files as needed.
+Nothing starts until all required content is confirmed available.
+Operations are idempotent and safe to re-run after interruption.
+
+**Store and retrieve content by ID:**
 
 ```bash
-c4 id -m s ./project/ > scan.c4m     # instant structure scan
-vi scan.c4m                           # remove unwanted dirs
-c4 id -c scan.c4m ./project/          # hash only what's left
+c4 id -s ./final/ > delivery.c4m     # identify + store
+c4 cat c44iCq6un9W47...              # retrieve by ID
 ```
 
-### C4M Format
+The store can be a local directory or an S3-compatible object store.
+Content goes in once, comes out by ID. Simple as `cat`.
 
-A **c4m file** (`.c4m`) is a complete description of a filesystem in
-plain text. Each line is a self-contained record with permissions,
-timestamp, size, name, and C4 ID — readable by humans and parseable
-with `grep`, `awk`, `sort`, and `diff`.
+**Reversible operations.** Store what you're about to destroy:
 
-- [User Guide](./c4m/README.md) — Quick start and examples
-- [Specification](./c4m/SPECIFICATION.md) — Formal C4M v1.0 spec
-- [Unix Recipes](./docs/c4m-unix-recipes.md) — grep/awk/sed tricks
+```bash
+# Apply a patch, but save any files that would be removed or overwritten.
+c4 patch -s new_state.c4m ./dir/ > changeset.c4m
 
-### Commands
+# Revert to the previous state using the saved changeset.
+c4 patch -r changeset.c4m ./dir/                     # revert
+```
 
-| Command | Description |
-|---------|-------------|
-| `c4 id` | Identify files, directories, or c4m files |
-| `c4 cat` | Retrieve content by C4 ID from store |
-| `c4 diff` | Compare two trees, produce a c4m patch |
-| `c4 patch` | Apply target state: reconcile dirs, resolve chains, revert |
-| `c4 merge` | Combine 2+ filesystem trees (c4m files or directories) |
-| `c4 log` | List patches in a chain |
-| `c4 split` | Split a patch chain for branching |
-| `c4 version` | Print version |
+**Compose with Unix tools.** The c4m format is one entry per line —
+designed to work with the tools you already know:
 
-See the [CLI Reference](./docs/cli-reference.md) for flags and workflows.
+```bash
+awk '{print $NF}' project.c4m | sort | uniq -d       # find duplicates
+grep '\.exr ' project.c4m | wc -l                    # count EXR files
+comm -23 <(awk '{print $NF}' a.c4m | sort) \
+         <(awk '{print $NF}' b.c4m | sort)           # IDs in a but not b
+```
 
-### Go Library
+No special query language. No database. Just text.
+
+**Scan fast, hash later.** Structure-only scans skip content hashing
+entirely. Edit the manifest to remove what you don't need, then hash
+only what survived:
+
+```bash
+c4 id -m s ./project/ > scan.c4m      # names + structure only
+vi scan.c4m                           # remove what you don't want
+c4 id -c scan.c4m ./project/          # continue scan, hash only what remains
+```
+
+## Commands
+
+| Command    | What it does                                                |
+| ---------- | ----------------------------------------------------------- |
+| `c4 id`    | Identify files, directories, or c4m files                   |
+| `c4 cat`   | Retrieve content by C4 ID from store                        |
+| `c4 diff`  | Compare two states (c4m files or directories)               |
+| `c4 patch` | Apply a target state: reconcile directories, resolve chains |
+| `c4 merge` | Combine two or more trees                                   |
+| `c4 log`   | Show patch history                                          |
+| `c4 split` | Split a patch chain                                         |
+
+Every command that accepts a c4m file also accepts a directory, and
+vice versa. `echo "hello" | c4` produces a bare C4 ID from stdin.
+
+## The c4m format
+
+A c4m file is a complete filesystem description in plain text. Each line
+has permissions, timestamp, size, name, and C4 ID — like `ls -l` with
+content identity. Readable, editable, diffable, pipeable.
+
+A 10,000-entry c4m file is about 1.4 MB. It describes the identity of
+every file in the tree regardless of how large those files are. The
+description is the lightweight handle; the content is the heavy thing
+it refers to.
+
+- [User Guide](./c4m/README.md)
+- [Specification](./c4m/SPECIFICATION.md)
+- [Unix Recipes](./docs/c4m-unix-recipes.md)
+
+## Go library
 
 ```go
 import "github.com/Avalanche-io/c4"
 
-// Identify content
-id := c4.Identify(strings.NewReader("alfa"))
-
-// Identify a set of blocks (order-independent)
-var ids c4.IDs
-for _, input := range inputs {
-    ids = append(ids, c4.Identify(strings.NewReader(input)))
-}
-setID := ids.ID()
+id := c4.Identify(strings.NewReader("hello"))
+fmt.Println(id)
+// c447Fm3BJZQ62765jMZJH4m28hrDM7Szbj9CUmj4F4gnvyDYXYz4WfnK2nYRhFvRgYEectEXYBYWLDpLo6XGNAfKdt
 ```
 
-### Encoding
+C4 IDs are 90-character base58 strings — SHA-512 with a `c4` prefix.
+URL-safe, filename-safe, double-click selectable.
 
-C4 is the shortest self-identifying SHA-512 encoding and the only
-standardized encoding (SMPTE ST 2114:2017).
+Zero external dependencies. Go 1.16+.
 
-```yaml
-# encoding     length   id
-  hex          135:     sha512-f7fbba6e0636f890e56fbbf3283e524c...
-  base64        95:     sha512-9/u6bgY2+JDlb7vzKD5STG+jIErimD...
-  c4            90:     c43inc2qGhSWQUMRvDMW6GAjJnRFY5sxq399...
-```
-
-IDs are URL-safe, filename-safe, and double-click selectable.
-Regex: `c4[1-9A-HJ-NP-Za-km-z]{88}`
-
----
-
-### Links
+## Links
 
 - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU) (video)
-- [The Magic of C4](https://youtu.be/vzh0JzKhY4o) (video)
 - [C4 ID Whitepaper](http://www.cccc.io/c4id-whitepaper-u2.pdf)
+- [CLI Reference](./docs/cli-reference.md)
+- [Getting Started](./docs/getting-started.md)
 
-### Issues
+## License
 
-Report bugs and request features at the [issue tracker](https://github.com/Avalanche-io/c4/issues).
-
-### Contributing
-
-Contributions welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-### License
-
-MIT. See [LICENSE](./LICENSE).
+MIT

@@ -81,7 +81,7 @@ func runDiffReverse(changesetPath, dirPath string, mode scan.ScanMode, ergonomic
 	}
 
 	// Load pre-patch manifest from store.
-	s, _ := store.OpenConfigured()
+	s, _ := store.OpenStore()
 	if s == nil || !s.Has(oldID) {
 		fatalf("Error: pre-patch manifest %s not found in store\n"+
 			"Was the original patch run with -s?", oldID)

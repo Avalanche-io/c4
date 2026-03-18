@@ -31,6 +31,15 @@ func (f Folder) Create(id c4.ID) (io.WriteCloser, error) {
 	return NewDurableWriter(path)
 }
 
+func (f Folder) Has(id c4.ID) bool {
+	_, err := os.Stat(filepath.Join(string(f), id.String()))
+	return err == nil
+}
+
+func (f Folder) Put(r io.Reader) (c4.ID, error) {
+	return defaultPut(f, r)
+}
+
 func (f Folder) Remove(id c4.ID) error {
 	path := filepath.Join(string(f), id.String())
 	return os.Remove(path)

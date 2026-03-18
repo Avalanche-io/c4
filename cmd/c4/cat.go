@@ -28,7 +28,7 @@ func runCat(args []string) {
 		fatalf("Error: invalid C4 ID: %v", err)
 	}
 
-	s, err := store.OpenConfigured()
+	s, err := store.OpenStore()
 	if err != nil {
 		fatalf("Error opening store: %v", err)
 	}
