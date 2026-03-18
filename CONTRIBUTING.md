@@ -13,35 +13,18 @@ The C4 project consists of:
 
 ### Branches
 
-- `master` - Current stable release
-- `dev` - Development branch for upcoming releases
-- Feature branches - Created from `dev` for new features
-- Bug branches - Created from `dev` for bug fixes
-
-### Creating a Branch
-
-Feature and bug branches should follow the GitHub integrated naming convention:
-
-```bash
-# For new features
-git checkout dev
-git checkout -b new/#99_description_of_feature
-
-# For bug fixes
-git checkout dev
-git checkout -b bug/#88_description_of_bug
-```
-
-If a branch for an issue already exists, check it out and work from it.
+- `master` — current stable release
+- Feature branches — created from `master` for new features (`feature/description`)
+- Bug branches — created from `master` for fixes (`fix/description`)
 
 ### Pull Requests
 
-1. Create your branch from `dev`
+1. Create your branch from `master`
 2. Make your changes with clear, concise commits
 3. Add tests for new functionality
 4. Ensure all tests pass: `go test ./...`
 5. Update documentation as needed
-6. Submit PR against the `dev` branch
+6. Submit PR against `master`
 
 ## Code Style
 
@@ -112,16 +95,10 @@ if __name__ == "__main__":
 
 #### Proposed Tools
 
-We envision an ecosystem of C4 tools:
-- `c4-cp` - Copy with verification
-- `c4-mv` - Move with tracking
-- `c4-rm` - Remove with tracking
-- `c4-sync` - Synchronize directories
-- `c4-verify` - Verify against manifests
+The core `c4` CLI provides `id`, `cat`, `diff`, `patch`, `log`, and `split` as built-in subcommands. Extension tools can add complementary functionality:
+- `c4-verify` - Verify against c4m files
 - `c4-backup` - Backup workflows
 - `c4-watch` - Monitor filesystem changes
-
-See [docs/c4-tools-design.md](docs/c4-tools-design.md) for detailed design concepts.
 
 ### Contributing Tools
 
@@ -162,9 +139,8 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 ## Release Process
 
 1. Features are developed in feature branches
-2. Merged to `dev` after review
-3. Periodically `dev` is merged to `master` for release
-4. Releases are tagged with semantic versioning
+2. Merged to `master` after review
+3. Releases are tagged with semantic versioning
 
 ## License
 

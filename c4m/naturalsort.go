@@ -2,7 +2,6 @@ package c4m
 
 import (
 	"strings"
-	"unicode"
 )
 
 // NaturalLess compares two strings using natural sorting
@@ -33,8 +32,8 @@ func NaturalLess(a, b string) bool {
 				return len(segA.text) < len(segB.text)
 			}
 		} else if segA.isNumeric != segB.isNumeric {
-			// Mixed types - compare as strings
-			return segA.text < segB.text
+			// Mixed types - text sorts before numeric (per spec)
+			return !segA.isNumeric
 		} else {
 			// Both text - UTF-8 comparison
 			if segA.text != segB.text {
@@ -66,7 +65,7 @@ func segmentString(s string) []segment {
 	var firstChar = true
 	
 	for _, r := range s {
-		isDigit := unicode.IsDigit(r)
+		isDigit := r >= '0' && r <= '9'
 		
 		if firstChar {
 			firstChar = false
@@ -111,7 +110,7 @@ func segmentString(s string) []segment {
 func parseNumber(s string) int64 {
 	var result int64
 	for _, r := range s {
-		if unicode.IsDigit(r) {
+		if r >= '0' && r <= '9' {
 			result = result*10 + int64(r-'0')
 		}
 	}

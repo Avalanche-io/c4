@@ -3,8 +3,6 @@ package c4m
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -12,32 +10,23 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
+// TimestampFormat is the canonical C4M timestamp format (RFC3339 UTC).
+const TimestampFormat = "2006-01-02T15:04:05Z"
+
+// nullTimestamp is the internal sentinel for null/unspecified timestamps.
+var nullTimestamp = time.Unix(0, 0).UTC()
+
+// NullTimestamp returns the sentinel value for null/unspecified timestamps (Unix epoch).
+func NullTimestamp() time.Time { return nullTimestamp }
+
 // Manifest represents a complete C4M manifest
 type Manifest struct {
-	Version      string
-	Entries      []*Entry
-	Base         c4.ID // For layered manifests
-	Layers       []*Layer
-	CurrentLayer *Layer // Current layer being parsed
-	Data         c4.ID  // Application-specific metadata
+	Version   string
+	Base      c4.ID            // External base manifest (from first-line bare C4 ID)
+	Entries   []*Entry
+	RangeData map[c4.ID]string // Inline ID lists keyed by sequence C4 ID (bare concatenation)
+	index     *treeIndex       // Lazily-built tree index for O(1) navigation
 }
-
-// Layer represents a changeset layer
-type Layer struct {
-	Type LayerType
-	By   string
-	Time time.Time
-	Note string
-	Data c4.ID
-}
-
-// LayerType represents the type of layer
-type LayerType int
-
-const (
-	LayerTypeAdd LayerType = iota
-	LayerTypeRemove
-)
 
 // NewManifest creates a new empty manifest
 func NewManifest() *Manifest {
@@ -47,268 +36,56 @@ func NewManifest() *Manifest {
 	}
 }
 
-// AddEntry adds an entry to the manifest
+// AddEntry adds an entry to the manifest.
 func (m *Manifest) AddEntry(e *Entry) {
 	m.Entries = append(m.Entries, e)
+	m.invalidateIndex()
 }
 
-// Sort sorts entries using natural sort algorithm
-func (m *Manifest) Sort() {
-	sort.Slice(m.Entries, func(i, j int) bool {
-		return NaturalLess(m.Entries[i].Name, m.Entries[j].Name)
-	})
+// isPathName returns true if name contains any path semantics.
+// A valid c4m entry name is a bare filename optionally followed by a
+// trailing "/" to mark directories. The base name (without trailing slash)
+// must not be empty, must not be "." or "..", and must not contain "/" or
+// "\" or null bytes. This is fully decidable because c4m unifies all
+// paths to Unix-style separators.
+func isPathName(name string) bool {
+	if name == "" {
+		return true
+	}
+	// Strip trailing "/" (directory marker) to get the base name.
+	base := strings.TrimSuffix(name, "/")
+	if base == "" {
+		return true // name was just "/"
+	}
+	if base == "." || base == ".." {
+		return true
+	}
+	if strings.ContainsAny(base, "/\\\x00") {
+		return true
+	}
+	return false
 }
 
-// WriteTo writes the manifest to a writer in canonical form
-func (m *Manifest) WriteTo(w io.Writer) (int64, error) {
-	return m.writeWithOptions(w, false, 2)
+// RemoveEntry removes an entry from the manifest by pointer identity.
+func (m *Manifest) RemoveEntry(e *Entry) {
+	for i, existing := range m.Entries {
+		if existing == e {
+			m.Entries = append(m.Entries[:i], m.Entries[i+1:]...)
+			break
+		}
+	}
+	m.invalidateIndex()
 }
 
-// WritePretty writes the manifest in ergonomic form with pretty-printing
-func (m *Manifest) WritePretty(w io.Writer) (int64, error) {
-	return m.writeWithOptions(w, true, 2)
+// InvalidateIndex forces the tree index to be rebuilt on next access.
+func (m *Manifest) InvalidateIndex() {
+	m.invalidateIndex()
 }
 
 // SortEntries sorts all entries in the manifest to ensure correct C4M ordering:
-// files before directories at the same depth level, maintaining parent-child hierarchy
+// files before directories at the same depth level, maintaining parent-child hierarchy.
 func (m *Manifest) SortEntries() {
-	if len(m.Entries) == 0 {
-		return
-	}
-	
-	// Build a tree structure to properly sort entries
-	type node struct {
-		entry    *Entry
-		children []*node
-	}
-	
-	// Create root node
-	root := &node{}
-	
-	// Build the tree by tracking parent paths
-	var buildTree func(parent *node, entries []*Entry, parentDepth int) int
-	buildTree = func(parent *node, entries []*Entry, parentDepth int) int {
-		i := 0
-		for i < len(entries) {
-			entry := entries[i]
-			
-			// If this entry is at a lower depth, return to parent
-			if entry.Depth < parentDepth+1 {
-				return i
-			}
-			
-			// If this entry is at a deeper depth, skip it (will be handled by parent)
-			if entry.Depth > parentDepth+1 {
-				i++
-				continue
-			}
-			
-			// This entry is a direct child
-			n := &node{entry: entry}
-			parent.children = append(parent.children, n)
-			i++
-			
-			// If it's a directory, process its children
-			if entry.IsDir() {
-				i = buildTree(n, entries[i:], entry.Depth) + i
-			}
-		}
-		return i
-	}
-	
-	// Build the tree
-	buildTree(root, m.Entries, -1)
-	
-	// Sort children at each level
-	var sortNode func(n *node)
-	sortNode = func(n *node) {
-		if len(n.children) == 0 {
-			return
-		}
-		
-		// Sort children: files before directories, then by name
-		sort.SliceStable(n.children, func(i, j int) bool {
-			ei, ej := n.children[i].entry, n.children[j].entry
-			
-			// Files before directories
-			iIsDir := ei.IsDir()
-			jIsDir := ej.IsDir()
-			if iIsDir != jIsDir {
-				return !iIsDir
-			}
-			
-			// Then by natural name order
-			return NaturalLess(ei.Name, ej.Name)
-		})
-		
-		// Recursively sort each child's children
-		for _, child := range n.children {
-			sortNode(child)
-		}
-	}
-	
-	// Sort the tree
-	sortNode(root)
-	
-	// Flatten the tree back to a list
-	var result []*Entry
-	var flatten func(n *node)
-	flatten = func(n *node) {
-		if n.entry != nil {
-			result = append(result, n.entry)
-		}
-		for _, child := range n.children {
-			flatten(child)
-		}
-	}
-	
-	flatten(root)
-	m.Entries = result
-}
-
-
-// writeWithOptions writes the manifest with formatting options
-func (m *Manifest) writeWithOptions(w io.Writer, prettyPrint bool, indentWidth int) (int64, error) {
-	// Ensure entries are properly sorted before output
-	m.SortEntries()
-	
-	var written int64
-	
-	// Calculate formatting parameters if pretty-printing
-	var maxSize int64
-	var c4IDColumn int
-	if prettyPrint {
-		// Find max size and longest line for formatting
-		for _, entry := range m.Entries {
-			if entry.Size > maxSize {
-				maxSize = entry.Size
-			}
-		}
-		
-		// Calculate C4 ID column position
-		c4IDColumn = m.calculateC4IDColumn(indentWidth)
-	}
-	
-	// Write header
-	n, err := fmt.Fprintf(w, "@c4m %s\n", m.Version)
-	written += int64(n)
-	if err != nil {
-		return written, err
-	}
-	
-	// Write metadata if present
-	if !m.Data.IsNil() {
-		n, err = fmt.Fprintf(w, "@data %s\n", m.Data)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	// Write base if present
-	if !m.Base.IsNil() {
-		n, err = fmt.Fprintf(w, "@base %s\n", m.Base)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	// Write entries
-	for _, entry := range m.Entries {
-		var line string
-		if prettyPrint {
-			line = m.formatEntryPretty(entry, indentWidth, maxSize, c4IDColumn)
-		} else {
-			line = entry.Format(indentWidth, false)
-		}
-		n, err = fmt.Fprintf(w, "%s\n", line)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	// Write layers
-	for _, layer := range m.Layers {
-		n2, err := m.writeLayer(w, layer)
-		written += n2
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	return written, nil
-}
-
-// writeLayer writes a layer section
-func (m *Manifest) writeLayer(w io.Writer, layer *Layer) (int64, error) {
-	var written int64
-	
-	// Write layer type
-	var layerType string
-	switch layer.Type {
-	case LayerTypeAdd:
-		layerType = "@layer"
-	case LayerTypeRemove:
-		layerType = "@remove"
-	}
-	
-	n, err := fmt.Fprintf(w, "%s\n", layerType)
-	written += int64(n)
-	if err != nil {
-		return written, err
-	}
-	
-	// Write metadata
-	if layer.By != "" {
-		n, err = fmt.Fprintf(w, "@by %s\n", layer.By)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	if !layer.Time.IsZero() {
-		n, err = fmt.Fprintf(w, "@time %s\n", layer.Time.Format(time.RFC3339))
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	if layer.Note != "" {
-		n, err = fmt.Fprintf(w, "@note %s\n", layer.Note)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	if !layer.Data.IsNil() {
-		n, err = fmt.Fprintf(w, "@data %s\n", layer.Data)
-		written += int64(n)
-		if err != nil {
-			return written, err
-		}
-	}
-	
-	return written, nil
-}
-
-// AllEntriesString returns a string with all entries formatted hierarchically
-func (m *Manifest) AllEntriesString() string {
-	var buf bytes.Buffer
-	
-	// Write all entries with proper indentation
-	for _, entry := range m.Entries {
-		indent := strings.Repeat("  ", entry.Depth)
-		buf.WriteString(indent)
-		buf.WriteString(entry.Canonical())
-		buf.WriteString("\n")
-	}
-	
-	return buf.String()
+	m.sortSiblingsHierarchically()
 }
 
 // Canonical returns the canonical form for C4 ID computation
@@ -378,60 +155,20 @@ func (m *Manifest) ComputeC4ID() c4.ID {
 	return c4.Identify(strings.NewReader(canonicalText))
 }
 
-// IsCanonical checks if manifest is in canonical form (no null values)
-// Returns nil if canonical, or an error describing what's missing
-func (m *Manifest) IsCanonical() error {
-	var issues []string
-
-	for i, entry := range m.Entries {
-		nullFields := entry.GetNullFields()
-		if len(nullFields) > 0 {
-			issues = append(issues,
-				fmt.Sprintf("Entry %d (%s) has null values: %s",
-					i, entry.Name, strings.Join(nullFields, ", ")))
-		}
-	}
-
-	if len(issues) > 0 {
-		return fmt.Errorf("manifest not in canonical form:\n  %s",
-			strings.Join(issues, "\n  "))
-	}
-
-	return nil
-}
-
-// Canonicalize resolves all null values in the manifest to explicit values
-// This makes the manifest ready for C4 ID computation
+// Canonicalize resolves all null values in the manifest to explicit values,
+// modifying the receiver in place. This makes the manifest ready for C4 ID
+// computation. Use Copy() first if you need to preserve the original.
 func (m *Manifest) Canonicalize() {
-	// First propagate metadata from children to parents
-	PropagateMetadata(m.Entries)
+	// Propagate metadata from children to parents (e.g., directory sizes, timestamps)
+	propagateMetadata(m.Entries)
 
-	// Then apply defaults for any remaining null values
-	for _, entry := range m.Entries {
-		// Mode defaults
-		if entry.Mode == 0 {
-			if entry.IsDir() {
-				entry.Mode = 0755 | os.ModeDir
-			} else {
-				entry.Mode = 0644
-			}
-		}
-
-		// Timestamp defaults to current time if still null
-		if entry.Timestamp.Unix() == 0 {
-			entry.Timestamp = time.Now().UTC()
-		}
-
-		// Size defaults
-		if entry.Size < 0 {
-			entry.Size = 0 // Empty/unknown size
-		}
-	}
+	// Null values stay null — they render as "-" in canonical form.
+	// No default substitution: unknown mode/size/timestamp remain as-is.
 }
 
 // Copy creates a deep copy of the manifest
 func (m *Manifest) Copy() *Manifest {
-	copy := &Manifest{
+	cp := &Manifest{
 		Version: m.Version,
 		Base:    m.Base,
 		Entries: make([]*Entry, len(m.Entries)),
@@ -439,10 +176,17 @@ func (m *Manifest) Copy() *Manifest {
 
 	for i, e := range m.Entries {
 		entryCopy := *e
-		copy.Entries[i] = &entryCopy
+		cp.Entries[i] = &entryCopy
 	}
 
-	return copy
+	if len(m.RangeData) > 0 {
+		cp.RangeData = make(map[c4.ID]string, len(m.RangeData))
+		for k, v := range m.RangeData {
+			cp.RangeData[k] = v
+		}
+	}
+
+	return cp
 }
 
 // HasNullValues checks if any entries have null values
@@ -455,14 +199,10 @@ func (m *Manifest) HasNullValues() bool {
 	return false
 }
 
-// GetEntry finds an entry by path
+// GetEntry returns an entry by its path (O(1) after index build).
 func (m *Manifest) GetEntry(path string) *Entry {
-	for _, e := range m.Entries {
-		if e.Name == path {
-			return e
-		}
-	}
-	return nil
+	idx := m.ensureIndex()
+	return idx.byPath[path]
 }
 
 // GetEntriesAtDepth returns all entries at a specific depth
@@ -474,106 +214,6 @@ func (m *Manifest) GetEntriesAtDepth(depth int) []*Entry {
 		}
 	}
 	return entries
-}
-
-// calculateC4IDColumn determines the appropriate column for C4 ID alignment
-func (m *Manifest) calculateC4IDColumn(indentWidth int) int {
-	// First find the maximum size to determine padding width
-	maxSize := int64(0)
-	for _, entry := range m.Entries {
-		if entry.Size > maxSize {
-			maxSize = entry.Size
-		}
-	}
-	maxSizeWidth := len(formatSizeWithCommas(maxSize))
-	
-	maxLen := 0
-	for _, entry := range m.Entries {
-		// Calculate line length without C4 ID
-		indent := strings.Repeat(" ", entry.Depth*indentWidth)
-		modeStr := formatMode(entry.Mode)
-		// Use pretty timestamp format for length calculation
-		timeStr := formatTimestampPretty(entry.Timestamp)
-		
-		// Use the padded size width (all sizes align to the same width)
-		// This ensures proper calculation for the actual formatted output
-		nameStr := formatName(entry.Name)
-		
-		lineLen := len(indent) + len(modeStr) + 1 + len(timeStr) + 1 + maxSizeWidth + 1 + len(nameStr)
-		if entry.Target != "" {
-			lineLen += 4 + len(entry.Target) // " -> " + target
-		}
-		
-		if lineLen > maxLen {
-			maxLen = lineLen
-		}
-	}
-	
-	// Start at column 80, shift by 10 if needed
-	// Use minimum 10 spaces between content and C4 ID
-	minSpacing := 10
-	column := 80
-	for maxLen+minSpacing > column {
-		column += 10
-	}
-	return column
-}
-
-// formatEntryPretty formats an entry with ergonomic pretty-printing
-func (m *Manifest) formatEntryPretty(entry *Entry, indentWidth int, maxSize int64, c4IDColumn int) string {
-	// Build indentation
-	indent := strings.Repeat(" ", entry.Depth*indentWidth)
-	
-	// Format mode (handle null value)
-	var modeStr string
-	if entry.Mode == 0 && !entry.IsDir() && !entry.IsSymlink() {
-		modeStr = "----------"  // Null mode
-	} else {
-		modeStr = formatMode(entry.Mode)
-	}
-	
-	// Format timestamp (handle null value)
-	var timeStr string
-	if entry.Timestamp.Unix() == 0 {
-		timeStr = "-                        "  // Null timestamp (padded to match typical timestamp width)
-	} else {
-		timeStr = formatTimestampPretty(entry.Timestamp)
-	}
-	
-	// Format size with padding and commas (handle null value)
-	var sizeStr string
-	if entry.Size < 0 {
-		// Calculate padding for null size
-		maxSizeStr := formatSizeWithCommas(maxSize)
-		padding := len(maxSizeStr) - 1
-		sizeStr = strings.Repeat(" ", padding) + "-"
-	} else {
-		sizeStr = formatSizePretty(entry.Size, maxSize)
-	}
-	
-	// Format name (with quotes if needed)
-	nameStr := formatName(entry.Name)
-	
-	// Build base line
-	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}
-	
-	// Add symlink target if present
-	if entry.Target != "" {
-		parts = append(parts, "->", entry.Target)
-	}
-	
-	baseLine := strings.Join(parts, " ")
-	
-	// Add C4 ID with column alignment if present
-	if !entry.C4ID.IsNil() {
-		padding := c4IDColumn - len(baseLine)
-		if padding < 10 {
-			padding = 10 // Minimum 10 spaces for readability
-		}
-		return baseLine + strings.Repeat(" ", padding) + entry.C4ID.String()
-	}
-	
-	return baseLine
 }
 
 // formatSizePretty formats size with padding and thousand separators
@@ -631,32 +271,403 @@ func (m *Manifest) Validate() error {
 		return fmt.Errorf("missing version")
 	}
 	
-	// Check for duplicate paths
+	// Check for duplicate paths by computing full paths from the tree.
 	seen := make(map[string]bool)
+	var dirStack []string
 	for _, e := range m.Entries {
-		if seen[e.Name] {
-			return fmt.Errorf("duplicate path: %s", e.Name)
-		}
-		seen[e.Name] = true
-		
-		// Validate entry
+		// Validate entry — name must be a bare filename, never a path
 		if e.Name == "" {
-			return fmt.Errorf("empty name in entry")
+			return fmt.Errorf("%w: empty name", ErrInvalidEntry)
 		}
-		
-		if e.Timestamp.IsZero() {
-			return fmt.Errorf("zero timestamp for %s", e.Name)
+		if isPathName(e.Name) {
+			return fmt.Errorf("%w: %s", ErrPathTraversal, e.Name)
 		}
-		
-		if e.Size < 0 {
-			return fmt.Errorf("negative size for %s", e.Name)
+
+		// Build full path from parent context
+		if e.Depth < len(dirStack) {
+			dirStack = dirStack[:e.Depth]
 		}
-		
-		// Check for path traversal
-		if strings.Contains(e.Name, "../") || strings.Contains(e.Name, "./") {
-			return fmt.Errorf("path traversal in %s", e.Name)
+		var fullPath string
+		if len(dirStack) > 0 {
+			fullPath = strings.Join(dirStack, "") + e.Name
+		} else {
+			fullPath = e.Name
+		}
+		if seen[fullPath] {
+			return fmt.Errorf("%w: %s", ErrDuplicatePath, fullPath)
+		}
+		seen[fullPath] = true
+
+		if e.IsDir() {
+			for len(dirStack) <= e.Depth {
+				dirStack = append(dirStack, "")
+			}
+			dirStack[e.Depth] = e.Name
 		}
 	}
-	
+
 	return nil
+}
+
+// ----------------------------------------------------------------------------
+// Sorting
+// ----------------------------------------------------------------------------
+
+// sortSiblingsHierarchically sorts manifest entries to maintain proper C4M format:
+// - Preserves hierarchical depth-first traversal
+// - Files before directories at same level
+// - Natural sort for names within siblings
+func (m *Manifest) sortSiblingsHierarchically() {
+	if len(m.Entries) == 0 {
+		return
+	}
+
+	// We'll build a new sorted list while preserving hierarchy
+	result := make([]*Entry, 0, len(m.Entries))
+	used := make([]bool, len(m.Entries))
+
+	// Process entries depth-first, sorting siblings at each level
+	var processLevel func(parentIdx int, parentDepth int)
+	processLevel = func(parentIdx int, parentDepth int) {
+		// Find all children at the next depth level
+		childDepth := parentDepth + 1
+		startIdx := parentIdx + 1
+
+		// Special case for root level
+		if parentIdx == -1 {
+			startIdx = 0
+			childDepth = 0
+		}
+
+		// Collect all immediate children
+		type child struct {
+			entry *Entry
+			index int
+		}
+		children := []child{}
+
+		for i := startIdx; i < len(m.Entries); i++ {
+			if used[i] {
+				continue
+			}
+
+			entry := m.Entries[i]
+
+			// Stop when we've gone back up the hierarchy
+			if entry.Depth < childDepth {
+				break
+			}
+
+			// Skip deeper descendants - they'll be processed recursively
+			if entry.Depth > childDepth {
+				continue
+			}
+
+			// This is an immediate child
+			children = append(children, child{entry, i})
+		}
+
+		// Deduplicate siblings by name, keeping the last occurrence
+		// (most recently added entry wins). Mark replaced entries as
+		// used so they don't reappear as orphans.
+		{
+			seen := make(map[string]int) // name -> index in children
+			deduped := children[:0]
+			for _, c := range children {
+				if idx, ok := seen[c.entry.Name]; ok {
+					used[deduped[idx].index] = true // mark replaced entry
+					deduped[idx] = c
+				} else {
+					seen[c.entry.Name] = len(deduped)
+					deduped = append(deduped, c)
+				}
+			}
+			children = deduped
+		}
+
+		// Sort the children (files before dirs, then natural sort)
+		sort.Slice(children, func(i, j int) bool {
+			a, b := children[i].entry, children[j].entry
+
+			// Files before directories
+			if a.IsDir() != b.IsDir() {
+				return !a.IsDir() // files first
+			}
+
+			// Natural sort for names
+			return NaturalLess(a.Name, b.Name)
+		})
+
+		// Process sorted children
+		for _, c := range children {
+			used[c.index] = true
+			result = append(result, c.entry)
+
+			// If it's a directory, recursively process its children
+			if c.entry.IsDir() {
+				processLevel(c.index, c.entry.Depth)
+			}
+		}
+	}
+
+	// Start from root level
+	processLevel(-1, -1)
+
+	// If any entries weren't processed (orphaned), add them at the end
+	// This can happen with incomplete chunks
+	for i, entry := range m.Entries {
+		if !used[i] {
+			// Silently handle orphaned entries - this is expected in continuation chunks
+			result = append(result, entry)
+		}
+	}
+
+	m.Entries = result
+}
+
+// ----------------------------------------------------------------------------
+// Metadata Propagation
+// ----------------------------------------------------------------------------
+
+// propagateMetadata resolves null values in entries by propagating from children.
+// This is used for directory entries to compute size and timestamp from contents.
+// Iterates in reverse so child directories are resolved before their parents.
+func propagateMetadata(entries []*Entry) {
+	// Process deepest directories first (reverse order)
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+
+		if entry.IsDir() && entry.HasNullValues() {
+			// Get children of this directory
+			children := getDirectoryChildren(entries, entry)
+
+			// Propagate size if null
+			if entry.Size < 0 {
+				entry.Size = calculateDirectorySize(children)
+			}
+
+			// Propagate timestamp if null
+			if entry.Timestamp.Equal(NullTimestamp()) {
+				entry.Timestamp = getMostRecentModtime(children)
+			}
+		}
+	}
+}
+
+// getDirectoryChildren returns all entries that are direct children of a directory
+func getDirectoryChildren(entries []*Entry, dir *Entry) []*Entry {
+	var children []*Entry
+	dirDepth := dir.Depth
+
+	// Find entries at depth+1 that appear after this directory
+	collecting := false
+	for _, e := range entries {
+		if e == dir {
+			collecting = true
+			continue
+		}
+		if collecting {
+			if e.Depth == dirDepth+1 {
+				children = append(children, e)
+			} else if e.Depth <= dirDepth {
+				// Reached next sibling or parent, stop
+				break
+			}
+		}
+	}
+
+	return children
+}
+
+// calculateDirectorySize computes the total size of direct children.
+// Nil-infectious: if any child has null size (-1), the result is null (-1).
+func calculateDirectorySize(entries []*Entry) int64 {
+	var total int64
+	for _, e := range entries {
+		if e.Size < 0 {
+			return -1 // unknown propagates upward
+		}
+		total += e.Size
+	}
+	return total
+}
+
+// getMostRecentModtime finds the most recent modification time among entries.
+// Nil-infectious: if any child has a null timestamp, the result is null.
+func getMostRecentModtime(entries []*Entry) time.Time {
+	var mostRecent time.Time
+	null := NullTimestamp()
+
+	for _, e := range entries {
+		if e.Timestamp.Equal(null) {
+			return null // unknown propagates upward
+		}
+		if e.Timestamp.After(mostRecent) {
+			mostRecent = e.Timestamp
+		}
+	}
+
+	if mostRecent.IsZero() {
+		return null
+	}
+
+	return mostRecent
+}
+
+// ----------------------------------------------------------------------------
+// Tree Index and Navigation
+// ----------------------------------------------------------------------------
+
+// treeIndex provides O(1) navigation through manifest hierarchy
+type treeIndex struct {
+	byPath   map[string]*Entry   // path -> entry
+	children map[*Entry][]*Entry // parent -> direct children
+	parent   map[*Entry]*Entry   // child -> parent
+	root     []*Entry            // depth-0 entries
+}
+
+// invalidateIndex marks the tree index as stale
+func (m *Manifest) invalidateIndex() {
+	m.index = nil
+}
+
+// ensureIndex builds the tree index if needed
+func (m *Manifest) ensureIndex() *treeIndex {
+	if m.index != nil {
+		return m.index
+	}
+
+	idx := &treeIndex{
+		byPath:   make(map[string]*Entry),
+		children: make(map[*Entry][]*Entry),
+		parent:   make(map[*Entry]*Entry),
+		root:     make([]*Entry, 0),
+	}
+
+	// Build path lookup and collect root entries
+	for _, e := range m.Entries {
+		idx.byPath[e.Name] = e
+		if e.Depth == 0 {
+			idx.root = append(idx.root, e)
+		}
+	}
+
+	// Build parent-child relationships
+	// For each entry, find its parent based on depth and position
+	for i, e := range m.Entries {
+		if e.Depth == 0 {
+			continue // Root entries have no parent
+		}
+
+		// Search backwards for parent (first directory at depth-1)
+		for j := i - 1; j >= 0; j-- {
+			candidate := m.Entries[j]
+			if candidate.Depth == e.Depth-1 && candidate.IsDir() {
+				idx.parent[e] = candidate
+				idx.children[candidate] = append(idx.children[candidate], e)
+				break
+			}
+			// Stop if we've gone past possible parents
+			if candidate.Depth < e.Depth-1 {
+				break
+			}
+		}
+	}
+
+	m.index = idx
+	return idx
+}
+
+// Children returns the direct children of an entry
+func (m *Manifest) Children(e *Entry) []*Entry {
+	if e == nil || !e.IsDir() {
+		return nil
+	}
+	idx := m.ensureIndex()
+	return idx.children[e]
+}
+
+// Parent returns the parent directory of an entry
+func (m *Manifest) Parent(e *Entry) *Entry {
+	if e == nil || e.Depth == 0 {
+		return nil
+	}
+	idx := m.ensureIndex()
+	return idx.parent[e]
+}
+
+// Siblings returns entries at the same depth with the same parent
+func (m *Manifest) Siblings(e *Entry) []*Entry {
+	if e == nil {
+		return nil
+	}
+
+	idx := m.ensureIndex()
+	parent := idx.parent[e]
+
+	var siblings []*Entry
+	if parent == nil {
+		// Root level - siblings are other root entries
+		for _, r := range idx.root {
+			if r != e {
+				siblings = append(siblings, r)
+			}
+		}
+	} else {
+		// Non-root - siblings are other children of same parent
+		for _, c := range idx.children[parent] {
+			if c != e {
+				siblings = append(siblings, c)
+			}
+		}
+	}
+
+	return siblings
+}
+
+// Ancestors returns all parent entries from immediate parent to root
+func (m *Manifest) Ancestors(e *Entry) []*Entry {
+	if e == nil || e.Depth == 0 {
+		return nil
+	}
+
+	idx := m.ensureIndex()
+	var ancestors []*Entry
+
+	current := idx.parent[e]
+	for current != nil {
+		ancestors = append(ancestors, current)
+		current = idx.parent[current]
+	}
+
+	return ancestors
+}
+
+// Descendants returns all entries nested under this entry
+func (m *Manifest) Descendants(e *Entry) []*Entry {
+	if e == nil || !e.IsDir() {
+		return nil
+	}
+
+	idx := m.ensureIndex()
+	var descendants []*Entry
+
+	var collect func(*Entry)
+	collect = func(parent *Entry) {
+		for _, child := range idx.children[parent] {
+			descendants = append(descendants, child)
+			if child.IsDir() {
+				collect(child)
+			}
+		}
+	}
+
+	collect(e)
+	return descendants
+}
+
+// Root returns all depth-0 entries
+func (m *Manifest) Root() []*Entry {
+	idx := m.ensureIndex()
+	return idx.root
 }

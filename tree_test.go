@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/Avalanche-io/c4"
-	"github.com/xtgo/set"
 )
 
 func i2b(i int) []byte {
@@ -55,8 +54,16 @@ func TestTreeEncoding(t *testing.T) {
 			list[i] = id
 		}
 		sort.Sort(list)
-		n := set.Uniq(list)
-		list = list[:n]
+		if len(list) > 1 {
+			j := 1
+			for i := 1; i < len(list); i++ {
+				if list[i] != list[i-1] {
+					list[j] = list[i]
+					j++
+				}
+			}
+			list = list[:j]
+		}
 		// Create a tree from the list.
 		tree := c4.NewTree(list)
 		if tree == nil {

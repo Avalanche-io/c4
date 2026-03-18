@@ -2,9 +2,13 @@ package c4m
 
 import (
 	"fmt"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Avalanche-io/c4"
 )
 
 func TestSequenceDetector(t *testing.T) {
@@ -18,6 +22,7 @@ func TestSequenceDetector(t *testing.T) {
 			Size:      1024,
 			Timestamp: time.Now(),
 			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader(fmt.Sprintf("frame-content-%d", i))),
 		})
 	}
 
@@ -27,6 +32,7 @@ func TestSequenceDetector(t *testing.T) {
 		Size:      100,
 		Timestamp: time.Now(),
 		Mode:      0644,
+		C4ID:      c4.Identify(strings.NewReader("readme-content")),
 	})
 
 	// Detect sequences
@@ -155,9 +161,87 @@ func TestParseSequence(t *testing.T) {
 				Padding: 3,
 				Ranges: []Range{
 					{Start: 1, End: 1, Step: 1},
-					{Start: 5, End: 5, Step: 1},
-					{Start: 10, End: 10, Step: 1},
-					{Start: 15, End: 15, Step: 1},
+					{Start: 5, End: 15, Step: 5},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "adjacent_ranges_merged",
+			pattern: "comp.[0001-0100,0101-0200].exr",
+			want: &Sequence{
+				Prefix:  "comp.",
+				Suffix:  ".exr",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 200, Step: 1},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "three_adjacent_ranges_merged",
+			pattern: "frame.[001-100,101-200,201-300].exr",
+			want: &Sequence{
+				Prefix:  "frame.",
+				Suffix:  ".exr",
+				Padding: 3,
+				Ranges: []Range{
+					{Start: 1, End: 300, Step: 1},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "adjacent_stepped_ranges_merged",
+			pattern: "render.[0001-0099:2,0101-0199:2].png",
+			want: &Sequence{
+				Prefix:  "render.",
+				Suffix:  ".png",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 199, Step: 2},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "different_steps_normalized",
+			pattern: "render.[0001-0100:1,0101-0200:2].png",
+			// Frames: 1..100 + 101,103,...,199. Contiguous: [1-101]. Singles: 103,105,...,199.
+			want: &Sequence{
+				Prefix:  "render.",
+				Suffix:  ".png",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 101, Step: 1},
+					{Start: 103, End: 199, Step: 2},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "consecutive_singles_merged",
+			pattern: "frame.[005,006,007].exr",
+			want: &Sequence{
+				Prefix:  "frame.",
+				Suffix:  ".exr",
+				Padding: 3,
+				Ranges: []Range{
+					{Start: 5, End: 7, Step: 1},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "unsorted_ranges_normalized",
+			pattern: "frame.[0101-0200,0001-0100].exr",
+			want: &Sequence{
+				Prefix:  "frame.",
+				Suffix:  ".exr",
+				Padding: 4,
+				Ranges: []Range{
+					{Start: 1, End: 200, Step: 1},
 				},
 			},
 			wantErr: false,
@@ -198,6 +282,160 @@ func TestParseSequence(t *testing.T) {
 			}
 			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseSequence() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeRanges(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []Range
+		want  []Range
+	}{
+		{
+			name:  "single_range_unchanged",
+			input: []Range{{1, 100, 1}},
+			want:  []Range{{1, 100, 1}},
+		},
+		{
+			name:  "adjacent_step1_merged",
+			input: []Range{{1, 100, 1}, {101, 200, 1}},
+			want:  []Range{{1, 200, 1}},
+		},
+		{
+			name:  "overlapping_ranges_merged",
+			input: []Range{{1, 100, 1}, {50, 150, 1}},
+			want:  []Range{{1, 150, 1}},
+		},
+		{
+			name:  "subsumed_range_absorbed",
+			input: []Range{{1, 100, 1}, {25, 75, 1}},
+			want:  []Range{{1, 100, 1}},
+		},
+		{
+			name:  "gap_preserved",
+			input: []Range{{1, 50, 1}, {75, 100, 1}},
+			want:  []Range{{1, 50, 1}, {75, 100, 1}},
+		},
+		{
+			name:  "unsorted_input_sorted",
+			input: []Range{{100, 200, 1}, {1, 99, 1}},
+			want:  []Range{{1, 200, 1}},
+		},
+		{
+			name:  "singles_to_contiguous",
+			input: []Range{{1, 1, 1}, {2, 2, 1}, {3, 3, 1}, {4, 4, 1}, {5, 5, 1}},
+			want:  []Range{{1, 5, 1}},
+		},
+		{
+			name:  "singles_to_stepped",
+			input: []Range{{2, 2, 1}, {4, 4, 1}, {6, 6, 1}, {8, 8, 1}, {10, 10, 1}},
+			want:  []Range{{2, 10, 2}},
+		},
+		{
+			name:  "mixed_contiguous_and_stepped",
+			input: []Range{{1, 3, 1}, {5, 5, 1}, {7, 7, 1}, {9, 9, 1}},
+			want:  []Range{{1, 3, 1}, {5, 9, 2}},
+		},
+		{
+			name:  "stepped_fill_becomes_contiguous",
+			input: []Range{{1, 9, 2}, {2, 2, 1}, {4, 4, 1}, {6, 6, 1}, {8, 8, 1}},
+			want:  []Range{{1, 9, 1}},
+		},
+		{
+			name:  "three_adjacent_step1",
+			input: []Range{{1, 100, 1}, {101, 200, 1}, {201, 300, 1}},
+			want:  []Range{{1, 300, 1}},
+		},
+		{
+			name:  "random_frames_no_pattern",
+			input: []Range{{3, 3, 1}, {7, 7, 1}, {15, 15, 1}, {22, 22, 1}},
+			want:  []Range{{3, 3, 1}, {7, 7, 1}, {15, 15, 1}, {22, 22, 1}},
+		},
+		{
+			name:  "two_singles_not_stepped",
+			input: []Range{{10, 10, 1}, {20, 20, 1}},
+			want:  []Range{{10, 10, 1}, {20, 20, 1}},
+		},
+		{
+			name:  "three_singles_become_stepped",
+			input: []Range{{10, 10, 1}, {20, 20, 1}, {30, 30, 1}},
+			want:  []Range{{10, 30, 10}},
+		},
+		{
+			name:  "adjacent_stepped_same_step",
+			input: []Range{{1, 9, 2}, {11, 19, 2}},
+			want:  []Range{{1, 19, 2}},
+		},
+		{
+			name:  "contiguous_plus_trailing_singles",
+			input: []Range{{1, 5, 1}, {10, 10, 1}, {20, 20, 1}},
+			want:  []Range{{1, 5, 1}, {10, 10, 1}, {20, 20, 1}},
+		},
+		{
+			name: "contiguous_blocks_between_stepped",
+			input: []Range{
+				{1, 1, 1}, {3, 3, 1}, {5, 5, 1}, {7, 7, 1}, {9, 9, 1},
+				{10, 11, 1},
+			},
+			// Frames: {1,3,5,7,9,10,11}. After mergeContiguous: 9 merges
+			// with [10-11] → [9-11]. Singles: {1,3,5,7} → stepped [1-7:2].
+			want: []Range{{1, 7, 2}, {9, 11, 1}},
+		},
+		{
+			name:  "duplicate_frames_deduplicated",
+			input: []Range{{1, 5, 1}, {3, 7, 1}},
+			want:  []Range{{1, 7, 1}},
+		},
+		{
+			name:  "single_frame",
+			input: []Range{{42, 42, 1}},
+			want:  []Range{{42, 42, 1}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Sequence{Ranges: tt.input}
+			s.normalizeRanges()
+			if !reflect.DeepEqual(s.Ranges, tt.want) {
+				t.Errorf("normalizeRanges() = %v, want %v", s.Ranges, tt.want)
+			}
+			// Idempotency: normalizing again must produce the same result.
+			before := make([]Range, len(s.Ranges))
+			copy(before, s.Ranges)
+			s.normalizeRanges()
+			if !reflect.DeepEqual(s.Ranges, before) {
+				t.Errorf("not idempotent: second normalize = %v, first = %v", s.Ranges, before)
+			}
+		})
+	}
+}
+
+// TestNormalizePreservesFrames verifies that normalization never changes the
+// set of frame numbers a sequence describes.
+func TestNormalizePreservesFrames(t *testing.T) {
+	cases := [][]Range{
+		{{1, 100, 1}, {50, 150, 1}},
+		{{1, 9, 2}, {2, 10, 2}},
+		{{1, 1, 1}, {3, 3, 1}, {5, 5, 1}, {7, 7, 1}, {9, 9, 1}, {10, 11, 1}},
+		{{100, 200, 3}, {1, 50, 1}},
+		{{2, 2, 1}, {4, 4, 1}, {6, 6, 1}, {8, 8, 1}, {10, 10, 1}},
+		{{1, 100, 1}, {101, 200, 2}},
+	}
+
+	for i, input := range cases {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			// Collect frames before normalization.
+			s := &Sequence{Ranges: input}
+			before := s.frames()
+
+			s.normalizeRanges()
+			after := s.frames()
+
+			if !reflect.DeepEqual(before, after) {
+				t.Errorf("frames changed: before=%d frames, after=%d frames", len(before), len(after))
 			}
 		})
 	}
@@ -423,3 +661,869 @@ func TestExpandSequencePattern(t *testing.T) {
 	}
 }
 
+func TestNewSequenceDetectorMinLength(t *testing.T) {
+	t.Run("enforces minimum length of 2", func(t *testing.T) {
+		// Test with minLength < 2
+		detector := NewSequenceDetector(1)
+		if detector.minSequenceLength != 2 {
+			t.Errorf("expected minSequenceLength 2, got %d", detector.minSequenceLength)
+		}
+
+		detector = NewSequenceDetector(0)
+		if detector.minSequenceLength != 2 {
+			t.Errorf("expected minSequenceLength 2, got %d", detector.minSequenceLength)
+		}
+
+		detector = NewSequenceDetector(-5)
+		if detector.minSequenceLength != 2 {
+			t.Errorf("expected minSequenceLength 2, got %d", detector.minSequenceLength)
+		}
+	})
+
+	t.Run("accepts minLength >= 2", func(t *testing.T) {
+		detector := NewSequenceDetector(5)
+		if detector.minSequenceLength != 5 {
+			t.Errorf("expected minSequenceLength 5, got %d", detector.minSequenceLength)
+		}
+	})
+}
+
+func TestFindRanges(t *testing.T) {
+	detector := NewSequenceDetector(2)
+
+	t.Run("empty frames", func(t *testing.T) {
+		ranges := detector.findRanges([]int{})
+		if ranges != nil {
+			t.Errorf("expected nil for empty frames, got %v", ranges)
+		}
+	})
+
+	t.Run("single frame", func(t *testing.T) {
+		ranges := detector.findRanges([]int{5})
+		if len(ranges) != 1 {
+			t.Fatalf("expected 1 range, got %d", len(ranges))
+		}
+		if ranges[0].start != 5 || ranges[0].end != 5 || ranges[0].count != 1 {
+			t.Errorf("expected range {5, 5, 1}, got %+v", ranges[0])
+		}
+	})
+
+	t.Run("continuous range", func(t *testing.T) {
+		ranges := detector.findRanges([]int{1, 2, 3, 4, 5})
+		if len(ranges) != 1 {
+			t.Fatalf("expected 1 range, got %d", len(ranges))
+		}
+		if ranges[0].start != 1 || ranges[0].end != 5 || ranges[0].count != 5 {
+			t.Errorf("expected range {1, 5, 5}, got %+v", ranges[0])
+		}
+	})
+
+	t.Run("gap in sequence", func(t *testing.T) {
+		ranges := detector.findRanges([]int{1, 2, 3, 10, 11, 12})
+		if len(ranges) != 2 {
+			t.Fatalf("expected 2 ranges, got %d", len(ranges))
+		}
+		if ranges[0].start != 1 || ranges[0].end != 3 || ranges[0].count != 3 {
+			t.Errorf("expected first range {1, 3, 3}, got %+v", ranges[0])
+		}
+		if ranges[1].start != 10 || ranges[1].end != 12 || ranges[1].count != 3 {
+			t.Errorf("expected second range {10, 12, 3}, got %+v", ranges[1])
+		}
+	})
+
+	t.Run("multiple gaps", func(t *testing.T) {
+		ranges := detector.findRanges([]int{1, 5, 6, 10})
+		if len(ranges) != 3 {
+			t.Fatalf("expected 3 ranges, got %d", len(ranges))
+		}
+		// Range 1: just frame 1
+		if ranges[0].start != 1 || ranges[0].end != 1 {
+			t.Errorf("expected first range {1, 1}, got %+v", ranges[0])
+		}
+		// Range 2: frames 5-6
+		if ranges[1].start != 5 || ranges[1].end != 6 {
+			t.Errorf("expected second range {5, 6}, got %+v", ranges[1])
+		}
+		// Range 3: just frame 10
+		if ranges[2].start != 10 || ranges[2].end != 10 {
+			t.Errorf("expected third range {10, 10}, got %+v", ranges[2])
+		}
+	})
+}
+
+func TestSequenceExpanderStandalone(t *testing.T) {
+	// Test standalone mode where expansions go to separate manifest
+	manifest := NewManifest()
+	manifest.AddEntry(&Entry{
+		Name:       "shot.[001-003].dpx",
+		Size:       2048,
+		Timestamp:  time.Now(),
+		Mode:       0644,
+		IsSequence: true,
+		Pattern:    "shot.[001-003].dpx",
+	})
+
+	expander := NewSequenceExpander(SequenceStandalone)
+	main, expansions, err := expander.ExpandManifest(manifest)
+	if err != nil {
+		t.Fatalf("ExpandManifest() error = %v", err)
+	}
+
+	// Main manifest should have 1 entry (the sequence notation)
+	if len(main.Entries) != 1 {
+		t.Errorf("expected 1 entry in main manifest, got %d", len(main.Entries))
+	}
+
+	// Expansions manifest should have 3 entries
+	if expansions == nil {
+		t.Fatal("expected expansions manifest, got nil")
+	}
+	if len(expansions.Entries) != 3 {
+		t.Errorf("expected 3 entries in expansions manifest, got %d", len(expansions.Entries))
+	}
+}
+
+func TestExpandSequenceEntryNilIDList(t *testing.T) {
+	// Test with nil idList — uses entry's C4ID for all expanded entries
+	entry := &Entry{
+		Name:       "frame.[01-03].exr",
+		Size:       1024,
+		Timestamp:  time.Now(),
+		Mode:       0644,
+		IsSequence: true,
+		Pattern:    "frame.[01-03].exr",
+		// C4ID is nil
+	}
+
+	expanded, err := expandSequenceEntry(entry, nil)
+	if err != nil {
+		t.Fatalf("expandSequenceEntry() error = %v", err)
+	}
+
+	if len(expanded) != 3 {
+		t.Errorf("expected 3 expanded entries, got %d", len(expanded))
+	}
+
+	// All entries should have nil C4ID (since entry.C4ID was nil)
+	for _, e := range expanded {
+		if !e.C4ID.IsNil() {
+			t.Errorf("expected nil C4ID, got %s", e.C4ID)
+		}
+	}
+}
+
+
+// ----------------------------------------------------------------------------
+// Sequence Escaping Tests
+// ----------------------------------------------------------------------------
+
+func TestUnescapeSequenceNotation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no escapes", "frame.", "frame."},
+		{"backslash space", `my\ animation.`, "my animation."},
+		{"backslash bracket", `file\[test\].`, "file[test]."},
+		{"backslash backslash", `path\\to\\file.`, `path\to\file.`},
+		{"backslash quote", `file\"v2\".`, `file"v2".`},
+		{"backslash comma", `data\,backup.`, "data,backup."},
+		{"backslash hyphen", `file\-name.`, "file-name."},
+		{"multiple escapes", `my\ file\[v2\].`, "my file[v2]."},
+		{"all escapes combined", `a\ b\[c\]d\\e\"f\,g\-h`, `a b[c]d\e"f,g-h`},
+		{"trailing backslash", `file\`, `file\`},
+		{"unknown escape", `file\x.`, `file\x.`},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := unescapeSequenceNotation(tt.input)
+			if got != tt.want {
+				t.Errorf("unescapeSequenceNotation(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEscapeSequenceNotation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no special chars", "frame.", "frame."},
+		{"space", "my animation.", `my\ animation.`},
+		{"brackets", "file[test].", `file\[test\].`},
+		{"backslash", `path\to\file.`, `path\\to\\file.`},
+		{"quote", `file"v2".`, `file\"v2\".`},
+		{"comma not escaped", "data,backup.", "data,backup."},
+		{"hyphen not escaped", "file-name.", "file-name."},
+		{"multiple specials", "my file[v2].", `my\ file\[v2\].`},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := escapeSequenceNotation(tt.input)
+			if got != tt.want {
+				t.Errorf("escapeSequenceNotation(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseSequenceEscaping(t *testing.T) {
+	tests := []struct {
+		name       string
+		pattern    string
+		wantPrefix string
+		wantSuffix string
+		wantErr    bool
+	}{
+		{
+			name:       "space in prefix",
+			pattern:    `my\ animation.[001-100].exr`,
+			wantPrefix: "my animation.",
+			wantSuffix: ".exr",
+		},
+		{
+			name:       "brackets in prefix",
+			pattern:    `file\[test\].[001-010].dat`,
+			wantPrefix: "file[test].",
+			wantSuffix: ".dat",
+		},
+		{
+			name:       "comma in prefix",
+			pattern:    `data\,backup.[01-05].csv`,
+			wantPrefix: "data,backup.",
+			wantSuffix: ".csv",
+		},
+		{
+			name:       "multiple escapes in prefix",
+			pattern:    `my\ file\[v2\].[001-100].exr`,
+			wantPrefix: "my file[v2].",
+			wantSuffix: ".exr",
+		},
+		{
+			name:       "backslash in prefix",
+			pattern:    `path\\to\\file.[001-010].txt`,
+			wantPrefix: `path\to\file.`,
+			wantSuffix: ".txt",
+		},
+		{
+			name:       "escape in suffix",
+			pattern:    `frame.[001-100].my\ suffix`,
+			wantPrefix: "frame.",
+			wantSuffix: ".my suffix",
+		},
+		{
+			name:       "quote in prefix",
+			pattern:    `file\"v2\".[001-010].dat`,
+			wantPrefix: `file"v2".`,
+			wantSuffix: ".dat",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seq, err := ParseSequence(tt.pattern)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseSequence(%q) error = %v, wantErr %v", tt.pattern, err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if seq.Prefix != tt.wantPrefix {
+				t.Errorf("Prefix = %q, want %q", seq.Prefix, tt.wantPrefix)
+			}
+			if seq.Suffix != tt.wantSuffix {
+				t.Errorf("Suffix = %q, want %q", seq.Suffix, tt.wantSuffix)
+			}
+		})
+	}
+}
+
+func TestFormatSequenceName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "plain sequence",
+			in:   "frame.[0001-0100].exr",
+			want: "frame.[0001-0100].exr",
+		},
+		{
+			name: "space in prefix",
+			in:   "my animation.[001-100].exr",
+			want: `my\ animation.[001-100].exr`,
+		},
+		{
+			name: "brackets in prefix",
+			in:   "file[test].[001-010].dat",
+			want: `file\[test\].[001-010].dat`,
+		},
+		{
+			name: "backslash in prefix",
+			in:   `path\to\file.[001-010].txt`,
+			want: `path\\to\\file.[001-010].txt`,
+		},
+		{
+			name: "quote in prefix",
+			in:   `file"v2".[001-010].dat`,
+			want: `file\"v2\".[001-010].dat`,
+		},
+		{
+			name: "space in suffix",
+			in:   "frame.[001-100].my suffix",
+			want: `frame.[001-100].my\ suffix`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatSequenceName(tt.in)
+			if got != tt.want {
+				t.Errorf("formatSequenceName(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSequenceEscapingRoundTrip(t *testing.T) {
+	// Test that sequence names with special characters survive encode→decode round-trip
+	tests := []struct {
+		name    string
+		seqName string
+	}{
+		{"plain", "frame.[0001-0100].exr"},
+		{"space in prefix", "my animation.[001-100].exr"},
+		{"brackets in prefix", "file[test].[001-010].dat"},
+		{"backslash in prefix", `path\to\file.[001-010].txt`},
+		{"quote in prefix", `file"v2".[001-010].dat`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create an entry with the sequence name
+			entry := &Entry{
+				Name:       tt.seqName,
+				Mode:       0644,
+				Timestamp:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				Size:       1024,
+				IsSequence: true,
+				Pattern:    tt.seqName,
+			}
+
+			// Encode to canonical form
+			m := NewManifest()
+			m.AddEntry(entry)
+			data, err := Marshal(m)
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+
+			// Decode back
+			m2, err := Unmarshal(data)
+			if err != nil {
+				t.Fatalf("Unmarshal(%s): %v", string(data), err)
+			}
+
+			if len(m2.Entries) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(m2.Entries))
+			}
+			got := m2.Entries[0]
+			if got.Name != tt.seqName {
+				t.Errorf("round-trip name = %q, want %q", got.Name, tt.seqName)
+			}
+			if !got.IsSequence {
+				t.Errorf("round-trip entry not marked as sequence")
+			}
+		})
+	}
+}
+
+func TestDecoderSequenceEscaping(t *testing.T) {
+	// Test that the decoder correctly handles all escape sequences in unquoted names
+	tests := []struct {
+		name     string
+		line     string
+		wantName string
+		wantSeq  bool
+	}{
+		{
+			name:     "backslash space in sequence",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 my\\ animation.[001-100].exr",
+			wantName: "my animation.[001-100].exr",
+			wantSeq:  true,
+		},
+		{
+			name:     "escaped brackets not sequence",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file\\[123\\].dat",
+			wantName: "file[123].dat",
+			wantSeq:  false,
+		},
+		{
+			name:     "literal comma in prefix",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 data,backup.[01-05].csv",
+			wantName: "data,backup.[01-05].csv",
+			wantSeq:  true,
+		},
+		{
+			name:     "literal hyphen in prefix",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file-name.[01-05].csv",
+			wantName: "file-name.[01-05].csv",
+			wantSeq:  true,
+		},
+		{
+			name:     "escaped quote",
+			line:     "-rw-r--r-- 2024-01-01T00:00:00Z 1024 file\\\"v2\\\".[001-010].dat",
+			wantName: `file"v2".[001-010].dat`,
+			wantSeq:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := tt.line + "\n"
+			m, err := Unmarshal([]byte(input))
+			if err != nil {
+				t.Fatalf("Unmarshal: %v", err)
+			}
+			if len(m.Entries) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(m.Entries))
+			}
+			entry := m.Entries[0]
+			if entry.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", entry.Name, tt.wantName)
+			}
+			if entry.IsSequence != tt.wantSeq {
+				t.Errorf("IsSequence = %v, want %v", entry.IsSequence, tt.wantSeq)
+			}
+		})
+	}
+}
+
+// ----------------------------------------------------------------------------
+// IDList Tests (merged from idlist_test.go)
+// ----------------------------------------------------------------------------
+
+func TestIDList(t *testing.T) {
+	t.Run("newIDList creates empty list", func(t *testing.T) {
+		list := newIDList()
+		if list.Count() != 0 {
+			t.Errorf("expected 0 items, got %d", list.Count())
+		}
+	})
+
+	t.Run("Add and Get", func(t *testing.T) {
+		list := newIDList()
+		id1 := c4.Identify(strings.NewReader("test1"))
+		id2 := c4.Identify(strings.NewReader("test2"))
+
+		list.Add(id1)
+		list.Add(id2)
+
+		if list.Count() != 2 {
+			t.Errorf("expected 2 items, got %d", list.Count())
+		}
+
+		if list.Get(0) != id1 {
+			t.Errorf("expected id1 at index 0")
+		}
+		if list.Get(1) != id2 {
+			t.Errorf("expected id2 at index 1")
+		}
+
+		// Out of bounds returns nil ID
+		if !list.Get(-1).IsNil() {
+			t.Errorf("expected nil ID for negative index")
+		}
+		if !list.Get(100).IsNil() {
+			t.Errorf("expected nil ID for out of bounds index")
+		}
+	})
+
+	t.Run("Canonical format", func(t *testing.T) {
+		list := newIDList()
+		id1 := c4.Identify(strings.NewReader("test1"))
+		id2 := c4.Identify(strings.NewReader("test2"))
+
+		list.Add(id1)
+		list.Add(id2)
+
+		canonical := list.Canonical()
+
+		// Bare concatenation: no newlines, no separators
+		expected := id1.String() + id2.String()
+		if canonical != expected {
+			t.Errorf("canonical = %q, want %q", canonical, expected)
+		}
+
+		// Length should be 90 * count
+		if len(canonical) != 180 {
+			t.Errorf("expected length 180, got %d", len(canonical))
+		}
+	})
+
+	t.Run("ComputeC4ID", func(t *testing.T) {
+		list := newIDList()
+		id1 := c4.Identify(strings.NewReader("test1"))
+		list.Add(id1)
+
+		c4id := list.ComputeC4ID()
+		if c4id.IsNil() {
+			t.Errorf("expected non-nil C4 ID")
+		}
+
+		// Same list should produce same C4 ID
+		list2 := newIDList()
+		list2.Add(id1)
+		c4id2 := list2.ComputeC4ID()
+		if c4id != c4id2 {
+			t.Errorf("expected same C4 ID for same list")
+		}
+	})
+}
+
+func TestParseIDList(t *testing.T) {
+	t.Run("parse valid ID list", func(t *testing.T) {
+		id1 := c4.Identify(strings.NewReader("test1"))
+		id2 := c4.Identify(strings.NewReader("test2"))
+
+		input := id1.String() + "\n" + id2.String() + "\n"
+		list, err := parseIDListFromString(input)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if list.Count() != 2 {
+			t.Errorf("expected 2 items, got %d", list.Count())
+		}
+	})
+
+	t.Run("tolerant of whitespace", func(t *testing.T) {
+		id1 := c4.Identify(strings.NewReader("test1"))
+
+		// Extra whitespace, blank lines
+		input := "\n  " + id1.String() + "  \n\n"
+		list, err := parseIDListFromString(input)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if list.Count() != 1 {
+			t.Errorf("expected 1 item, got %d", list.Count())
+		}
+	})
+
+	t.Run("invalid ID format", func(t *testing.T) {
+		input := "not-a-valid-c4-id\n"
+		_, err := parseIDListFromString(input)
+		if err == nil {
+			t.Errorf("expected error for invalid C4 ID")
+		}
+	})
+}
+
+func TestIsIDListContent(t *testing.T) {
+	t.Run("valid ID list content", func(t *testing.T) {
+		id1 := c4.Identify(strings.NewReader("test1"))
+		content := []byte(id1.String() + "\n")
+		if !IsIDListContent(content) {
+			t.Errorf("expected true for valid ID list content")
+		}
+	})
+
+	t.Run("empty content", func(t *testing.T) {
+		if IsIDListContent([]byte("")) {
+			t.Errorf("expected false for empty content")
+		}
+	})
+
+	t.Run("non-ID content", func(t *testing.T) {
+		content := []byte("hello world\n")
+		if IsIDListContent(content) {
+			t.Errorf("expected false for non-ID content")
+		}
+	})
+
+	t.Run("mixed content", func(t *testing.T) {
+		id1 := c4.Identify(strings.NewReader("test1"))
+		content := []byte(id1.String() + "\nhello\n")
+		if IsIDListContent(content) {
+			t.Errorf("expected false for mixed content")
+		}
+	})
+}
+
+func TestDetectSequences_ConvenienceFunction(t *testing.T) {
+	// The package-level DetectSequences function should use minLength=3.
+	// A sequence of exactly 3 files should be collapsed.
+	manifest := NewManifest()
+	for i := 1; i <= 3; i++ {
+		manifest.AddEntry(&Entry{
+			Name:      fmt.Sprintf("shot.%04d.exr", i),
+			Size:      1024,
+			Timestamp: time.Now(),
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader(fmt.Sprintf("shot-content-%d", i))),
+		})
+	}
+
+	result := DetectSequences(manifest)
+
+	// Should collapse into a single sequence entry
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry (collapsed sequence), got %d", len(result.Entries))
+	}
+	if !result.Entries[0].IsSequence {
+		t.Error("expected entry to be a sequence")
+	}
+	if result.Entries[0].Pattern != "shot.[0001-0003].exr" {
+		t.Errorf("pattern = %q, want %q", result.Entries[0].Pattern, "shot.[0001-0003].exr")
+	}
+
+	// A sequence of only 2 files should NOT be collapsed (minLength=3)
+	manifest2 := NewManifest()
+	for i := 1; i <= 2; i++ {
+		manifest2.AddEntry(&Entry{
+			Name:      fmt.Sprintf("clip.%04d.dpx", i),
+			Size:      512,
+			Timestamp: time.Now(),
+			Mode:      0644,
+			C4ID:      c4.Identify(strings.NewReader(fmt.Sprintf("clip-content-%d", i))),
+		})
+	}
+
+	result2 := DetectSequences(manifest2)
+
+	// Should keep both entries individually (not collapsed)
+	if len(result2.Entries) != 2 {
+		t.Errorf("expected 2 entries (not collapsed), got %d", len(result2.Entries))
+	}
+	for _, e := range result2.Entries {
+		if e.IsSequence {
+			t.Error("2-file group should not be collapsed with default minLength=3")
+		}
+	}
+}
+
+// TestSequenceC4ID_NotIDListHash verifies that a sequence's C4 ID is NOT
+// simply the hash of the ID list (the old, incorrect behavior).
+func TestSequenceC4ID_EqualsIDListHash(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	manifest := NewManifest()
+	idList := newIDList()
+	for i := 1; i <= 5; i++ {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		idList.Add(id)
+		manifest.AddEntry(&Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		})
+	}
+
+	result := DetectSequences(manifest)
+
+	var seqEntry *Entry
+	for _, e := range result.Entries {
+		if e.IsSequence {
+			seqEntry = e
+			break
+		}
+	}
+	if seqEntry == nil {
+		t.Fatal("no sequence entry found")
+	}
+
+	// Sequence C4 ID = hash of bare C4 IDs concatenated in range order
+	idListC4ID := idList.ComputeC4ID()
+	if seqEntry.C4ID != idListC4ID {
+		t.Errorf("sequence C4 ID = %s, want %s (ID list hash)", seqEntry.C4ID, idListC4ID)
+	}
+}
+
+// TestSequenceC4ID_NotCanonicalManifest verifies that a sequence's C4 ID
+// does NOT equal a canonical manifest of members — it equals the bare ID list hash.
+func TestSequenceC4ID_NotCanonicalManifest(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	manifest := NewManifest()
+	var memberEntries []*Entry
+	for i := 1; i <= 5; i++ {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		}
+		manifest.AddEntry(entry)
+		memberEntries = append(memberEntries, entry)
+	}
+
+	result := DetectSequences(manifest)
+
+	var seqEntry *Entry
+	for _, e := range result.Entries {
+		if e.IsSequence {
+			seqEntry = e
+			break
+		}
+	}
+	if seqEntry == nil {
+		t.Fatal("no sequence entry found")
+	}
+
+	// The manifest-based C4 ID should differ from the bare ID list hash
+	manifestID := NewManifest()
+	for _, e := range memberEntries {
+		entryCopy := *e
+		entryCopy.Depth = 0
+		manifestID.AddEntry(&entryCopy)
+	}
+	manifestC4ID := manifestID.ComputeC4ID()
+
+	if seqEntry.C4ID == manifestC4ID {
+		t.Error("sequence C4 ID should NOT equal canonical manifest ID — it should equal the bare ID list hash")
+	}
+}
+
+// TestSequenceC4ID_MetadataDoesNotAffectID verifies that changing a member's
+// metadata (timestamp, size, mode) does NOT change the sequence C4 ID.
+// Sequence identity depends only on content identity of each frame.
+func TestSequenceC4ID_MetadataDoesNotAffectID(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	altTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	makeManifest := func(ts time.Time, size int64, mode os.FileMode) *Manifest {
+		m := NewManifest()
+		for i := 1; i <= 5; i++ {
+			id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+			m.AddEntry(&Entry{
+				Name:      fmt.Sprintf("frame.%04d.exr", i),
+				Size:      size,
+				Timestamp: ts,
+				Mode:      mode,
+				C4ID:      id,
+			})
+		}
+		return m
+	}
+
+	result1 := DetectSequences(makeManifest(baseTime, 1024, 0644))
+	result2 := DetectSequences(makeManifest(altTime, 2048, 0755))
+
+	var id1, id2 c4.ID
+	for _, e := range result1.Entries {
+		if e.IsSequence {
+			id1 = e.C4ID
+		}
+	}
+	for _, e := range result2.Entries {
+		if e.IsSequence {
+			id2 = e.C4ID
+		}
+	}
+
+	if id1.IsNil() || id2.IsNil() {
+		t.Fatal("sequence entries not found")
+	}
+	if id1 != id2 {
+		t.Errorf("metadata should not affect sequence C4 ID: got %s vs %s", id1, id2)
+	}
+}
+
+// TestSequenceC4ID_NaturalSortOrder verifies that the sequence C4 ID
+// computation uses natural sort order (frame.0001.exr before frame.0002.exr).
+func TestSequenceC4ID_NaturalSortOrder(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Add entries in reverse order — detection should still produce the same C4 ID
+	manifestForward := NewManifest()
+	manifestReverse := NewManifest()
+
+	for i := 1; i <= 5; i++ {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		}
+		manifestForward.AddEntry(entry)
+	}
+	for i := 5; i >= 1; i-- {
+		id := c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+			C4ID:      id,
+		}
+		manifestReverse.AddEntry(entry)
+	}
+
+	result1 := DetectSequences(manifestForward)
+	result2 := DetectSequences(manifestReverse)
+
+	var id1, id2 c4.ID
+	for _, e := range result1.Entries {
+		if e.IsSequence {
+			id1 = e.C4ID
+		}
+	}
+	for _, e := range result2.Entries {
+		if e.IsSequence {
+			id2 = e.C4ID
+		}
+	}
+
+	if id1.IsNil() || id2.IsNil() {
+		t.Fatal("sequence entries not found")
+	}
+	if id1 != id2 {
+		t.Errorf("insertion order should not affect sequence C4 ID: forward=%s, reverse=%s", id1, id2)
+	}
+}
+
+// TestSequenceC4ID_NilIDPreventsFolding verifies that sequences with any
+// nil C4 ID frames are not folded into ranges.
+func TestSequenceC4ID_NilIDPreventsFolding(t *testing.T) {
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	manifest := NewManifest()
+	for i := 1; i <= 5; i++ {
+		entry := &Entry{
+			Name:      fmt.Sprintf("frame.%04d.exr", i),
+			Size:      1024,
+			Timestamp: baseTime,
+			Mode:      0644,
+		}
+		// Give all frames a C4 ID except frame 3
+		if i != 3 {
+			entry.C4ID = c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i)))
+		}
+		manifest.AddEntry(entry)
+	}
+
+	result := DetectSequences(manifest)
+
+	// No sequence entries should be created — nil C4 ID breaks the chain
+	for _, e := range result.Entries {
+		if e.IsSequence {
+			t.Error("should not fold range when a frame has nil C4 ID")
+			break
+		}
+	}
+
+	// All 5 individual entries should be preserved
+	if len(result.Entries) != 5 {
+		t.Errorf("expected 5 individual entries, got %d", len(result.Entries))
+	}
+}

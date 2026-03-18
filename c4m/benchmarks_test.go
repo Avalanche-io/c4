@@ -4,31 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Avalanche-io/c4"
 )
-
-// BenchmarkManifestGeneration tests manifest generation performance
-func BenchmarkManifestGeneration(b *testing.B) {
-	// Create temp directory with test files
-	tmpDir := b.TempDir()
-
-	// Create test files
-	for i := 0; i < 100; i++ {
-		path := filepath.Join(tmpDir, fmt.Sprintf("file%03d.txt", i))
-		os.WriteFile(path, []byte(fmt.Sprintf("content %d", i)), 0644)
-	}
-
-	generator := NewGenerator()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = generator.GenerateFromPath(tmpDir)
-	}
-}
 
 // BenchmarkManifestSort tests sorting performance
 func BenchmarkManifestSort(b *testing.B) {
@@ -54,7 +34,7 @@ func BenchmarkManifestSort(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				m := *manifest // Copy
-				m.Sort()
+				m.SortEntries()
 			}
 		})
 	}
@@ -75,7 +55,8 @@ func BenchmarkHierarchicalSort(b *testing.B) {
 		// Add files in directory
 		for j := 10; j > 0; j-- {
 			manifest.AddEntry(&Entry{
-				Name: fmt.Sprintf("dir%03d/file%02d.txt", i, j),
+				Name:  fmt.Sprintf("file%02d.txt", j),
+				Depth: 1,
 			})
 		}
 	}
@@ -83,7 +64,7 @@ func BenchmarkHierarchicalSort(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		m := *manifest // Copy
-		m.SortSiblingsHierarchically()
+		m.SortEntries()
 	}
 }
 
@@ -138,92 +119,6 @@ func BenchmarkDiff(b *testing.B) {
 	}
 }
 
-// BenchmarkUnion tests union operation performance
-func BenchmarkUnion(b *testing.B) {
-	benchmarks := []struct {
-		name     string
-		sets     int
-		sizeEach int
-	}{
-		{"2Sets-100Each", 2, 100},
-		{"3Sets-100Each", 3, 100},
-		{"2Sets-1000Each", 2, 1000},
-		{"5Sets-1000Each", 5, 1000},
-	}
-
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			sources := make([]Source, bm.sets)
-
-			for s := 0; s < bm.sets; s++ {
-				manifest := NewManifest()
-				for i := 0; i < bm.sizeEach; i++ {
-					manifest.AddEntry(&Entry{
-						Name: fmt.Sprintf("set%d_file%06d.txt", s, i),
-						C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d_%d", s, i)))),
-					})
-				}
-				sources[s] = ManifestSource{manifest}
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, _ = Union(sources...)
-			}
-		})
-	}
-}
-
-// BenchmarkIntersect tests intersect operation performance
-func BenchmarkIntersect(b *testing.B) {
-	benchmarks := []struct {
-		name    string
-		size    int
-		overlap int // percentage of overlap
-	}{
-		{"Small-50%Overlap", 100, 50},
-		{"Small-NoOverlap", 100, 0},
-		{"Medium-50%Overlap", 1000, 50},
-		{"Medium-10%Overlap", 1000, 10},
-	}
-
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			// Create first manifest
-			manifest1 := NewManifest()
-			for i := 0; i < bm.size; i++ {
-				manifest1.AddEntry(&Entry{
-					Name: fmt.Sprintf("file%06d.txt", i),
-					C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
-				})
-			}
-
-			// Create second manifest with overlap
-			manifest2 := NewManifest()
-			overlapCount := bm.size * bm.overlap / 100
-			// Add overlapping entries
-			for i := 0; i < overlapCount; i++ {
-				manifest2.AddEntry(&Entry{
-					Name: fmt.Sprintf("file%06d.txt", i),
-					C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
-				})
-			}
-			// Add unique entries
-			for i := bm.size; i < bm.size+(bm.size-overlapCount); i++ {
-				manifest2.AddEntry(&Entry{
-					Name: fmt.Sprintf("file%06d.txt", i),
-					C4ID: c4.Identify(bytes.NewReader([]byte(fmt.Sprintf("content%d", i)))),
-				})
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, _ = Intersect(ManifestSource{manifest1}, ManifestSource{manifest2})
-			}
-		})
-	}
-}
-
 // BenchmarkParsing tests C4M parsing performance
 func BenchmarkParsing(b *testing.B) {
 	benchmarks := []struct {
@@ -239,7 +134,6 @@ func BenchmarkParsing(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			// Create C4M content
 			var buf bytes.Buffer
-			buf.WriteString("@c4m 1.0\n")
 
 			for i := 0; i < bm.size; i++ {
 				// Write entry
@@ -255,14 +149,8 @@ func BenchmarkParsing(b *testing.B) {
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				parser := NewParser(bytes.NewReader(content))
-				parser.ParseHeader()
-				for {
-					_, err := parser.ParseEntry()
-					if err != nil {
-						break
-					}
-				}
+				decoder := NewDecoder(bytes.NewReader(content))
+				_, _ = decoder.Decode()
 			}
 		})
 	}
@@ -296,7 +184,7 @@ func BenchmarkWriting(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				var buf bytes.Buffer
-				_, _ = manifest.WriteTo(&buf)
+				_ = NewEncoder(&buf).Encode(manifest)
 			}
 		})
 	}
@@ -308,7 +196,7 @@ func BenchmarkValidation(b *testing.B) {
 	manifest := NewManifest()
 	for i := 0; i < 1000; i++ {
 		manifest.AddEntry(&Entry{
-			Name:      fmt.Sprintf("dir%03d/file%03d.txt", i/10, i),
+			Name:      fmt.Sprintf("file%03d.txt", i),
 			Size:      1024,
 			Timestamp: time.Now(),
 			Mode:      0644,
@@ -317,7 +205,7 @@ func BenchmarkValidation(b *testing.B) {
 
 	// Write to buffer
 	var buf bytes.Buffer
-	manifest.WriteTo(&buf)
+	_ = NewEncoder(&buf).Encode(manifest)
 	content := buf.Bytes()
 
 	validator := NewValidator(false)

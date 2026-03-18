@@ -10,6 +10,16 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
+// FlowDirection indicates the direction of a flow link.
+type FlowDirection int
+
+const (
+	FlowNone          FlowDirection = iota // No flow link
+	FlowOutbound                           // -> (content here propagates there)
+	FlowInbound                            // <- (content there propagates here)
+	FlowBidirectional                      // <> (bidirectional sync)
+)
+
 // Entry represents a single file or directory entry in a C4M manifest
 type Entry struct {
 	Mode      os.FileMode // Unix-style permissions
@@ -19,20 +29,48 @@ type Entry struct {
 	Target    string      // Symlink target (if applicable)
 	C4ID      c4.ID       // Content identifier
 	Depth     int         // Indentation level
-	
+
+	// Hard link marker: entries sharing the same C4 ID and marker are write-bound.
+	// 0 = not a hard link, -1 = ungrouped hard link (->), >0 = group number (->N)
+	HardLink int
+
+	// Flow link: declares a cross-location data relationship.
+	FlowDirection FlowDirection
+	FlowTarget    string // Location reference (e.g., "nas:", "studio:plates/")
+
 	// For sequences
 	IsSequence bool
 	Pattern    string // Original sequence pattern
 }
 
-// IsDir returns true if the entry represents a directory
+// IsDir returns true if the entry represents a directory.
+// Checks both the mode bits and trailing slash in the name (for robustness).
 func (e *Entry) IsDir() bool {
-	return e.Mode.IsDir()
+	return e.Mode.IsDir() || strings.HasSuffix(e.Name, "/")
 }
 
 // IsSymlink returns true if the entry represents a symbolic link
 func (e *Entry) IsSymlink() bool {
 	return e.Mode&os.ModeSymlink != 0
+}
+
+// IsFlowLinked returns true if the entry has a flow link declaration.
+func (e *Entry) IsFlowLinked() bool {
+	return e.FlowDirection != FlowNone
+}
+
+// FlowOperator returns the string representation of the flow direction.
+func (e *Entry) FlowOperator() string {
+	switch e.FlowDirection {
+	case FlowOutbound:
+		return "->"
+	case FlowInbound:
+		return "<-"
+	case FlowBidirectional:
+		return "<>"
+	default:
+		return ""
+	}
 }
 
 // BaseName returns the base name without path
@@ -49,7 +87,7 @@ func (e *Entry) String() string {
 func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	// Build indentation
 	indent := strings.Repeat(" ", e.Depth*indentWidth)
-	
+
 	// Format mode (handle null value)
 	var modeStr string
 	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
@@ -57,16 +95,16 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	} else {
 		modeStr = formatMode(e.Mode)
 	}
-	
+
 	// Format timestamp (handle null value)
 	var timeStr string
-	if e.Timestamp.Unix() == 0 {
+	if e.Timestamp.Equal(NullTimestamp()) {
 		timeStr = "-"  // Null timestamp
 	} else {
 		// Canonical format MUST be UTC only
-		timeStr = e.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
+		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
 	}
-	
+
 	// Format size (handle null value)
 	var sizeStr string
 	if e.Size < 0 {
@@ -74,53 +112,90 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	} else {
 		sizeStr = formatSize(e.Size, displayFormat)
 	}
-	
-	// Format name (with quotes if needed)
-	nameStr := formatName(e.Name)
-	
+
+	// Format name (with quotes or escape notation if needed)
+	nameStr := formatName(e.Name, e.IsSequence)
+
 	// Build the line
 	parts := []string{indent + modeStr, timeStr, sizeStr, nameStr}
-	
-	// Add symlink target if present
+
+	// Add symlink target, hard link marker, or flow link
 	if e.Target != "" {
-		parts = append(parts, "->", e.Target)
+		parts = append(parts, "->", formatTarget(e.Target))
+	} else if e.HardLink != 0 {
+		if e.HardLink < 0 {
+			parts = append(parts, "->")
+		} else {
+			parts = append(parts, fmt.Sprintf("->%d", e.HardLink))
+		}
+	} else if e.FlowDirection != FlowNone {
+		parts = append(parts, e.FlowOperator(), e.FlowTarget)
 	}
-	
-	// Add C4 ID if present
+
+	// C4 ID or "-" is always the last field
 	if !e.C4ID.IsNil() {
 		parts = append(parts, e.C4ID.String())
+	} else {
+		parts = append(parts, "-")
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
 // Canonical returns the canonical form for C4 ID computation
 func (e *Entry) Canonical() string {
 	// No indentation in canonical form
-	modeStr := formatMode(e.Mode)
-	// Canonical format MUST be UTC only
-	timeStr := e.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
-	sizeStr := fmt.Sprintf("%d", e.Size) // No formatting in canonical
-	nameStr := formatName(e.Name)
-	
-	parts := []string{modeStr, timeStr, sizeStr, nameStr}
-	
-	if e.Target != "" {
-		parts = append(parts, "->", e.Target)
+	// Null mode renders as "-"
+	var modeStr string
+	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
+		modeStr = "-"
+	} else {
+		modeStr = formatMode(e.Mode)
 	}
-	
+	// Canonical format MUST be UTC only; null timestamps render as "-"
+	var timeStr string
+	if e.Timestamp.Equal(NullTimestamp()) {
+		timeStr = "-"
+	} else {
+		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
+	}
+	// Null size renders as "-"
+	var sizeStr string
+	if e.Size < 0 {
+		sizeStr = "-"
+	} else {
+		sizeStr = fmt.Sprintf("%d", e.Size) // No formatting in canonical
+	}
+	nameStr := formatName(e.Name, e.IsSequence)
+
+	parts := []string{modeStr, timeStr, sizeStr, nameStr}
+
+	if e.Target != "" {
+		parts = append(parts, "->", formatTarget(e.Target))
+	} else if e.HardLink != 0 {
+		if e.HardLink < 0 {
+			parts = append(parts, "->")
+		} else {
+			parts = append(parts, fmt.Sprintf("->%d", e.HardLink))
+		}
+	} else if e.FlowDirection != FlowNone {
+		parts = append(parts, e.FlowOperator(), e.FlowTarget)
+	}
+
+	// C4 ID or "-" is always the last field
 	if !e.C4ID.IsNil() {
 		parts = append(parts, e.C4ID.String())
+	} else {
+		parts = append(parts, "-")
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
 // formatMode converts os.FileMode to Unix-style permission string
 func formatMode(mode os.FileMode) string {
-	const str = "dalTLDpSugct?"
 	var buf [10]byte
-	
+
 	// File type
 	switch mode & os.ModeType {
 	case 0: // regular file
@@ -140,7 +215,7 @@ func formatMode(mode os.FileMode) string {
 	default:
 		buf[0] = '?'
 	}
-	
+
 	// Permissions
 	rwx := "rwxrwxrwx"
 	for i := 0; i < 9; i++ {
@@ -150,7 +225,7 @@ func formatMode(mode os.FileMode) string {
 			buf[i+1] = '-'
 		}
 	}
-	
+
 	// Special bits
 	if mode&os.ModeSetuid != 0 {
 		if buf[3] == 'x' {
@@ -173,7 +248,7 @@ func formatMode(mode os.FileMode) string {
 			buf[9] = 'T'
 		}
 	}
-	
+
 	return string(buf[:])
 }
 
@@ -182,13 +257,13 @@ func formatSize(size int64, displayFormat bool) string {
 	if !displayFormat {
 		return fmt.Sprintf("%d", size)
 	}
-	
+
 	// Add thousands separators for display
 	s := fmt.Sprintf("%d", size)
 	if len(s) <= 3 {
 		return s
 	}
-	
+
 	var result []byte
 	for i, c := range s {
 		if i > 0 && (len(s)-i)%3 == 0 {
@@ -199,41 +274,104 @@ func formatSize(size int64, displayFormat bool) string {
 	return string(result)
 }
 
-// formatName adds quotes if the name contains special characters
-func formatName(name string) string {
-	// For directories (ending with /), never use quotes
-	// The trailing slash makes the boundary unambiguous
-	if strings.HasSuffix(name, "/") {
-		// Still escape backslashes and newlines for safety
-		escaped := strings.ReplaceAll(name, `\`, `\\`)
-		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
-		return escaped
+// formatName adds quotes or escape notation if the name contains special characters.
+// For non-sequence names, brackets are escaped as \[ and \] to prevent
+// them from being interpreted as sequence notation on re-parse.
+// formatName applies SafeName encoding and then handles c4m-specific
+// escaping for c4m field boundaries. SafeName handles all control
+// characters and non-printable bytes; formatName adds c4m-level
+// backslash escaping for spaces, double-quotes, and brackets on top.
+// No quoting is needed — all unsafe characters are backslash-escaped.
+func formatName(name string, isSequence bool) string {
+	safe := SafeName(name)
+
+	if isSequence {
+		return formatSequenceName(name)
 	}
 
-	// For files, check if quoting is needed
-	needsQuotes := false
-	for _, c := range name {
-		if c == ' ' || c == '"' || c == '\\' || c == '\n' {
-			needsQuotes = true
-			break
+	if strings.HasSuffix(safe, "/") {
+		base := safe[:len(safe)-1]
+		return escapeC4MName(base, false) + "/"
+	}
+
+	return escapeC4MName(safe, false)
+}
+
+// escapeC4MName backslash-escapes characters that are unsafe in c4m
+// field-boundary context: spaces, double-quotes, and (for non-sequence
+// names) brackets.
+func escapeC4MName(s string, isSequence bool) string {
+	needsEscape := strings.ContainsAny(s, " \"")
+	if !isSequence && strings.ContainsAny(s, "[]") {
+		needsEscape = true
+	}
+	if !needsEscape {
+		return s
+	}
+
+	var b strings.Builder
+	b.Grow(len(s) + 4)
+	for _, r := range s {
+		switch r {
+		case ' ':
+			b.WriteString(`\ `)
+		case '"':
+			b.WriteString(`\"`)
+		case '[':
+			if !isSequence {
+				b.WriteString(`\[`)
+			} else {
+				b.WriteRune(r)
+			}
+		case ']':
+			if !isSequence {
+				b.WriteString(`\]`)
+			} else {
+				b.WriteRune(r)
+			}
+		default:
+			b.WriteRune(r)
 		}
 	}
+	return b.String()
+}
 
-	// Check for leading/trailing whitespace
-	if name != strings.TrimSpace(name) {
-		needsQuotes = true
-	}
-
-	if !needsQuotes {
+// formatSequenceName formats a sequence name using backslash escaping
+// in the prefix and suffix while leaving the range notation untouched.
+func formatSequenceName(name string) string {
+	matches := sequencePattern.FindStringIndex(name)
+	if matches == nil {
+		// No range notation found — shouldn't happen for isSequence entries,
+		// but fall back to returning name as-is
 		return name
 	}
+	prefix := name[:matches[0]]
+	rangePart := name[matches[0]:matches[1]]
+	suffix := name[matches[1]:]
+	return escapeSequenceNotation(prefix) + rangePart + escapeSequenceNotation(suffix)
+}
 
-	// Escape special characters and quote
-	escaped := strings.ReplaceAll(name, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
-
-	return fmt.Sprintf(`"%s"`, escaped)
+// formatTarget backslash-escapes a symlink target for c4m output.
+// Unlike formatName, targets don't get bracket escaping since path
+// separators and brackets in target paths are literal.
+func formatTarget(target string) string {
+	safe := SafeName(target)
+	if !strings.ContainsAny(safe, " \"") {
+		return safe
+	}
+	var b strings.Builder
+	b.Grow(len(safe) + 4)
+	for _, r := range safe {
+		switch r {
+		case ' ':
+			b.WriteString(`\ `)
+		case '"':
+			b.WriteString(`\"`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // IsDevice returns true if the entry represents a device
@@ -255,7 +393,7 @@ func (e *Entry) IsSocket() bool {
 func (e *Entry) HasNullValues() bool {
 	// Mode can be 0 for certain file types, so check type
 	hasNullMode := e.Mode == 0 && !e.IsDir() && !e.IsSymlink() && !e.IsDevice() && !e.IsPipe() && !e.IsSocket()
-	hasNullTimestamp := e.Timestamp.Unix() == 0
+	hasNullTimestamp := e.Timestamp.Equal(NullTimestamp())
 	hasNullSize := e.Size < 0
 	// C4ID being nil is OK for empty files or directories without computed IDs yet
 
@@ -266,10 +404,10 @@ func (e *Entry) HasNullValues() bool {
 func (e *Entry) GetNullFields() []string {
 	var nullFields []string
 
-	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
+	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() && !e.IsDevice() && !e.IsPipe() && !e.IsSocket() {
 		nullFields = append(nullFields, "Mode")
 	}
-	if e.Timestamp.Unix() == 0 {
+	if e.Timestamp.Equal(NullTimestamp()) {
 		nullFields = append(nullFields, "Timestamp")
 	}
 	if e.Size < 0 {
@@ -277,9 +415,4 @@ func (e *Entry) GetNullFields() []string {
 	}
 
 	return nullFields
-}
-
-// IsFullySpecified returns true if all required metadata is explicit
-func (e *Entry) IsFullySpecified() bool {
-	return !e.HasNullValues()
 }

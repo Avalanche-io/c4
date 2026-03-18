@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -31,48 +32,44 @@ func TestValidateManifest(t *testing.T) {
 	}{
 		{
 			name: "valid manifest",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  false,
 			wantErr: false,
 		},
 		{
-			name: "missing header",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-`,
-			strict:  false,
-			wantErr: true,
-		},
-		{
 			name: "invalid C4 ID",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt invalid-c4-id
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt invalid-c4-id
 `,
 			strict:  true,
 			wantErr: true,
 		},
 		{
 			name: "directory entry with size",
-			content: `@c4m 1.0
-drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
+			content: `drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 `,
 			strict:  false,
 			wantErr: false,
 		},
 		{
-			name: "with @base",
-			content: `@c4m 1.0
-@base c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			name: "directive rejected",
+			content: `@base c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  false,
-			wantErr: false,
+			wantErr: true,
+		},
+		{
+			name: "c4m header rejected",
+			content: `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`,
+			strict:  false,
+			wantErr: true,
 		},
 		{
 			name: "duplicate filenames in strict mode",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 200 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  true,
@@ -80,8 +77,7 @@ drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 		},
 		{
 			name: "unsorted entries in strict mode",
-			content: `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `,
 			strict:  true,
@@ -97,48 +93,6 @@ drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 				t.Errorf("ValidateManifest() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestValidateBundle(t *testing.T) {
-	// Create a test bundle
-	tmpDir := t.TempDir()
-	scanPath := tmpDir + "/data"
-	os.MkdirAll(scanPath, 0755)
-
-	config := DevBundleConfig()
-	config.BundleDir = tmpDir
-	bundle, err := CreateBundle(scanPath, config)
-	if err != nil {
-		t.Fatalf("Failed to create test bundle: %v", err)
-	}
-
-	// Add some test data
-	manifest := NewManifest()
-	manifest.AddEntry(&Entry{
-		Name: "test.txt",
-		Size: 100,
-		Mode: 0644,
-	})
-
-	scan, err := bundle.NewScan(scanPath)
-	if err != nil {
-		t.Fatalf("Failed to create scan: %v", err)
-	}
-	bundle.AddProgressChunk(scan, manifest)
-	bundle.CompleteScan(scan)
-
-	// Test validation
-	validator := NewValidator(false)
-	err = validator.ValidateBundle(bundle.Path)
-	if err != nil {
-		t.Errorf("ValidateBundle() failed: %v", err)
-	}
-
-	// Test with non-existent bundle
-	err = validator.ValidateBundle("/non/existent/path")
-	if err == nil {
-		t.Error("Expected error for non-existent bundle")
 	}
 }
 
@@ -184,8 +138,7 @@ func TestValidatorSortCheck(t *testing.T) {
 	strictValidator := NewValidator(true)
 
 	// Properly sorted manifest
-	sortedContent := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	sortedContent := `-rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 b.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
@@ -195,8 +148,7 @@ func TestValidatorSortCheck(t *testing.T) {
 	}
 
 	// Unsorted manifest
-	unsortedContent := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	unsortedContent := `-rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
@@ -211,8 +163,7 @@ func TestValidatorDuplicates(t *testing.T) {
 	strictValidator := NewValidator(true)
 
 	// Test manifest with duplicates
-	withDupsContent := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	withDupsContent := `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 200 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
 
@@ -221,16 +172,15 @@ func TestValidatorDuplicates(t *testing.T) {
 		t.Error("Strict validation should fail for duplicate entries")
 	}
 
-	// Check that duplicates are tracked
-	if strictValidator.seenPaths["test.txt"] != 2 {
-		t.Errorf("Expected 2 occurrences of test.txt, got %d", strictValidator.seenPaths["test.txt"])
+	// Check that the duplicate was detected (seenPaths stores line number of first occurrence)
+	if _, exists := strictValidator.seenPaths["test.txt"]; !exists {
+		t.Error("Expected test.txt to be tracked in seenPaths")
 	}
 }
 
 func TestValidationReport(t *testing.T) {
 	// Create a manifest with various issues
-	content := `@c4m 1.0
--rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+	content := `-rw-r--r-- 2025-09-19T12:00:00Z 100 z.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 -rw-r--r-- 2025-09-19T12:00:00Z 100 a.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
 `
@@ -252,5 +202,322 @@ func TestValidationReport(t *testing.T) {
 	// Check that the validator tracked errors
 	if len(strictValidator.errors) == 0 {
 		t.Error("Expected validation errors to be tracked")
+	}
+}
+
+func TestGetErrorsAndWarnings(t *testing.T) {
+	// A valid manifest should produce no errors
+	content := `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`
+
+	validator := NewValidator(false)
+	validator.ValidateManifest(strings.NewReader(content))
+
+	errors := validator.GetErrors()
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors, got %d", len(errors))
+	}
+
+	// Test manifest with actual errors
+	invalidContent := `not a valid manifest`
+	validator2 := NewValidator(false)
+	validator2.ValidateManifest(strings.NewReader(invalidContent))
+	errors2 := validator2.GetErrors()
+	if len(errors2) == 0 {
+		t.Error("Expected errors for invalid manifest")
+	}
+
+	// Directives produce errors, not warnings
+	directiveContent := `@c4m 1.0
+-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`
+	validator3 := NewValidator(false)
+	validator3.ValidateManifest(strings.NewReader(directiveContent))
+	errors3 := validator3.GetErrors()
+	if len(errors3) == 0 {
+		t.Error("Expected errors for directive line")
+	}
+}
+
+func TestBuildPath(t *testing.T) {
+	validator := NewValidator(false)
+
+	// Test depth 0 (root level)
+	path := validator.buildPath("file.txt", 0)
+	if path != "file.txt" {
+		t.Errorf("buildPath at depth 0: got %q, want %q", path, "file.txt")
+	}
+
+	// Set up depth stack for nested paths
+	validator.depthStack = []string{"dir1/", "dir2/"}
+
+	// Test depth 1
+	path = validator.buildPath("file.txt", 1)
+	if path != "dir1/file.txt" {
+		t.Errorf("buildPath at depth 1: got %q, want %q", path, "dir1/file.txt")
+	}
+
+	// Test depth 2
+	path = validator.buildPath("file.txt", 2)
+	if path != "dir1/dir2/file.txt" {
+		t.Errorf("buildPath at depth 2: got %q, want %q", path, "dir1/dir2/file.txt")
+	}
+
+	// Test depth beyond stack
+	path = validator.buildPath("file.txt", 5)
+	if path != "dir1/dir2/file.txt" {
+		t.Errorf("buildPath beyond stack: got %q, want %q", path, "dir1/dir2/file.txt")
+	}
+}
+
+func TestBuildExpectedPath(t *testing.T) {
+	validator := NewValidator(false)
+
+	// Test depth 0 (root level)
+	path := validator.buildExpectedPath("file.txt", 0)
+	if path != "file.txt" {
+		t.Errorf("buildExpectedPath at depth 0: got %q, want %q", path, "file.txt")
+	}
+
+	// Set up depth stack
+	validator.depthStack = []string{"parent/", "child/"}
+
+	// Test depth 1
+	path = validator.buildExpectedPath("file.txt", 1)
+	if path != "parent/file.txt" {
+		t.Errorf("buildExpectedPath at depth 1: got %q, want %q", path, "parent/file.txt")
+	}
+
+	// Test depth 2
+	path = validator.buildExpectedPath("file.txt", 2)
+	if path != "parent/child/file.txt" {
+		t.Errorf("buildExpectedPath at depth 2: got %q, want %q", path, "parent/child/file.txt")
+	}
+}
+
+func TestValidateFile(t *testing.T) {
+	// Create a temporary manifest file
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "test.c4m")
+
+	content := `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`
+	if err := os.WriteFile(manifestPath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test manifest: %v", err)
+	}
+
+	// Test valid manifest
+	err := ValidateFile(manifestPath, false)
+	if err != nil {
+		t.Errorf("ValidateFile failed for valid manifest: %v", err)
+	}
+
+	// Test strict mode
+	err = ValidateFile(manifestPath, true)
+	if err != nil {
+		t.Errorf("ValidateFile strict mode failed for valid manifest: %v", err)
+	}
+
+	// Test non-existent file
+	err = ValidateFile(filepath.Join(tmpDir, "nonexistent.c4m"), false)
+	if err == nil {
+		t.Error("ValidateFile should fail for non-existent file")
+	}
+}
+
+func TestDetectFormat(t *testing.T) {
+	tests := []struct {
+		name        string
+		content     string
+		wantErgo    bool
+	}{
+		{
+			name: "canonical format",
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`,
+			wantErgo: false,
+		},
+		{
+			name: "ergonomic format with month",
+			content: `-rw-r--r-- Jan 15 2025 100 test.txt
+`,
+			wantErgo: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := NewValidator(false)
+			validator.ValidateManifest(strings.NewReader(tt.content))
+			if validator.isErgonomic != tt.wantErgo {
+				t.Errorf("isErgonomic = %v, want %v", validator.isErgonomic, tt.wantErgo)
+			}
+		})
+	}
+}
+
+func TestValidateC4ID(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		strict  bool
+		wantErr bool
+	}{
+		{
+			name: "valid C4 ID",
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
+`,
+			strict:  true,
+			wantErr: false,
+		},
+		{
+			name: "missing C4 ID is allowed",
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt
+`,
+			strict:  true,
+			wantErr: false,
+		},
+		{
+			name: "invalid C4 ID format",
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4invalid
+`,
+			strict:  true,
+			wantErr: true,
+		},
+		{
+			name: "C4 ID too short",
+			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4abc
+`,
+			strict:  true,
+			wantErr: true,
+		},
+		{
+			name: "directory without C4 ID is ok",
+			content: `drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
+`,
+			strict:  true,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := NewValidator(tt.strict)
+			err := validator.ValidateManifest(strings.NewReader(tt.content))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateManifest() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidationErrorString(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      ValidationError
+		expected string
+	}{
+		{
+			name:     "with line and column",
+			err:      ValidationError{Line: 5, Column: 10, Message: "test error"},
+			expected: "line 5, col 10: test error",
+		},
+		{
+			name:     "with line only",
+			err:      ValidationError{Line: 3, Column: 0, Message: "test error"},
+			expected: "line 3: test error",
+		},
+		{
+			name:     "no line info",
+			err:      ValidationError{Line: 0, Column: 0, Message: "test error"},
+			expected: "test error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.err.Error()
+			if result != tt.expected {
+				t.Errorf("Error() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseNameAndRest(t *testing.T) {
+	tests := []struct {
+		name          string
+		fields        []string
+		expectedName  string
+		expectedC4ID  string
+		expectWarning bool
+	}{
+		{
+			name:         "empty fields",
+			fields:       []string{},
+			expectedName: "",
+			expectedC4ID: "",
+		},
+		{
+			name:         "simple file",
+			fields:       []string{"file.txt", "c4abc123"},
+			expectedName: "file.txt",
+			expectedC4ID: "c4abc123",
+		},
+		{
+			name:         "simple directory",
+			fields:       []string{"dir/"},
+			expectedName: "dir/",
+			expectedC4ID: "",
+		},
+		{
+			name:         "directory with c4id",
+			fields:       []string{"dir/", "c4abc123"},
+			expectedName: "dir/",
+			expectedC4ID: "c4abc123",
+		},
+		{
+			name:          "quoted directory with slash inside quotes",
+			fields:        []string{`"my`, `dir/"`, "c4abc123"},
+			expectedName:  "my dir/",
+			expectedC4ID:  "c4abc123",
+			expectWarning: true,
+		},
+		{
+			name:          "quoted directory with slash outside quotes",
+			fields:        []string{`"mydir"/`, "c4abc123"},
+			expectedName:  "mydir/",
+			expectedC4ID:  "c4abc123",
+			expectWarning: true,
+		},
+		{
+			name:         "quoted file name with spaces",
+			fields:       []string{`"my`, `file.txt"`, "c4abc123"},
+			expectedName: `my file.txt`, // Quotes are stripped, content joined
+			expectedC4ID: "c4abc123",
+		},
+		{
+			name:         "file name without c4id",
+			fields:       []string{"file.txt"},
+			expectedName: "file.txt",
+			expectedC4ID: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewValidator(false)
+			name, _, _, _, c4id := v.parseNameAndRest(tt.fields)
+
+			if name != tt.expectedName {
+				t.Errorf("parseNameAndRest() name = %q, want %q", name, tt.expectedName)
+			}
+			if c4id != tt.expectedC4ID {
+				t.Errorf("parseNameAndRest() c4id = %q, want %q", c4id, tt.expectedC4ID)
+			}
+			if tt.expectWarning && len(v.warnings) == 0 {
+				t.Error("parseNameAndRest() expected warning, got none")
+			}
+		})
 	}
 }

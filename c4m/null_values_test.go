@@ -20,8 +20,7 @@ func TestParseNullValues(t *testing.T) {
 	}{
 		{
 			name: "null mode",
-			input: `@c4m 1.0
----------- 2024-01-01T00:00:00Z 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `---------- 2024-01-01T00:00:00Z 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			checkMode: 0,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: 100,
@@ -29,8 +28,7 @@ func TestParseNullValues(t *testing.T) {
 		},
 		{
 			name: "null timestamp",
-			input: `@c4m 1.0
--rw-r--r-- - 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- - 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			checkMode: 0644,
 			checkTime: time.Unix(0, 0).UTC(), // Unix epoch
 			checkSize: 100,
@@ -38,8 +36,7 @@ func TestParseNullValues(t *testing.T) {
 		},
 		{
 			name: "null size",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-01T00:00:00Z - file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			input: `-rw-r--r-- 2024-01-01T00:00:00Z - file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			checkMode: 0644,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: -1, // Null size indicator
@@ -47,8 +44,7 @@ func TestParseNullValues(t *testing.T) {
 		},
 		{
 			name: "null C4 ID",
-			input: `@c4m 1.0
--rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -`,
+			input: `-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -`,
 			checkMode: 0644,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: 100,
@@ -56,8 +52,7 @@ func TestParseNullValues(t *testing.T) {
 		},
 		{
 			name: "all null values except name",
-			input: `@c4m 1.0
----------- - - file.txt -`,
+			input: `---------- - - file.txt -`,
 			checkMode: 0,
 			checkTime: time.Unix(0, 0).UTC(),
 			checkSize: -1,
@@ -65,8 +60,7 @@ func TestParseNullValues(t *testing.T) {
 		},
 		{
 			name: "single dash mode",
-			input: `@c4m 1.0
-- 2024-01-01T00:00:00Z 100 file.txt`,
+			input: `- 2024-01-01T00:00:00Z 100 file.txt`,
 			checkMode: 0,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: 100,
@@ -74,8 +68,7 @@ func TestParseNullValues(t *testing.T) {
 		},
 		{
 			name: "zero timestamp",
-			input: `@c4m 1.0
--rw-r--r-- 0 100 file.txt`,
+			input: `-rw-r--r-- 0 100 file.txt`,
 			checkMode: 0644,
 			checkTime: time.Unix(0, 0).UTC(),
 			checkSize: 100,
@@ -85,9 +78,9 @@ func TestParseNullValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manifest, err := GenerateFromReader(strings.NewReader(tt.input))
+			manifest, err := NewDecoder(strings.NewReader(tt.input)).Decode()
 			if err != nil {
-				t.Fatalf("GenerateFromReader() error = %v", err)
+				t.Fatalf("Decode() error = %v", err)
 			}
 
 			if len(manifest.Entries) != 1 {
@@ -210,17 +203,17 @@ func TestNullValueRoundTrip(t *testing.T) {
 
 	// Write to canonical format
 	var buf strings.Builder
-	_, err := manifest.WriteTo(&buf)
+	err := NewEncoder(&buf).Encode(manifest)
 	if err != nil {
-		t.Fatalf("WriteTo() error = %v", err)
+		t.Fatalf("Encode() error = %v", err)
 	}
 	
 	t.Logf("Written manifest:\n%s", buf.String())
 
 	// Parse back
-	parsed, err := GenerateFromReader(strings.NewReader(buf.String()))
+	parsed, err := NewDecoder(strings.NewReader(buf.String())).Decode()
 	if err != nil {
-		t.Fatalf("GenerateFromReader() error = %v", err)
+		t.Fatalf("Decode() error = %v", err)
 	}
 
 	// Verify entries match
