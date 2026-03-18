@@ -23,8 +23,9 @@ That 90-character string is a [SMPTE ST 2114:2017](https://ieeexplore.ieee.org/d
 identifier — an international standard built on SHA-512. Run it on
 any machine, in any language, ten years from now. Same input, same ID.
 Unlike a UUID, which is assigned arbitrarily and requires coordination
-to be meaningful, a C4 ID is discovered from the data itself. If you
-have the same file, you already agree on its identity.
+to be meaningful, a C4 ID is discovered from the data itself. If two
+people have a file with the same ID, they have identical copies of the
+same file.
 
 C4 extends this idea to entire filesystems. `c4 id` produces a c4m
 file — a plain-text manifest that captures the identity of every file
