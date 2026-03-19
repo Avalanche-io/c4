@@ -437,3 +437,137 @@ func TestDirSourceHasAndOpen(t *testing.T) {
 		t.Fatal("DirSource should not have a fake ID")
 	}
 }
+
+// TestApplyDirectoryTimestamps verifies that directories get correct
+// timestamps after all children are written.
+func TestApplyDirectoryTimestamps(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support Unix file permissions")
+	}
+
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create source files in a nested structure.
+	id1 := writeFile(t, srcDir, "dir1/a.txt", "alpha")
+	id2 := writeFile(t, srcDir, "dir1/sub/b.txt", "bravo")
+
+	dirTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	subTime := time.Date(2024, 3, 10, 8, 0, 0, 0, time.UTC)
+	fileTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{Name: "dir1/", Mode: os.ModeDir | 0755, Size: 0, Timestamp: dirTime, Depth: 0})
+	target.AddEntry(&c4m.Entry{Name: "a.txt", Mode: 0644, Size: 5, C4ID: id1, Timestamp: fileTime, Depth: 1})
+	target.AddEntry(&c4m.Entry{Name: "sub/", Mode: os.ModeDir | 0755, Size: 0, Timestamp: subTime, Depth: 1})
+	target.AddEntry(&c4m.Entry{Name: "b.txt", Mode: 0644, Size: 5, C4ID: id2, Timestamp: fileTime, Depth: 2})
+
+	// Build a source manifest that matches the on-disk layout.
+	srcManifest := c4m.NewManifest()
+	srcManifest.AddEntry(&c4m.Entry{Name: "dir1/", Mode: os.ModeDir | 0755, Size: 0, Timestamp: fileTime, Depth: 0})
+	srcManifest.AddEntry(&c4m.Entry{Name: "a.txt", Mode: 0644, Size: 5, C4ID: id1, Timestamp: fileTime, Depth: 1})
+	srcManifest.AddEntry(&c4m.Entry{Name: "sub/", Mode: os.ModeDir | 0755, Size: 0, Timestamp: fileTime, Depth: 1})
+	srcManifest.AddEntry(&c4m.Entry{Name: "b.txt", Mode: 0644, Size: 5, C4ID: id2, Timestamp: fileTime, Depth: 2})
+
+	rec := New(WithSource(NewDirSource(srcManifest, srcDir)))
+	plan, err := rec.Plan(target, dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.IsComplete() {
+		t.Fatalf("plan has %d missing IDs", len(plan.Missing))
+	}
+	_, err = rec.Apply(plan, dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check directory timestamps.
+	dir1Info, err := os.Stat(filepath.Join(dstDir, "dir1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dir1Info.ModTime().Truncate(time.Second).Equal(dirTime) {
+		t.Errorf("dir1 mtime = %v, want %v", dir1Info.ModTime(), dirTime)
+	}
+
+	subInfo, err := os.Stat(filepath.Join(dstDir, "dir1", "sub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !subInfo.ModTime().Truncate(time.Second).Equal(subTime) {
+		t.Errorf("dir1/sub mtime = %v, want %v", subInfo.ModTime(), subTime)
+	}
+
+	// File timestamps too.
+	fileInfo, err := os.Stat(filepath.Join(dstDir, "dir1", "a.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fileInfo.ModTime().Truncate(time.Second).Equal(fileTime) {
+		t.Errorf("a.txt mtime = %v, want %v", fileInfo.ModTime(), fileTime)
+	}
+}
+
+// TestApplyRoundTrip verifies that materializing a manifest and rescanning
+// produces an identical manifest (same C4 IDs for all entries).
+func TestApplyRoundTrip(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create source files.
+	id1 := writeFile(t, srcDir, "hello.txt", "hello world")
+	id2 := writeFile(t, srcDir, "sub/data.bin", "binary data here")
+
+	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{Name: "hello.txt", Mode: 0644, Size: 11, C4ID: id1, Timestamp: ts, Depth: 0})
+	target.AddEntry(&c4m.Entry{Name: "sub/", Mode: os.ModeDir | 0755, Size: 16, Timestamp: ts, Depth: 0})
+	target.AddEntry(&c4m.Entry{Name: "data.bin", Mode: 0644, Size: 16, C4ID: id2, Timestamp: ts, Depth: 1})
+
+	srcManifest := c4m.NewManifest()
+	srcManifest.AddEntry(&c4m.Entry{Name: "hello.txt", Mode: 0644, Size: 11, C4ID: id1, Timestamp: ts, Depth: 0})
+	srcManifest.AddEntry(&c4m.Entry{Name: "sub/", Mode: os.ModeDir | 0755, Size: 16, Timestamp: ts, Depth: 0})
+	srcManifest.AddEntry(&c4m.Entry{Name: "data.bin", Mode: 0644, Size: 16, C4ID: id2, Timestamp: ts, Depth: 1})
+
+	// Apply target to empty directory.
+	rec := New(WithSource(NewDirSource(srcManifest, srcDir)))
+	plan, err := rec.Plan(target, dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = rec.Apply(plan, dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify file content round-trips.
+	data1, err := os.ReadFile(filepath.Join(dstDir, "hello.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data1) != "hello world" {
+		t.Fatalf("hello.txt content = %q, want %q", data1, "hello world")
+	}
+
+	data2, err := os.ReadFile(filepath.Join(dstDir, "sub", "data.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data2) != "binary data here" {
+		t.Fatalf("data.bin content = %q, want %q", data2, "binary data here")
+	}
+
+	// Verify a second plan has zero operations (already matches).
+	plan2, err := rec.Plan(target, dstDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan2.Operations) != 0 {
+		for _, op := range plan2.Operations {
+			t.Logf("  unexpected op: type=%d path=%s", op.Type, op.Path)
+		}
+		t.Fatalf("round-trip: expected 0 operations, got %d", len(plan2.Operations))
+	}
+}
