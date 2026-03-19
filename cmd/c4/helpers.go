@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
 )
 
 // loadManifest reads and decodes a c4m file. The returned manifest has
@@ -85,6 +88,46 @@ func isDirectory(path string) bool {
 		return false
 	}
 	return info.IsDir()
+}
+
+// guidedScan scans a directory using a reference manifest to avoid rehashing
+// unchanged files. Files with matching size and timestamp get their C4 ID
+// from the reference. Only files with changed metadata are hashed.
+func guidedScan(dirPath string, ref *c4m.Manifest, mode scan.ScanMode) *c4m.Manifest {
+	refPaths := c4m.EntryPaths(ref.Entries)
+
+	// Scan in metadata mode (fast — no hashing).
+	gen := scan.NewGeneratorWithOptions(scan.WithMode(scan.ModeMetadata))
+	metaManifest, err := gen.GenerateFromPath(dirPath)
+	if err != nil {
+		fatalf("Error scanning %s: %v", dirPath, err)
+	}
+
+	scanPaths := c4m.EntryPaths(metaManifest.Entries)
+
+	// For each entry, use the reference C4 ID if metadata matches,
+	// otherwise hash the file.
+	for path, entry := range scanPaths {
+		if entry.IsDir() {
+			continue
+		}
+		refEntry, ok := refPaths[path]
+		if ok && !refEntry.C4ID.IsNil() &&
+			entry.Size == refEntry.Size &&
+			entry.Timestamp.Equal(refEntry.Timestamp) {
+			entry.C4ID = refEntry.C4ID
+		} else if mode == scan.ModeFull {
+			fullPath := filepath.Join(dirPath, filepath.FromSlash(path))
+			f, err := os.Open(fullPath)
+			if err != nil {
+				continue
+			}
+			entry.C4ID = c4.Identify(f)
+			f.Close()
+		}
+	}
+
+	return metaManifest
 }
 
 // fatalf prints to stderr and exits.

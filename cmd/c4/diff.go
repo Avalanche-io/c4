@@ -42,8 +42,10 @@ func runDiff(args []string) {
 		oldArg, newArg = newArg, oldArg
 	}
 
-	oldManifest := resolveManifestOrDir(oldArg, mode)
-	newManifest := resolveManifestOrDir(newArg, mode)
+	// Smart scan: when one side is a c4m and the other is a directory,
+	// use the c4m as a guide to avoid rehashing unchanged files.
+	// Only files with different size or timestamp get hashed.
+	oldManifest, newManifest := smartResolve(oldArg, newArg, mode)
 
 	// Store content from directory arguments if requested.
 	if *storeFlag && mode == scan.ModeFull {
@@ -118,6 +120,40 @@ func isChangesetFile(path string) bool {
 		return len(trimmed) == 90 && trimmed[0] == 'c' && trimmed[1] == '4'
 	}
 	return false
+}
+
+// smartResolve loads both arguments, using one as a guide for the other
+// when possible. When a c4m file is diffed against a directory, the c4m
+// provides known C4 IDs — the directory only needs to hash files whose
+// size or timestamp differ from the c4m. This avoids a full rehash.
+func smartResolve(oldArg, newArg string, mode scan.ScanMode) (*c4m.Manifest, *c4m.Manifest) {
+	oldIsDir := isDirectory(oldArg)
+	newIsDir := isDirectory(newArg)
+
+	// If neither or both are directories, no guide optimization possible.
+	if oldIsDir == newIsDir {
+		return resolveManifestOrDir(oldArg, mode), resolveManifestOrDir(newArg, mode)
+	}
+
+	// One is a c4m, the other is a directory. Use the c4m as a guide.
+	var ref *c4m.Manifest
+	var dirPath string
+
+	if oldIsDir {
+		ref = resolveManifestOrDir(newArg, mode) // c4m side
+		dirPath = oldArg
+	} else {
+		ref = resolveManifestOrDir(oldArg, mode) // c4m side
+		dirPath = newArg
+	}
+
+	// Scan the directory using the reference as a guide.
+	dirManifest := guidedScan(dirPath, ref, mode)
+
+	if oldIsDir {
+		return dirManifest, ref
+	}
+	return ref, dirManifest
 }
 
 // outputDiff computes and prints a diff between two manifests.

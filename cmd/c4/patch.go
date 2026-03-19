@@ -136,10 +136,10 @@ func runPatchC4mToC4m(target, dest string, ergonomic bool) {
 func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeRemovals bool, sources []string) {
 	targetManifest := resolveC4m(target)
 
-	// Scan current state for diff output and content source.
+	// Scan current state using target as a guide — only hash changed files.
 	var currentManifest *c4m.Manifest
 	if info, err := os.Stat(dirPath); err == nil && info.IsDir() {
-		currentManifest = resolveManifestOrDir(dirPath, scan.ModeFull)
+		currentManifest = guidedScan(dirPath, targetManifest, scan.ModeFull)
 	} else {
 		currentManifest = c4m.NewManifest()
 	}
