@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.0.3
+
+### New: Public scan package
+
+The directory scanner is now a public package (`github.com/Avalanche-io/c4/scan`)
+for use by ecosystem tools (c4sh, c4-mcp, etc.):
+
+```go
+m, err := scan.Dir("/path/to/dir")
+m, err := scan.Dir("/path", scan.WithMode(scan.ModeFull))
+```
+
+### New: Quiet mode (`-q`)
+
+`c4 id -q`, `c4 diff -q`, and `c4 patch -q` suppress stdout output
+for commands run for their side effects (e.g., `c4 id -sq .` stores
+content silently).
+
+### Performance: Guided scan
+
+`c4 diff` and `c4 patch` now use guided scanning when comparing a c4m
+file against a directory. Only files with changed size or timestamp are
+hashed — unchanged files reuse the C4 ID from the reference manifest.
+
+### Bug fixes
+
+- Directory timestamps now set correctly after reconciliation (deepest first)
+- Existing directories get metadata updates, not just newly created ones
+- Timestamp comparisons truncated to second precision at the c4m/filesystem
+  boundary (prevents spurious diffs from sub-second differences)
+- `isTerminal()` checks stdin, not stderr, for interactive prompts
+- Store setup prompt appears before scanning, not after
+- 12 code quality fixes: unchecked error returns on `Put()`, `Remove()`,
+  `MkdirAll()`; TOCTOU race in content sourcing; `os.Lstat` for symlink
+  safety; `filepath.Join` for Windows path construction
+
 ## v1.0.0
 
 First stable release.
