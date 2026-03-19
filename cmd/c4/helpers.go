@@ -108,6 +108,7 @@ func guidedScan(dirPath string, ref *c4m.Manifest, mode scan.ScanMode) *c4m.Mani
 
 	// For each entry, use the reference C4 ID if metadata matches,
 	// otherwise hash the file.
+	changed := make(map[string]bool) // track paths that changed
 	for path, entry := range scanPaths {
 		if entry.IsDir() {
 			continue
@@ -126,6 +127,29 @@ func guidedScan(dirPath string, ref *c4m.Manifest, mode scan.ScanMode) *c4m.Mani
 			}
 			entry.C4ID = c4.Identify(f)
 			f.Close()
+			changed[path] = true
+		} else {
+			changed[path] = true
+		}
+	}
+
+	// If nothing changed and the entry sets are identical, the scanned
+	// manifest is equivalent to the reference. Return the reference to
+	// preserve directory C4 IDs and canonical structure.
+	if len(changed) == 0 {
+		sameEntries := true
+		if len(scanPaths) != len(refPaths) {
+			sameEntries = false
+		} else {
+			for p := range scanPaths {
+				if _, ok := refPaths[p]; !ok {
+					sameEntries = false
+					break
+				}
+			}
+		}
+		if sameEntries {
+			return ref
 		}
 	}
 

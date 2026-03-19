@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // buildC4 builds the c4 binary and returns its path.
@@ -512,6 +513,48 @@ func TestDiffReverse(t *testing.T) {
 	}
 }
 
+func TestDiffGuidedScanReusesIDs(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+
+	// Create a directory with files.
+	projectDir := filepath.Join(dir, "project")
+	os.MkdirAll(projectDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, "unchanged.txt"), []byte("same"), 0644)
+	os.WriteFile(filepath.Join(projectDir, "modified.txt"), []byte("original"), 0644)
+
+	// Backdate timestamps so re-snapshot is clearly in the past.
+	past := time.Now().Add(-2 * time.Second)
+	os.Chtimes(filepath.Join(projectDir, "unchanged.txt"), past, past)
+	os.Chtimes(filepath.Join(projectDir, "modified.txt"), past, past)
+
+	// Snapshot to c4m.
+	c4mOut, _, _ := runC4(t, bin, "id", projectDir)
+	c4mPath := filepath.Join(dir, "snapshot.c4m")
+	os.WriteFile(c4mPath, []byte(c4mOut), 0644)
+
+	// Diff c4m against unchanged directory — should produce empty diff.
+	diff, _, code := runC4(t, bin, "diff", c4mPath, projectDir)
+	if code != 0 {
+		t.Fatalf("diff exit %d", code)
+	}
+	if strings.TrimSpace(diff) != "" {
+		t.Fatalf("diff of unchanged directory should be empty, got:\n%s", diff)
+	}
+
+	// Now modify one file.
+	os.WriteFile(filepath.Join(projectDir, "modified.txt"), []byte("changed!"), 0644)
+
+	// Diff should show modified.txt changed.
+	diff2, _, code := runC4(t, bin, "diff", c4mPath, projectDir)
+	if code != 0 {
+		t.Fatalf("diff exit %d", code)
+	}
+	if !strings.Contains(diff2, "modified.txt") {
+		t.Fatalf("diff should show modified.txt: %s", diff2)
+	}
+}
+
 func TestDiffMixed(t *testing.T) {
 	bin := buildC4(t)
 	dir := t.TempDir()
@@ -519,6 +562,9 @@ func TestDiffMixed(t *testing.T) {
 	dir1 := filepath.Join(dir, "v1")
 	os.MkdirAll(dir1, 0755)
 	os.WriteFile(filepath.Join(dir1, "a.txt"), []byte("original"), 0644)
+	// Backdate v1 so timestamps differ from v2.
+	past := time.Now().Add(-2 * time.Second)
+	os.Chtimes(filepath.Join(dir1, "a.txt"), past, past)
 	c4mOut, _, _ := runC4(t, bin, "id", dir1)
 	c4mPath := filepath.Join(dir, "v1.c4m")
 	os.WriteFile(c4mPath, []byte(c4mOut), 0644)
