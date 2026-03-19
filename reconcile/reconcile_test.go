@@ -2,7 +2,9 @@ package reconcile
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -569,5 +571,91 @@ func TestApplyRoundTrip(t *testing.T) {
 			t.Logf("  unexpected op: type=%d path=%s", op.Type, op.Path)
 		}
 		t.Fatalf("round-trip: expected 0 operations, got %d", len(plan2.Operations))
+	}
+}
+
+// TestPlanTimestampPrecision verifies that sub-second timestamp differences
+// do not produce spurious OpChtimes operations when the seconds match.
+func TestPlanTimestampPrecision(t *testing.T) {
+	dir := t.TempDir()
+
+	content := "timestamp precision test"
+	id := writeFile(t, dir, "ts.txt", content)
+
+	// Set file mtime with nanosecond precision.
+	tsWithNanos := time.Date(2025, 3, 15, 10, 30, 45, 123456789, time.UTC)
+	os.Chtimes(filepath.Join(dir, "ts.txt"), tsWithNanos, tsWithNanos)
+
+	// Build manifest with second-precision timestamp (same second, no nanos).
+	tsSecondOnly := time.Date(2025, 3, 15, 10, 30, 45, 0, time.UTC)
+	b := c4m.NewBuilder()
+	b.AddFile("ts.txt",
+		c4m.WithC4ID(id),
+		c4m.WithSize(int64(len(content))),
+		c4m.WithMode(0644),
+		c4m.WithTimestamp(tsSecondOnly),
+	)
+	m, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := New()
+	plan, err := rec.Plan(m, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, op := range plan.Operations {
+		if op.Type == OpChtimes {
+			t.Fatalf("unexpected OpChtimes: sub-second difference should be ignored (file=%v, manifest=%v)",
+				tsWithNanos, tsSecondOnly)
+		}
+	}
+}
+
+// failSource is a ContentSource where Has returns true but Open always fails.
+type failSource struct {
+	ids map[c4.ID]bool
+}
+
+func (f *failSource) Has(id c4.ID) bool {
+	return f.ids[id]
+}
+
+func (f *failSource) Open(id c4.ID) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("failSource: simulated open failure")
+}
+
+// TestOpenContentSkipsFailedSources verifies that openContent tries the next
+// source when the first source fails to Open, rather than relying on Has().
+func TestOpenContentSkipsFailedSources(t *testing.T) {
+	dir := t.TempDir()
+	content := "content from second source"
+	id := writeFile(t, dir, "data.txt", content)
+
+	// First source: claims to have the ID but fails to open.
+	bad := &failSource{ids: map[c4.ID]bool{id: true}}
+
+	// Second source: actually has the content.
+	goodManifest := buildManifest(t, []testEntry{
+		{name: "data.txt", content: content, id: id, mode: 0644},
+	})
+	good := NewDirSource(goodManifest, dir)
+
+	rec := New(WithSource(bad), WithSource(good))
+
+	rc, err := rec.openContent(id)
+	if err != nil {
+		t.Fatalf("openContent should succeed from second source: %v", err)
+	}
+	defer rc.Close()
+
+	data, err := ioutil.ReadAll(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != content {
+		t.Fatalf("got %q, want %q", data, content)
 	}
 }

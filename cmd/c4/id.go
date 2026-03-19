@@ -217,7 +217,9 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		if err != nil {
 			continue // skip files we can't open
 		}
-		s.Put(f)
+		if _, err := s.Put(f); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
+		}
 		f.Close()
 	}
 }

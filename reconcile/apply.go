@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -153,7 +154,9 @@ func (r *Reconciler) applyMove(op Operation, res *Result) error {
 	}
 
 	// Ensure parent directory exists.
-	os.MkdirAll(filepath.Dir(op.Path), 0755)
+	if err := os.MkdirAll(filepath.Dir(op.Path), 0755); err != nil {
+		return err
+	}
 
 	err := os.Rename(op.SrcPath, op.Path)
 	if err != nil {
@@ -162,7 +165,9 @@ func (r *Reconciler) applyMove(op Operation, res *Result) error {
 			if err := copyFile(op.SrcPath, op.Path); err != nil {
 				return err
 			}
-			os.Remove(op.SrcPath)
+			if err := os.Remove(op.SrcPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
 		} else {
 			return err
 		}
@@ -187,7 +192,12 @@ func (r *Reconciler) applySymlink(op Operation, res *Result) error {
 		return nil
 	}
 
-	os.Remove(op.Path)
+	if err := os.Remove(op.Path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(op.Path), 0755); err != nil {
+		return err
+	}
 	if err := os.Symlink(op.Entry.Target, op.Path); err != nil {
 		return err
 	}
@@ -252,7 +262,9 @@ func (r *Reconciler) applyRemove(op Operation, res *Result) error {
 		if !op.ContentID.IsNil() && !r.storeRemovals.Has(op.ContentID) {
 			f, err := os.Open(op.Path)
 			if err == nil {
-				r.storeRemovals.Put(f)
+				if _, err := r.storeRemovals.Put(f); err != nil {
+					res.Errors = append(res.Errors, fmt.Errorf("store removal %s: %w", op.Path, err))
+				}
 				f.Close()
 			}
 		}

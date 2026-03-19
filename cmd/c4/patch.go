@@ -506,7 +506,9 @@ func storeManifestAsContent(m *c4m.Manifest, s store.Store) {
 	if err != nil {
 		return
 	}
-	s.Put(bytes.NewReader(data))
+	if _, err := s.Put(bytes.NewReader(data)); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to store pre-patch manifest: %v\n", err)
+	}
 }
 
 // reportResult prints a reconciliation summary to stderr.

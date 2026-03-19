@@ -3,6 +3,7 @@ package reconcile
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Avalanche-io/c4"
@@ -50,7 +51,7 @@ func NewDirSource(m *c4m.Manifest, baseDir string) *DirSource {
 			continue
 		}
 
-		fullPath := baseDir + "/" + relPath
+		fullPath := filepath.Join(baseDir, filepath.FromSlash(relPath))
 		ds.index[e.C4ID] = append(ds.index[e.C4ID], fullPath)
 	}
 
@@ -65,7 +66,7 @@ func (ds *DirSource) Has(id c4.ID) bool {
 	}
 	// Verify at least one path still exists.
 	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
+		if _, err := os.Lstat(p); err == nil {
 			return true
 		}
 	}
@@ -177,8 +178,9 @@ func New(opts ...Option) *Reconciler {
 // openContent searches all sources for the given C4 ID and returns a reader.
 func (r *Reconciler) openContent(id c4.ID) (io.ReadCloser, error) {
 	for _, src := range r.sources {
-		if src.Has(id) {
-			return src.Open(id)
+		rc, err := src.Open(id)
+		if err == nil {
+			return rc, nil
 		}
 	}
 	return nil, os.ErrNotExist

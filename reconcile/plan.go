@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -120,7 +121,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 			needChmod := runtime.GOOS != "windows" &&
 				entry.Mode != 0 && curInfo.Mode().Perm() != entry.Mode.Perm()
 				needChtimes := !entry.Timestamp.Equal(c4m.NullTimestamp()) &&
-					!curInfo.ModTime().UTC().Equal(entry.Timestamp.UTC())
+					!curInfo.ModTime().UTC().Truncate(time.Second).Equal(entry.Timestamp.UTC().Truncate(time.Second))
 
 				if needChmod {
 					chmods = append(chmods, Operation{
