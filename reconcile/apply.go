@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"syscall"
 
 	"github.com/Avalanche-io/c4/c4m"
@@ -20,12 +21,18 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 
 	res := &Result{}
 
+	// Collect directory operations for a post-pass. Directory metadata
+	// (especially timestamps) must be set AFTER all children are written,
+	// because writing children updates the directory mtime.
+	var dirOps []Operation
+
 	for _, op := range plan.Operations {
 		switch op.Type {
 		case OpMkdir:
 			if err := r.applyMkdir(op, res); err != nil {
 				res.Errors = append(res.Errors, err)
 			}
+			dirOps = append(dirOps, op)
 		case OpCreate:
 			if err := r.applyCreate(op, res); err != nil {
 				res.Errors = append(res.Errors, err)
@@ -54,6 +61,17 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 			if err := r.applyRmdir(op, res); err != nil {
 				res.Errors = append(res.Errors, err)
 			}
+		}
+	}
+
+	// Post-pass: set directory metadata. Process deepest first so that
+	// setting a child directory's timestamp doesn't reset its parent's.
+	if !r.dryRun {
+		sort.Slice(dirOps, func(i, j int) bool {
+			return len(dirOps[i].Path) > len(dirOps[j].Path) // deepest first
+		})
+		for _, op := range dirOps {
+			r.setMetadata(op.Path, op.Entry)
 		}
 	}
 
