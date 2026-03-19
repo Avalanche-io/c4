@@ -248,7 +248,7 @@ func getOrSetupStore() store.Store {
 }
 
 func isTerminal() bool {
-	stat, _ := os.Stderr.Stat()
+	stat, _ := os.Stdin.Stat()
 	return (stat.Mode() & os.ModeCharDevice) != 0
 }
 
