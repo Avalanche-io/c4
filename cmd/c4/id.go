@@ -48,6 +48,14 @@ func runID(args []string) {
 		shouldStore = false
 	}
 
+	// If -s is requested, ensure the store is configured before scanning.
+	// This prompts the user immediately rather than after a long scan.
+	if shouldStore {
+		if s := getOrSetupStore(); s == nil {
+			shouldStore = false
+		}
+	}
+
 	// Build scan options for exclusion.
 	var scanExcludes []string
 	scanExcludes = append(scanExcludes, *excludeFlags...)
