@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -112,9 +113,10 @@ func guidedScan(dirPath string, ref *c4m.Manifest, mode scan.ScanMode) *c4m.Mani
 			continue
 		}
 		refEntry, ok := refPaths[path]
+		// Compare timestamps at second precision — c4m truncates to seconds.
 		if ok && !refEntry.C4ID.IsNil() &&
 			entry.Size == refEntry.Size &&
-			entry.Timestamp.Equal(refEntry.Timestamp) {
+			entry.Timestamp.Truncate(time.Second).Equal(refEntry.Timestamp.Truncate(time.Second)) {
 			entry.C4ID = refEntry.C4ID
 		} else if mode == scan.ModeFull {
 			fullPath := filepath.Join(dirPath, filepath.FromSlash(path))
