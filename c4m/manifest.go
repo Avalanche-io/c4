@@ -199,10 +199,36 @@ func (m *Manifest) HasNullValues() bool {
 	return false
 }
 
-// GetEntry returns an entry by its path (O(1) after index build).
+// GetEntry returns an entry by its full path (O(1) after index build).
+// The path is reconstructed from the parent chain — for example, a file
+// "main.go" inside directory "src/" has the full path "src/main.go".
+// Root-level entries are keyed by their bare name (e.g., "readme.txt").
 func (m *Manifest) GetEntry(path string) *Entry {
 	idx := m.ensureIndex()
 	return idx.byPath[path]
+}
+
+// GetEntryByName returns an entry by its bare Name field (O(1) after index build).
+// Unlike GetEntry, this does NOT use the full path — it matches against the
+// entry's Name directly. If multiple entries share the same bare name (e.g.,
+// "main.go" under different directories), the last one indexed wins.
+// Use GetEntry with full paths for unambiguous lookup.
+func (m *Manifest) GetEntryByName(name string) *Entry {
+	idx := m.ensureIndex()
+	return idx.byName[name]
+}
+
+// EntryPath returns the full path of an entry within the manifest (O(1)
+// after index build). For root-level entries this is just the entry's Name.
+// For nested entries it is the concatenation of ancestor names from root to
+// the entry itself (e.g., "src/internal/helper.go" or "src/internal/").
+// Returns "" if the entry is nil or not found in the index.
+func (m *Manifest) EntryPath(e *Entry) string {
+	if e == nil {
+		return ""
+	}
+	idx := m.ensureIndex()
+	return idx.pathOf[e]
 }
 
 // GetEntriesAtDepth returns all entries at a specific depth
@@ -520,7 +546,9 @@ func getMostRecentModtime(entries []*Entry) time.Time {
 
 // treeIndex provides O(1) navigation through manifest hierarchy
 type treeIndex struct {
-	byPath   map[string]*Entry   // path -> entry
+	byPath   map[string]*Entry   // full path -> entry (e.g., "src/main.go", "src/internal/")
+	byName   map[string]*Entry   // bare name -> entry (e.g., "main.go", "internal/")
+	pathOf   map[*Entry]string   // entry -> full path
 	children map[*Entry][]*Entry // parent -> direct children
 	parent   map[*Entry]*Entry   // child -> parent
 	root     []*Entry            // depth-0 entries
@@ -539,20 +567,22 @@ func (m *Manifest) ensureIndex() *treeIndex {
 
 	idx := &treeIndex{
 		byPath:   make(map[string]*Entry),
+		byName:   make(map[string]*Entry),
+		pathOf:   make(map[*Entry]string),
 		children: make(map[*Entry][]*Entry),
 		parent:   make(map[*Entry]*Entry),
 		root:     make([]*Entry, 0),
 	}
 
-	// Build path lookup and collect root entries
+	// First pass: collect root entries and build bare-name index
 	for _, e := range m.Entries {
-		idx.byPath[e.Name] = e
+		idx.byName[e.Name] = e
 		if e.Depth == 0 {
 			idx.root = append(idx.root, e)
 		}
 	}
 
-	// Build parent-child relationships
+	// Second pass: build parent-child relationships
 	// For each entry, find its parent based on depth and position
 	for i, e := range m.Entries {
 		if e.Depth == 0 {
@@ -572,6 +602,24 @@ func (m *Manifest) ensureIndex() *treeIndex {
 				break
 			}
 		}
+	}
+
+	// Third pass: compute full paths from parent chain
+	for _, e := range m.Entries {
+		var parts []string
+		current := e
+		for current != nil {
+			parts = append(parts, current.Name)
+			current = idx.parent[current]
+		}
+		// Reverse parts to get root-first order
+		for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+			parts[i], parts[j] = parts[j], parts[i]
+		}
+		// Directory names already include trailing "/", so join directly.
+		fullPath := strings.Join(parts, "")
+		idx.byPath[fullPath] = e
+		idx.pathOf[e] = fullPath
 	}
 
 	m.index = idx
@@ -625,7 +673,11 @@ func (m *Manifest) Siblings(e *Entry) []*Entry {
 	return siblings
 }
 
-// Ancestors returns all parent entries from immediate parent to root
+// Ancestors returns all parent entries from immediate parent to root.
+// The ordering is inner-to-outer: [parent, grandparent, great-grandparent, ...].
+// For example, for entry "deep.txt" at path "a/b/c/deep.txt", Ancestors returns
+// [c/, b/, a/]. To reconstruct the full path, reverse the slice and join names —
+// or more conveniently, use EntryPath(e) which does this for you.
 func (m *Manifest) Ancestors(e *Entry) []*Entry {
 	if e == nil || e.Depth == 0 {
 		return nil
@@ -670,4 +722,39 @@ func (m *Manifest) Descendants(e *Entry) []*Entry {
 func (m *Manifest) Root() []*Entry {
 	idx := m.ensureIndex()
 	return idx.root
+}
+
+// MoveEntry moves an entry to a new parent with a new name. If newParent is
+// nil the entry is moved to the root level (depth 0). The entry's Name,
+// Depth, and all descendant Depths are updated, the index is invalidated,
+// and entries are re-sorted to maintain correct c4m ordering.
+//
+// For directory entries, newName should include the trailing "/" — this is
+// NOT added automatically so callers retain full control.
+func (m *Manifest) MoveEntry(e *Entry, newParent *Entry, newName string) {
+	// Compute the target depth.
+	var targetDepth int
+	if newParent != nil {
+		targetDepth = newParent.Depth + 1
+	}
+	depthDelta := targetDepth - e.Depth
+
+	// Collect descendants BEFORE updating depths, since Descendants
+	// uses the tree index which relies on current entry ordering.
+	var descendants []*Entry
+	if e.IsDir() {
+		descendants = m.Descendants(e)
+	}
+
+	// Update the entry.
+	e.Name = newName
+	e.Depth = targetDepth
+
+	// Update all descendants' depths.
+	for _, d := range descendants {
+		d.Depth += depthDelta
+	}
+
+	m.invalidateIndex()
+	m.SortEntries()
 }

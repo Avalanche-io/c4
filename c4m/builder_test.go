@@ -62,10 +62,10 @@ func TestManifestBuilder_WithDirectory(t *testing.T) {
 		t.Errorf("src/ expected depth 0, got %d", src.Depth)
 	}
 
-	// Check main.go inside src
-	mainGo := m.GetEntry("main.go")
+	// Check main.go inside src (full path includes parent)
+	mainGo := m.GetEntry("src/main.go")
 	if mainGo == nil {
-		t.Fatal("expected to find main.go")
+		t.Fatal("expected to find src/main.go")
 	}
 	if mainGo.Depth != 1 {
 		t.Errorf("main.go expected depth 1, got %d", mainGo.Depth)
@@ -89,18 +89,18 @@ func TestManifestBuilder_NestedDirectories(t *testing.T) {
 		End().
 		MustBuild()
 
-	// Check depths
+	// Check depths (GetEntry uses full paths)
 	tests := []struct {
 		path  string
 		depth int
 	}{
 		{"src/", 0},
-		{"main.go", 1},
-		{"internal/", 1},
-		{"helper.go", 2},
-		{"deep/", 2},
-		{"nested.go", 3},
-		{"util.go", 1},
+		{"src/main.go", 1},
+		{"src/internal/", 1},
+		{"src/internal/helper.go", 2},
+		{"src/internal/deep/", 2},
+		{"src/internal/deep/nested.go", 3},
+		{"src/util.go", 1},
 	}
 
 	for _, tt := range tests {
@@ -200,8 +200,8 @@ func TestManifest_Builder(t *testing.T) {
 	if m.GetEntry("newdir/") == nil {
 		t.Error("newdir/ should exist")
 	}
-	if m.GetEntry("nested.txt") == nil {
-		t.Error("nested.txt should exist")
+	if m.GetEntry("newdir/nested.txt") == nil {
+		t.Error("newdir/nested.txt should exist")
 	}
 }
 
@@ -223,8 +223,8 @@ func TestTreeNavigation_GetEntry(t *testing.T) {
 	if m.GetEntry("dir/") == nil {
 		t.Error("GetEntry failed for dir/")
 	}
-	if m.GetEntry("nested.txt") == nil {
-		t.Error("GetEntry failed for nested.txt")
+	if m.GetEntry("dir/nested.txt") == nil {
+		t.Error("GetEntry failed for dir/nested.txt")
 	}
 	if m.GetEntry("nonexistent") != nil {
 		t.Error("GetEntry should return nil for nonexistent")
@@ -259,7 +259,7 @@ func TestTreeNavigation_Children(t *testing.T) {
 	}
 
 	// Test Children on file (should return nil)
-	file := m.GetEntry("child1.txt")
+	file := m.GetEntry("parent/child1.txt")
 	if m.Children(file) != nil {
 		t.Error("Children of file should be nil")
 	}
@@ -279,7 +279,7 @@ func TestTreeNavigation_Parent(t *testing.T) {
 		End().
 		MustBuild()
 
-	deep := m.GetEntry("deep.txt")
+	deep := m.GetEntry("level1/level2/deep.txt")
 	parent := m.Parent(deep)
 	if parent == nil || parent.Name != "level2/" {
 		t.Error("Parent of deep.txt should be level2/")
@@ -320,7 +320,7 @@ func TestTreeNavigation_Siblings(t *testing.T) {
 	}
 
 	// Test nested siblings
-	nested1 := m.GetEntry("nested1.txt")
+	nested1 := m.GetEntry("dir/nested1.txt")
 	nestedSiblings := m.Siblings(nested1)
 	if len(nestedSiblings) != 1 {
 		t.Errorf("expected 1 nested sibling, got %d", len(nestedSiblings))
@@ -346,7 +346,7 @@ func TestTreeNavigation_Ancestors(t *testing.T) {
 		End().
 		MustBuild()
 
-	deep := m.GetEntry("deep.txt")
+	deep := m.GetEntry("a/b/c/deep.txt")
 	ancestors := m.Ancestors(deep)
 
 	if len(ancestors) != 3 {
@@ -395,7 +395,7 @@ func TestTreeNavigation_Descendants(t *testing.T) {
 	}
 
 	// Test Descendants on file (should be nil)
-	file := m.GetEntry("file1.txt")
+	file := m.GetEntry("root/file1.txt")
 	if m.Descendants(file) != nil {
 		t.Error("Descendants of file should be nil")
 	}

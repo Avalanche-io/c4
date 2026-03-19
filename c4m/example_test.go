@@ -153,8 +153,8 @@ func ExampleNewBuilder() {
 
 	fmt.Printf("Total entries: %d\n", len(m.Entries))
 
-	// Verify depth was computed correctly
-	helper := m.GetEntry("helper.go")
+	// Verify depth was computed correctly (GetEntry uses full paths)
+	helper := m.GetEntry("src/internal/helper.go")
 	fmt.Printf("helper.go depth: %d\n", helper.Depth)
 
 	// Output:
@@ -217,7 +217,7 @@ func ExampleManifest_Ancestors() {
 		End().
 		MustBuild()
 
-	deep := m.GetEntry("deep.txt")
+	deep := m.GetEntry("a/b/c/deep.txt")
 	ancestors := m.Ancestors(deep)
 
 	fmt.Printf("deep.txt has %d ancestors:\n", len(ancestors))

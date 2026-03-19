@@ -329,24 +329,24 @@ func TestEntryTreePath(t *testing.T) {
 		MustBuild()
 
 	tests := []struct {
-		name string
-		want string
+		fullPath string // GetEntry now uses full paths
+		want     string
 	}{
 		{"project/", "project/"},
-		{"src/", "project/src/"},
-		{"shared/", "project/src/shared/"},
-		{"file.txt", "project/src/shared/file.txt"},
+		{"project/src/", "project/src/"},
+		{"project/src/shared/", "project/src/shared/"},
+		{"project/src/shared/file.txt", "project/src/shared/file.txt"},
 	}
 
 	for _, tt := range tests {
-		e := m.GetEntry(tt.name)
+		e := m.GetEntry(tt.fullPath)
 		if e == nil {
-			t.Errorf("GetEntry(%q) returned nil", tt.name)
+			t.Errorf("GetEntry(%q) returned nil", tt.fullPath)
 			continue
 		}
 		got := m.EntryTreePath(e)
 		if got != tt.want {
-			t.Errorf("EntryTreePath(%q): got %q, want %q", tt.name, got, tt.want)
+			t.Errorf("EntryTreePath(%q): got %q, want %q", tt.fullPath, got, tt.want)
 		}
 	}
 }

@@ -125,41 +125,13 @@ func (m *Manifest) EntryTreePath(e *Entry) string {
 
 // findByTreePath locates an entry by its full tree path. The path is
 // the concatenation of ancestor names — e.g., "shared/" for depth 0,
-// "project/src/shared/" for nested entries.
+// "project/src/shared/" for nested entries. Uses the full-path index
+// for O(1) lookup.
 func (m *Manifest) findByTreePath(treePath string) *Entry {
-	parts := splitTreePath(treePath)
-	if len(parts) == 0 {
+	if treePath == "" {
 		return nil
 	}
-
-	// For single-component paths (root-level entries), use the index
-	// for O(1) lookup. This is the common case for flow links.
-	if len(parts) == 1 {
-		return m.GetEntry(parts[0])
-	}
-
-	// Multi-component path: traverse the tree.
-	current := m.Root()
-	for i, part := range parts {
-		var found *Entry
-		for _, e := range current {
-			if e.Name == part {
-				found = e
-				break
-			}
-		}
-		if found == nil {
-			return nil
-		}
-		if i == len(parts)-1 {
-			return found
-		}
-		if !found.IsDir() {
-			return nil // non-directory in middle of path
-		}
-		current = m.Children(found)
-	}
-	return nil
+	return m.GetEntry(treePath)
 }
 
 // splitTreePath splits a tree path into its components. Each directory

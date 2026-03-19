@@ -292,7 +292,8 @@ func TestManifestGetEntry(t *testing.T) {
 		want *Entry
 	}{
 		{"file1.txt", e1},
-		{"file2.txt", e2},
+		{"dir1/file2.txt", e2},  // full path for nested entry
+		{"file2.txt", nil},      // bare name doesn't work for nested entries
 		{"nonexistent.txt", nil},
 	}
 
@@ -303,6 +304,11 @@ func TestManifestGetEntry(t *testing.T) {
 				t.Errorf("GetEntry(%q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})
+	}
+
+	// GetEntryByName still works with bare names
+	if got := m.GetEntryByName("file2.txt"); got != e2 {
+		t.Errorf("GetEntryByName(\"file2.txt\") = %v, want %v", got, e2)
 	}
 }
 

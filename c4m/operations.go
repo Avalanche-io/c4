@@ -545,11 +545,14 @@ func (r *Resolver) Resolve(rootManifestID c4.ID, path string) (*ResolveResult, e
 	currentDepth := 0
 
 	for i, part := range parts {
-		// Find entry in current manifest at the expected depth
-		entry := manifest.GetEntry(part)
+		// Find entry in current manifest at the expected depth.
+		// Use GetEntryByName because the Resolver traverses one component
+		// at a time; for hierarchical manifests each sub-manifest starts at
+		// depth 0, so bare names are sufficient.
+		entry := manifest.GetEntryByName(part)
 		if entry == nil {
 			// Try with trailing slash (for directories)
-			entry = manifest.GetEntry(part + "/")
+			entry = manifest.GetEntryByName(part + "/")
 		}
 
 		if entry == nil {
