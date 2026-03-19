@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/Avalanche-io/c4/c4m"
-	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
+	"github.com/Avalanche-io/c4/scan"
 	"github.com/Avalanche-io/c4/store"
 )
 

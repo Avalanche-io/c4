@@ -9,7 +9,7 @@ import (
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
-	"github.com/Avalanche-io/c4/cmd/c4/internal/scan"
+	"github.com/Avalanche-io/c4/scan"
 )
 
 // loadManifest reads and decodes a c4m file. The returned manifest has
