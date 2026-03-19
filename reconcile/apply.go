@@ -51,8 +51,13 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 				res.Errors = append(res.Errors, err)
 			}
 		case OpChtimes:
-			if err := r.applyChtimes(op, res); err != nil {
-				res.Errors = append(res.Errors, err)
+			// Defer directory chtimes to the post-pass (children may update mtime).
+			if op.Entry != nil && op.Entry.IsDir() {
+				dirOps = append(dirOps, op)
+			} else {
+				if err := r.applyChtimes(op, res); err != nil {
+					res.Errors = append(res.Errors, err)
+				}
 			}
 		case OpRemove:
 			if err := r.applyRemove(op, res); err != nil {

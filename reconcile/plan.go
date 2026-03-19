@@ -82,12 +82,31 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 		targetAccountedFor[relPath] = true
 
 		if entry.IsDir() {
-			if _, exists := currentFiles[relPath]; !exists {
+			curInfo, exists := currentFiles[relPath]
+			if !exists {
 				mkdirs = append(mkdirs, Operation{
 					Type:  OpMkdir,
 					Path:  absPath,
 					Entry: entry,
 				})
+			} else {
+				// Directory exists — check if metadata needs updating.
+				if !entry.Timestamp.Equal(c4m.NullTimestamp()) &&
+					!curInfo.ModTime().UTC().Truncate(time.Second).Equal(entry.Timestamp.UTC().Truncate(time.Second)) {
+					chtimes = append(chtimes, Operation{
+						Type:  OpChtimes,
+						Path:  absPath,
+						Entry: entry,
+					})
+				}
+				if runtime.GOOS != "windows" &&
+					entry.Mode != 0 && curInfo.Mode().Perm() != entry.Mode.Perm() {
+					chmods = append(chmods, Operation{
+						Type:  OpChmod,
+						Path:  absPath,
+						Entry: entry,
+					})
+				}
 			}
 			continue
 		}
