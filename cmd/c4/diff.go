@@ -13,6 +13,7 @@ import (
 func runDiff(args []string) {
 	fs := newFlags("diff")
 	storeFlag := fs.boolFlag("store", 's', false, "Store content in the configured store")
+	quiet := fs.boolFlag("quiet", 'q', false, "Suppress output (useful with -s)")
 	reverseFlag := fs.boolFlag("reverse", 'r', false, "Reverse: diff against pre-patch state from a changeset")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directories: s/m/f")
@@ -33,7 +34,7 @@ func runDiff(args []string) {
 
 	// Reverse mode with a changeset: extract OldID, load pre-patch manifest from store.
 	if *reverseFlag && !isDirectory(fs.args[0]) && isChangesetFile(fs.args[0]) {
-		runDiffReverse(fs.args[0], fs.args[1], mode, *ergonomic)
+		runDiffReverse(fs.args[0], fs.args[1], mode, *ergonomic, *quiet)
 		return
 	}
 
@@ -57,12 +58,14 @@ func runDiff(args []string) {
 		}
 	}
 
-	outputDiff(oldManifest, newManifest, *ergonomic)
+	if !*quiet {
+		outputDiff(oldManifest, newManifest, *ergonomic)
+	}
 }
 
 // runDiffReverse handles `c4 diff -r changeset.c4m dir/`.
 // Loads the pre-patch manifest from the store and diffs the directory against it.
-func runDiffReverse(changesetPath, dirPath string, mode scan.ScanMode, ergonomic bool) {
+func runDiffReverse(changesetPath, dirPath string, mode scan.ScanMode, ergonomic, quiet bool) {
 	// Read the changeset to extract OldID.
 	data, err := os.ReadFile(changesetPath)
 	if err != nil {
@@ -101,7 +104,9 @@ func runDiffReverse(changesetPath, dirPath string, mode scan.ScanMode, ergonomic
 
 	// Diff current state against pre-patch state.
 	currentManifest := resolveManifestOrDir(dirPath, mode)
-	outputDiff(currentManifest, prePatchManifest, ergonomic)
+	if !quiet {
+		outputDiff(currentManifest, prePatchManifest, ergonomic)
+	}
 }
 
 // isChangesetFile returns true if the file starts with a bare C4 ID line

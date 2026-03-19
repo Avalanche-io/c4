@@ -16,6 +16,7 @@ import (
 func runID(args []string) {
 	fs := newFlags("id")
 	storeFlag := fs.boolFlag("store", 's', false, "Store content in the configured store")
+	quiet := fs.boolFlag("quiet", 'q', false, "Suppress output (useful with -s)")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form c4m")
 	seqFlag := fs.boolFlag("sequence", 'S', false, "Detect and fold file sequences")
 	excludeFlags := fs.stringArrayFlag("exclude", "Glob pattern to exclude (repeatable)")
@@ -81,7 +82,9 @@ func runID(args []string) {
 
 		if info.IsDir() {
 			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide)
-			outputManifest(m, *ergonomic)
+			if !*quiet {
+				outputManifest(m, *ergonomic)
+			}
 			return
 		}
 
@@ -91,7 +94,9 @@ func runID(args []string) {
 			if err != nil {
 				fatalf("Error loading %s: %v", p, err)
 			}
-			outputManifest(m, *ergonomic)
+			if !*quiet {
+				outputManifest(m, *ergonomic)
+			}
 			return
 		}
 
@@ -100,7 +105,9 @@ func runID(args []string) {
 		combined.AddEntry(entry)
 	}
 
-	outputManifest(combined, *ergonomic)
+	if !*quiet {
+		outputManifest(combined, *ergonomic)
+	}
 }
 
 func doStdin(storeFlag bool) {
