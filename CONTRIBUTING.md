@@ -144,7 +144,7 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ## License
 
-By contributing to C4, you agree that your contributions will be licensed under the MIT License. See [LICENSE](LICENSE) for details.
+By contributing to C4, you agree that your contributions will be licensed under the Apache License. See [LICENSE](LICENSE) for details.
 
 ## Questions?
 
