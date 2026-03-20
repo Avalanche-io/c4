@@ -106,6 +106,16 @@ awk '{print $NF}' project.c4m | sort | uniq -d       # find duplicates
 grep '\.exr ' project.c4m | wc -l                    # count EXR files
 ```
 
+**Merge two trees.** Combine branches, deliveries, or any two c4m
+files into one:
+
+```bash
+c4 merge branch-a.c4m branch-b.c4m > merged.c4m
+```
+
+Conflicts (same path, different content) are reported. Non-overlapping
+entries are combined.
+
 **Scan fast, hash later.** Structure-only scans skip content hashing.
 Edit the manifest, then hash only what survived:
 
@@ -166,6 +176,7 @@ Zero external dependencies. Go 1.16+.
 - [C4 ID Whitepaper](http://www.cccc.io/c4id-whitepaper-u2.pdf)
 - [CLI Reference](./docs/cli-reference.md)
 - [Getting Started](./docs/getting-started.md)
+- [FAQ](./docs/faq.md) — design decisions (SHA-512 permanence, c4m format, store scaling)
 
 ## License
 
