@@ -53,7 +53,7 @@ The c4m format builds on this standard, adding filesystem metadata
 The format is deliberately simple: one line per entry, fields in
 predictable positions, plain text throughout. Independent
 implementations are straightforward -- [libc4](https://github.com/Avalanche-io/libc4)
-(C/C++) and [c4py](https://github.com/Avalanche-io/c4-python) (Python)
+(C/C++) and [c4py](https://github.com/Avalanche-io/c4py) (Python)
 both implement the format, producing byte-identical output to the Go
 reference implementation.
 
