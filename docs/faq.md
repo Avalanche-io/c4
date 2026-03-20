@@ -90,3 +90,18 @@ roughly 13 million objects before a second level of sharding would be
 needed. In practice, this has not yet been tested at that scale in
 production -- we are honest about this. The architecture is sound, but
 billion-object production deployments remain ahead of us.
+
+## Why plain text instead of a binary format?
+
+Because text costs almost nothing and gains everything.
+
+Compressed c4m files are within 2% of a purpose-built low-entropy binary
+format. The reason: SHA-512 digests are genuinely high-entropy data —
+designed to be indistinguishable from random bytes. No encoding, binary
+or text, can compress them significantly. The IDs dominate the file
+size, and base58 text compresses to nearly the same size as raw binary.
+
+That 2% buys you: human readability in any text editor, grep/awk/sort
+composability, meaningful diffs in version control, and the ability to
+email a manifest as plain text. A binary format would save almost
+nothing and sacrifice all of this.
