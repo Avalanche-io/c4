@@ -11,7 +11,7 @@ A c4m file represents the complete POSIX-like filesystem tree:
 - **Symbolic links** with targets and target content identity
 - **Hard links** with group tracking
 - **Named pipes, sockets, block and character devices** (type and permissions)
-- **Arbitrary filenames** including non-printable bytes, control characters, and invalid UTF-8 (via [Universal Filename Encoding](../design/filename-encoding.md))
+- **Arbitrary filenames** including non-printable bytes, control characters, and invalid UTF-8 (via Universal Filename Encoding — see `SafeName`/`UnsafeName` in the c4m package)
 - **Media file sequences** like `frame.[0001-0100].exr` in compact notation
 
 This covers the structural and content information of any filesystem you are likely to encounter.

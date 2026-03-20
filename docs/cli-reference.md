@@ -78,6 +78,7 @@ c4 id . | c4
 | Flag | Long | Description |
 |------|------|-------------|
 | `-s` | `--store` | Store content in the configured store (opt-in) |
+| `-q` | `--quiet` | Suppress output (useful with `-s`) |
 | `-e` | `--ergonomic` | Output ergonomic form c4m |
 | `-S` | `--sequence` | Detect and fold file sequences |
 | `-m` | `--mode` | Scan mode: `s`/`m`/`f` (see Scan Modes) |
@@ -146,6 +147,7 @@ Empty diff produces no output.
 |------|------|-------------|
 | `-r` | `--reverse` | With a changeset: diff against the pre-patch state from store. With two manifests/dirs: swap old and new. |
 | `-s` | `--store` | Store content from directory arguments |
+| `-q` | `--quiet` | Suppress output (useful with `-s`) |
 | `-e` | `--ergonomic` | Output ergonomic form |
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
 
@@ -194,6 +196,7 @@ to a file and used later for reversal with `-r`.
 |------|------|-------------|
 | `-s` | `--store` | Store pre-patch c4m + removed content (enables `-r` reversal) |
 | `-r` | `--reverse` | Revert: restore directory to pre-patch state using stored c4m |
+| `-q` | `--quiet` | Suppress changeset output to stdout |
 | `-e` | `--ergonomic` | Output ergonomic form |
 | `-n` | `--number` | Resolve to specific patch number (1-based) |
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |

@@ -2,16 +2,10 @@
 
 ## Supported Versions
 
-The C4 project is currently maintained on the master branch. We provide security updates for:
-
 | Version | Supported          |
 | ------- | ------------------ |
-| master branch | :white_check_mark: |
-| v0.8.1  | :white_check_mark: |
-| v0.8.0  | :x:                |
-| < v0.8  | :x:                |
-
-**Note**: The `v0.8` tag always points to the latest v0.8.x release.
+| v1.0.x  | :white_check_mark: |
+| < v1.0  | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -29,7 +23,7 @@ We take security vulnerabilities seriously. If you discover a security issue in 
 ### What to Include
 
 - Type of vulnerability (e.g., path traversal, denial of service, etc.)
-- Affected components (e.g., file walker, storage layer, etc.)
+- Affected components (e.g., scanner, store, reconciler, etc.)
 - Potential impact
 - Steps to reproduce
 - Suggested fixes (if any)
@@ -49,19 +43,22 @@ We take security vulnerabilities seriously. If you discover a security issue in 
 
 ## Security Considerations
 
-C4 is designed for content identification and may operate with elevated privileges when performing system-wide scans. Users should:
+C4 scans filesystem trees and may operate on untrusted directory structures. Users should:
 
 - Only run C4 with elevated privileges when necessary
-- Be aware that C4 follows symbolic links by default, which could lead to scanning unintended locations or loops in untrusted directory structures
-- Keep dependencies up to date
+- Be aware that C4 does **not** follow symbolic links by default — symlink targets are recorded but not traversed
+- Understand that `c4 patch` modifies the filesystem — use `--dry-run` to preview changes
 
-Note: C4 only reads and hashes file content using SHA-512. It does not execute or interpret file contents, making it safe to scan any file regardless of its content.
+C4 only reads and hashes file content using SHA-512. It does not execute or interpret file contents, making it safe to scan any file regardless of its content.
 
 ## Past Security Issues
 
-Security fixes are documented in commit messages and GitHub security advisories.
+### v1.0.2
 
-### v0.8.1 Security Updates
-- Updated golang.org/x/crypto to fix CVE-2024-45337, CVE-2022-27191, CVE-2021-43565, CVE-2025-22869, CVE-2023-48795
-- Migrated from deprecated github.com/boltdb/bolt to maintained go.etcd.io/bbolt
-- Updated bbolt to v1.4.2
+- Fixed 12 code quality issues including unchecked error returns, TOCTOU race in content sourcing, and path construction for Windows compatibility
+- Fixed timestamp precision mismatch at c4m/filesystem boundary
+
+### v1.0.0
+
+- Zero external dependencies — eliminates supply chain risk
+- Removed deprecated packages (id/, db/, util/) that had outdated transitive dependencies

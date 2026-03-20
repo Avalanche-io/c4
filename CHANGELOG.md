@@ -58,6 +58,19 @@ hashed — unchanged files reuse the C4 ID from the reference manifest.
   `MkdirAll()`; TOCTOU race in content sourcing; `os.Lstat` for symlink
   safety; `filepath.Join` for Windows path construction
 
+## v1.0.2
+
+- `-q` (quiet) flag on `id`, `diff`, and `patch` for silent side-effect operations
+- Directory metadata (timestamps, permissions) now set on existing directories during reconciliation
+- Directory chtimes deferred to post-pass for both new and existing directories
+
+## v1.0.1
+
+- Guided scan optimization for `diff` and `patch` — only hashes files with changed metadata
+- Timestamp precision fix at c4m/filesystem boundary (second vs nanosecond)
+- Interactive prompt timing fix (before scan, not after)
+- `isTerminal()` checks stdin instead of stderr
+
 ## v1.0.0
 
 First stable release.

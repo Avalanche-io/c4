@@ -59,8 +59,7 @@ c4 log project.c4m
 **Splitting History:**
 ```bash
 # Split at patch 3 to create a branch point
-c4 split -n 3 project.c4m
-# Creates project.c4m (patches 1-3) and project.c4m.rest (patches 4+)
+c4 split project.c4m 3 before.c4m after.c4m
 ```
 
 ---

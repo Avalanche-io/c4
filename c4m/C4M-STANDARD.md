@@ -813,7 +813,7 @@ identities of its children.
 
 ### 11.2 Identity Property
 
-`c4 -i <dir>` MUST equal `c4 <dir> | c4`
+`c4 id <dir> | c4` produces the directory's C4 ID
 
 That is: the C4 ID of a directory equals the C4 ID of its canonical c4m
 listing piped through the C4 hash function.

@@ -28,8 +28,8 @@ people have a file with the same ID, they have identical copies of the
 same file.
 
 C4 extends this idea to entire filesystems. `c4 id` produces a c4m
-file — a plain-text c4m file that captures the identity of every file
-and directory in a tree:
+file — a plain-text description that captures the identity of every
+file and directory in a tree:
 
 ```bash
 $ c4 id ./project/

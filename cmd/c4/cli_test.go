@@ -71,7 +71,7 @@ func TestVersion(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.HasPrefix(out, "c4 1.0.0") {
+	if !strings.HasPrefix(out, "c4 1.0.") {
 		t.Fatalf("unexpected version output: %s", out)
 	}
 }

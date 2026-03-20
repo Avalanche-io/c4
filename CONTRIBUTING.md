@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
 #### Proposed Tools
 
-The core `c4` CLI provides `id`, `cat`, `diff`, `patch`, `log`, and `split` as built-in subcommands. Extension tools can add complementary functionality:
+The core `c4` CLI provides `id`, `cat`, `diff`, `patch`, `merge`, `log`, and `split` as built-in subcommands. Extension tools can add complementary functionality:
 - `c4-verify` - Verify against c4m files
 - `c4-backup` - Backup workflows
 - `c4-watch` - Monitor filesystem changes

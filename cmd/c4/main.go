@@ -7,7 +7,7 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
-const version = "1.0.0"
+const version = "1.0.4"
 
 func main() {
 	if len(os.Args) > 1 {
