@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.0.4
+
+### New: Multi-target distribution
+
+`reconcile.Distribute` reads a source directory once and writes to
+multiple destinations simultaneously — directories, stores, or both.
+Content is hashed during the single read pass. This is the library
+primitive behind c4sh's multi-destination copy.
+
+```go
+result, err := reconcile.Distribute("/mnt/card/",
+    reconcile.ToDir("/mnt/shuttle/"),
+    reconcile.ToDir("/mnt/backup/"),
+    reconcile.ToStore(myStore),
+)
+```
+
+### Documentation
+
+- Terminology cleanup: "c4m file" used consistently in user-facing docs
+- Removed unqualified performance claims ("instant" → specific descriptions)
+
 ## v1.0.3
 
 ### New: Public scan package

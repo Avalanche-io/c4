@@ -152,7 +152,7 @@ Empty diff produces no output.
 ### Reverse diff with a changeset
 
 When `-r` is used with a changeset as the first argument, `c4 diff`
-loads the pre-patch manifest from the content store and diffs the
+loads the pre-patch c4m file from the content store and diffs the
 current directory against it. This lets you preview what a revert
 would look like before running `c4 patch -r`:
 
@@ -192,8 +192,8 @@ to a file and used later for reversal with `-r`.
 
 | Flag | Long | Description |
 |------|------|-------------|
-| `-s` | `--store` | Store pre-patch manifest + removed content (enables `-r` reversal) |
-| `-r` | `--reverse` | Revert: restore directory to pre-patch state using stored manifest |
+| `-s` | `--store` | Store pre-patch c4m + removed content (enables `-r` reversal) |
+| `-r` | `--reverse` | Revert: restore directory to pre-patch state using stored c4m |
 | `-e` | `--ergonomic` | Output ergonomic form |
 | `-n` | `--number` | Resolve to specific patch number (1-based) |
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
@@ -246,9 +246,9 @@ missing C4 IDs and exits non-zero. Use `--source` to provide additional
 directories where content can be found, or ensure the content store has
 the needed files.
 
-The `-s` flag stores the pre-patch manifest in the content store,
-keyed by its C4 ID. This is what enables `-r` reversal — the stored
-manifest is the revert target.
+The `-s` flag stores the pre-patch c4m in the content store, keyed
+by its C4 ID. This is what enables `-r` reversal — the stored c4m
+is the revert target.
 
 ## `c4 merge` — Combine Trees
 
@@ -344,7 +344,7 @@ The `-m` flag controls how much work `c4 id` does:
 
 | Flag | Mode | What it does | Cost |
 |------|------|-------------|------|
-| `-m s` or `-m 1` | Structure | Names and hierarchy only | Instant (readdir) |
+| `-m s` or `-m 1` | Structure | Names and hierarchy only | Fast (readdir only) |
 | `-m m` or `-m 2` | Metadata | + permissions, timestamps, sizes | Fast (stat) |
 | `-m f` or `-m 3` | Full | + C4 IDs | Expensive (read every byte) |
 
@@ -358,7 +358,7 @@ in the guide are processed — everything else is skipped. This enables a
 powerful scan-filter-continue workflow:
 
 ```bash
-# 1. Instant structure scan — see what's there
+# 1. Structure scan (no hashing) — see what's there
 c4 id -m s ./project/ > project.c4m
 
 # 2. Edit the c4m — remove what you don't want
