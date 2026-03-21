@@ -22,8 +22,8 @@ func TestNewGenerator(t *testing.T) {
 	if g.followSymlinks {
 		t.Error("followSymlinks = true, want false")
 	}
-	if g.includeHidden {
-		t.Error("includeHidden = true, want false")
+	if !g.includeHidden {
+		t.Error("includeHidden = false, want true (default includes everything)")
 	}
 	if g.detectSequences {
 		t.Error("detectSequences = true, want false")
@@ -45,11 +45,11 @@ func TestGeneratorOptions(t *testing.T) {
 		t.Error("followSymlinks = false, want true")
 	}
 	
-	// Test WithHidden
+	// Test WithHidden (disable — default is true)
 	g3 := NewGenerator()
-	WithHidden(true)(g3)
-	if !g3.includeHidden {
-		t.Error("includeHidden = false, want true")
+	WithHidden(false)(g3)
+	if g3.includeHidden {
+		t.Error("includeHidden = true after WithHidden(false)")
 	}
 	
 	// Test WithSequenceDetection
@@ -117,21 +117,8 @@ func TestGenerateFromPath(t *testing.T) {
 		checkMissing []string // Entries that should not exist
 	}{
 		{
-			name:      "default settings (no hidden files)",
+			name:      "default settings (includes everything)",
 			generator: NewGenerator(),
-			checkEntries: []string{
-				"file1.txt",
-				"file2.txt",
-				"dir1/",
-				"dir1/file3.txt",
-				"dir1/dir2/",
-				"dir1/dir2/file4.txt",
-			},
-			checkMissing: []string{".hidden"},
-		},
-		{
-			name:      "include hidden files",
-			generator: NewGeneratorWithOptions(WithHidden(true)),
 			checkEntries: []string{
 				"file1.txt",
 				"file2.txt",
@@ -142,6 +129,19 @@ func TestGenerateFromPath(t *testing.T) {
 				"dir1/dir2/file4.txt",
 			},
 			checkMissing: []string{},
+		},
+		{
+			name:      "exclude hidden files",
+			generator: NewGeneratorWithOptions(WithHidden(false)),
+			checkEntries: []string{
+				"file1.txt",
+				"file2.txt",
+				"dir1/",
+				"dir1/file3.txt",
+				"dir1/dir2/",
+				"dir1/dir2/file4.txt",
+			},
+			checkMissing: []string{".hidden"},
 		},
 	}
 	
@@ -169,10 +169,10 @@ func TestGenerateFromPath(t *testing.T) {
 				"file4.txt": 2,
 			}
 			
-			if tt.name == "include hidden files" {
+			if tt.name == "default settings (includes everything)" {
 				expected[".hidden"] = 0
 			}
-			
+
 			// Check expected entries
 			for name, depth := range expected {
 				key := fmt.Sprintf("depth%d:%s", depth, name)
@@ -180,12 +180,12 @@ func TestGenerateFromPath(t *testing.T) {
 					t.Errorf("Expected entry %q at depth %d not found", name, depth)
 				}
 			}
-			
+
 			// Check missing entries
-			if tt.name == "default settings (no hidden files)" {
+			if tt.name == "exclude hidden files" {
 				key := "depth0:.hidden"
 				if entryMap[key] {
-					t.Errorf("Unexpected hidden file found")
+					t.Errorf("Hidden file should be excluded with WithHidden(false)")
 				}
 			}
 		})

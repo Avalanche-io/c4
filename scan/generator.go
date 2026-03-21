@@ -52,7 +52,7 @@ func NewGenerator() *Generator {
 	return &Generator{
 		mode:            ModeFull,
 		followSymlinks:  false,
-		includeHidden:   false,
+		includeHidden:   true,
 		detectSequences: false,
 		excludeFileName: os.Getenv("C4_EXCLUDE_FILE"),
 	}
@@ -282,12 +282,7 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 	for _, entry := range entries {
 		name := entry.Name()
 
-		// Always skip .git directory
-		if name == ".git" {
-			continue
-		}
-
-		// Skip hidden files if not included
+		// Skip hidden files only when explicitly requested (default: include everything)
 		if !g.includeHidden && strings.HasPrefix(name, ".") {
 			continue
 		}
