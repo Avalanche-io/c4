@@ -1,18 +1,17 @@
-
 # C4 — Universal Content Identification
 
-*In Unix, everything is a file. With C4, every file has an identity.*
+*Everything in Unix is a file, except for the filesystem itself. Until now.*
 
 [![CI](https://github.com/Avalanche-io/c4/actions/workflows/ci.yml/badge.svg)](https://github.com/Avalanche-io/c4/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Avalanche-io/c4)](https://goreportcard.com/report/github.com/Avalanche-io/c4)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Avalanche-io/c4.svg)](https://pkg.go.dev/github.com/Avalanche-io/c4)
 [![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 
-C4 gives every file an ID derived from its content — not its name,
-path, or location. Two people on opposite sides of the world, who
-have never met, will independently produce the same ID for the same
-file. No registry, no coordination, no central authority. The content
-itself is the agreement.
+C4 is a file management system designed to simplify distributed
+systems. It decouples file storage and transport from organization
+and metadata by providing a standardized content-derived identifier,
+and using these identifiers in place of file content in a simple,
+readable, text-based filesystem format.
 
 ```bash
 $ echo "hello" | c4
@@ -46,9 +45,33 @@ that are useful.
 
 ## Install
 
+### Homebrew (recommended — includes c4 and c4sh)
+
+```bash
+brew install Avalanche-io/tap/c4
+```
+
+### Binary downloads
+
+Pre-built archives for macOS, Linux, and Windows:
+[c4toolkit releases](https://github.com/Avalanche-io/c4toolkit/releases)
+
+### From source
+
 ```bash
 go install github.com/Avalanche-io/c4/cmd/c4@latest
+go install github.com/Avalanche-io/c4sh@latest
 ```
+
+### Other languages
+
+```bash
+pip install c4py                    # Python
+npm install @avalanche-io/c4        # TypeScript / JavaScript
+```
+
+See [c4toolkit](https://github.com/Avalanche-io/c4toolkit) for the
+full suite and version matrix.
 
 ## What can you do with it?
 
@@ -173,11 +196,29 @@ Zero external dependencies. Go 1.16+.
 ## Links
 
 - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU) (video)
-- [C4 ID Whitepaper](http://www.cccc.io/c4id-whitepaper-u2.pdf)
+- [C4 ID Whitepaper](https://cccc.io/c4id-whitepaper-u2.pdf)
 - [CLI Reference](./docs/cli-reference.md)
 - [Getting Started](./docs/getting-started.md)
 - [FAQ](./docs/faq.md) — design decisions (SHA-512 permanence, c4m format, store scaling)
 
+## The C4 toolkit
+
+C4 is part of a cross-language ecosystem. Every tool reads and writes
+the same c4m format and produces identical C4 IDs:
+
+| Tool | Language | What it does |
+|------|----------|-------------|
+| **[c4](https://github.com/Avalanche-io/c4)** | Go | CLI — identify, diff, patch, merge |
+| **[c4sh](https://github.com/Avalanche-io/c4sh)** | Go | Shell — cd into c4m files, browse, copy |
+| **[c4py](https://github.com/Avalanche-io/c4py)** | Python | Library — scan, diff, verify, store |
+| **[c4git](https://github.com/Avalanche-io/c4git)** | Go | Git filter — version large files |
+| **[c4ts](https://github.com/Avalanche-io/c4ts)** | TypeScript | Browser + Node.js — zero dependencies |
+| **[c4-swift](https://github.com/Avalanche-io/c4-swift)** | Swift | Apple platforms — Sendable, Codable |
+| **[libc4](https://github.com/Avalanche-io/libc4)** | C | Embed in any application |
+
+See [c4toolkit](https://github.com/Avalanche-io/c4toolkit) for the
+full suite, install options, and version matrix.
+
 ## License
 
-MIT
+Apache 2.0
