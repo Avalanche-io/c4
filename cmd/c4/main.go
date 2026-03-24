@@ -7,7 +7,7 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
-const version = "1.0.6"
+const version = "1.0.7"
 
 func main() {
 	if len(os.Args) > 1 {
@@ -32,6 +32,12 @@ func main() {
 			return
 		case "split":
 			runSplit(os.Args[2:])
+			return
+		case "paths":
+			runPaths(os.Args[2:])
+			return
+		case "intersect":
+			runIntersect(os.Args[2:])
 			return
 		case "explain":
 			runExplain(os.Args[2:])
@@ -63,6 +69,8 @@ Usage:
   c4 diff <old> <new>             Produce c4m diff (patch)
   c4 patch <target> [<dest>]     Apply target state (resolve diffs or reconcile)
   c4 merge <path>...              Combine filesystem trees (c4m or directories)
+  c4 paths [<file.c4m> | -]       Convert between c4m and path lists
+  c4 intersect <id|path> <a> <b> Find common entries between c4m files
   c4 log <file.c4m>...            List patches in a chain
   c4 explain <command> [args]       Human-readable command narration
   c4 split <file.c4m> <N> <before.c4m> <after.c4m>
