@@ -168,7 +168,6 @@ func pathsToC4M(lines []string) {
 	// Build manifest from paths.
 	m := c4m.NewManifest()
 	for _, p := range sorted {
-		isDir := strings.HasSuffix(p, "/")
 		name := pathEntryName(p)
 		depth := pathToDepth(p)
 
@@ -177,9 +176,8 @@ func pathsToC4M(lines []string) {
 			Depth:     depth,
 			Size:      -1, // null
 			Timestamp: c4m.NullTimestamp(),
-		}
-		if isDir {
-			entry.Mode = 0755 | os.ModeDir
+			// Mode stays 0 (null) for all entries. Directory-ness is
+			// indicated by the trailing "/" in the name, not the mode.
 		}
 		m.AddEntry(entry)
 	}

@@ -577,9 +577,9 @@ func TestCanonicalNullTimestampConsistency(t *testing.T) {
 		t.Errorf("Format() rendered epoch for null timestamp: %s", formatted)
 	}
 
-	// Since Format(0, false) with depth=0 differs from Canonical() only
-	// in that Format includes null-mode handling, verify timestamp field
-	// specifically. Split on spaces and check field index 1 (timestamp).
+	// Format(0, false) with depth=0 should match Canonical().
+	// Verify timestamp field specifically. Split on spaces and check
+	// field index 1 (timestamp).
 	canonParts := strings.Fields(canonical)
 	formatParts := strings.Fields(formatted)
 	if len(canonParts) < 2 || len(formatParts) < 2 {

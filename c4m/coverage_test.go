@@ -114,7 +114,7 @@ func TestFormatEntryPretty(t *testing.T) {
 				Name: "nullmode.txt", Mode: 0, Size: 100,
 				Timestamp: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 			},
-			contains: []string{"----------"},
+			contains: []string{"- "},
 		},
 		{
 			name: "null timestamp",

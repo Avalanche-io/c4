@@ -180,7 +180,7 @@ func ensureParentDirs(m map[string]*c4m.Entry) {
 			continue
 		}
 		m[d] = &c4m.Entry{
-			Mode:      0755 | os.ModeDir,
+			// Mode stays 0 (null) — directory-ness is indicated by trailing "/" in name.
 			Size:      -1,
 			Timestamp: c4m.NullTimestamp(),
 			Name:      pathEntryName(d),

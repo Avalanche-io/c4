@@ -324,7 +324,7 @@ func (v *Validator) validateEntry(line string) {
 
 func (v *Validator) validateMode(mode string) {
 	if mode == "-" || mode == "----------" {
-		return // Null mode is valid
+		return // Null mode ("-") or zero mode ("----------"), both valid
 	}
 	
 	if len(mode) != 10 {

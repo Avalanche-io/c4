@@ -946,10 +946,12 @@ func TestExamplesAudit_EncoderOutputFormat(t *testing.T) {
 		}
 		output := string(data)
 		t.Logf("Null mode canonical output:\n%s", output)
-		// The spec says null mode can be "-" or "----------"
-		// The encoder uses "----------"
-		if !strings.Contains(output, "----------") {
-			t.Errorf("expected null mode to be rendered as '----------'")
+		// Null mode is always "-" (single dash) in canonical output
+		if !strings.HasPrefix(output, "- ") {
+			t.Errorf("expected null mode to be rendered as '-', got: %s", output)
+		}
+		if strings.Contains(output, "----------") {
+			t.Errorf("null mode should not be rendered as '----------' in canonical output")
 		}
 	})
 
@@ -1026,7 +1028,7 @@ Section: Directory C4 IDs
   - Recursive computation:           TESTED (manifest.go:ComputeC4ID)
 
 Section: Null Values
-  - Null mode ("-" or "----------"):  TESTED
+  - Null mode ("-"):                  TESTED
   - Null timestamp ("-" or "0"):      TESTED
   - Null size ("-"):                  TESTED
   - Null C4 ID ("-" or omitted):      TESTED

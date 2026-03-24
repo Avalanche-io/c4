@@ -130,7 +130,7 @@ func TestFormatNullValues(t *testing.T) {
 				Size:      100,
 				Name:      "file.txt",
 			},
-			contains: []string{"----------", "2024-01-01T00:00:00Z", "100", "file.txt"},
+			contains: []string{"- ", "2024-01-01T00:00:00Z", "100", "file.txt"},
 		},
 		{
 			name: "null timestamp output",
@@ -161,7 +161,7 @@ func TestFormatNullValues(t *testing.T) {
 				Name:      "file.txt",
 				C4ID:      c4.ID{},
 			},
-			contains: []string{"----------", "-", "-", "file.txt"},
+			contains: []string{"- ", "file.txt"},
 		},
 	}
 

@@ -120,8 +120,7 @@ mode        = type-char perm-chars
             / null-mode
 type-char   = "-" / "d" / "l" / "p" / "s" / "b" / "c"
 perm-chars  = 9( "r" / "w" / "x" / "s" / "S" / "t" / "T" / "-" )
-null-mode   = "-"                ; single dash, canonical null
-            / "----------"       ; ten dashes, ergonomic null
+null-mode   = "-"                ; single dash — mode is unspecified
 ```
 
 **Type characters**:
@@ -150,20 +149,26 @@ null-mode   = "-"                ; single dash, canonical null
 | 8 | Other write | `w` / `-` |
 | 9 | Other execute | `x` / `t` (sticky+exec) / `T` (sticky, no exec) / `-` |
 
-**Null mode**: When mode is unspecified, the canonical representation is a
-single `-` character. The decoder MUST also accept `----------` (ten dashes).
+**Null mode**: `-` (single dash). Represents unspecified/unknown permissions.
+The entry's type (file vs directory) is determined by the trailing `/` in the
+name, not the mode field. A directory with unknown permissions is
+`- - - assets/ -`. Partial modes like `d---------` are NOT null — they carry
+type information.
+
+**Zero mode**: `----------` (ten dashes). This is a known value — a regular
+file with zero permissions. It is NOT the same as null. The distinction
+matters for progressive resolution: `-` means "haven't checked yet,"
+`----------` means "checked and it's zero."
+
+**Decoder compatibility**: The decoder MUST accept `----------` as a valid
+ten-character mode (zero permissions on a regular file). It previously served
+as an ergonomic form of null mode; decoders SHOULD continue accepting it
+on input for backward compatibility.
 
 **Implementation note**: The decoder distinguishes single-dash null mode from
 the regular-file type indicator by checking for `- ` (dash followed by space
 at position 1). A 10-character mode always begins at position 0 and extends
 to position 9 inclusive.
-
-> **AMBIGUITY**: In canonical output, null mode is `-` (1 character). In
-> standard (non-canonical) output, null mode is `----------` (10 characters).
-> Both are accepted on input. Implementations MUST use `-` in canonical form
-> and SHOULD use `----------` in non-canonical output. The difference is
-> cosmetic; the single-dash form is the normative representation for C4 ID
-> computation.
 
 ### 4.2 Timestamp
 
@@ -905,7 +910,7 @@ Decoders SHOULD accept without error:
 
 - Ergonomic timestamp formats (converting to UTC)
 - Comma-separated size values (stripping commas)
-- Ten-dash null mode (`----------`)
+- Ten-dash form (`----------`) as zero-permission regular file or legacy null mode
 - Inconsistent indentation width (with warning)
 - Non-sorted entries (re-sorting when processing)
 
@@ -1022,9 +1027,13 @@ final C4 ID may not be known at write time. Stream consumers who require
 end-to-end verification should compute the manifest's C4 ID after decoding
 and compare against an expected value.
 
-### C.2 Null Mode Dual Representation
+### C.2 Null Mode vs Zero Mode
 
-Null mode has two text representations: `-` (canonical) and `----------`
-(ergonomic). The encoder uses `----------` in standard mode and `-` in
-canonical mode. Both are accepted on input. The single-dash form is
-normative for C4 ID computation.
+Null mode (`-`) and zero mode (`----------`) are distinct concepts:
+- `-` means "mode is unspecified/unknown" (null)
+- `----------` means "known zero permissions on a regular file" (a real value)
+
+The encoder uses `-` in all output forms for null mode. The pretty printer
+uses `----------` for column alignment when displaying null mode, but this
+is a display convention only. The single-dash form is normative for C4 ID
+computation. Decoders accept `----------` on input for backward compatibility.

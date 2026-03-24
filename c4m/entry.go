@@ -88,10 +88,11 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	// Build indentation
 	indent := strings.Repeat(" ", e.Depth*indentWidth)
 
-	// Format mode (handle null value)
+	// Format mode (handle null value).
+	// Mode==0 is always null — directory-ness comes from trailing "/" in name.
 	var modeStr string
-	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
-		modeStr = "----------"  // Null mode
+	if e.Mode == 0 {
+		modeStr = "-" // Null mode
 	} else {
 		modeStr = formatMode(e.Mode)
 	}
@@ -144,10 +145,10 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 
 // Canonical returns the canonical form for C4 ID computation
 func (e *Entry) Canonical() string {
-	// No indentation in canonical form
-	// Null mode renders as "-"
+	// No indentation in canonical form.
+	// Null mode renders as "-". Mode==0 is always null.
 	var modeStr string
-	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() {
+	if e.Mode == 0 {
 		modeStr = "-"
 	} else {
 		modeStr = formatMode(e.Mode)
@@ -391,8 +392,8 @@ func (e *Entry) IsSocket() bool {
 
 // HasNullValues returns true if entry has any null metadata
 func (e *Entry) HasNullValues() bool {
-	// Mode can be 0 for certain file types, so check type
-	hasNullMode := e.Mode == 0 && !e.IsDir() && !e.IsSymlink() && !e.IsDevice() && !e.IsPipe() && !e.IsSocket()
+	// Mode==0 is always null — directory-ness comes from trailing "/" in name.
+	hasNullMode := e.Mode == 0
 	hasNullTimestamp := e.Timestamp.Equal(NullTimestamp())
 	hasNullSize := e.Size < 0
 	// C4ID being nil is OK for empty files or directories without computed IDs yet
@@ -404,7 +405,7 @@ func (e *Entry) HasNullValues() bool {
 func (e *Entry) GetNullFields() []string {
 	var nullFields []string
 
-	if e.Mode == 0 && !e.IsDir() && !e.IsSymlink() && !e.IsDevice() && !e.IsPipe() && !e.IsSocket() {
+	if e.Mode == 0 {
 		nullFields = append(nullFields, "Mode")
 	}
 	if e.Timestamp.Equal(NullTimestamp()) {
