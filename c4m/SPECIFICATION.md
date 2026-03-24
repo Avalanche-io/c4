@@ -49,7 +49,11 @@ Standard Unix file mode string:
 
 Special bits: setuid (`s`/`S` at position 3), setgid (`s`/`S` at position 6), sticky (`t`/`T` at position 9).
 
-**Null mode**: `-` (single dash) or `----------` (ten dashes). Represents unspecified permissions.
+**Null mode**: `-` (single dash). Represents unspecified/unknown permissions — equivalent to NULL in a database. The entry's type (file vs directory) is determined by the trailing `/` in the name, not the mode field. A directory with unknown permissions is `- - - assets/ -`.
+
+**Zero mode**: `----------` (ten dashes). This is a known value — zero permissions on a regular file. It is NOT the same as null. The distinction matters for progressive resolution: `-` means "haven't checked yet," `----------` means "checked and it's zero."
+
+Partial modes like `d---------` are valid and carry type information (directory with zero permissions). They are not null.
 
 ### Timestamp
 
@@ -275,9 +279,9 @@ Directory timestamps come from the filesystem's modification time for the direct
 
 C4M supports null values to enable progressive resolution and manual editing:
 
-| Field | Null representation | Internal value |
-|-------|-------------------|----------------|
-| Mode | `-` or `----------` | 0 |
+| Field | Null representation | Zero representation |
+|-------|-------------------|---------------------|
+| Mode | `-` (single dash — unknown) | `----------` (ten dashes — known zero) |
 | Timestamp | `-` or `0` | Unix epoch |
 | Size | `-` | -1 |
 | C4 ID | `-` or omitted | nil |
