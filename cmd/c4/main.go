@@ -48,6 +48,17 @@ func main() {
 		}
 	}
 
+	// If the first arg isn't a subcommand but looks like a path, treat as c4 id -s.
+	// The bare form always stores content — the most useful default.
+	if len(os.Args) > 1 {
+		for _, arg := range os.Args[1:] {
+			if _, err := os.Stat(arg); err == nil {
+				runID(append([]string{"-s"}, os.Args[1:]...))
+				return
+			}
+		}
+	}
+
 	// Bare c4 with piped stdin → output C4 ID
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
