@@ -33,6 +33,9 @@ func main() {
 		case "split":
 			runSplit(os.Args[2:])
 			return
+		case "explain":
+			runExplain(os.Args[2:])
+			return
 		case "version":
 			runVersion(os.Args[2:])
 			return
@@ -61,6 +64,7 @@ Usage:
   c4 patch <target> [<dest>]     Apply target state (resolve diffs or reconcile)
   c4 merge <path>...              Combine filesystem trees (c4m or directories)
   c4 log <file.c4m>...            List patches in a chain
+  c4 explain <command> [args]       Human-readable command narration
   c4 split <file.c4m> <N> <before.c4m> <after.c4m>
                                   Split chain at patch N
   c4 version                      Print version
