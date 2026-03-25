@@ -581,3 +581,254 @@ func TestDiffMixed(t *testing.T) {
 		t.Fatalf("diff should show changed a.txt: %s", diff)
 	}
 }
+
+// TestC4mCanonicalID verifies that a pretty-printed c4m file and its
+// canonical equivalent produce the same C4 ID when identified.
+func TestC4mCanonicalID(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+
+	// Create a directory and scan it.
+	projectDir := filepath.Join(dir, "project")
+	os.MkdirAll(projectDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, "hello.txt"), []byte("hello world"), 0644)
+	os.WriteFile(filepath.Join(projectDir, "data.bin"), []byte("binary data"), 0644)
+
+	// Get canonical c4m output.
+	canonical, _, _ := runC4(t, bin, "id", projectDir)
+
+	// Get pretty-printed c4m output.
+	pretty, _, _ := runC4(t, bin, "id", "-e", projectDir)
+
+	// Canonical and pretty forms should differ in formatting.
+	if canonical == pretty {
+		t.Fatal("canonical and pretty forms should differ")
+	}
+
+	// Save both to files.
+	canonicalPath := filepath.Join(dir, "canonical.c4m")
+	prettyPath := filepath.Join(dir, "pretty.c4m")
+	os.WriteFile(canonicalPath, []byte(canonical), 0644)
+	os.WriteFile(prettyPath, []byte(pretty), 0644)
+
+	// Identify both files — they should produce the same C4 ID.
+	canonicalID, _, code := runC4(t, bin, "id", canonicalPath)
+	if code != 0 {
+		t.Fatalf("id canonical.c4m exit %d", code)
+	}
+	prettyID, _, code := runC4(t, bin, "id", prettyPath)
+	if code != 0 {
+		t.Fatalf("id pretty.c4m exit %d", code)
+	}
+
+	// Both should output the same c4m (since both are canonical when
+	// re-identified). The output IS the canonical form.
+	if canonicalID != prettyID {
+		t.Fatalf("canonical and pretty c4m IDs should match:\n  canonical: %s\n  pretty:   %s", canonicalID, prettyID)
+	}
+}
+
+// TestC4mCanonicalStore verifies that storing a pretty c4m file via the bare
+// form results in the canonical form being stored, retrievable by its
+// canonical C4 ID.
+func TestC4mCanonicalStore(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, "store")
+	env := map[string]string{"C4_STORE": storeDir}
+
+	// Create a directory and get its c4m.
+	projectDir := filepath.Join(dir, "project")
+	os.MkdirAll(projectDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, "a.txt"), []byte("aaa"), 0644)
+
+	// Get canonical form.
+	canonical, _, _ := runC4(t, bin, "id", projectDir)
+	// Get pretty form.
+	pretty, _, _ := runC4(t, bin, "id", "-e", projectDir)
+
+	// Canonical and pretty should differ.
+	if canonical == pretty {
+		t.Fatal("canonical and pretty should differ in formatting")
+	}
+
+	// Compute the canonical c4m's own C4 ID by piping it through c4 -x
+	// (which identifies the canonical bytes via c4m detection).
+	canonicalID, _, code := runC4WithStdin(t, bin, canonical, "-x")
+	if code != 0 {
+		t.Fatalf("stdin id exit %d", code)
+	}
+	canonicalID = strings.TrimSpace(canonicalID)
+
+	// Save pretty form and use bare `c4 <path>` to identify+store.
+	prettyPath := filepath.Join(dir, "pretty.c4m")
+	os.WriteFile(prettyPath, []byte(pretty), 0644)
+
+	// Bare form: `c4 pretty.c4m` → identify + store canonical form.
+	_, _, code = runC4WithEnv(t, bin, env, prettyPath)
+	if code != 0 {
+		t.Fatalf("bare c4 exit %d", code)
+	}
+
+	// Cat the stored content using the canonical c4m's C4 ID.
+	catOut, catErr, code := runC4WithEnv(t, bin, env, "cat", canonicalID)
+	if code != 0 {
+		t.Fatalf("cat exit %d, stderr: %s", code, catErr)
+	}
+
+	// The stored content should match canonical form.
+	if catOut != canonical {
+		t.Fatalf("stored content should be canonical form:\n  stored:    %q\n  canonical: %q", catOut, canonical)
+	}
+}
+
+// TestCatC4mFile verifies that c4 cat can display a c4m file from disk.
+func TestCatC4mFile(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+
+	// Create a directory and scan it.
+	projectDir := filepath.Join(dir, "project")
+	os.MkdirAll(projectDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, "test.txt"), []byte("test"), 0644)
+
+	canonical, _, _ := runC4(t, bin, "id", projectDir)
+	c4mPath := filepath.Join(dir, "project.c4m")
+	os.WriteFile(c4mPath, []byte(canonical), 0644)
+
+	// c4 cat <file.c4m> should output canonical form.
+	catOut, _, code := runC4(t, bin, "cat", c4mPath)
+	if code != 0 {
+		t.Fatalf("cat exit %d", code)
+	}
+	if catOut != canonical {
+		t.Fatalf("cat output should match canonical:\n  cat: %q\n  expected: %q", catOut, canonical)
+	}
+}
+
+// TestCatErgonomicFlag verifies that c4 cat -e pretty-prints c4m content.
+func TestCatErgonomicFlag(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+
+	// Create a directory with files.
+	projectDir := filepath.Join(dir, "project")
+	os.MkdirAll(projectDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, "hello.txt"), []byte("hello"), 0644)
+
+	canonical, _, _ := runC4(t, bin, "id", projectDir)
+	pretty, _, _ := runC4(t, bin, "id", "-e", projectDir)
+
+	c4mPath := filepath.Join(dir, "project.c4m")
+	os.WriteFile(c4mPath, []byte(canonical), 0644)
+
+	// c4 cat -e <file.c4m> should output pretty form.
+	catOut, _, code := runC4(t, bin, "cat", "-e", c4mPath)
+	if code != 0 {
+		t.Fatalf("cat -e exit %d", code)
+	}
+	if catOut != pretty {
+		t.Fatalf("cat -e output should match pretty:\n  cat: %q\n  expected: %q", catOut, pretty)
+	}
+}
+
+// TestCatRecursiveExpand verifies that c4 cat -r expands directory entries.
+func TestCatRecursiveExpand(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, "store")
+
+	// Create a directory with subdirectories.
+	projectDir := filepath.Join(dir, "project")
+	subDir := filepath.Join(projectDir, "sub")
+	os.MkdirAll(subDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, "root.txt"), []byte("root"), 0644)
+	os.WriteFile(filepath.Join(subDir, "child.txt"), []byte("child"), 0644)
+
+	env := map[string]string{"C4_STORE": storeDir}
+
+	// Scan and store the full tree (stores file content and subdirectory c4m).
+	fullOut, _, code := runC4WithEnv(t, bin, env, "id", "-s", projectDir)
+	if code != 0 {
+		t.Fatalf("id -s exit %d", code)
+	}
+
+	if !strings.Contains(fullOut, "sub/") {
+		t.Fatalf("expected sub/ in output: %s", fullOut)
+	}
+
+	// Save the full manifest.
+	c4mPath := filepath.Join(dir, "project.c4m")
+	os.WriteFile(c4mPath, []byte(fullOut), 0644)
+
+	// c4 cat -r <file.c4m> should expand sub/ and show child.txt.
+	catOut, _, code := runC4WithEnv(t, bin, env, "cat", "-r", c4mPath)
+	if code != 0 {
+		t.Fatalf("cat -r exit %d", code)
+	}
+	if !strings.Contains(catOut, "child.txt") {
+		t.Fatalf("cat -r should expand sub/ to show child.txt: %s", catOut)
+	}
+	if !strings.Contains(catOut, "root.txt") {
+		t.Fatalf("cat -r should include root.txt: %s", catOut)
+	}
+
+	// Also test cat -r from store by piping canonical c4m to get its ID.
+	canonicalID, _, _ := runC4WithStdin(t, bin, fullOut, "-x")
+	canonicalID = strings.TrimSpace(canonicalID)
+
+	// The manifest should already be stored (storeManifestContent stores it).
+	// But it was stored under storeManifestAsContent's Put ID.
+	// For cat -r from store to work, we need the manifest stored.
+	// Use c4 id -s on the c4m file to ensure it's stored.
+	_, _, code = runC4WithEnv(t, bin, env, "id", "-s", c4mPath)
+	if code != 0 {
+		t.Fatalf("store c4m exit %d", code)
+	}
+
+	catOut2, catErr2, code := runC4WithEnv(t, bin, env, "cat", "-r", canonicalID)
+	if code != 0 {
+		t.Fatalf("cat -r <id> exit %d, stderr: %s", code, catErr2)
+	}
+	if !strings.Contains(catOut2, "child.txt") {
+		t.Fatalf("cat -r <id> should expand sub/ to show child.txt: %s", catOut2)
+	}
+}
+
+// TestCatRecursiveErgonomic verifies that c4 cat -r -e combines both flags.
+func TestCatRecursiveErgonomic(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, "store")
+
+	// Create a directory with subdirectories.
+	projectDir := filepath.Join(dir, "project")
+	subDir := filepath.Join(projectDir, "sub")
+	os.MkdirAll(subDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, "root.txt"), []byte("root"), 0644)
+	os.WriteFile(filepath.Join(subDir, "child.txt"), []byte("child"), 0644)
+
+	env := map[string]string{"C4_STORE": storeDir}
+
+	// Scan and store.
+	fullOut, _, _ := runC4WithEnv(t, bin, env, "id", "-s", projectDir)
+	// Store subdirectory c4m.
+	runC4WithEnv(t, bin, env, "id", "-s", subDir)
+
+	c4mPath := filepath.Join(dir, "project.c4m")
+	os.WriteFile(c4mPath, []byte(fullOut), 0644)
+
+	// c4 cat -r -e should produce pretty-printed expanded output.
+	catOut, _, code := runC4WithEnv(t, bin, env, "cat", "-r", "-e", c4mPath)
+	if code != 0 {
+		t.Fatalf("cat -r -e exit %d", code)
+	}
+	if !strings.Contains(catOut, "child.txt") {
+		t.Fatalf("cat -r -e should expand and show child.txt: %s", catOut)
+	}
+	// Pretty-print produces local timestamps (not UTC Z-suffixed).
+	// Just verify the output is non-empty and contains expected entries.
+	if !strings.Contains(catOut, "root.txt") {
+		t.Fatalf("cat -r -e should include root.txt: %s", catOut)
+	}
+}

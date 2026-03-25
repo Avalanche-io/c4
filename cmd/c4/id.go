@@ -224,6 +224,11 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 				dirStack = append(dirStack, "")
 			}
 			dirStack[entry.Depth] = entry.Name
+
+			// Store the directory's c4m as content (enables c4 cat -r).
+			if !entry.C4ID.IsNil() && !s.Has(entry.C4ID) {
+				storeDirectoryC4m(manifest, entry, s)
+			}
 			continue
 		}
 		if entry.C4ID.IsNil() || s.Has(entry.C4ID) {
@@ -260,6 +265,34 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		if newID != entry.C4ID {
 			entry.C4ID = newID
 		}
+	}
+}
+
+// storeDirectoryC4m extracts a directory's children from a manifest and
+// stores the resulting sub-manifest as c4m content. This enables c4 cat -r
+// to recursively expand directory entries.
+func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Store) {
+	children := manifest.Children(dirEntry)
+	if len(children) == 0 {
+		return
+	}
+
+	sub := c4m.NewManifest()
+	// Add direct children at depth 0, and their descendants shifted down.
+	descendants := manifest.Descendants(dirEntry)
+	for _, d := range descendants {
+		entryCopy := *d
+		entryCopy.Depth -= dirEntry.Depth + 1
+		sub.AddEntry(&entryCopy)
+	}
+
+	data, err := c4m.Marshal(sub)
+	if err != nil {
+		return
+	}
+
+	if _, err := s.Put(bytes.NewReader(data)); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to store directory c4m for %s: %v\n", dirEntry.Name, err)
 	}
 }
 
