@@ -505,32 +505,38 @@ func TestFlowMixedManifest(t *testing.T) {
 		t.Fatalf("expected 5 entries, got %d", len(m.Entries))
 	}
 
+	// Look up entries by name (auto-sort may reorder).
+	byName := make(map[string]*Entry)
+	for _, e := range m.Entries {
+		byName[e.Name] = e
+	}
+
 	// Regular file
-	if m.Entries[0].IsFlowLinked() {
+	if byName["readme.txt"].IsFlowLinked() {
 		t.Error("readme.txt should not be flow-linked")
 	}
 
 	// Symlink
-	if m.Entries[1].Target != "../target" {
-		t.Errorf("link target = %q, want ../target", m.Entries[1].Target)
+	if byName["link"].Target != "../target" {
+		t.Errorf("link target = %q, want ../target", byName["link"].Target)
 	}
-	if m.Entries[1].IsFlowLinked() {
+	if byName["link"].IsFlowLinked() {
 		t.Error("symlink should not be flow-linked")
 	}
 
 	// Inbound flow
-	if m.Entries[2].FlowDirection != FlowInbound {
-		t.Errorf("incoming/ FlowDirection = %d, want %d", m.Entries[2].FlowDirection, FlowInbound)
+	if byName["incoming/"].FlowDirection != FlowInbound {
+		t.Errorf("incoming/ FlowDirection = %d, want %d", byName["incoming/"].FlowDirection, FlowInbound)
 	}
 
 	// Outbound flow
-	if m.Entries[3].FlowDirection != FlowOutbound {
-		t.Errorf("outgoing/ FlowDirection = %d, want %d", m.Entries[3].FlowDirection, FlowOutbound)
+	if byName["outgoing/"].FlowDirection != FlowOutbound {
+		t.Errorf("outgoing/ FlowDirection = %d, want %d", byName["outgoing/"].FlowDirection, FlowOutbound)
 	}
 
 	// Bidirectional flow
-	if m.Entries[4].FlowDirection != FlowBidirectional {
-		t.Errorf("shared/ FlowDirection = %d, want %d", m.Entries[4].FlowDirection, FlowBidirectional)
+	if byName["shared/"].FlowDirection != FlowBidirectional {
+		t.Errorf("shared/ FlowDirection = %d, want %d", byName["shared/"].FlowDirection, FlowBidirectional)
 	}
 
 	// Round-trip

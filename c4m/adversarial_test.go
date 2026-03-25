@@ -1,6 +1,7 @@
 package c4m
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -93,9 +94,7 @@ func TestAdversarial_DeepNesting(t *testing.T) {
 func TestAdversarial_LargeManifest(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 10000; i++ {
-		b.WriteString("-rw-r--r-- 2024-01-01T00:00:00Z 100 file_")
-		b.WriteString(strings.Repeat("x", 10))
-		b.WriteString("\n")
+		fmt.Fprintf(&b, "-rw-r--r-- 2024-01-01T00:00:00Z 100 file_%05d.txt\n", i)
 	}
 	d := NewDecoder(strings.NewReader(b.String()))
 	m, err := d.Decode()

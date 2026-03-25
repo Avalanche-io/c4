@@ -136,6 +136,15 @@ func (d *Decoder) Decode() (*Manifest, error) {
 		return nil, fmt.Errorf("%w (at end of input)", ErrEmptyPatch)
 	}
 
+	// Auto-sort: tolerate out-of-order input by sorting to canonical order.
+	// Snapshot entry pointers before sort to detect reordering.
+	before := make([]*Entry, len(m.Entries))
+	copy(before, m.Entries)
+	m.SortEntries()
+	if !entriesOrderEqual(before, m.Entries) {
+		fmt.Fprintln(os.Stderr, "c4m: note: entries reordered to canonical order")
+	}
+
 	return m, nil
 }
 
@@ -700,6 +709,20 @@ func (d *Decoder) readLine() (string, error) {
 	}
 
 	return line, nil
+}
+
+// entriesOrderEqual returns true if two entry slices have the same pointers
+// in the same order.
+func entriesOrderEqual(a, b []*Entry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // parseTimestamp tries multiple timestamp formats.
