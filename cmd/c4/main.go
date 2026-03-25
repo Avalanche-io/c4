@@ -90,7 +90,7 @@ func usage() {
 
 Usage:
   c4 id [flags] <path>...         Identify files, directories, or c4m files
-  c4 cat <c4id>                   Retrieve content by C4 ID from store
+  c4 cat [-e] [-r] <c4id|path>    Retrieve/display content (c4m-aware)
   c4 diff <old> <new>             Produce c4m diff (patch)
   c4 patch <target> [<dest>]     Apply target state (resolve diffs or reconcile)
   c4 merge <path>...              Combine filesystem trees (c4m or directories)
