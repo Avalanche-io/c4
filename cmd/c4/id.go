@@ -268,9 +268,12 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 	}
 }
 
-// storeDirectoryC4m extracts a directory's children from a manifest and
-// stores the resulting sub-manifest as c4m content. This enables c4 cat -r
-// to recursively expand directory entries.
+// storeDirectoryC4m extracts a directory's direct children from a manifest
+// and stores the resulting one-level c4m as content. This enables c4 cat <dir-id>
+// to retrieve the directory listing, and c4 cat -r to recursively expand.
+//
+// The stored c4m is canonical: only direct children at depth 0, sorted.
+// This matches how directory C4 IDs are computed (one-level canonical form).
 func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Store) {
 	children := manifest.Children(dirEntry)
 	if len(children) == 0 {
@@ -278,20 +281,22 @@ func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Stor
 	}
 
 	sub := c4m.NewManifest()
-	// Add direct children at depth 0, and their descendants shifted down.
-	descendants := manifest.Descendants(dirEntry)
-	for _, d := range descendants {
-		entryCopy := *d
-		entryCopy.Depth -= dirEntry.Depth + 1
+	for _, child := range children {
+		entryCopy := *child
+		entryCopy.Depth = 0 // Direct children at root level
 		sub.AddEntry(&entryCopy)
 	}
 
-	data, err := c4m.Marshal(sub)
-	if err != nil {
+	// Match how ComputeC4ID() works: canonicalize (propagate metadata)
+	// then produce canonical text.
+	sub.Canonicalize()
+	sub.SortEntries()
+	canonical := sub.Canonical()
+	if canonical == "" {
 		return
 	}
 
-	if _, err := s.Put(bytes.NewReader(data)); err != nil {
+	if _, err := s.Put(strings.NewReader(canonical)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to store directory c4m for %s: %v\n", dirEntry.Name, err)
 	}
 }
