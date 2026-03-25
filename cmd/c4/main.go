@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-
-	"github.com/Avalanche-io/c4"
 )
 
 const version = "1.0.7"
@@ -48,22 +46,38 @@ func main() {
 		}
 	}
 
-	// If the first arg isn't a subcommand but looks like a path, treat as c4 id -s.
-	// The bare form always stores content — the most useful default.
+	// Check for -x flag (exclude from store) in bare args.
+	excludeStore := false
+	var bareArgs []string
 	if len(os.Args) > 1 {
 		for _, arg := range os.Args[1:] {
+			if arg == "-x" || arg == "--exclude-store" {
+				excludeStore = true
+			} else {
+				bareArgs = append(bareArgs, arg)
+			}
+		}
+	}
+
+	// If a non-flag arg looks like a path, treat as c4 id [-s].
+	// The bare form stores content by default; -x skips storage.
+	if len(bareArgs) > 0 {
+		for _, arg := range bareArgs {
 			if _, err := os.Stat(arg); err == nil {
-				runID(append([]string{"-s"}, os.Args[1:]...))
+				if excludeStore {
+					runID(bareArgs)
+				} else {
+					runID(append([]string{"-s"}, bareArgs...))
+				}
 				return
 			}
 		}
 	}
 
-	// Bare c4 with piped stdin → output C4 ID
+	// Bare c4 with piped stdin → identify + store (unless -x).
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		id := c4.Identify(os.Stdin)
-		fmt.Println(id)
+		doStdin(!excludeStore)
 		return
 	}
 
@@ -88,7 +102,10 @@ Usage:
                                   Split chain at patch N
   c4 version                      Print version
 
-  echo "data" | c4               C4 ID from stdin (shortcut)
+  c4 <path>                      Identify + store (shortcut for c4 id -s)
+  c4 <path> -x                   Identify only, skip store
+  echo "data" | c4               Identify + store from stdin
+  echo "data" | c4 -x            Identify only from stdin
 
 Version: %s
 `, version)
