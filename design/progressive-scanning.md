@@ -33,6 +33,13 @@ Not viable — c4m has no comment syntax and sentinels pollute the entry space.
 - `c4 id -c manifest.c4m ./dir/` — fill metadata for existing entries (deliberate exclusion respected)
 - `c4 id manifest.c4m ./dir/` — rescan, using manifest as a guide for what's already hashed (interrupted scan recovery)
 
-## Deferred
+## Related
 
-This design needs more thought. Filed for post-announcement work.
+- [auto-sort-on-read.md](auto-sort-on-read.md) — tools should auto-sort malformed c4m input
+- [explain-command.md](explain-command.md) — human-readable command narration (implemented)
+- [paths-command.md](paths-command.md) — bidirectional path/c4m converter (implemented)
+- [intersect-command.md](intersect-command.md) — set operations on c4m files (implemented)
+
+## Status
+
+Deferred. This design needs more thought. Filed for post-announcement work.
