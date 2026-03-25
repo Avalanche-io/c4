@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,6 +96,13 @@ func runID(args []string) {
 			if err != nil {
 				fatalf("Error loading %s: %v", p, err)
 			}
+			// Store canonical c4m content if -s is set.
+			if shouldStore {
+				s := getOrSetupStore()
+				if s != nil {
+					storeManifestAsContent(m, s)
+				}
+			}
 			if !*quiet {
 				outputManifest(m, *ergonomic)
 			}
@@ -114,7 +123,7 @@ func doStdin(storeFlag bool) {
 	if storeFlag {
 		s := getOrSetupStore()
 		if s != nil {
-			id, err := s.Put(os.Stdin)
+			id, err := storeContentC4mAware(s, os.Stdin)
 			if err != nil {
 				fatalf("Error storing: %v", err)
 			}
@@ -123,7 +132,20 @@ func doStdin(storeFlag bool) {
 		}
 	}
 
-	id := c4.Identify(os.Stdin)
+	// Read all stdin to detect c4m.
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fatalf("Error reading stdin: %v", err)
+	}
+	if looksLikeC4m(data) {
+		canonical, _ := canonicalizeC4mBytes(data)
+		if canonical != nil {
+			id := c4.Identify(bytes.NewReader(canonical))
+			fmt.Println(id)
+			return
+		}
+	}
+	id := c4.Identify(bytes.NewReader(data))
 	fmt.Println(id)
 }
 
@@ -168,25 +190,17 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 	}
 
 	if mode == scan.ModeFull {
-		f, err := os.Open(path)
-		if err != nil {
-			fatalf("Error: %v", err)
-		}
-		defer f.Close()
-
 		if shouldStore {
 			s := getOrSetupStore()
 			if s != nil {
-				id, err := s.Put(f)
-				if err != nil {
-					fatalf("Error storing %s: %v", path, err)
-				}
-				entry.C4ID = id
+				entry.C4ID = storeC4mAware(s, path)
 			} else {
-				entry.C4ID = c4.Identify(f)
+				id, _ := identifyC4mFile(path)
+				entry.C4ID = id
 			}
 		} else {
-			entry.C4ID = c4.Identify(f)
+			id, _ := identifyC4mFile(path)
+			entry.C4ID = id
 		}
 	}
 
@@ -220,14 +234,32 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		relPath := strings.Join(dirStack, "") + entry.Name
 		fullPath := filepath.Join(baseDir, relPath)
 
-		f, err := os.Open(fullPath)
+		// Use c4m-aware storage: c4m files within directories get
+		// canonicalized before storing.
+		data, err := os.ReadFile(fullPath)
 		if err != nil {
 			continue // skip files we can't open
 		}
-		if _, err := s.Put(f); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
+		var storeData []byte
+		if strings.HasSuffix(entry.Name, ".c4m") || looksLikeC4m(data) {
+			canonical, _ := canonicalizeC4mBytes(data)
+			if canonical != nil {
+				storeData = canonical
+			}
 		}
-		f.Close()
+		if storeData == nil {
+			storeData = data
+		}
+		newID, err := s.Put(bytes.NewReader(storeData))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
+			continue
+		}
+
+		// If canonicalization changed the ID (c4m file), update the entry.
+		if newID != entry.C4ID {
+			entry.C4ID = newID
+		}
 	}
 }
 
