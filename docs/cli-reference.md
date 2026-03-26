@@ -12,6 +12,9 @@ C4 commands divide into two categories:
 | `c4 diff` | Compare two trees, produce a patch |
 | `c4 log` | List patches in a chain |
 | `c4 cat` | Retrieve content by C4 ID from store |
+| `c4 explain` | Human-readable narration of what a command would do |
+| `c4 paths` | Convert between c4m format and plain path lists |
+| `c4 intersect` | Find common entries between two c4m files |
 
 **Actor commands** — modify the filesystem or produce transformed output:
 
@@ -29,7 +32,7 @@ The CLI has zero external dependencies. It requires Go 1.16+.
 
 ```
 c4 id [flags] <path>...         Identify files, directories, or c4m files
-c4 cat <c4id>                   Retrieve content by C4 ID from store
+c4 cat [-e] [-r] <c4id|path>    Retrieve/display content (c4m-aware)
 c4 diff <old> <new>             Produce c4m diff/patch (directories or c4m files)
 c4 patch [flags] <target> [<dest>]
                                 Apply target state (reconcile, resolve, revert)
@@ -37,9 +40,15 @@ c4 merge <tree> <tree>...       Combine filesystem trees (c4m files or directori
 c4 log <file.c4m>...            List patches in a chain
 c4 split <file> <N> <before> <after>
                                 Split chain at patch N
+c4 explain <command> [args]     Human-readable command narration
+c4 paths [<file.c4m> | -]      Convert between c4m and path lists
+c4 intersect <id|path> <a> <b>  Find common entries between c4m files
 c4 version                      Print version
 
-echo "data" | c4               C4 ID from stdin
+c4 <path>                       Identify + store (shortcut for c4 id -s)
+c4 <path> -x                    Identify only, skip store
+echo "data" | c4                Identify + store from stdin
+echo "data" | c4 -x             Identify only from stdin
 ```
 
 ## `c4 id` — Identify
@@ -304,11 +313,98 @@ c4 diff common.c4m <(c4 id ./release/) >> release.c4m
 c4 diff common.c4m <(c4 id ./dev/) >> dev.c4m
 ```
 
+## `c4 explain` — Human-readable Narration
+
+A read-only command that describes what another command would do, in plain
+language. Never modifies any files.
+
+### Subcommands
+
+| Subcommand | What it describes |
+|------------|-------------------|
+| `c4 explain id <path>` | What a directory or c4m file contains (file count, size, suggested next steps) |
+| `c4 explain diff <old> <new>` | What changed between two states (added, modified, removed counts with sizes) |
+| `c4 explain patch <target> [<dest>]` | What reconciliation would do (creates, updates, removes, store availability) |
+
+### Flags
+
+| Flag | Long | Description |
+|------|------|-------------|
+| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
+
+### Examples
+
+```bash
+# What does this directory contain?
+c4 explain id ./project/
+
+# What changed since the last snapshot?
+c4 explain diff snapshot.c4m ./project/
+
+# What would patching do?
+c4 explain patch target.c4m ./project/
+
+# Describe a c4m file without a destination
+c4 explain patch delivery.c4m
+```
+
+## `c4 paths` — Convert Between c4m and Path Lists
+
+Bidirectional converter between c4m format and plain path lists. Detects
+the input format automatically:
+
+- **c4m input** — extracts full paths (one per line), sorted alphabetically
+- **Path list input** — builds a c4m with null metadata for each path
+
+Reads from a file argument or stdin.
+
+```bash
+# c4m → paths
+c4 paths project.c4m
+
+# paths → c4m
+find . -type f | c4 paths
+
+# Pipe from another c4 command
+c4 id -m s ./project/ | c4 paths
+```
+
+## `c4 intersect` — Find Common Entries
+
+Finds entries that appear in both of two c4m files (or directories).
+Output is a valid c4m from the second argument's perspective.
+
+### Subcommands
+
+| Subcommand | Match criterion |
+|------------|----------------|
+| `c4 intersect id <a> <b>` | Content identity (same C4 ID, regardless of path) |
+| `c4 intersect path <a> <b>` | Full path (same location in the tree) |
+
+### Flags
+
+| Flag | Long | Description |
+|------|------|-------------|
+| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
+
+### Examples
+
+```bash
+# Find files with identical content in two directories
+c4 intersect id ./dir-a/ ./dir-b/
+
+# Find files at the same paths in two c4m snapshots
+c4 intersect path monday.c4m friday.c4m
+
+# Pipe to paths for a plain file list
+c4 intersect id old.c4m new.c4m | c4 paths
+```
+
 ## `c4 version`
 
 ```bash
 $ c4 version
-c4 1.0.0 (darwin/arm64, go1.24.5)
+c4 1.0.10 (darwin/arm64, go1.24.5)
 ```
 
 ## Content Store

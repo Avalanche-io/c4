@@ -153,15 +153,19 @@ c4 id -c scan.c4m ./project/          # hash the rest
 | Command | What it does |
 |---------|-------------|
 | `c4 id` | Identify files, directories, or c4m files |
-| `c4 cat` | Retrieve content by C4 ID from store |
+| `c4 cat` | Retrieve/display content by C4 ID or c4m file path |
 | `c4 diff` | Compare two states (c4m files or directories) |
 | `c4 patch` | Apply a target state: reconcile directories, resolve chains |
 | `c4 merge` | Combine two or more trees |
 | `c4 log` | Show patch history |
 | `c4 split` | Split a patch chain |
+| `c4 explain` | Human-readable narration of what a command would do |
+| `c4 paths` | Convert between c4m format and plain path lists |
+| `c4 intersect` | Find common entries between two c4m files |
 
 Every command that takes a c4m file also takes a directory, and vice
-versa. `echo "data" | c4` produces a bare ID from stdin.
+versa. `c4 <path>` is a shortcut for `c4 id -s` (identify and store).
+`echo "data" | c4` produces a bare ID from stdin and stores it.
 
 ## The c4m format
 
