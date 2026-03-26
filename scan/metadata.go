@@ -209,7 +209,7 @@ func GetMostRecentModtime(entries []*Entry) time.Time {
 
 // PropagateMetadata resolves null values in entries by propagating from children.
 // Iterates in reverse so deeper directories are resolved before their parents.
-// Empty directories retain their null values — nothing to propagate from.
+// Empty directories get size 0 — we know they're empty, that's not unknown.
 func PropagateMetadata(entries []*Entry) {
 	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]
@@ -219,6 +219,10 @@ func PropagateMetadata(entries []*Entry) {
 		}
 		children := getDirectoryChildren(entries, entry)
 		if len(children) == 0 {
+			// Empty directory — size is definitively 0, not unknown.
+			if entry.Size < 0 {
+				entry.Size = 0
+			}
 			continue
 		}
 

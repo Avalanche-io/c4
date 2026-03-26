@@ -219,6 +219,9 @@ func PropagateMetadata(entries []*Entry) {
 		}
 		children := getDirectoryChildren(entries, entry)
 		if len(children) == 0 {
+			if entry.Size < 0 {
+				entry.Size = 0
+			}
 			continue
 		}
 
