@@ -15,8 +15,8 @@ var _ Store = &Validating{}
 // The Validating store wrapps another c4 store and validates all c4 ids with
 // the data that is read or written. If the data does not match the id, then
 // ErrInvalidC4ID will be returned.
-// C4 id validity is checked when `Close()` is called on the reader, or writter,
-// or when an io.EOF is encountered while reading or writting.
+// C4 id validity is checked when `Close()` is called on the reader, or writer,
+// or when an io.EOF is encountered while reading or writing.
 type Validating struct {
 	s Store
 }

@@ -23,7 +23,7 @@ const (
 	LogEof
 )
 
-// A Logger store wraps a c4 Store and logs a cusomizable set of Store function.
+// A Logger store wraps a c4 Store and logs a customizable set of Store function.
 type Logger struct {
 
 	// the wrapped Store to be logged
@@ -214,7 +214,7 @@ type loggingWriter struct {
 	flags LoggerFlags
 }
 
-// Write writes and logs to the contianed io.WriteCloser.
+// Write writes and logs to the contained io.WriteCloser.
 func (l *loggingWriter) Write(b []byte) (int, error) {
 	fname := "Write"
 
@@ -246,7 +246,7 @@ func (l *loggingWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// Close closes and logs to the contianed io.WriteCloser.
+// Close closes and logs to the contained io.WriteCloser.
 func (l *loggingWriter) Close() error {
 	fname := "Close"
 
