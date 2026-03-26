@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.11
+
+### Bug fixes
+
+- Fix data races in ProgressiveScanner: added mutex for stage field and proper goroutine tracking for progressReporter
+- Fix directory size calculation in internal scan: add c4m content size to match the public library behavior
+
+### Code quality
+
+- Fix typos in store package: mathods, cusomizable, contianed, writting
+
+### Documentation
+
+- Add `explain`, `paths`, `intersect` to CLI reference and README command table
+- Create ARCHITECTURAL_CATALOG.md documenting package layout, types, and dependencies
+
 ## v1.0.10
 
 ### New: `c4 explain`, `c4 paths`, `c4 intersect` commands
