@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.12
+
+### Bug fixes
+
+- Fix empty directory size reporting: size is 0, not null, when scanned
+
 ## v1.0.11
 
 ### Bug fixes
