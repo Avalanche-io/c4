@@ -505,7 +505,10 @@ func getDirectoryChildren(entries []*Entry, dir *Entry) []*Entry {
 	return children
 }
 
-// calculateDirectorySize computes the total size of direct children.
+// calculateDirectorySize computes the total size of direct children plus the
+// byte length of the directory's own canonical c4m content (the one-level
+// listing of those children). The c4m content is real data stored in the store,
+// so it must be counted in the directory's size.
 // Nil-infectious: if any child has null size (-1), the result is null (-1).
 func calculateDirectorySize(entries []*Entry) int64 {
 	var total int64
@@ -515,7 +518,19 @@ func calculateDirectorySize(entries []*Entry) int64 {
 		}
 		total += e.Size
 	}
+	total += c4mContentSize(entries)
 	return total
+}
+
+// c4mContentSize returns the byte length of the canonical c4m text that
+// would be produced for a directory whose direct children are entries.
+// This is the one-level listing: each child's canonical line followed by '\n'.
+func c4mContentSize(entries []*Entry) int64 {
+	var n int64
+	for _, e := range entries {
+		n += int64(len(e.Canonical())) + 1 // +1 for '\n'
+	}
+	return n
 }
 
 // getMostRecentModtime finds the most recent modification time among entries.

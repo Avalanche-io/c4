@@ -219,8 +219,10 @@ func TestCalculateDirectorySize(t *testing.T) {
 	}
 
 	size := CalculateDirectorySize(entries)
-	if size != 600 {
-		t.Errorf("Expected 600, got %d", size)
+	// Expected: 100+200+300 = 600 file content + c4m content size of all 4 entries
+	want := int64(600) + c4mContentSize(entries)
+	if size != want {
+		t.Errorf("Expected %d, got %d", want, size)
 	}
 }
 
@@ -234,15 +236,20 @@ func TestPropagateMetadataDirectorySizes(t *testing.T) {
 		{Name: "file2.txt", Mode: 0644, Timestamp: now, Size: 200, Depth: 2},
 	}
 
+	// subdir has one child: file2.txt
+	wantSubdir := int64(200) + c4mContentSize([]*Entry{entries[3]})
+
 	PropagateMetadata(entries)
 
-	// subdir/ should be 200 (just file2.txt)
-	if entries[2].Size != 200 {
-		t.Errorf("subdir/ size = %d, want 200", entries[2].Size)
+	// subdir/ should be file2 content + c4m listing overhead
+	if entries[2].Size != wantSubdir {
+		t.Errorf("subdir/ size = %d, want %d", entries[2].Size, wantSubdir)
 	}
-	// dir/ should be 100 + 200 = 300 (file1 + subdir's computed size)
-	if entries[0].Size != 300 {
-		t.Errorf("dir/ size = %d, want 300", entries[0].Size)
+	// dir/ children are file1 and subdir (now with updated size)
+	// We need to use the actual entries after propagation for subdir's canonical form
+	wantDir := entries[1].Size + entries[2].Size + c4mContentSize([]*Entry{entries[1], entries[2]})
+	if entries[0].Size != wantDir {
+		t.Errorf("dir/ size = %d, want %d", entries[0].Size, wantDir)
 	}
 }
 

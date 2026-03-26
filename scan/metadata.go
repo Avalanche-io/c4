@@ -166,8 +166,9 @@ func (sr *ScanResult) ToManifest() *Manifest {
 	return manifest
 }
 
-// CalculateDirectorySize computes the total size of all entries
-// This is the sum of all file sizes recursively, excluding null sizes
+// CalculateDirectorySize computes the total size of direct children plus the
+// byte length of the directory's own canonical c4m content (the one-level
+// listing of those children). Null sizes (-1) are skipped.
 func CalculateDirectorySize(entries []*Entry) int64 {
 	var total int64
 	for _, e := range entries {
@@ -175,7 +176,18 @@ func CalculateDirectorySize(entries []*Entry) int64 {
 			total += e.Size
 		}
 	}
+	total += c4mContentSize(entries)
 	return total
+}
+
+// c4mContentSize returns the byte length of the canonical c4m text that
+// would be produced for a directory whose direct children are entries.
+func c4mContentSize(entries []*Entry) int64 {
+	var n int64
+	for _, e := range entries {
+		n += int64(len(e.Canonical())) + 1 // +1 for '\n'
+	}
+	return n
 }
 
 // GetMostRecentModtime finds the most recent modification time among entries.

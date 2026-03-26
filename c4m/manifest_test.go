@@ -603,9 +603,17 @@ func TestCanonicalize(t *testing.T) {
 
 		m.Canonicalize()
 
-		// Directory should have size propagated
-		if m.Entries[0].Size != 100 {
-			t.Errorf("expected dir size 100, got %d", m.Entries[0].Size)
+		// Directory size = child content (100) + c4m content size of the one-level listing
+		// The child's canonical line is ~135 chars + newline = 136 bytes
+		dirSize := m.Entries[0].Size
+		if dirSize <= 100 {
+			t.Errorf("expected dir size > 100 (children + c4m overhead), got %d", dirSize)
+		}
+		// Verify it equals 100 + the c4m content size
+		child := m.Entries[1]
+		expectedC4mSize := int64(len(child.Canonical())) + 1
+		if dirSize != 100+expectedC4mSize {
+			t.Errorf("expected dir size %d (100 + %d c4m), got %d", 100+expectedC4mSize, expectedC4mSize, dirSize)
 		}
 	})
 }
@@ -669,23 +677,37 @@ func TestGetDirectoryChildren(t *testing.T) {
 	}
 }
 
+// expectedDirSize computes the expected directory size: sum of children's sizes
+// plus the byte length of the canonical c4m listing of those children.
+// Returns -1 if any child has null size.
+func expectedDirSize(entries []*Entry) int64 {
+	var total int64
+	for _, e := range entries {
+		if e.Size < 0 {
+			return -1
+		}
+		total += e.Size
+	}
+	for _, e := range entries {
+		total += int64(len(e.Canonical())) + 1
+	}
+	return total
+}
+
 func TestCalculateDirectorySize(t *testing.T) {
 	tests := []struct {
-		name     string
-		entries  []*Entry
-		expected int64
+		name    string
+		entries []*Entry
 	}{
 		{
-			name:     "empty",
-			entries:  []*Entry{},
-			expected: 0,
+			name:    "empty",
+			entries: []*Entry{},
 		},
 		{
 			name: "single file",
 			entries: []*Entry{
 				{Name: "file.txt", Size: 100},
 			},
-			expected: 100,
 		},
 		{
 			name: "multiple files",
@@ -694,7 +716,6 @@ func TestCalculateDirectorySize(t *testing.T) {
 				{Name: "b.txt", Size: 200},
 				{Name: "c.txt", Size: 300},
 			},
-			expected: 600,
 		},
 		{
 			name: "with null sizes (nil-infectious)",
@@ -703,7 +724,6 @@ func TestCalculateDirectorySize(t *testing.T) {
 				{Name: "b.txt", Size: -1}, // null
 				{Name: "c.txt", Size: 300},
 			},
-			expected: -1, // any null makes total null
 		},
 		{
 			name: "all null sizes",
@@ -711,7 +731,6 @@ func TestCalculateDirectorySize(t *testing.T) {
 				{Name: "a.txt", Size: -1},
 				{Name: "b.txt", Size: -1},
 			},
-			expected: -1,
 		},
 		{
 			name: "zero size files",
@@ -719,15 +738,15 @@ func TestCalculateDirectorySize(t *testing.T) {
 				{Name: "empty.txt", Size: 0},
 				{Name: "also_empty.txt", Size: 0},
 			},
-			expected: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			expected := expectedDirSize(tt.entries)
 			result := calculateDirectorySize(tt.entries)
-			if result != tt.expected {
-				t.Errorf("got %d, want %d", result, tt.expected)
+			if result != expected {
+				t.Errorf("got %d, want %d", result, expected)
 			}
 		})
 	}
@@ -803,11 +822,14 @@ func TestPropagateMetadata(t *testing.T) {
 		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
 		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t1, Depth: 1}
 
+		children := []*Entry{file1, file2}
+		want := expectedDirSize(children)
+
 		entries := []*Entry{dir, file1, file2}
 		propagateMetadata(entries)
 
-		if dir.Size != 300 {
-			t.Errorf("dir size: got %d, want 300", dir.Size)
+		if dir.Size != want {
+			t.Errorf("dir size: got %d, want %d", dir.Size, want)
 		}
 	})
 
@@ -830,11 +852,14 @@ func TestPropagateMetadata(t *testing.T) {
 		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
 		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1}
 
+		children := []*Entry{file1, file2}
+		want := expectedDirSize(children)
+
 		entries := []*Entry{dir, file1, file2}
 		propagateMetadata(entries)
 
-		if dir.Size != 300 {
-			t.Errorf("dir size: got %d, want 300", dir.Size)
+		if dir.Size != want {
+			t.Errorf("dir size: got %d, want %d", dir.Size, want)
 		}
 		if !dir.Timestamp.Equal(t2) {
 			t.Errorf("dir timestamp: got %v, want %v", dir.Timestamp, t2)
@@ -864,21 +889,26 @@ func TestPropagateMetadata(t *testing.T) {
 		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 2}
 		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: t2, Depth: 1}
 
+		// subdir's expected size: file1 content + c4m listing of file1
+		wantSubdir := expectedDirSize([]*Entry{file1})
+
 		entries := []*Entry{root, subdir, file1, file2}
 		propagateMetadata(entries)
 
-		// subdir should get file1's info (its only direct child)
-		if subdir.Size != 100 {
-			t.Errorf("subdir size: got %d, want 100", subdir.Size)
+		// subdir should get file1's content + c4m overhead
+		if subdir.Size != wantSubdir {
+			t.Errorf("subdir size: got %d, want %d", subdir.Size, wantSubdir)
 		}
 		if !subdir.Timestamp.Equal(t1) {
 			t.Errorf("subdir timestamp: got %v, want %v", subdir.Timestamp, t1)
 		}
 
-		// With reverse-order iteration, subdir is resolved first,
-		// so root correctly includes subdir's propagated size + file2's size
-		if root.Size != 300 {
-			t.Errorf("root size: got %d, want 300 (subdir=100 + file2=200)", root.Size)
+		// root's expected size: after subdir is resolved, root's children are
+		// subdir (with updated size) and file2. We must use the actual subdir
+		// entry (which now has its computed size) to get the right c4m content size.
+		wantRoot := expectedDirSize([]*Entry{subdir, file2})
+		if root.Size != wantRoot {
+			t.Errorf("root size: got %d, want %d", root.Size, wantRoot)
 		}
 		// root timestamp should be t2 (most recent of direct children)
 		if !root.Timestamp.Equal(t2) {
@@ -920,6 +950,9 @@ func TestPropagateMetadata(t *testing.T) {
 		file1 := &Entry{Name: "a.txt", Size: 100, Timestamp: t1, Depth: 1}
 		file2 := &Entry{Name: "b.txt", Size: 200, Timestamp: time.Unix(0, 0), Depth: 1} // null timestamp
 
+		children := []*Entry{file1, file2}
+		want := expectedDirSize(children)
+
 		entries := []*Entry{dir, file1, file2}
 		propagateMetadata(entries)
 
@@ -927,8 +960,8 @@ func TestPropagateMetadata(t *testing.T) {
 			t.Errorf("dir timestamp should be null when child has null timestamp, got %v", dir.Timestamp)
 		}
 		// Size should still be computed since all child sizes are known
-		if dir.Size != 300 {
-			t.Errorf("dir size should be 300 (size is independent of timestamp), got %d", dir.Size)
+		if dir.Size != want {
+			t.Errorf("dir size should be %d (size is independent of timestamp), got %d", want, dir.Size)
 		}
 	})
 
