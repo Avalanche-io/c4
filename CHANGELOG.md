@@ -1,5 +1,110 @@
 # Changelog
 
+## v1.0.10
+
+### New: `c4 explain`, `c4 paths`, `c4 intersect` commands
+
+Three new commands for querying and understanding c4m data:
+
+- `c4 explain id|diff|patch` — human-readable narration of what a command would do, without modifying anything
+- `c4 paths` — bidirectional conversion between c4m format and plain path lists
+- `c4 intersect id|path` — find common entries between two c4m files, by content identity or by path
+
+### Block link semantics
+
+Patch chain checkpoints replaced with O(1) block links in the decoder and spec. Block links allow the decoder to verify chain integrity without scanning all preceding content.
+
+### Directory size includes c4m content
+
+Directory entry sizes now include the size of the c4m content that describes the directory, giving a more accurate picture of total storage.
+
+### Documentation
+
+- Block link semantics design doc
+- Large directory blocks design doc
+- c4m identity paradox doc: rationale, edge cases, and open questions
+
+## v1.0.9
+
+### c4m canonical identification
+
+All ID paths now detect c4m content and canonicalize it before identification. This ensures that semantically identical c4m files always produce the same C4 ID regardless of whitespace or field formatting differences.
+
+### Enhanced `c4 cat`
+
+- `-e` flag for ergonomic (pretty-printed) output
+- `-r` flag for recursive directory expansion
+- File path support: `c4 cat file.c4m` reads from disk, not just from store
+
+### Bug fixes
+
+- `storeDirectoryC4m` now uses Canonicalize+Canonical to match ComputeC4ID
+
+### Documentation
+
+- c4m canonical storage design document
+- c4m detection design doc: two-phase check for recognizing c4m content
+
+## v1.0.8
+
+### Bare `c4` shortcuts
+
+- `c4 <path>` works as `c4 id -s`: identify and store in one step
+- Bare stdin stores by default; `-x` flag skips storage
+- CR (`\r`) bytes rejected in c4m input to enforce Unix line endings
+
+### Auto-sort on read
+
+The decoder now auto-sorts entries to canonical order on decode. If the input was not in canonical order, a note is emitted to stderr.
+
+### Spec clarifications
+
+- Null mode (`-`) vs zero mode (`----------`) are semantically different and must not be conflated
+
+### Bug fixes
+
+- Null mode rendering fixed in pretty-print encoder and paths output
+
+### Documentation
+
+- Design docs: auto-sort-on-read, bare-command-defaults
+- Updated progressive-scanning design doc
+
+## v1.0.7
+
+### New commands
+
+- `c4 explain` — human-readable narration for `id`, `diff`, and `patch` operations
+- `c4 paths` — convert between c4m format and plain path lists (bidirectional)
+- `c4 intersect id|path` — find common entries between two c4m files by content or path
+
+### README and install
+
+- Rewrite of install section with Homebrew, binary downloads, and from-source options
+- Toolkit table showing the cross-language C4 ecosystem
+- License corrected to Apache 2.0
+
+## v1.0.6
+
+Version bump only (no functional changes).
+
+## v1.0.5
+
+### Scan: nothing is skipped
+
+The scanner no longer hardcodes a `.git` skip or hides hidden files. Everything is included by default. Exclusions are runtime-only via `--exclude`, `--exclude-file`, or the `C4_EXCLUDE_FILE` environment variable.
+
+### License
+
+Switched from MIT to Apache 2.0.
+
+### Documentation
+
+- FAQ: SHA-512 permanence rationale
+- FAQ: text vs binary format rationale (2% overhead finding)
+- README: merge example added
+- FAQ: fix c4py repo URL
+
 ## v1.0.4
 
 ### New: Multi-target distribution
