@@ -88,8 +88,9 @@ func (d *Decoder) Decode() (*Manifest, error) {
 					return nil, fmt.Errorf("%w (line %d)", ErrEmptyPatch, d.lineNum)
 				}
 
-				// Subsequent bare ID: must match canonical ID of accumulated state.
-				// Flush current section into the manifest.
+				// Bare C4 ID = block link to the previous section.
+				// Flush current section. The bare ID is the previous
+				// block's identity (O(1), no accumulated state check).
 				if !patchMode {
 					m.Entries = append(m.Entries, section...)
 				} else {
@@ -97,12 +98,6 @@ func (d *Decoder) Decode() (*Manifest, error) {
 					m = ApplyPatch(m, patch)
 				}
 				section = nil
-
-				expected := m.ComputeC4ID()
-				if id != expected {
-					return nil, fmt.Errorf("%w: line %d: got %s, want %s",
-						ErrPatchIDMismatch, d.lineNum, id, expected)
-				}
 				patchMode = true
 			}
 			firstLine = false

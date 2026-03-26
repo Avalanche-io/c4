@@ -312,7 +312,7 @@ A bare C4 ID on the **first non-blank line** of the stream (before any entries) 
 
 This is stored on `Manifest.Base`.
 
-#### Subsequent Bare C4 ID (Inline Checkpoint)
+#### Subsequent Bare C4 ID (Block Link)
 
 ```
 -rw-r--r-- 2025-01-01T00:00:00Z 100 a.txt c4...
@@ -320,9 +320,9 @@ c4<90-char-id>
 -rw-r--r-- 2025-01-01T00:00:00Z 200 b.txt c4...
 ```
 
-A bare C4 ID appearing **after entries** is an inline checkpoint. It **must match** the canonical C4 ID of all accumulated content above it. If it doesn't match, the stream is malformed (`ErrPatchIDMismatch`).
+A bare C4 ID appearing **after entries** is a block link. It is the C4 ID of the block immediately above it (the content between the previous boundary and this line). The decoder records it but does not verify it against accumulated state — verification is O(n) and does not scale to large directories.
 
-Entries following the checkpoint are interpreted as a patch against the accumulated state.
+Entries following the block link are interpreted as a patch against the accumulated state.
 
 ### Why the First-Line Rule Differs
 

@@ -55,14 +55,17 @@ which IS the complete state at that point. After that, each bare ID
 is just a pointer to the previous block — the running state would
 require applying all patches to compute.
 
-### Entry Limit
+### No Fixed Block Size
 
-A well-defined entry limit per block. Suggested: **10,000 entries**
-per block. This produces blocks of roughly 1-2 MB (at ~150 bytes per
-entry), which is practical to parse and hash.
+There is no spec-mandated block size. Producers emit block boundaries
+whenever they choose — for memory management, streaming, or transport
+reasons. Consumers must accept blocks of any size.
 
-The limit is per-block, not per-directory. A directory with 50,000
-entries would produce 5 blocks.
+Any patch chain produces a different byte representation than a single
+c4m file for the same content. This is already true — patches are a
+transport/storage mechanism, not an identity mechanism. The directory's
+C4 ID is computed from its canonical one-level form, independent of
+how many blocks were used to transmit it.
 
 ### Block Identity
 

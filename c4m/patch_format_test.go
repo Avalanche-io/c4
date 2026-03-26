@@ -185,18 +185,21 @@ func TestDecodeInlinePatchModify(t *testing.T) {
 	}
 }
 
-func TestDecodeInlinePatchIDMismatch(t *testing.T) {
-	// A bare C4 ID that doesn't match the accumulated content must fail.
+func TestDecodeInlineBlockLink(t *testing.T) {
+	// A bare C4 ID is a block link — not verified against accumulated state.
+	// Any C4 ID is accepted as a block boundary.
 	input := "-rw-r--r-- 2026-03-06T12:00:00Z 100 a.txt\n" +
 		c4.Identify(strings.NewReader("wrong")).String() + "\n" +
 		"-rw-r--r-- 2026-03-06T12:00:00Z 200 b.txt\n"
 
-	_, err := Unmarshal([]byte(input))
-	if err == nil {
-		t.Fatal("expected ErrPatchIDMismatch, got nil")
+	m, err := Unmarshal([]byte(input))
+	if err != nil {
+		t.Fatalf("block link should be accepted: %v", err)
 	}
-	if !strings.Contains(err.Error(), "patch ID does not match") {
-		t.Errorf("unexpected error: %v", err)
+	// The patch (b.txt) should be applied to the base (a.txt).
+	// Since b.txt is new, the result should have both entries.
+	if len(m.Entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(m.Entries))
 	}
 }
 
