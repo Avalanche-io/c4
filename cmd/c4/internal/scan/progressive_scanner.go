@@ -53,6 +53,7 @@ type ProgressiveScanner struct {
 	slowMode        bool  // Add artificial delays for testing
 	
 	// Scan state
+	stageMu         sync.RWMutex
 	stage           ScanStage
 	entries         sync.Map // path -> *ScanEntry
 	rootEntry       *ScanEntry
@@ -205,9 +206,12 @@ func (ps *ProgressiveScanner) signalHandler() {
 
 // RequestStatus requests current scan status
 func (ps *ProgressiveScanner) RequestStatus() *ScanStatus {
+	ps.stageMu.RLock()
+	stage := ps.stage
+	ps.stageMu.RUnlock()
 	// Return status directly without channel communication
 	return &ScanStatus{
-		Stage:           ps.stage,
+		Stage:           stage,
 		TotalFound:      atomic.LoadInt64(&ps.totalFound),
 		MetadataScanned: atomic.LoadInt64(&ps.metadataScanned),
 		C4Computed:      atomic.LoadInt64(&ps.c4Computed),
@@ -220,7 +224,9 @@ func (ps *ProgressiveScanner) RequestStatus() *ScanStatus {
 // runStructureScan performs Stage 1: Fast directory structure scanning
 func (ps *ProgressiveScanner) runStructureScan() {
 	defer ps.wg.Done()
+	ps.stageMu.Lock()
 	ps.stage = StageStructure
+	ps.stageMu.Unlock()
 	
 	// Start all workers
 	for i := 0; i < ps.numWorkers; i++ {
@@ -396,23 +402,29 @@ func (ps *ProgressiveScanner) completionMonitor() {
 			if !structureClosed && structPending == 0 {
 				close(ps.structureChan)
 				structureClosed = true
+				ps.stageMu.Lock()
 				ps.stage = StageMetadata
+				ps.stageMu.Unlock()
 			}
-			
+
 			// Check metadata completion
 			if !metadataClosed && structureClosed && metaPending == 0 {
 				close(ps.metadataChan)
 				metadataClosed = true
+				ps.stageMu.Lock()
 				ps.stage = StageC4ID
+				ps.stageMu.Unlock()
 			}
-			
+
 			// Check C4 completion
 			if !c4Closed && metadataClosed && c4Pending == 0 {
 				close(ps.c4Chan)
 				c4Closed = true
 				// Only set complete when all workers are done
 				// Workers will finish processing what's in their channels
+				ps.stageMu.Lock()
 				ps.stage = StageComplete
+				ps.stageMu.Unlock()
 				close(ps.done) // Signal completion
 				return // All done!
 			}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,7 @@ type ProgressiveCLI struct {
 	verbose     bool
 	showProgress bool
 	slowMode    bool // Add artificial delays for testing
+	wg          sync.WaitGroup // tracks background goroutines (e.g. progressReporter)
 }
 
 // NewProgressiveCLI creates a new CLI interface
@@ -112,12 +114,17 @@ func (pc *ProgressiveCLI) Run() error {
 	
 	// Start progress reporter if enabled
 	if pc.showProgress {
-		go pc.progressReporter()
+		pc.wg.Add(1)
+		go func() {
+			defer pc.wg.Done()
+			pc.progressReporter()
+		}()
 	}
-	
+
 	// Wait for completion or interrupt
 	pc.scanner.Wait()
-	
+	pc.wg.Wait() // Wait for progressReporter to finish
+
 	// Output final scan summary if progress reporting was enabled
 	if pc.showProgress && !pc.verbose {
 		status := pc.scanner.RequestStatus()
@@ -376,23 +383,29 @@ func (pc *ProgressiveCLI) RunWithTimeout(timeout time.Duration) error {
 	
 	// Start progress reporter if enabled
 	if pc.showProgress {
-		go pc.progressReporter()
+		pc.wg.Add(1)
+		go func() {
+			defer pc.wg.Done()
+			pc.progressReporter()
+		}()
 	}
-	
+
 	// Wait for completion or timeout
 	select {
 	case <-done:
 		if pc.verbose {
 			fmt.Fprintln(pc.errWriter, "\n# Scan complete")
 		}
-		
+
 	case <-timer.C:
 		if pc.verbose {
 			fmt.Fprintln(pc.errWriter, "\n# Timeout reached, outputting partial results")
 		}
 		pc.scanner.Stop()
 	}
-	
+
+	pc.wg.Wait() // Wait for progressReporter to finish
+
 	// Output results
 	err := pc.scanner.OutputCurrentState(pc.writer)
 	if err != nil {
@@ -412,7 +425,8 @@ func (pc *ProgressiveCLI) OutputSnapshot(w io.Writer) error {
 	return pc.scanner.OutputCurrentState(w)
 }
 
-// Stop gracefully stops the scanner
+// Stop gracefully stops the scanner and waits for all CLI goroutines
 func (pc *ProgressiveCLI) Stop() {
 	pc.scanner.Stop()
+	pc.wg.Wait()
 }

@@ -242,21 +242,21 @@ func TestProgressiveCLI(t *testing.T) {
 		)
 		
 		// Run with short timeout to see progress
+		done := make(chan struct{})
 		go func() {
 			cli.RunWithTimeout(500 * time.Millisecond)
+			close(done)
 		}()
-		
-		// Let progress reporter run
-		time.Sleep(200 * time.Millisecond)
-		
-		// Should have progress output in stderr
+
+		// Wait for RunWithTimeout to complete (includes progress reporter shutdown)
+		<-done
+
+		// Read buffer only after goroutine exits to avoid data race
 		errStr := errOutput.String()
 		if !strings.Contains(errStr, "Stage") && !strings.Contains(errStr, "Found") {
 			// Progress might not have been written yet, that's ok
 			t.Log("No progress output captured")
 		}
-		
-		cli.Stop()
 	})
 	
 	t.Run("CLI snapshot output", func(t *testing.T) {
