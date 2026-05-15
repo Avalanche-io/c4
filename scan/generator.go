@@ -2,6 +2,7 @@ package scan
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,6 +55,10 @@ type Generator struct {
 	progress        *progress // nil = no progress reporting (zero-cost path)
 	maxConcurrency  int       // 0 = auto, 1 = sequential, n > 1 = bounded parallel
 	sem             chan struct{} // worker-pool slots; nil for sequential
+
+	ctx      context.Context        // cancellation; nil means no cancellation
+	streamCB func(*c4m.Entry) error // fires per discovered entry; nil disables streaming
+	streamMu sync.Mutex             // serializes streamCB calls under parallel walk
 }
 
 // NewGenerator creates a new manifest generator
@@ -148,6 +153,37 @@ func WithMaxConcurrency(n int) GeneratorOption {
 	}
 }
 
+// WithContext attaches a context to the scan. Cancellation is observed at
+// every directory boundary and between entries within a directory. The
+// returned partial manifest from Dir/GenerateFromPath will reflect work
+// completed up to the cancellation point.
+func WithContext(ctx context.Context) GeneratorOption {
+	return func(g *Generator) {
+		g.ctx = ctx
+	}
+}
+
+// WithEntryStream installs a callback that fires once per discovered entry
+// before it is added to the manifest. Returning a non-nil error halts the
+// scan; that error is returned by Dir/GenerateFromPath alongside the
+// partial manifest collected so far.
+//
+// Under parallel walk (the default) the callback may be invoked from
+// multiple goroutines but is serialized by an internal mutex, so the
+// callback body itself does not need to be thread-safe. Order is the
+// discovery order produced by the worker pool, which is non-deterministic
+// across runs; pair with WithMaxConcurrency(1) if strict walk-order is
+// required.
+//
+// The callback is not invoked for entries emitted by internal sub-scans
+// used to compute directory C4 IDs in ModeFull — only top-level walk
+// entries are streamed.
+func WithEntryStream(cb func(*c4m.Entry) error) GeneratorOption {
+	return func(g *Generator) {
+		g.streamCB = cb
+	}
+}
+
 // WithGuide sets an existing manifest as a guide. Only entries present
 // in the guide will be included in the scan. This enables the
 // scan-filter-continue workflow.
@@ -198,7 +234,9 @@ func NewGeneratorWithOptions(opts ...GeneratorOption) *Generator {
 // clone creates a copy with the same settings but fresh state.
 // Sub-scans triggered for directory C4 ID computation share the parent's
 // semaphore so the global concurrency cap is honored across the whole walk.
-// They drop the progress reporter to avoid double-counting.
+// They drop the progress reporter and the entry-stream callback to avoid
+// double-counting / double-emit. The context IS propagated so a single
+// cancellation halts the entire scan, including sub-scans.
 func (g *Generator) clone() *Generator {
 	clone := &Generator{
 		mode:            g.mode,
@@ -210,6 +248,7 @@ func (g *Generator) clone() *Generator {
 		guide:           g.guide,
 		maxConcurrency:  g.maxConcurrency,
 		sem:             g.sem,
+		ctx:             g.ctx,
 	}
 	if len(g.excludePatterns) > 0 {
 		clone.excludePatterns = make([]string, len(g.excludePatterns))
@@ -234,6 +273,38 @@ func (g *Generator) resolveConcurrency() int {
 		n = 1
 	}
 	return n
+}
+
+// ctxErr returns a non-nil error if the attached context (if any) is done.
+func (g *Generator) ctxErr() error {
+	if g.ctx == nil {
+		return nil
+	}
+	return g.ctx.Err()
+}
+
+// emit fires the per-entry stream callback (if any). Serialized via
+// streamMu so callers don't need to worry about thread-safety even under
+// parallel walk. A non-nil callback error halts the scan; it is propagated
+// up to GenerateFromPath which packages it with the partial manifest.
+func (g *Generator) emit(e *Entry) error {
+	if g.streamCB == nil {
+		return nil
+	}
+	g.streamMu.Lock()
+	defer g.streamMu.Unlock()
+	return g.streamCB(e)
+}
+
+// errReturn packages a partial manifest with an error. When streaming or a
+// context is configured, callers want the partial result back so they can
+// persist it / inspect it; otherwise we preserve the historical nil-on-
+// error contract for backward compatibility.
+func (g *Generator) errReturn(m *Manifest, err error) (*Manifest, error) {
+	if g.ctx != nil || g.streamCB != nil {
+		return m, err
+	}
+	return nil, err
 }
 
 // GenerateFromPath creates a manifest from a filesystem path
@@ -270,17 +341,23 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	}
 
 	if info.IsDir() {
-		entries, err := g.generateDir(absPath, "", 0)
-		if err != nil {
-			return nil, err
-		}
+		entries, walkErr := g.generateDir(absPath, "", 0)
+		// Even on cancel/error, append whatever entries we managed to
+		// collect — callers want a partial manifest from a streaming run.
 		for _, e := range entries {
 			manifest.AddEntry(e)
 		}
+		if walkErr != nil {
+			return g.errReturn(manifest, walkErr)
+		}
 	} else {
-		entry, err := g.generateEntry(absPath, info, 0)
-		if err != nil {
-			return nil, err
+		entry, entryErr := g.generateEntry(absPath, info, 0)
+		if entryErr != nil {
+			return g.errReturn(manifest, entryErr)
+		}
+		if emitErr := g.emit(entry); emitErr != nil {
+			manifest.AddEntry(entry)
+			return g.errReturn(manifest, emitErr)
 		}
 		manifest.AddEntry(entry)
 		if g.progress != nil {
@@ -314,6 +391,9 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 // pool but their result slices are merged in deterministic order so the
 // final entry list is independent of scheduling.
 func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, error) {
+	if err := g.ctxErr(); err != nil {
+		return nil, err
+	}
 	dirEntries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory %s: %w", dirPath, err)
@@ -344,6 +424,9 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 			}
 		}
 
+		if err := g.emit(dirEntry); err != nil {
+			return out, err
+		}
 		out = append(out, dirEntry)
 		if g.progress != nil {
 			g.progress.record(dirPath, true, dirEntry.Size)
@@ -371,6 +454,9 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 	slots := make([]slot, 0, len(dirEntries))
 
 	for _, entry := range dirEntries {
+		if err := g.ctxErr(); err != nil {
+			return out, err
+		}
 		name := entry.Name()
 
 		if !g.includeHidden && strings.HasPrefix(name, ".") {
@@ -423,6 +509,9 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 				}
 				fileEntry := MetadataToEntry(md)
 				fileEntry.Name = name
+				if err := g.emit(fileEntry); err != nil {
+					return out, err
+				}
 				slots = append(slots, slot{direct: fileEntry})
 				if g.progress != nil {
 					g.progress.record(fullPath, fileEntry.IsDir(), fileEntry.Size)
@@ -441,6 +530,9 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 			return nil, err
 		}
 		fileEntry.Name = name
+		if err := g.emit(fileEntry); err != nil {
+			return out, err
+		}
 		slots = append(slots, slot{direct: fileEntry})
 		if g.progress != nil {
 			g.progress.record(fullPath, false, fileEntry.Size)
