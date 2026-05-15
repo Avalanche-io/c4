@@ -224,8 +224,9 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	// Sort entries hierarchically (files before directories at each level)
 	manifest.SortEntries()
 
-	// Compute directory sizes from children (OS-reported dir sizes are platform-dependent)
-	PropagateMetadata(manifest.Entries)
+	// Compute directory sizes from children (OS-reported dir sizes are platform-dependent).
+	// Uses the canonical c4m implementation — single-pass, nil-infectious, spec-compliant.
+	c4m.PropagateMetadata(manifest.Entries)
 
 	// Detect and collapse file sequences if enabled
 	if g.detectSequences {

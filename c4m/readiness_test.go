@@ -38,7 +38,7 @@ func TestReadiness(t *testing.T) {
 
 	t.Run("API", func(t *testing.T) {
 		t.Run("CurrentLayerUnexported", testCurrentLayerUnexported)
-		t.Run("PropagateMetadataUnexported", testPropagateMetadataUnexported)
+		t.Run("PropagateMetadataExported", testPropagateMetadataExported)
 		t.Run("GenerateFromReaderRemoved", testGenerateFromReaderRemoved)
 		t.Run("SingleSortMethod", testSingleSortMethod)
 		t.Run("SingleLookupMethod", testSingleLookupMethod)
@@ -334,20 +334,35 @@ func testCurrentLayerUnexported(t *testing.T) {
 	}
 }
 
-func testPropagateMetadataUnexported(t *testing.T) {
+// testPropagateMetadataExported asserts that PropagateMetadata IS exported
+// from the c4m package. It is the canonical implementation used by
+// Canonicalize and by the scan package (and any other producer of
+// c4m.Manifest). Reverting it to unexported would force callers to
+// re-implement the algorithm — which is exactly the drift that caused
+// scan/metadata.go and cmd/c4/internal/scan/metadata.go to grow O(D×N)
+// duplicates with diverging null-handling semantics.
+func testPropagateMetadataExported(t *testing.T) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "manifest.go", nil, 0)
 	if err != nil {
 		t.Fatalf("parsing manifest.go: %v", err)
 	}
+	found := false
 	for _, decl := range f.Decls {
 		fd, ok := decl.(*ast.FuncDecl)
 		if !ok {
 			continue
 		}
 		if fd.Name.Name == "PropagateMetadata" {
-			t.Error("PropagateMetadata is still exported — should be propagateMetadata")
+			found = true
+			break
 		}
+		if fd.Name.Name == "propagateMetadata" {
+			t.Error("propagateMetadata exists — should be exported as PropagateMetadata so producers can share the canonical implementation")
+		}
+	}
+	if !found {
+		t.Error("PropagateMetadata not found in c4m/manifest.go — Canonicalize and external scanners depend on it")
 	}
 }
 

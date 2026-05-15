@@ -160,7 +160,7 @@ func (m *Manifest) ComputeC4ID() c4.ID {
 // computation. Use Copy() first if you need to preserve the original.
 func (m *Manifest) Canonicalize() {
 	// Propagate metadata from children to parents (e.g., directory sizes, timestamps)
-	propagateMetadata(m.Entries)
+	PropagateMetadata(m.Entries)
 
 	// Null values stay null — they render as "-" in canonical form.
 	// No default substitution: unknown mode/size/timestamp remain as-is.
@@ -455,104 +455,146 @@ func (m *Manifest) sortSiblingsHierarchically() {
 // Metadata Propagation
 // ----------------------------------------------------------------------------
 
-// propagateMetadata resolves null values in entries by propagating from children.
-// This is used for directory entries to compute size and timestamp from contents.
-// Iterates in reverse so child directories are resolved before their parents.
-func propagateMetadata(entries []*Entry) {
-	// Process deepest directories first (reverse order)
-	for i := len(entries) - 1; i >= 0; i-- {
-		entry := entries[i]
-
-		if entry.IsDir() && entry.HasNullValues() {
-			// Get children of this directory
-			children := getDirectoryChildren(entries, entry)
-
-			// Propagate size if null
-			if entry.Size < 0 {
-				entry.Size = calculateDirectorySize(children)
-			}
-
-			// Propagate timestamp if null
-			if entry.Timestamp.Equal(NullTimestamp()) {
-				entry.Timestamp = getMostRecentModtime(children)
-			}
-		}
+// PropagateMetadata resolves null directory Size and Timestamp by accumulating
+// from descendants in a single pass. This is the canonical, spec-compliant
+// implementation — the scan package and any other producer of c4m.Manifest
+// should call this rather than maintain their own copy.
+//
+// Semantics (per SPECIFICATION.md):
+//   - Directory Size sums all descendant file sizes plus the byte length of
+//     each subdirectory's canonical c4m text (the one-level listing). This
+//     matches design/directory-size-includes-c4m.md.
+//   - Directory Timestamp is the most recent modification time among all
+//     descendants.
+//   - Both are nil-infectious: if any descendant has a null Size (-1) or null
+//     Timestamp (NullTimestamp()), the parent (and recursively the root)
+//     inherits null.
+//   - Empty directories get Size 0 (definitively empty, not unknown) and keep
+//     their null Timestamp.
+//   - Entries with non-null Size/Timestamp are never overwritten.
+//
+// Complexity: O(N) work, O(max-depth) memory.
+//
+// Precondition: entries must be in filesystem-walk order — a directory's
+// descendants appear contiguously after the directory entry, and sibling
+// subtrees do not interleave. Manifest.SortEntries produces this order;
+// scan.GenerateFromPath emits it directly.
+func PropagateMetadata(entries []*Entry) {
+	if len(entries) == 0 {
+		return
 	}
-}
 
-// getDirectoryChildren returns all entries that are direct children of a directory
-func getDirectoryChildren(entries []*Entry, dir *Entry) []*Entry {
-	var children []*Entry
-	dirDepth := dir.Depth
-
-	// Find entries at depth+1 that appear after this directory
-	collecting := false
+	// Cheap early-out: if no directory entry needs resolution, the previous
+	// algorithm's per-entry HasNullValues() short-circuit collapsed to zero
+	// work. Preserve that here — this is the common case for Canonicalize
+	// invoked from ComputeC4ID after a scan has already propagated, so
+	// re-hashing the same manifest stays sub-millisecond instead of
+	// re-doing the full accumulation pass.
+	needWork := false
 	for _, e := range entries {
-		if e == dir {
-			collecting = true
-			continue
-		}
-		if collecting {
-			if e.Depth == dirDepth+1 {
-				children = append(children, e)
-			} else if e.Depth <= dirDepth {
-				// Reached next sibling or parent, stop
-				break
-			}
+		if e.IsDir() && e.HasNullValues() {
+			needWork = true
+			break
 		}
 	}
-
-	return children
-}
-
-// calculateDirectorySize computes the total size of direct children plus the
-// byte length of the directory's own canonical c4m content (the one-level
-// listing of those children). The c4m content is real data stored in the store,
-// so it must be counted in the directory's size.
-// Nil-infectious: if any child has null size (-1), the result is null (-1).
-func calculateDirectorySize(entries []*Entry) int64 {
-	var total int64
-	for _, e := range entries {
-		if e.Size < 0 {
-			return -1 // unknown propagates upward
-		}
-		total += e.Size
+	if !needWork {
+		return
 	}
-	total += c4mContentSize(entries)
-	return total
-}
 
-// c4mContentSize returns the byte length of the canonical c4m text that
-// would be produced for a directory whose direct children are entries.
-// This is the one-level listing: each child's canonical line followed by '\n'.
-func c4mContentSize(entries []*Entry) int64 {
-	var n int64
-	for _, e := range entries {
-		n += int64(len(e.Canonical())) + 1 // +1 for '\n'
-	}
-	return n
-}
-
-// getMostRecentModtime finds the most recent modification time among entries.
-// Nil-infectious: if any child has a null timestamp, the result is null.
-func getMostRecentModtime(entries []*Entry) time.Time {
-	var mostRecent time.Time
 	null := NullTimestamp()
 
-	for _, e := range entries {
+	// One frame per open directory. We accumulate child contributions into
+	// the deepest open frame; on close, the frame's directory entry is
+	// resolved and propagated up to its parent frame.
+	type frame struct {
+		idx         int       // index of the directory entry in `entries`
+		depth       int       // depth of that directory
+		size        int64     // sum of resolved child sizes
+		c4mBytes    int64     // sum of len(child.Canonical())+1
+		ts          time.Time // most recent timestamp seen among children
+		nullSize    bool      // any child had null size
+		nullTs      bool      // any child had null timestamp
+		hadChildren bool      // distinguish empty dir from "all children resolved"
+	}
+	stack := make([]frame, 0, 16)
+
+	closeTop := func() {
+		top := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		d := entries[top.idx]
+
+		// Resolve Size if null. Empty dir → 0. Nil-infectious otherwise.
+		if d.Size < 0 {
+			switch {
+			case !top.hadChildren:
+				d.Size = 0
+			case top.nullSize:
+				d.Size = -1
+			default:
+				d.Size = top.size + top.c4mBytes
+			}
+		}
+		// Resolve Timestamp if null. Empty dir → null. Nil-infectious otherwise.
+		if d.Timestamp.Equal(null) {
+			switch {
+			case !top.hadChildren, top.nullTs:
+				d.Timestamp = null
+			default:
+				d.Timestamp = top.ts
+			}
+		}
+
+		// Propagate this directory's contribution into its parent frame.
+		if len(stack) == 0 {
+			return
+		}
+		p := &stack[len(stack)-1]
+		p.hadChildren = true
+		if d.Size < 0 {
+			p.nullSize = true
+		} else {
+			p.size += d.Size
+		}
+		if d.Timestamp.Equal(null) {
+			p.nullTs = true
+		} else if d.Timestamp.After(p.ts) {
+			p.ts = d.Timestamp
+		}
+		// Use the *resolved* canonical form so the c4m byte count
+		// reflects the final Size/Timestamp on this subdirectory entry.
+		p.c4mBytes += int64(len(d.Canonical())) + 1
+	}
+
+	for i, e := range entries {
+		// We've left every frame whose depth is >= e.Depth.
+		for len(stack) > 0 && stack[len(stack)-1].depth >= e.Depth {
+			closeTop()
+		}
+		if e.IsDir() {
+			stack = append(stack, frame{idx: i, depth: e.Depth})
+			continue
+		}
+		// Non-directory: accumulate into the immediate parent frame, if any.
+		if len(stack) == 0 {
+			continue
+		}
+		p := &stack[len(stack)-1]
+		p.hadChildren = true
+		if e.Size < 0 {
+			p.nullSize = true
+		} else {
+			p.size += e.Size
+		}
 		if e.Timestamp.Equal(null) {
-			return null // unknown propagates upward
+			p.nullTs = true
+		} else if e.Timestamp.After(p.ts) {
+			p.ts = e.Timestamp
 		}
-		if e.Timestamp.After(mostRecent) {
-			mostRecent = e.Timestamp
-		}
+		p.c4mBytes += int64(len(e.Canonical())) + 1
 	}
-
-	if mostRecent.IsZero() {
-		return null
+	for len(stack) > 0 {
+		closeTop()
 	}
-
-	return mostRecent
 }
 
 // ----------------------------------------------------------------------------

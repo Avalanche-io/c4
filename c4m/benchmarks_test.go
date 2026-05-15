@@ -235,6 +235,84 @@ func BenchmarkNaturalSortPerformance(b *testing.B) {
 	}
 }
 
+// buildSyntheticManifest creates a filesystem-walk-ordered slice of entries
+// approximating a real source tree: a tunable directory ratio, modest fanout,
+// every directory's null Size and Timestamp, every file's known Size and
+// Timestamp. Used by BenchmarkPropagateMetadata_Linear to assert scaling.
+//
+// The shape: a depth-`maxDepth` tree where every directory has `dirFanout`
+// child directories plus `fileFanout` child files, truncated once we have
+// `n` entries total. Entries are emitted in depth-first walk order — files
+// before directories at each level — which matches what scan.GenerateFromPath
+// produces post-SortEntries.
+func buildSyntheticManifest(n, dirFanout, fileFanout, maxDepth int) []*Entry {
+	entries := make([]*Entry, 0, n)
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	var emit func(prefix string, depth int)
+	emit = func(prefix string, depth int) {
+		if len(entries) >= n {
+			return
+		}
+		// Files first.
+		for i := 0; i < fileFanout && len(entries) < n; i++ {
+			entries = append(entries, &Entry{
+				Name:      fmt.Sprintf("%sfile%d.txt", prefix, i),
+				Mode:      0644,
+				Timestamp: now,
+				Size:      int64(1024 + i),
+				Depth:     depth,
+			})
+		}
+		if depth >= maxDepth {
+			return
+		}
+		// Then subdirectories — null Size and Timestamp so propagation has work to do.
+		for i := 0; i < dirFanout && len(entries) < n; i++ {
+			entries = append(entries, &Entry{
+				Name:      fmt.Sprintf("%sdir%d/", prefix, i),
+				Mode:      os.ModeDir | 0755,
+				Timestamp: time.Unix(0, 0).UTC(),
+				Size:      -1,
+				Depth:     depth,
+			})
+			emit(fmt.Sprintf("%sdir%d_", prefix, i), depth+1)
+		}
+	}
+	emit("", 0)
+	return entries
+}
+
+// BenchmarkPropagateMetadata_Linear asserts that c4m.PropagateMetadata
+// scales near-linearly with entry count. The previous quadratic algorithm
+// (linear getDirectoryChildren scan per null directory) blew up to
+// minutes-long latency on 1M-entry trees; the single-pass depth-stack
+// algorithm should stay near 1.0× per doubling of input. If the ratio
+// between adjacent sizes ever climbs much above ~1.3×, something has
+// regressed.
+//
+// Run:
+//   go test -run='^$' -bench=BenchmarkPropagateMetadata_Linear -benchtime=3x ./c4m
+func BenchmarkPropagateMetadata_Linear(b *testing.B) {
+	sizes := []int{10_000, 100_000, 1_000_000}
+	for _, n := range sizes {
+		template := buildSyntheticManifest(n, 4, 4, 12)
+		b.Run(fmt.Sprintf("entries=%d", len(template)), func(b *testing.B) {
+			b.ReportAllocs()
+			b.StopTimer()
+			for i := 0; i < b.N; i++ {
+				entries := make([]*Entry, len(template))
+				for j, e := range template {
+					cp := *e
+					entries[j] = &cp
+				}
+				b.StartTimer()
+				PropagateMetadata(entries)
+				b.StopTimer()
+			}
+		})
+	}
+}
+
 // BenchmarkC4IDComparison tests C4 ID comparison performance
 func BenchmarkC4IDComparison(b *testing.B) {
 	// Create IDs

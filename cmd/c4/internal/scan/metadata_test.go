@@ -7,7 +7,19 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
 )
+
+// c4mContentSizeForTest mirrors the c4m byte-count helper used inside
+// c4m.PropagateMetadata, kept here just so this package's integration test
+// can verify expected directory sizes after propagation.
+func c4mContentSizeForTest(entries []*Entry) int64 {
+	var n int64
+	for _, e := range entries {
+		n += int64(len(e.Canonical())) + 1
+	}
+	return n
+}
 
 func TestFileMetadataImplementsFileInfo(t *testing.T) {
 	// Create a test metadata
@@ -210,25 +222,14 @@ func TestScanResultToManifest(t *testing.T) {
 	}
 }
 
-func TestCalculateDirectorySize(t *testing.T) {
-	entries := []*Entry{
-		{Size: 100},
-		{Size: 200},
-		{Size: -1}, // Null - should be skipped
-		{Size: 300},
-	}
-
-	size := CalculateDirectorySize(entries)
-	// Expected: 100+200+300 = 600 file content + c4m content size of all 4 entries
-	want := int64(600) + c4mContentSize(entries)
-	if size != want {
-		t.Errorf("Expected %d, got %d", want, size)
-	}
-}
-
+// TestPropagateMetadataDirectorySizes verifies that calling
+// c4m.PropagateMetadata on a sorted scan-produced manifest gives
+// directories the expected size (descendant file sizes + own c4m one-level
+// listing bytes). The propagation algorithm itself is tested in package
+// c4m; this is an integration check that the scan layer wires it up
+// correctly.
 func TestPropagateMetadataDirectorySizes(t *testing.T) {
 	now := time.Now().UTC()
-	// Simulate sorted manifest: dir/ contains file + subdir/, subdir/ contains file
 	entries := []*Entry{
 		{Name: "dir/", Mode: os.ModeDir | 0755, Timestamp: now, Size: -1, Depth: 0},
 		{Name: "file1.txt", Mode: 0644, Timestamp: now, Size: 100, Depth: 1},
@@ -236,18 +237,14 @@ func TestPropagateMetadataDirectorySizes(t *testing.T) {
 		{Name: "file2.txt", Mode: 0644, Timestamp: now, Size: 200, Depth: 2},
 	}
 
-	// subdir has one child: file2.txt
-	wantSubdir := int64(200) + c4mContentSize([]*Entry{entries[3]})
+	wantSubdir := int64(200) + c4mContentSizeForTest([]*Entry{entries[3]})
 
-	PropagateMetadata(entries)
+	c4m.PropagateMetadata(entries)
 
-	// subdir/ should be file2 content + c4m listing overhead
 	if entries[2].Size != wantSubdir {
 		t.Errorf("subdir/ size = %d, want %d", entries[2].Size, wantSubdir)
 	}
-	// dir/ children are file1 and subdir (now with updated size)
-	// We need to use the actual entries after propagation for subdir's canonical form
-	wantDir := entries[1].Size + entries[2].Size + c4mContentSize([]*Entry{entries[1], entries[2]})
+	wantDir := entries[1].Size + entries[2].Size + c4mContentSizeForTest([]*Entry{entries[1], entries[2]})
 	if entries[0].Size != wantDir {
 		t.Errorf("dir/ size = %d, want %d", entries[0].Size, wantDir)
 	}
@@ -263,24 +260,6 @@ func TestNewFileMetadataDirSizeNull(t *testing.T) {
 	md := NewFileMetadata(dir, info, 0)
 	if md.Size() != -1 {
 		t.Errorf("NewFileMetadata for dir should set Size=-1, got %d", md.Size())
-	}
-}
-
-func TestGetMostRecentModtime(t *testing.T) {
-	t1 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	t2 := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
-	t3 := time.Date(2024, 3, 10, 8, 30, 0, 0, time.UTC)
-
-	entries := []*Entry{
-		{Timestamp: t1},
-		{Timestamp: t2}, // Most recent
-		{Timestamp: time.Unix(0, 0)}, // Null - should be skipped
-		{Timestamp: t3},
-	}
-
-	mostRecent := GetMostRecentModtime(entries)
-	if !mostRecent.Equal(t2) {
-		t.Errorf("Expected %v, got %v", t2, mostRecent)
 	}
 }
 

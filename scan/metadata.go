@@ -1,3 +1,10 @@
+// Metadata propagation lives in package c4m as PropagateMetadata — that is
+// the canonical, spec-compliant implementation (single-pass depth-stack,
+// nil-infectious). This file used to carry parallel implementations
+// (PropagateMetadata, CalculateDirectorySize, GetMostRecentModtime) with
+// quadratic complexity and permissive null handling that diverged from the
+// spec. They have been removed; call c4m.PropagateMetadata directly.
+
 package scan
 
 import (
@@ -5,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
-	"github.com/Avalanche-io/c4/c4m"
 )
 
 // FileMetadata represents generic file metadata that implements os.FileInfo
@@ -166,100 +172,3 @@ func (sr *ScanResult) ToManifest() *Manifest {
 	return manifest
 }
 
-// CalculateDirectorySize computes the total size of direct children plus the
-// byte length of the directory's own canonical c4m content (the one-level
-// listing of those children). Null sizes (-1) are skipped.
-func CalculateDirectorySize(entries []*Entry) int64 {
-	var total int64
-	for _, e := range entries {
-		if e.Size >= 0 { // Skip null sizes (-1)
-			total += e.Size
-		}
-	}
-	total += c4mContentSize(entries)
-	return total
-}
-
-// c4mContentSize returns the byte length of the canonical c4m text that
-// would be produced for a directory whose direct children are entries.
-func c4mContentSize(entries []*Entry) int64 {
-	var n int64
-	for _, e := range entries {
-		n += int64(len(e.Canonical())) + 1 // +1 for '\n'
-	}
-	return n
-}
-
-// GetMostRecentModtime finds the most recent modification time among entries.
-// Returns NullTimestamp if no valid timestamps found.
-func GetMostRecentModtime(entries []*Entry) time.Time {
-	mostRecent := c4m.NullTimestamp()
-
-	for _, e := range entries {
-		if e.Timestamp.Equal(c4m.NullTimestamp()) {
-			continue
-		}
-		if e.Timestamp.After(mostRecent) {
-			mostRecent = e.Timestamp
-		}
-	}
-
-	return mostRecent
-}
-
-// PropagateMetadata resolves null values in entries by propagating from children.
-// Iterates in reverse so deeper directories are resolved before their parents.
-// Empty directories get size 0 — we know they're empty, that's not unknown.
-func PropagateMetadata(entries []*Entry) {
-	for i := len(entries) - 1; i >= 0; i-- {
-		entry := entries[i]
-
-		if !entry.IsDir() || !entry.HasNullValues() {
-			continue
-		}
-		children := getDirectoryChildren(entries, entry)
-		if len(children) == 0 {
-			// Empty directory — size is definitively 0, not unknown.
-			if entry.Size < 0 {
-				entry.Size = 0
-			}
-			continue
-		}
-
-		if entry.Size < 0 {
-			entry.Size = CalculateDirectorySize(children)
-		}
-
-		if entry.Timestamp.Equal(c4m.NullTimestamp()) {
-			t := GetMostRecentModtime(children)
-			if !t.Equal(c4m.NullTimestamp()) {
-				entry.Timestamp = t
-			}
-		}
-	}
-}
-
-// getDirectoryChildren returns all entries that are direct children of a directory
-func getDirectoryChildren(entries []*Entry, dir *Entry) []*Entry {
-	var children []*Entry
-	dirDepth := dir.Depth
-
-	// Find entries at depth+1 that appear after this directory
-	collecting := false
-	for _, e := range entries {
-		if e == dir {
-			collecting = true
-			continue
-		}
-		if collecting {
-			if e.Depth == dirDepth+1 {
-				children = append(children, e)
-			} else if e.Depth <= dirDepth {
-				// Reached next sibling or parent, stop
-				break
-			}
-		}
-	}
-
-	return children
-}
