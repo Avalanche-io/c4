@@ -92,7 +92,13 @@ Directory scanner. Depends on `c4` and `c4m`.
 
 Convenience: `scan.Dir(path, ...Option)` for simple scans.
 
-Options: `WithMode`, `WithExclude`, `WithGuide`, `WithSequenceDetection`.
+Options: `WithMode`, `WithExclude`, `WithGuide`, `WithSequenceDetection`,
+`WithProgress`, `WithMaxConcurrency`.
+
+Walks subdirectories in parallel via a shared semaphore (default
+`min(GOMAXPROCS, 16)`). Output is byte-identical to sequential scan because
+each parent stitches its children back in source order before the final
+`SortEntries` pass. `WithMaxConcurrency(1)` forces purely sequential.
 
 Type aliases re-export `c4m.Entry`, `c4m.Manifest`, `c4m.NewManifest`,
 `c4m.NewDecoder`, `c4m.NewEncoder` for backward compatibility.

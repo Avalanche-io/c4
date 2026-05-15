@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -19,6 +21,10 @@ const (
 	ModeMetadata                  // structure + permissions, timestamps, sizes
 	ModeFull                      // structure + metadata + C4 IDs
 )
+
+// defaultConcurrencyCap caps the worker pool regardless of GOMAXPROCS so we
+// don't oversubscribe storage with hundreds of concurrent readdir calls.
+const defaultConcurrencyCap = 16
 
 // ParseScanMode parses a mode string: "s"/"1" → structure, "m"/"2" → metadata, "f"/"3" → full.
 func ParseScanMode(s string) (ScanMode, error) {
@@ -46,6 +52,8 @@ type Generator struct {
 	guide           map[string]bool // paths from guide c4m (nil = no guide)
 	scanRoot        string
 	progress        *progress // nil = no progress reporting (zero-cost path)
+	maxConcurrency  int       // 0 = auto, 1 = sequential, n > 1 = bounded parallel
+	sem             chan struct{} // worker-pool slots; nil for sequential
 }
 
 // NewGenerator creates a new manifest generator
@@ -128,6 +136,18 @@ func WithProgress(cb func(ScanStats)) GeneratorOption {
 	}
 }
 
+// WithMaxConcurrency caps the number of concurrent subdirectory walks.
+//   n =  0: auto (min(GOMAXPROCS, 16))
+//   n =  1: purely sequential (preserves pre-parallelism behavior)
+//   n >  1: explicit cap
+// Output is byte-identical regardless of n — children of each parent are
+// stitched back in their post-sort order.
+func WithMaxConcurrency(n int) GeneratorOption {
+	return func(g *Generator) {
+		g.maxConcurrency = n
+	}
+}
+
 // WithGuide sets an existing manifest as a guide. Only entries present
 // in the guide will be included in the scan. This enables the
 // scan-filter-continue workflow.
@@ -176,6 +196,9 @@ func NewGeneratorWithOptions(opts ...GeneratorOption) *Generator {
 }
 
 // clone creates a copy with the same settings but fresh state.
+// Sub-scans triggered for directory C4 ID computation share the parent's
+// semaphore so the global concurrency cap is honored across the whole walk.
+// They drop the progress reporter to avoid double-counting.
 func (g *Generator) clone() *Generator {
 	clone := &Generator{
 		mode:            g.mode,
@@ -185,6 +208,8 @@ func (g *Generator) clone() *Generator {
 		excludeFile:     g.excludeFile,
 		excludeFileName: g.excludeFileName,
 		guide:           g.guide,
+		maxConcurrency:  g.maxConcurrency,
+		sem:             g.sem,
 	}
 	if len(g.excludePatterns) > 0 {
 		clone.excludePatterns = make([]string, len(g.excludePatterns))
@@ -193,23 +218,47 @@ func (g *Generator) clone() *Generator {
 	return clone
 }
 
+// resolveConcurrency returns the worker-pool size to use.
+func (g *Generator) resolveConcurrency() int {
+	if g.maxConcurrency == 1 {
+		return 1
+	}
+	if g.maxConcurrency > 1 {
+		return g.maxConcurrency
+	}
+	n := runtime.GOMAXPROCS(0)
+	if n > defaultConcurrencyCap {
+		n = defaultConcurrencyCap
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
 // GenerateFromPath creates a manifest from a filesystem path
 func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	manifest := NewManifest()
-	
-	// Get absolute path
+
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve path: %w", err)
 	}
-	
-	// Check if path exists
+
 	info, err := os.Lstat(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
-	
+
 	g.scanRoot = absPath
+
+	// Initialize semaphore for the worker pool. Sub-scans (clone()) inherit
+	// this same semaphore so the cap is enforced across the entire walk.
+	if g.sem == nil {
+		if n := g.resolveConcurrency(); n > 1 {
+			g.sem = make(chan struct{}, n)
+		}
+	}
 
 	// Load exclude patterns from file if specified.
 	if g.excludeFile != "" {
@@ -220,9 +269,14 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		g.loadExcludeFile(filepath.Join(absPath, g.excludeFileName))
 	}
 
-	// Generate entries recursively
 	if info.IsDir() {
-		err = g.generateDir(manifest, absPath, "", 0)
+		entries, err := g.generateDir(absPath, "", 0)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			manifest.AddEntry(e)
+		}
 	} else {
 		entry, err := g.generateEntry(absPath, info, 0)
 		if err != nil {
@@ -232,10 +286,6 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		if g.progress != nil {
 			g.progress.record(absPath, entry.IsDir(), entry.Size)
 		}
-	}
-	
-	if err != nil {
-		return nil, err
 	}
 
 	if g.progress != nil {
@@ -254,34 +304,38 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		collapsed := c4m.DetectSequences(manifest)
 		manifest.Entries = collapsed.Entries
 	}
-	
+
 	return manifest, nil
 }
 
-// generateDir recursively generates entries for a directory
-func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, depth int) error {
-	// Read directory
-	entries, err := os.ReadDir(dirPath)
+// generateDir walks dirPath and returns its entries (directory self-entry
+// first if dirName is non-empty, then all children in source order). Children
+// are produced by recursive calls; subdirectory walks may run on the worker
+// pool but their result slices are merged in deterministic order so the
+// final entry list is independent of scheduling.
+func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, error) {
+	dirEntries, err := os.ReadDir(dirPath)
 	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to read directory %s: %w", dirPath, err)
 	}
-	
-	// Determine the depth for children
+
+	out := make([]*Entry, 0, len(dirEntries)+1)
 	childDepth := depth
-	
-	// Add directory entry itself if not root
+
 	if dirName != "" {
 		dirInfo, err := os.Lstat(dirPath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		dirEntry, err := g.generateEntry(dirPath, dirInfo, depth)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		dirEntry.Name = dirName + "/"
-		
-		// For directories, compute C4 ID from their recursive manifest
+
+		// For directories, compute C4 ID from their recursive manifest.
+		// The sub-generator inherits the shared semaphore so concurrency
+		// stays bounded globally.
 		if g.mode == ModeFull && dirInfo.IsDir() {
 			subGen := g.clone()
 			subManifest, err := subGen.GenerateFromPath(dirPath)
@@ -289,32 +343,42 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 				dirEntry.C4ID = subManifest.ComputeC4ID()
 			}
 		}
-		
-		manifest.AddEntry(dirEntry)
+
+		out = append(out, dirEntry)
 		if g.progress != nil {
 			g.progress.record(dirPath, true, dirEntry.Size)
 		}
-		// Children of this directory are one level deeper
 		childDepth = depth + 1
 	}
-	
+
 	// Load exclude patterns from env-named file in subdirectories.
 	if g.excludeFileName != "" && dirName != "" {
 		g.loadExcludeFile(filepath.Join(dirPath, g.excludeFileName))
 	}
 
-	// Process entries
-	for _, entry := range entries {
+	// Filter and classify children. We need a fixed source order so the
+	// final entry list is deterministic regardless of which goroutine
+	// completed first.
+	type subdir struct {
+		name string
+		path string
+	}
+	type slot struct {
+		direct   *Entry   // non-nil for files/symlinks scanned inline
+		subEntries []*Entry // non-nil once a subdir walk completes
+		sub      *subdir  // non-nil for subdirectories pending walk
+	}
+	slots := make([]slot, 0, len(dirEntries))
+
+	for _, entry := range dirEntries {
 		name := entry.Name()
 
-		// Skip hidden files only when explicitly requested (default: include everything)
 		if !g.includeHidden && strings.HasPrefix(name, ".") {
 			continue
 		}
 
 		fullPath := filepath.Join(dirPath, name)
 
-		// Check exclude patterns
 		if len(g.excludePatterns) > 0 {
 			relPath := relFromRoot(g.scanRoot, fullPath)
 			if g.matchExclude(relPath, name, entry.IsDir()) {
@@ -322,7 +386,6 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 			}
 		}
 
-		// Check guide — skip entries not in the guide manifest.
 		if g.guide != nil {
 			relPath := relFromRoot(g.scanRoot, fullPath)
 			guideName := relPath
@@ -336,94 +399,149 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 
 		info, err := entry.Info()
 		if err != nil {
-			return fmt.Errorf("failed to get info for %s: %w", fullPath, err)
+			return nil, fmt.Errorf("failed to get info for %s: %w", fullPath, err)
 		}
-		
+
 		// Handle symlinks
 		if info.Mode()&os.ModeSymlink != 0 {
 			if g.followSymlinks {
-				// Follow the symlink
 				targetInfo, err := os.Stat(fullPath)
 				if err == nil {
 					info = targetInfo
 				}
 			} else {
-				// Create symlink metadata
 				md := g.generateMetadata(fullPath, info, childDepth)
-				
-				// Set symlink target (always forward slashes for c4m portability)
 				if bmd, ok := md.(*BasicFileMetadata); ok {
 					target, err := os.Readlink(fullPath)
 					if err == nil {
 						bmd.SetTarget(filepath.ToSlash(target))
-						
-						// Compute C4 ID of symlink target if enabled
 						if g.mode == ModeFull {
 							id := g.computeSymlinkTargetC4ID(fullPath, target)
 							bmd.SetID(id)
 						}
 					}
 				}
-				
-				// Convert to entry and add
 				fileEntry := MetadataToEntry(md)
 				fileEntry.Name = name
-				manifest.AddEntry(fileEntry)
+				slots = append(slots, slot{direct: fileEntry})
 				if g.progress != nil {
 					g.progress.record(fullPath, fileEntry.IsDir(), fileEntry.Size)
 				}
 				continue
 			}
 		}
-		
-		// Recurse into directories
+
 		if info.IsDir() {
-			err = g.generateDir(manifest, fullPath, name, childDepth)
-			if err != nil {
-				return err
-			}
-		} else {
-			// Add file entry
-			fileEntry, err := g.generateEntry(fullPath, info, childDepth)
-			if err != nil {
-				return err
-			}
-			fileEntry.Name = name
-			manifest.AddEntry(fileEntry)
-			if g.progress != nil {
-				g.progress.record(fullPath, false, fileEntry.Size)
-			}
+			slots = append(slots, slot{sub: &subdir{name: name, path: fullPath}})
+			continue
+		}
+
+		fileEntry, err := g.generateEntry(fullPath, info, childDepth)
+		if err != nil {
+			return nil, err
+		}
+		fileEntry.Name = name
+		slots = append(slots, slot{direct: fileEntry})
+		if g.progress != nil {
+			g.progress.record(fullPath, false, fileEntry.Size)
 		}
 	}
-	
-	return nil
+
+	// Dispatch subdirectory walks. Each subdir tries to grab a slot from
+	// the global semaphore; if all slots are busy we fall through and
+	// walk inline on the current goroutine. This bounds wall-clock fan-out
+	// without ever blocking — guarantees forward progress under arbitrary
+	// tree shapes.
+	var wg sync.WaitGroup
+	var errMu sync.Mutex
+	var firstErr error
+	recordErr := func(e error) {
+		if e == nil {
+			return
+		}
+		errMu.Lock()
+		if firstErr == nil {
+			firstErr = e
+		}
+		errMu.Unlock()
+	}
+
+	for i := range slots {
+		if slots[i].sub == nil {
+			continue
+		}
+		sub := slots[i].sub
+		idx := i
+
+		// Try non-blocking acquire. If the pool is empty (g.sem == nil) or
+		// full, fall back to inline walk.
+		if g.sem != nil {
+			select {
+			case g.sem <- struct{}{}:
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					defer func() { <-g.sem }()
+					childEntries, err := g.generateDir(sub.path, sub.name, childDepth)
+					if err != nil {
+						recordErr(err)
+						return
+					}
+					slots[idx].subEntries = childEntries
+				}()
+				continue
+			default:
+			}
+		}
+
+		childEntries, err := g.generateDir(sub.path, sub.name, childDepth)
+		if err != nil {
+			recordErr(err)
+			continue
+		}
+		slots[idx].subEntries = childEntries
+	}
+
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+
+	// Stitch results in original (source) order — deterministic.
+	for _, s := range slots {
+		if s.direct != nil {
+			out = append(out, s.direct)
+			continue
+		}
+		if s.subEntries != nil {
+			out = append(out, s.subEntries...)
+		}
+	}
+
+	return out, nil
 }
 
 // generateEntry creates an entry from file info
 func (g *Generator) generateEntry(path string, info os.FileInfo, depth int) (*Entry, error) {
-	// Create metadata first
 	md := g.generateMetadata(path, info, depth)
-	
-	// Convert to Entry
+
 	entry := MetadataToEntry(md)
 	// MetadataToEntry adds trailing slash for directories, but we handle that elsewhere
 	if entry.IsDir() && strings.HasSuffix(entry.Name, "/") {
 		entry.Name = entry.Name[:len(entry.Name)-1]
 	}
-	
+
 	return entry, nil
 }
 
 // generateMetadata creates metadata from file info
 func (g *Generator) generateMetadata(path string, info os.FileInfo, depth int) FileMetadata {
 	if g.mode == ModeStructure {
-		// Structure only: just name and directory status.
 		return NewStructureMetadata(path, info, depth)
 	}
 
 	md := NewFileMetadata(path, info, depth)
 
-	// Compute C4 ID if in full mode and it's a regular file.
 	if g.mode == ModeFull && info.Mode().IsRegular() {
 		id, err := g.computeFileC4ID(path)
 		if err == nil {
@@ -441,31 +559,26 @@ func (g *Generator) computeFileC4ID(path string) (c4.ID, error) {
 		return c4.ID{}, err
 	}
 	defer file.Close()
-	
+
 	return c4.Identify(file), nil
 }
 
 // computeSymlinkTargetC4ID computes the C4 ID for a symlink's target
 func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
-	// Resolve target path (handle relative paths)
 	targetPath := target
 	if !filepath.IsAbs(target) {
 		targetPath = filepath.Join(filepath.Dir(symlinkPath), target)
 	}
-	
-	// Get target info
+
 	targetInfo, err := os.Lstat(targetPath)
 	if err != nil {
-		// Broken symlink or out-of-scope target
 		return c4.ID{}
 	}
-	
-	// If target is also a symlink, return empty ID (prevent infinite recursion)
+
 	if targetInfo.Mode()&os.ModeSymlink != 0 {
 		return c4.ID{}
 	}
-	
-	// If target is a directory, compute its manifest C4 ID
+
 	if targetInfo.IsDir() {
 		subGen := g.clone()
 		manifest, err := subGen.GenerateFromPath(targetPath)
@@ -474,8 +587,7 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 		}
 		return manifest.ComputeC4ID()
 	}
-	
-	// For regular files, compute content C4 ID
+
 	if targetInfo.Mode().IsRegular() {
 		id, err := g.computeFileC4ID(targetPath)
 		if err != nil {
@@ -483,8 +595,7 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 		}
 		return id
 	}
-	
-	// Other types (devices, pipes, etc.) get empty ID
+
 	return c4.ID{}
 }
 
@@ -492,11 +603,9 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 // Patterns are matched against both the basename and the relative path from scan root.
 func (g *Generator) matchExclude(relPath, name string, isDir bool) bool {
 	for _, pattern := range g.excludePatterns {
-		// Match against basename
 		if matched, _ := filepath.Match(pattern, name); matched {
 			return true
 		}
-		// Match against relative path
 		if matched, _ := filepath.Match(pattern, relPath); matched {
 			return true
 		}
@@ -537,4 +646,3 @@ func (g *Generator) loadExcludeFile(path string) {
 func Dir(path string, opts ...GeneratorOption) (*c4m.Manifest, error) {
 	return NewGeneratorWithOptions(opts...).GenerateFromPath(path)
 }
-
