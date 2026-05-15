@@ -3,6 +3,7 @@ package c4m
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -88,15 +89,25 @@ func (m *Manifest) SortEntries() {
 	m.sortSiblingsHierarchically()
 }
 
-// Canonical returns the canonical form for C4 ID computation
+// Canonical returns the canonical form for C4 ID computation.
+// For large manifests prefer WriteCanonical to avoid materializing the
+// full canonical text in memory.
 func (m *Manifest) Canonical() string {
 	var buf bytes.Buffer
-	
-	// For canonical form, we need to find the minimum depth
-	// and only include entries at that depth level
+	_ = m.WriteCanonical(&buf)
+	return buf.String()
+}
+
+// WriteCanonical streams the canonical form of the manifest to w, one
+// entry per line. The bytes written are byte-identical to Canonical().
+// This lets very large manifests be hashed (or otherwise consumed)
+// without allocating the full canonical text as a single string.
+func (m *Manifest) WriteCanonical(w io.Writer) error {
+	// Find the minimum depth — only entries at that depth render at the
+	// top level of this manifest's canonical form.
 	minDepth := -1
 	for _, entry := range m.Entries {
-		// Skip directory entries themselves - we only want their contents at top level
+		// Nested directory entries don't appear at the top level.
 		if strings.HasSuffix(entry.Name, "/") && entry.Depth > 0 {
 			continue
 		}
@@ -104,25 +115,18 @@ func (m *Manifest) Canonical() string {
 			minDepth = entry.Depth
 		}
 	}
-	
-	// If no entries, return empty
 	if minDepth == -1 {
-		return ""
+		return nil
 	}
-	
-	// Collect entries at the minimum depth (top level of this manifest)
+
 	topLevel := make([]*Entry, 0)
 	for _, entry := range m.Entries {
-		// For the top level, include files and directory entries (with trailing /)
 		if entry.Depth == minDepth {
-			// For directories at this level, they should have their C4 ID
 			topLevel = append(topLevel, entry)
 		}
 	}
-	
-	// Sort entries
+
 	sort.Slice(topLevel, func(i, j int) bool {
-		// Files before directories
 		iIsDir := strings.HasSuffix(topLevel[i].Name, "/")
 		jIsDir := strings.HasSuffix(topLevel[j].Name, "/")
 		if iIsDir != jIsDir {
@@ -130,29 +134,44 @@ func (m *Manifest) Canonical() string {
 		}
 		return NaturalLess(topLevel[i].Name, topLevel[j].Name)
 	})
-	
-	// Write canonical form
+
+	// Coalesce line + newline into a single Write per entry — for an
+	// io.Pipe consumer each Write is a channel hop, so halving them
+	// matters at scale.
+	var lineBuf []byte
 	for _, entry := range topLevel {
-		buf.WriteString(entry.Canonical())
-		buf.WriteByte('\n')
+		line := entry.Canonical()
+		need := len(line) + 1
+		if cap(lineBuf) < need {
+			lineBuf = make([]byte, 0, need)
+		}
+		lineBuf = append(lineBuf[:0], line...)
+		lineBuf = append(lineBuf, '\n')
+		if _, err := w.Write(lineBuf); err != nil {
+			return err
+		}
 	}
-	
-	return buf.String()
+	return nil
 }
 
-// ComputeC4ID computes the C4 ID for the manifest
+// ComputeC4ID computes the C4 ID for the manifest.
 // IMPORTANT: This automatically canonicalizes the manifest before computing the ID
-// This ensures deterministic IDs even if the manifest was created with null values
+// so the result is deterministic even if the manifest was created with null values.
+//
+// The canonical bytes are streamed through an io.Pipe into c4.Identify
+// rather than materialized as a single string — for manifests with
+// millions of entries this avoids a multi-hundred-MB allocation.
 func (m *Manifest) ComputeC4ID() c4.ID {
-	// Make a copy to avoid modifying the original
+	// Make a copy to avoid modifying the original.
 	canonical := m.Copy()
-
-	// Ensure manifest is in canonical form
 	canonical.Canonicalize()
 
-	// Compute ID from canonical form
-	canonicalText := canonical.Canonical()
-	return c4.Identify(strings.NewReader(canonicalText))
+	pr, pw := io.Pipe()
+	go func() {
+		err := canonical.WriteCanonical(pw)
+		pw.CloseWithError(err)
+	}()
+	return c4.Identify(pr)
 }
 
 // Canonicalize resolves all null values in the manifest to explicit values,

@@ -376,6 +376,40 @@ func BenchmarkPropagateMetadata_Linear(b *testing.B) {
 	}
 }
 
+// BenchmarkComputeC4ID_LargeManifest measures allocs/op for
+// Manifest.ComputeC4ID on a 100K-entry flat manifest. The previous
+// implementation built the entire canonical text as a single allocated
+// string before passing it to c4.Identify; the streaming path (writing
+// each entry's canonical line through an io.Pipe into c4.Identify)
+// eliminates that single multi-MB allocation. The remaining allocs/op
+// are dominated by per-Entry Canonical() string construction, which is
+// out of scope here.
+//
+// Run:
+//
+//	go test -run='^$' -bench=BenchmarkComputeC4ID_LargeManifest -benchtime=5x ./c4m
+func BenchmarkComputeC4ID_LargeManifest(b *testing.B) {
+	const n = 100_000
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	entries := make([]*Entry, n)
+	for i := 0; i < n; i++ {
+		entries[i] = &Entry{
+			Name:      fmt.Sprintf("file%06d.txt", i),
+			Mode:      0644,
+			Timestamp: now,
+			Size:      int64(1024 + i),
+			Depth:     0,
+		}
+	}
+	m := &Manifest{Version: "1.0", Entries: entries}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = m.ComputeC4ID()
+	}
+}
+
 // BenchmarkC4IDComparison tests C4 ID comparison performance
 func BenchmarkC4IDComparison(b *testing.B) {
 	// Create IDs

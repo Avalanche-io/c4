@@ -238,6 +238,14 @@ func TestManifestCanonical(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("Canonical() = %q, want %q", got, tt.want)
 			}
+			// WriteCanonical must produce byte-identical output to Canonical.
+			var buf bytes.Buffer
+			if err := tt.manifest.WriteCanonical(&buf); err != nil {
+				t.Fatalf("WriteCanonical() error = %v", err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("WriteCanonical() = %q, want %q", buf.String(), tt.want)
+			}
 		})
 	}
 }
