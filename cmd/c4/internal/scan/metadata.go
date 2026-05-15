@@ -169,10 +169,5 @@ func (sr *ScanResult) ToManifest() *Manifest {
 // the canonical, spec-compliant implementation (single-pass depth-stack,
 // nil-infectious). This file previously carried a parallel quadratic copy
 // with permissive null handling that diverged from the spec. It has been
-// removed; the progressive CLI scanner calls c4m.PropagateMetadata
-// directly.
-//
-// TODO(progressive-scanner): per design notes, progressive_scanner.go in
-// this package never calls any propagation pass — directories end up with
-// null sizes in its output. Wire c4m.PropagateMetadata into the final
-// emit stage of progressive output as a follow-up.
+// removed; the synchronous and progressive scanners in this package both
+// call c4m.PropagateMetadata directly.

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 // ScanStage represents the level of detail in scanning
@@ -597,7 +598,14 @@ func (ps *ProgressiveScanner) OutputCurrentState(w io.Writer) error {
 			}
 		}
 	}
-	
+
+	// Finalize: sort to canonical walk order (precondition for
+	// PropagateMetadata), then resolve directory Size/Timestamp from
+	// children. Streaming property is preserved — propagation runs only
+	// at emit, not during scan.
+	manifest.SortEntries()
+	c4m.PropagateMetadata(manifest.Entries)
+
 	// Output manifest
 	return NewEncoder(w).Encode(manifest)
 }

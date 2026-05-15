@@ -366,6 +366,68 @@ func TestScanEntryConversion(t *testing.T) {
 	})
 }
 
+func TestProgressivePropagateMetadata(t *testing.T) {
+	// After scan completes, emitted manifest must have directories with
+	// resolved Size (>= 0) and non-null Timestamp. Pre-fix the progressive
+	// path never ran PropagateMetadata so dirs were emitted with Size=-1.
+	testDir := t.TempDir()
+	createTestFiles(t, testDir, []string{
+		"a.txt:hello",
+		"sub/b.txt:world",
+		"sub/deeper/c.txt:tree",
+	})
+
+	var buf bytes.Buffer
+	var errBuf bytes.Buffer
+	cli := NewProgressiveCLI(testDir,
+		WithOutput(&buf, &errBuf),
+		WithProgress(false),
+		WithVerbose(false),
+	)
+	if err := cli.Run(); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Strip leading "# Progressive scan status: ..." comment — the c4m
+	// decoder does not skip comments.
+	out := buf.String()
+	for strings.HasPrefix(out, "#") {
+		nl := strings.IndexByte(out, '\n')
+		if nl < 0 {
+			break
+		}
+		out = out[nl+1:]
+	}
+
+	manifest, err := NewDecoder(strings.NewReader(out)).Decode()
+	if err != nil {
+		t.Fatalf("Decode failed: %v\nOutput:\n%s", err, buf.String())
+	}
+
+	var dirsChecked, dirsWithPositiveSize int
+	for _, e := range manifest.Entries {
+		if !strings.HasSuffix(e.Name, "/") {
+			continue
+		}
+		dirsChecked++
+		if e.Size < 0 {
+			t.Errorf("dir %q has unresolved Size=%d (expected >= 0)", e.Name, e.Size)
+		}
+		if e.Size > 0 {
+			dirsWithPositiveSize++
+		}
+		if e.Timestamp.Unix() <= 0 {
+			t.Errorf("dir %q has null Timestamp %v (expected non-null)", e.Name, e.Timestamp)
+		}
+	}
+	if dirsChecked == 0 {
+		t.Fatalf("no directory entries found in manifest output:\n%s", buf.String())
+	}
+	if dirsWithPositiveSize == 0 {
+		t.Errorf("expected at least one directory with positive Size, got none\nOutput:\n%s", buf.String())
+	}
+}
+
 func TestWorkerPools(t *testing.T) {
 	t.Run("worker pool scaling", func(t *testing.T) {
 		testDir := t.TempDir()
