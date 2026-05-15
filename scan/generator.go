@@ -45,6 +45,7 @@ type Generator struct {
 	excludeFileName string // filename to look for in scanned dirs (from env)
 	guide           map[string]bool // paths from guide c4m (nil = no guide)
 	scanRoot        string
+	progress        *progress // nil = no progress reporting (zero-cost path)
 }
 
 // NewGenerator creates a new manifest generator
@@ -111,6 +112,19 @@ func WithExclude(patterns []string) GeneratorOption {
 func WithExcludeFile(path string) GeneratorOption {
 	return func(g *Generator) {
 		g.excludeFile = path
+	}
+}
+
+// WithProgress registers a callback that receives periodic scan stats.
+// The callback fires at most every 1000 entries or every 250ms, whichever
+// comes first, plus once at the end of the scan. The ScanStats argument is a
+// value copy — the callback may keep it freely. Sub-scans triggered to compute
+// directory C4 IDs do not report progress (they would double-count entries).
+func WithProgress(cb func(ScanStats)) GeneratorOption {
+	return func(g *Generator) {
+		if cb != nil {
+			g.progress = newProgress(cb)
+		}
 	}
 }
 
@@ -215,12 +229,19 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 			return nil, err
 		}
 		manifest.AddEntry(entry)
+		if g.progress != nil {
+			g.progress.record(absPath, entry.IsDir(), entry.Size)
+		}
 	}
 	
 	if err != nil {
 		return nil, err
 	}
-	
+
+	if g.progress != nil {
+		g.progress.final()
+	}
+
 	// Sort entries hierarchically (files before directories at each level)
 	manifest.SortEntries()
 
@@ -270,6 +291,9 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 		}
 		
 		manifest.AddEntry(dirEntry)
+		if g.progress != nil {
+			g.progress.record(dirPath, true, dirEntry.Size)
+		}
 		// Children of this directory are one level deeper
 		childDepth = depth + 1
 	}
@@ -345,6 +369,9 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 				fileEntry := MetadataToEntry(md)
 				fileEntry.Name = name
 				manifest.AddEntry(fileEntry)
+				if g.progress != nil {
+					g.progress.record(fullPath, fileEntry.IsDir(), fileEntry.Size)
+				}
 				continue
 			}
 		}
@@ -363,6 +390,9 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 			}
 			fileEntry.Name = name
 			manifest.AddEntry(fileEntry)
+			if g.progress != nil {
+				g.progress.record(fullPath, false, fileEntry.Size)
+			}
 		}
 	}
 	
