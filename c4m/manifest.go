@@ -343,109 +343,116 @@ func (m *Manifest) Validate() error {
 // - Preserves hierarchical depth-first traversal
 // - Files before directories at same level
 // - Natural sort for names within siblings
+//
+// Algorithm: a single linear pass builds a children-by-parent index by
+// walking entries left-to-right with a depth-stack — each entry's parent
+// is the directory currently open at depth-1. A second pass sorts each
+// parent's child list (files-before-dirs, NaturalLess on names) and emits
+// the tree in depth-first order. Total work is O(N log N) dominated by
+// the sort; the previous recursive `processLevel` rescanned the tail per
+// directory, which degenerates to O(N^2) on a pathologically nested chain.
 func (m *Manifest) sortSiblingsHierarchically() {
 	if len(m.Entries) == 0 {
 		return
 	}
 
-	// We'll build a new sorted list while preserving hierarchy
-	result := make([]*Entry, 0, len(m.Entries))
-	used := make([]bool, len(m.Entries))
+	// rootParent is the sentinel parent index for depth-0 entries.
+	const rootParent = -1
 
-	// Process entries depth-first, sorting siblings at each level
-	var processLevel func(parentIdx int, parentDepth int)
-	processLevel = func(parentIdx int, parentDepth int) {
-		// Find all children at the next depth level
-		childDepth := parentDepth + 1
-		startIdx := parentIdx + 1
+	// children maps parent index -> ordered list of child indices in
+	// original walk order. Orphans (entries whose expected parent is
+	// missing on the depth-stack) are collected separately so they
+	// preserve their original relative order at the tail of the output.
+	children := make(map[int][]int, len(m.Entries)/4+1)
+	var orphans []int
 
-		// Special case for root level
-		if parentIdx == -1 {
-			startIdx = 0
-			childDepth = 0
+	// dirStack[d] = index of the most-recent directory open at depth d.
+	// Truncated as we move through the tree so a later sibling subtree
+	// never inherits a stale ancestor.
+	dirStack := make([]int, 0, 32)
+
+	for i, e := range m.Entries {
+		// Truncate the stack to this entry's depth — anything deeper
+		// belonged to a prior subtree we've now left.
+		if len(dirStack) > e.Depth {
+			dirStack = dirStack[:e.Depth]
 		}
 
-		// Collect all immediate children
-		type child struct {
-			entry *Entry
-			index int
+		parent := rootParent
+		switch {
+		case e.Depth == 0:
+			// Root entry.
+		case e.Depth <= len(dirStack):
+			parent = dirStack[e.Depth-1]
+		default:
+			// No directory open at depth-1 — orphan.
+			orphans = append(orphans, i)
+			continue
 		}
-		children := []child{}
+		children[parent] = append(children[parent], i)
 
-		for i := startIdx; i < len(m.Entries); i++ {
-			if used[i] {
+		if e.IsDir() {
+			// Push this directory at its own depth. The stack length
+			// is exactly e.Depth here (post-truncation), so append.
+			dirStack = append(dirStack, i)
+		}
+	}
+
+	// Sort each parent's children: files before directories, then
+	// NaturalLess on Name. Dedup by Name within siblings, keeping the
+	// last occurrence (matches the prior contract: most recent wins).
+	for parent, kids := range children {
+		seen := make(map[string]int, len(kids))
+		deduped := kids[:0]
+		for _, idx := range kids {
+			name := m.Entries[idx].Name
+			if pos, ok := seen[name]; ok {
+				deduped[pos] = idx
 				continue
 			}
-
-			entry := m.Entries[i]
-
-			// Stop when we've gone back up the hierarchy
-			if entry.Depth < childDepth {
-				break
-			}
-
-			// Skip deeper descendants - they'll be processed recursively
-			if entry.Depth > childDepth {
-				continue
-			}
-
-			// This is an immediate child
-			children = append(children, child{entry, i})
+			seen[name] = len(deduped)
+			deduped = append(deduped, idx)
 		}
-
-		// Deduplicate siblings by name, keeping the last occurrence
-		// (most recently added entry wins). Mark replaced entries as
-		// used so they don't reappear as orphans.
-		{
-			seen := make(map[string]int) // name -> index in children
-			deduped := children[:0]
-			for _, c := range children {
-				if idx, ok := seen[c.entry.Name]; ok {
-					used[deduped[idx].index] = true // mark replaced entry
-					deduped[idx] = c
-				} else {
-					seen[c.entry.Name] = len(deduped)
-					deduped = append(deduped, c)
-				}
+		sort.Slice(deduped, func(a, b int) bool {
+			ea, eb := m.Entries[deduped[a]], m.Entries[deduped[b]]
+			if ea.IsDir() != eb.IsDir() {
+				return !ea.IsDir() // files first
 			}
-			children = deduped
-		}
-
-		// Sort the children (files before dirs, then natural sort)
-		sort.Slice(children, func(i, j int) bool {
-			a, b := children[i].entry, children[j].entry
-
-			// Files before directories
-			if a.IsDir() != b.IsDir() {
-				return !a.IsDir() // files first
-			}
-
-			// Natural sort for names
-			return NaturalLess(a.Name, b.Name)
+			return NaturalLess(ea.Name, eb.Name)
 		})
+		children[parent] = deduped
+	}
 
-		// Process sorted children
-		for _, c := range children {
-			used[c.index] = true
-			result = append(result, c.entry)
-
-			// If it's a directory, recursively process its children
-			if c.entry.IsDir() {
-				processLevel(c.index, c.entry.Depth)
+	// Emit in depth-first order using an explicit cursor stack to avoid
+	// recursion (cheap insurance against extreme tree depths).
+	result := make([]*Entry, 0, len(m.Entries))
+	type frame struct {
+		kids []int // sorted child indices of some parent
+		pos  int   // next index to visit in kids
+	}
+	stack := []frame{{kids: children[rootParent]}}
+	for len(stack) > 0 {
+		top := &stack[len(stack)-1]
+		if top.pos >= len(top.kids) {
+			stack = stack[:len(stack)-1]
+			continue
+		}
+		idx := top.kids[top.pos]
+		top.pos++
+		e := m.Entries[idx]
+		result = append(result, e)
+		if e.IsDir() {
+			if grandkids, ok := children[idx]; ok && len(grandkids) > 0 {
+				stack = append(stack, frame{kids: grandkids})
 			}
 		}
 	}
 
-	// Start from root level
-	processLevel(-1, -1)
-
-	// If any entries weren't processed (orphaned), add them at the end
-	// This can happen with incomplete chunks
-	for i, entry := range m.Entries {
-		if !used[i] {
-			// Silently handle orphaned entries - this is expected in continuation chunks
-			result = append(result, entry)
-		}
+	// Append orphans last, in their original order — same contract as
+	// the previous implementation. This is rare and only happens with
+	// incomplete continuation chunks.
+	for _, idx := range orphans {
+		result = append(result, m.Entries[idx])
 	}
 
 	m.Entries = result

@@ -40,6 +40,69 @@ func BenchmarkManifestSort(b *testing.B) {
 	}
 }
 
+// BenchmarkSortEntries_Pathological measures sortSiblingsHierarchically on
+// a single chain of N nested directories (depth == N). The prior recursive
+// implementation rescanned the tail at each level, giving O(N^2). The
+// current single-pass index makes this O(N log N) — verify near-linear
+// scaling: each 10x bump in depth should cost ~10x time, not ~100x.
+func BenchmarkSortEntries_Pathological(b *testing.B) {
+	sizes := []int{1000, 10000, 100000}
+	for _, n := range sizes {
+		b.Run(fmt.Sprintf("Chain-%d", n), func(b *testing.B) {
+			template := make([]*Entry, n)
+			for i := 0; i < n; i++ {
+				template[i] = &Entry{
+					Name:  fmt.Sprintf("d%d/", i),
+					Mode:  os.ModeDir,
+					Depth: i,
+				}
+			}
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				m := NewManifest()
+				m.Entries = append(m.Entries[:0], template...)
+				m.SortEntries()
+			}
+		})
+	}
+}
+
+// BenchmarkSortEntries_NormalTree provides a comparison shape: a balanced
+// two-level tree with sqrt(N) directories each holding sqrt(N) files.
+// Sort cost is dominated by the per-parent sort and should scale
+// near-linearly with N.
+func BenchmarkSortEntries_NormalTree(b *testing.B) {
+	sizes := []int{1000, 10000, 100000}
+	for _, n := range sizes {
+		b.Run(fmt.Sprintf("Tree-%d", n), func(b *testing.B) {
+			fanout := 1
+			for fanout*fanout < n {
+				fanout++
+			}
+			template := make([]*Entry, 0, n+fanout)
+			for d := 0; len(template) < n; d++ {
+				template = append(template, &Entry{
+					Name:  fmt.Sprintf("dir%05d/", d),
+					Mode:  os.ModeDir,
+					Depth: 0,
+				})
+				for f := 0; f < fanout && len(template) < n; f++ {
+					template = append(template, &Entry{
+						Name:  fmt.Sprintf("file%05d.txt", f),
+						Depth: 1,
+					})
+				}
+			}
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				m := NewManifest()
+				m.Entries = append(m.Entries[:0], template...)
+				m.SortEntries()
+			}
+		})
+	}
+}
+
 // BenchmarkHierarchicalSort tests hierarchical sorting performance
 func BenchmarkHierarchicalSort(b *testing.B) {
 	// Create manifest with mixed files and directories
