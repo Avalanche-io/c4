@@ -1,5 +1,172 @@
 # Changelog
 
+## v1.0.13
+
+### Scan performance: quadratic propagation eliminated
+
+Whole-tree metadata propagation (computing directory sizes / timestamps from
+children) was `O(directories × entries)` because three separate
+implementations — `c4m.propagateMetadata`, `scan.PropagateMetadata`, and the
+duplicate in `cmd/c4/internal/scan/metadata.go` — each rescanned the full
+entry slice once per null-sized directory. On a 5.14M-entry tree this caused
+a 16–20 minute hang at 100% CPU on a fast single-user host.
+
+Replaced all three with one canonical implementation in `c4m` using a
+single-pass depth-stack accumulator. New behavior:
+
+- `c4m.PropagateMetadata([]*Entry)` is now an **exported function** — the
+  one true implementation that producers of `*c4m.Manifest` should use.
+- Algorithm is `O(N)` work, `O(max-depth)` memory.
+- Empty directories resolve to `Size = 0` and keep their null `Timestamp`
+  (matched explicitly via a `hadChildren` flag — fixes a latent edge case in
+  the original sketch where empty-dir timestamps would have rendered as
+  `time.Time{}` instead of `NullTimestamp()`).
+- Cheap whole-manifest early-out: if no directory has any null Size /
+  Timestamp / Mode, the call returns immediately (the common case for
+  `ComputeC4ID` re-running `Canonicalize` on an already-resolved manifest).
+- Nil-infectious semantics preserved per `c4m/SPECIFICATION.md`: any
+  descendant with null Size or Timestamp poisons the parent recursively.
+  This **fixes a pre-existing spec violation** in the scan-package
+  implementation, which silently skipped null values instead of poisoning.
+
+Removed: `scan.PropagateMetadata`, `scan.CalculateDirectorySize`,
+`scan.GetMostRecentModtime`, plus the same set in
+`cmd/c4/internal/scan/metadata.go`. The scan packages call
+`c4m.PropagateMetadata` directly. `c4m/readiness_test.go` now asserts
+PropagateMetadata IS exported (was previously asserted unexported).
+
+Result on the original reproducer (`/Users/joshua/ws/repos`, 6.08M entries,
+323 GB): **16–20 min hang → 2 min 24 s** (dominated by filesystem I/O). On
+122K entries: walk + assemble 2.63s → 0.72s (3.6×). All canonical bytes
+byte-identical pre/post.
+
+### `c4m.Manifest.SortEntries` linearized
+
+`sortSiblingsHierarchically` was `O(N²)` worst case on pathologically
+nested chains because each recursive `processLevel` rescanned the
+remaining tail. Replaced with a single-pass children-by-parent index
+built via depth stack, plus a sort-each-group / depth-first emit phase.
+
+Pathological-chain bench (depth = N, one child each):
+
+| N | Old | New | Speedup |
+|---:|---:|---:|---:|
+| 1K | 553 µs | 153 µs | 3.6× |
+| 10K | 50.9 ms | 1.80 ms | 28× |
+| 100K | 10.9 s | 33.3 ms | **327×** |
+
+Normal tree shapes (sqrt-fanout): unchanged ~`O(N log N)`. Dedup-keeps-last
+and tail-append-orphans semantics preserved.
+
+### New: `scan.WithProgress`
+
+```go
+type ScanStats struct {
+    Entries, Bytes, Files, Dirs int64
+    Current string
+    Elapsed time.Duration
+}
+
+scan.WithProgress(func(ScanStats))
+```
+
+Fires at most every 1000 entries OR every 250 ms, whichever first, plus
+once at end. Zero overhead when not registered. The callback receives a
+value-copy `ScanStats` so it's safe even with the parallel walk added
+below. Sub-scans triggered for directory C4 ID computation in `ModeFull`
+do not report (would double-count).
+
+### New: `scan.WithMaxConcurrency` (bounded parallel subdirectory walk)
+
+```go
+scan.WithMaxConcurrency(n)
+// n =  0: auto (min(GOMAXPROCS, 16))
+// n =  1: purely sequential (preserves pre-parallelism behavior)
+// n >  1: explicit cap
+```
+
+A single shared buffered-channel semaphore is created in `GenerateFromPath`
+and inherited by all `clone()`d sub-scans so the cap is global, not
+per-call. `generateDir` does a non-blocking `select` per subdirectory: if
+a slot is free it launches a goroutine, otherwise it walks inline. This
+guarantees forward progress on any tree shape, never deadlocks, never
+oversubscribes the disk. Each subdir's result slice is written to a
+pre-allocated slot in source order so the post-walk stitch is
+deterministic — **output is byte-identical regardless of `n`**.
+
+Bench on 122K-entry tree, cold cache: **2.53s → 0.45s (5.6×)**. Warm cache:
+0.78s → 0.46s (1.7×).
+
+### New: `scan.WithContext` and `scan.WithEntryStream`
+
+```go
+scan.WithContext(ctx context.Context)
+scan.WithEntryStream(cb func(*c4m.Entry) error)
+```
+
+`WithContext` attaches a context whose cancellation is observed at every
+directory boundary and between entries within a directory. A partial
+manifest is returned on cancel.
+
+`WithEntryStream` installs a per-entry callback that fires once per
+discovered entry, before it is added to the manifest. Returning a non-nil
+error halts the scan and is returned alongside the partial manifest.
+Under parallel walk the callback may be invoked from multiple goroutines
+but is serialized by an internal mutex, so callback bodies themselves do
+not need to be thread-safe. Order is the discovery order of the worker
+pool — pair with `WithMaxConcurrency(1)` if strict walk-order is
+required.
+
+When either option is set, `GenerateFromPath` / `Dir` return the partial
+manifest alongside the error rather than `nil` — this is opt-in behavior
+that preserves the historical nil-on-error contract for existing callers.
+
+The callback is not invoked for entries emitted by internal sub-scans
+used to compute directory C4 IDs in `ModeFull` — only top-level walk
+entries are streamed.
+
+### New: `c4m.Manifest.WriteCanonical(io.Writer) error`
+
+Streams the canonical form one entry per line, so very large manifests can
+be hashed (or otherwise consumed) without materializing the full canonical
+text as a single string allocation. `Canonical()` is unchanged in behavior:
+it now calls `WriteCanonical` into a `bytes.Buffer` for back-compat.
+`ComputeC4ID()` now streams canonical bytes through `io.Pipe` into
+`c4.Identify`, dropping bytes/op by ~23% on a 100K-entry manifest. Useful
+for the multi-million-entry case where the eliminated allocation would
+otherwise be hundreds of MB. C4 IDs are byte-identical to prior versions.
+
+### Progressive scanner: wired `c4m.PropagateMetadata`
+
+`cmd/c4/internal/scan/progressive_scanner.go` previously never called any
+propagation pass — directories in its output had null `Size` (-1) and
+sometimes null `Timestamp`, diverging from the synchronous scanner. Fixed
+by inserting `manifest.SortEntries()` + `c4m.PropagateMetadata(...)`
+inside `OutputCurrentState`, after the recursive `addEntriesToManifest`
+walk and before encoding. The streaming property of the producer pipeline
+is preserved — propagation runs only at emit, not during streaming.
+
+### Breaking changes
+
+None for the c4m wire format or C4 ID values. Canonical bytes are
+byte-identical pre/post for any tree that previously had no null
+sizes/timestamps (the normal disk-scan case). The pre-existing spec
+violation in `scan.PropagateMetadata` (permissive null handling) was
+fixed in favor of the spec — manifests with mixed null/known sizes will
+now propagate null to the root as the spec requires, where previously
+the scan path would silently produce a partial sum.
+
+Removed unexported helpers (`getDirectoryChildren`,
+`calculateDirectorySize`, `getMostRecentModtime`, plus their
+scan-package siblings) had no external users.
+
+`c4m.PropagateMetadata` was renamed from the unexported
+`c4m.propagateMetadata`. The previously-exported
+`scan.PropagateMetadata`, `scan.CalculateDirectorySize`, and
+`scan.GetMostRecentModtime` are gone — external callers (none were found
+in the workspace) should migrate to `c4m.PropagateMetadata` (which is
+the One True Implementation).
+
 ## v1.0.12
 
 ### Bug fixes

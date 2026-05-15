@@ -77,8 +77,31 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 - `ExtractSubtree(path)` — extract a directory and its children
 - `EntryPaths(entries)` — reconstruct full paths from depth-based entries
 - `Merge(a, b)` — combine two manifests, report conflicts
-- `ComputeC4ID(manifest)` — canonical identification
+- `ComputeC4ID(manifest)` — canonical identification (streams canonical
+  bytes through `io.Pipe` into `c4.Identify`, no full-string allocation)
 - `Canonicalize(manifest)` — normalize to canonical form before identification
+- `Canonical() string` — returns the canonical text (uses `WriteCanonical` internally)
+- `WriteCanonical(io.Writer) error` — stream canonical bytes, one entry per
+  line, for hashing large manifests without materializing the full string
+
+### Metadata propagation
+
+`c4m.PropagateMetadata([]*Entry)` is the **One True Implementation** for
+resolving null directory `Size` and `Timestamp` from descendants. Producers
+of `*c4m.Manifest` — including `scan` and `cmd/c4/internal/scan` — call it
+directly rather than maintaining parallel copies (the duplicates were
+removed in v1.0.13 along with the underlying O(D × N) algorithm).
+
+Properties:
+
+- Single-pass depth-stack accumulator: O(N) work, O(max-depth) memory.
+- Nil-infectious per `c4m/SPECIFICATION.md`: any null descendant Size /
+  Timestamp poisons the parent recursively to root.
+- Empty directories resolve to Size = 0, null Timestamp.
+- Whole-manifest early-out: returns immediately if no directory has any
+  null values (fast path for repeated `Canonicalize`).
+- **Precondition**: entries must be in filesystem-walk order. `SortEntries`
+  produces this; `scan.GenerateFromPath` emits it directly.
 
 ## scan Package
 
@@ -92,13 +115,36 @@ Directory scanner. Depends on `c4` and `c4m`.
 
 Convenience: `scan.Dir(path, ...Option)` for simple scans.
 
-Options: `WithMode`, `WithExclude`, `WithGuide`, `WithSequenceDetection`,
-`WithProgress`, `WithMaxConcurrency`.
+Options:
 
-Walks subdirectories in parallel via a shared semaphore (default
-`min(GOMAXPROCS, 16)`). Output is byte-identical to sequential scan because
-each parent stitches its children back in source order before the final
-`SortEntries` pass. `WithMaxConcurrency(1)` forces purely sequential.
+| Option | Purpose |
+|---|---|
+| `WithMode` | structure / metadata / full |
+| `WithSymlinks` | follow symlinks |
+| `WithHidden` | include dotfiles |
+| `WithSequenceDetection` | collapse `file.[0001-0100].exr` patterns |
+| `WithExclude`, `WithExcludeFile` | glob exclusions |
+| `WithGuide` | reuse IDs from a reference manifest |
+| `WithProgress(cb)` | periodic `ScanStats` callbacks; zero overhead when unset |
+| `WithMaxConcurrency(n)` | cap worker pool (0 = auto, 1 = sequential, n > 1 = explicit) |
+| `WithContext(ctx)` | cancellation observed at directory + entry boundaries |
+| `WithEntryStream(cb)` | per-entry callback; non-nil error halts scan with partial manifest |
+
+Parallel walk: subdirectories run on a bounded worker pool (default
+`min(GOMAXPROCS, 16)`) via a shared semaphore inherited by all `clone()`d
+sub-scans, so the cap is global. Each parent stitches its children back in
+source order before the final `SortEntries` pass — **output is
+byte-identical regardless of concurrency level**. `WithMaxConcurrency(1)`
+forces purely sequential.
+
+Streaming + cancellation: when `WithContext` or `WithEntryStream` is set,
+`Dir` / `GenerateFromPath` return the *partial* manifest alongside any
+error (cancellation or callback failure) rather than `nil`. Existing
+callers that pass neither option keep the historical nil-on-error
+contract. The entry-stream callback is serialized via an internal mutex so
+it stays single-threaded from the callee's perspective even under parallel
+walk; order is discovery order (non-deterministic) unless paired with
+`WithMaxConcurrency(1)`.
 
 Type aliases re-export `c4m.Entry`, `c4m.Manifest`, `c4m.NewManifest`,
 `c4m.NewDecoder`, `c4m.NewEncoder` for backward compatibility.
