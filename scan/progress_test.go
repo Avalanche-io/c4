@@ -43,8 +43,8 @@ func TestWithProgress(t *testing.T) {
 		mu.Unlock()
 	}
 
-	// Use ModeMetadata to skip C4 ID computation — faster, plus avoids
-	// the per-dir sub-scan, so the entry counts stay easy to reason about.
+	// Use ModeMetadata to skip C4 ID computation — faster, and the entry
+	// counts stay easy to reason about.
 	m, err := Dir(root, WithMode(ModeMetadata), WithProgress(cb))
 	if err != nil {
 		t.Fatalf("Dir: %v", err)

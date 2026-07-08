@@ -37,8 +37,7 @@ func buildParallelFixture(tb testing.TB, root string) {
 		}
 	}
 
-	// Deep chain — kept shallow to avoid the existing O(N*D) cost of
-	// per-dir sub-scans in ModeFull. Depth 6 is enough to exercise nesting.
+	// Deep chain — depth 6 is enough to exercise nesting.
 	deep := filepath.Join(root, "deep")
 	cur := deep
 	for level := 0; level < 6; level++ {

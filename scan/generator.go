@@ -2,11 +2,13 @@ package scan
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -59,6 +61,13 @@ type Generator struct {
 	ctx      context.Context        // cancellation; nil means no cancellation
 	streamCB func(*c4m.Entry) error // fires per discovered entry; nil disables streaming
 	streamMu sync.Mutex             // serializes streamCB calls under parallel walk
+
+	// dirIdentity, when non-nil, replaces canonicalDirID as the function
+	// deriving a directory's C4 ID from its fully-resolved direct children.
+	// This is the seam for alternate canonicalizations (e.g. a future
+	// content mode hashing null-stat entry lines): install a different
+	// function, nothing else in the walk changes.
+	dirIdentity func(children []*c4m.Entry) c4.ID
 }
 
 // NewGenerator creates a new manifest generator
@@ -131,8 +140,7 @@ func WithExcludeFile(path string) GeneratorOption {
 // WithProgress registers a callback that receives periodic scan stats.
 // The callback fires at most every 1000 entries or every 250ms, whichever
 // comes first, plus once at the end of the scan. The ScanStats argument is a
-// value copy — the callback may keep it freely. Sub-scans triggered to compute
-// directory C4 IDs do not report progress (they would double-count entries).
+// value copy — the callback may keep it freely.
 func WithProgress(cb func(ScanStats)) GeneratorOption {
 	return func(g *Generator) {
 		if cb != nil {
@@ -172,12 +180,11 @@ func WithContext(ctx context.Context) GeneratorOption {
 // multiple goroutines but is serialized by an internal mutex, so the
 // callback body itself does not need to be thread-safe. Order is the
 // discovery order produced by the worker pool, which is non-deterministic
-// across runs; pair with WithMaxConcurrency(1) if strict walk-order is
-// required.
+// across runs; pair with WithMaxConcurrency(1) for a deterministic order.
 //
-// The callback is not invoked for entries emitted by internal sub-scans
-// used to compute directory C4 IDs in ModeFull — only top-level walk
-// entries are streamed.
+// Directory entries stream after their children (post-order): a directory's
+// Size, Timestamp, and C4 ID are resolved bottom-up from its children, so
+// emitting it afterwards means every streamed entry is fully resolved.
 func WithEntryStream(cb func(*c4m.Entry) error) GeneratorOption {
 	return func(g *Generator) {
 		g.streamCB = cb
@@ -231,12 +238,16 @@ func NewGeneratorWithOptions(opts ...GeneratorOption) *Generator {
 	return g
 }
 
-// clone creates a copy with the same settings but fresh state.
-// Sub-scans triggered for directory C4 ID computation share the parent's
-// semaphore so the global concurrency cap is honored across the whole walk.
-// They drop the progress reporter and the entry-stream callback to avoid
-// double-counting / double-emit. The context IS propagated so a single
+// clone creates a copy with the same settings but fresh state. Clones are
+// used only for symlink-target sub-scans, which are rooted outside the main
+// walk. They share the parent's semaphore so the global concurrency cap is
+// honored, and drop the progress reporter and the entry-stream callback to
+// avoid double-counting / double-emit. The context IS propagated so a single
 // cancellation halts the entire scan, including sub-scans.
+//
+// The guide is deliberately NOT copied: guide paths are relative to the main
+// scan root, so applying them to a scan rooted elsewhere would spuriously
+// filter every entry and yield empty (wrong) results.
 func (g *Generator) clone() *Generator {
 	clone := &Generator{
 		mode:            g.mode,
@@ -245,10 +256,10 @@ func (g *Generator) clone() *Generator {
 		detectSequences: g.detectSequences,
 		excludeFile:     g.excludeFile,
 		excludeFileName: g.excludeFileName,
-		guide:           g.guide,
 		maxConcurrency:  g.maxConcurrency,
 		sem:             g.sem,
 		ctx:             g.ctx,
+		dirIdentity:     g.dirIdentity,
 	}
 	if len(g.excludePatterns) > 0 {
 		clone.excludePatterns = make([]string, len(g.excludePatterns))
@@ -390,6 +401,13 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 // are produced by recursive calls; subdirectory walks may run on the worker
 // pool but their result slices are merged in deterministic order so the
 // final entry list is independent of scheduling.
+//
+// Directory Size, Timestamp, and C4 ID are resolved bottom-up from the
+// already-scanned children — a directory is identified by the canonical
+// one-level listing of its direct children (see canonicalDirID), never by
+// re-scanning the subtree. This keeps the walk linear in the number of
+// entries and keeps guided scans correct (guide paths are root-relative and
+// only ever matched against the single root-anchored walk).
 func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, error) {
 	if err := g.ctxErr(); err != nil {
 		return nil, err
@@ -402,35 +420,20 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 	out := make([]*Entry, 0, len(dirEntries)+1)
 	childDepth := depth
 
+	var dirEntry *Entry
 	if dirName != "" {
 		dirInfo, err := os.Lstat(dirPath)
 		if err != nil {
 			return nil, err
 		}
-		dirEntry, err := g.generateEntry(dirPath, dirInfo, depth)
+		dirEntry, err = g.generateEntry(dirPath, dirInfo, depth)
 		if err != nil {
 			return nil, err
 		}
 		dirEntry.Name = dirName + "/"
-
-		// For directories, compute C4 ID from their recursive manifest.
-		// The sub-generator inherits the shared semaphore so concurrency
-		// stays bounded globally.
-		if g.mode == ModeFull && dirInfo.IsDir() {
-			subGen := g.clone()
-			subManifest, err := subGen.GenerateFromPath(dirPath)
-			if err == nil {
-				dirEntry.C4ID = subManifest.ComputeC4ID()
-			}
-		}
-
-		if err := g.emit(dirEntry); err != nil {
-			return out, err
-		}
+		// Size/Timestamp resolution and C4 ID computation happen after the
+		// children are scanned; the entry is emitted then, fully resolved.
 		out = append(out, dirEntry)
-		if g.progress != nil {
-			g.progress.record(dirPath, true, dirEntry.Size)
-		}
 		childDepth = depth + 1
 	}
 
@@ -599,18 +602,94 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 		return nil, firstErr
 	}
 
-	// Stitch results in original (source) order — deterministic.
+	// Stitch results in original (source) order — deterministic. Collect
+	// the direct children while we're at it: files/symlinks are the direct
+	// slots, and a subdirectory walk always returns its self-entry first.
+	directChildren := make([]*Entry, 0, len(slots))
 	for _, s := range slots {
 		if s.direct != nil {
 			out = append(out, s.direct)
+			directChildren = append(directChildren, s.direct)
 			continue
 		}
-		if s.subEntries != nil {
+		if len(s.subEntries) > 0 {
 			out = append(out, s.subEntries...)
+			directChildren = append(directChildren, s.subEntries[0])
+		}
+	}
+
+	if dirEntry != nil {
+		// Resolve this directory's null Size/Timestamp from its direct
+		// children — subdirectory children were already resolved by their
+		// own generateDir calls, so [self, children...] is all the canonical
+		// c4m.PropagateMetadata needs. The final whole-manifest pass in
+		// GenerateFromPath then early-outs (nothing left to resolve).
+		scope := make([]*Entry, 0, len(directChildren)+1)
+		scope = append(scope, dirEntry)
+		scope = append(scope, directChildren...)
+		c4m.PropagateMetadata(scope)
+
+		if g.mode == ModeFull {
+			dirEntry.C4ID = g.dirID(directChildren)
+		}
+		if err := g.emit(dirEntry); err != nil {
+			return out, err
+		}
+		if g.progress != nil {
+			g.progress.record(dirPath, true, dirEntry.Size)
 		}
 	}
 
 	return out, nil
+}
+
+// dirID derives a directory's C4 ID from its direct children. It dispatches
+// to the installed dirIdentity seam, falling back to the spec's canonical
+// one-level listing. Children must be fully resolved (sizes, timestamps,
+// and C4 IDs final) before this is called.
+func (g *Generator) dirID(children []*Entry) c4.ID {
+	if g.dirIdentity != nil {
+		return g.dirIdentity(children)
+	}
+	return g.canonicalDirID(children)
+}
+
+// canonicalDirID implements the spec's directory identity: the C4 ID of the
+// one-level canonical listing of the directory's direct children — files
+// before directories, natural sort, one canonical entry line each. The bytes
+// hashed are identical to Manifest.ComputeC4ID over a manifest holding only
+// the direct children, and therefore to a fresh scan of the directory itself.
+// An empty directory hashes the empty string.
+func (g *Generator) canonicalDirID(children []*Entry) c4.ID {
+	if g.detectSequences && len(children) > 0 {
+		// Fold sequences among the direct children so the listing matches
+		// the folded entries the final manifest will carry.
+		tmp := c4m.NewManifest()
+		for _, c := range children {
+			cp := *c
+			cp.Depth = 0
+			tmp.AddEntry(&cp)
+		}
+		children = c4m.DetectSequences(tmp).Entries
+	}
+
+	sorted := make([]*Entry, len(children))
+	copy(sorted, children)
+	sort.Slice(sorted, func(i, j int) bool {
+		iDir := strings.HasSuffix(sorted[i].Name, "/")
+		jDir := strings.HasSuffix(sorted[j].Name, "/")
+		if iDir != jDir {
+			return !iDir // files first
+		}
+		return c4m.NaturalLess(sorted[i].Name, sorted[j].Name)
+	})
+
+	var buf bytes.Buffer
+	for _, e := range sorted {
+		buf.WriteString(e.Canonical())
+		buf.WriteByte('\n')
+	}
+	return c4.Identify(&buf)
 }
 
 // generateEntry creates an entry from file info

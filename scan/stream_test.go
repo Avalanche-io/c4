@@ -76,8 +76,8 @@ func TestEntryStream_CancelMidScan(t *testing.T) {
 		return nil
 	}
 
-	// Use ModeMetadata to skip the expensive per-directory sub-scan that
-	// would otherwise dominate runtime in ModeFull.
+	// Use ModeMetadata to skip per-file hashing — cancellation behavior is
+	// what's under test, not ID computation.
 	m, err := Dir(dir,
 		WithMode(ModeMetadata),
 		WithContext(ctx),
