@@ -25,10 +25,14 @@ const DefaultSplitThreshold = 4096
 type TreeStore struct {
 	root           string
 	splitThreshold int
+	syncMode       SyncMode
 	mu             sync.Mutex
+	counts         map[string]int // leaf dir → file count (split accounting)
+	dirty          bool           // batch writes awaiting a Sync barrier
 }
 
 var _ Store = (*TreeStore)(nil)
+var _ Syncer = (*TreeStore)(nil)
 
 // NewTreeStore creates a TreeStore rooted at the given directory.
 // The directory is created if it does not exist.
@@ -50,6 +54,36 @@ func (s *TreeStore) SetSplitThreshold(n int) {
 	s.splitThreshold = n
 }
 
+// SetSyncMode selects the write-durability policy. The default is
+// SyncEach: every object durable before it lands. Set the mode before
+// writing, not concurrently with writes.
+func (s *TreeStore) SetSyncMode(mode SyncMode) {
+	s.syncMode = mode
+}
+
+// Sync makes every object written so far durable. Under SyncEach each
+// write is already durable and under SyncNone durability is waived, so
+// both are no-ops. Under SyncBatch this is the batch barrier: one
+// device-cache flush (F_FULLFSYNC on darwin) covering every object
+// written since the last Sync.
+func (s *TreeStore) Sync() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.syncMode != SyncBatch || !s.dirty {
+		return nil
+	}
+	f, err := os.Open(s.root)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	s.dirty = false
+	return nil
+}
+
 // Has reports whether the store contains content for the given ID.
 func (s *TreeStore) Has(id c4.ID) bool {
 	_, err := os.Stat(s.path(id))
@@ -62,7 +96,8 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 }
 
 // Create creates a new entry for writing. The caller must know the ID
-// in advance. Writes go to a temp file; Close syncs and renames atomically.
+// in advance. Writes go to a temp file; Close flushes per the store's
+// sync mode and renames atomically.
 func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	p := s.path(id)
 	if _, err := os.Stat(p); err == nil {
@@ -71,11 +106,21 @@ func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return nil, err
 	}
-	return NewDurableWriter(p)
+	w, err := NewDurableWriter(p)
+	if err != nil {
+		return nil, err
+	}
+	w.sync = s.syncMode
+	s.mu.Lock()
+	s.dirty = true
+	s.mu.Unlock()
+	return w, nil
 }
 
 // Put reads all content from r, computes its C4 ID, stores it, and returns
-// the ID. If the content already exists the write is skipped.
+// the ID. If the content already exists the write is skipped. Put is safe
+// for concurrent use: hashing, temp writes, and flushes overlap; only the
+// publish step (exists-check, rename, split accounting) is serialized.
 func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	// Write to a temp file while computing the C4 ID.
 	tmp, err := os.CreateTemp(s.root, ".ingest.*")
@@ -91,7 +136,7 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 		tmp.Close()
 		return c4.ID{}, fmt.Errorf("copy: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := flushFile(tmp, s.syncMode); err != nil {
 		tmp.Close()
 		return c4.ID{}, fmt.Errorf("sync: %w", err)
 	}
@@ -101,6 +146,11 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 
 	var id c4.ID
 	copy(id[:], h.Sum(nil))
+
+	// Publish under the lock: path resolution, rename, and split
+	// accounting must not interleave with a concurrent split.
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// If content already exists, skip the rename.
 	p := s.path(id)
@@ -114,9 +164,10 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	if err := os.Rename(tmpName, p); err != nil {
 		return c4.ID{}, fmt.Errorf("rename: %w", err)
 	}
+	s.dirty = true
 
 	// Check if the leaf directory needs splitting.
-	s.maybeSplit(filepath.Dir(p), id.String())
+	s.noteAdd(filepath.Dir(p))
 
 	return id, nil
 }
@@ -151,34 +202,57 @@ func (s *TreeStore) path(id c4.ID) string {
 	return filepath.Join(dir, str)
 }
 
-// maybeSplit checks if the leaf directory containing a newly added file
-// exceeds the split threshold, and if so redistributes files into 2-char
-// subdirectories based on the next prefix segment.
-func (s *TreeStore) maybeSplit(dir, idStr string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// noteAdd records one new file in a leaf directory and splits the leaf
+// when it exceeds the threshold. The count is cached so the split check
+// is O(1) per Put instead of a ReadDir; the cache is seeded by one
+// ReadDir on first touch and invalidated on split. External writers may
+// skew the cache — the only consequence is a slightly early or late
+// split. Caller must hold s.mu.
+func (s *TreeStore) noteAdd(dir string) {
+	n, ok := s.counts[dir]
+	if !ok {
+		n = countFiles(dir) // includes the file just renamed in
+	} else {
+		n++
+	}
+	if s.counts == nil {
+		s.counts = make(map[string]int)
+	}
+	s.counts[dir] = n
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if n <= s.splitThreshold {
 		return
 	}
+	s.split(dir)
+	delete(s.counts, dir)
+}
 
-	// Count only regular files (not subdirectories or temps).
-	var fileCount int
+// countFiles counts regular (non-temp) files in dir.
+func countFiles(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var n int
 	for _, e := range entries {
 		if !e.IsDir() && !isTemp(e.Name()) {
-			fileCount++
+			n++
 		}
 	}
+	return n
+}
 
-	if fileCount <= s.splitThreshold {
+// split redistributes a leaf directory's files into 2-char
+// subdirectories based on the next prefix segment. Caller must hold s.mu.
+func (s *TreeStore) split(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
 		return
 	}
 
 	// Determine the prefix depth of this directory relative to root.
 	depth := s.prefixDepth(dir)
 
-	// Redistribute files into 2-char subdirectories.
 	for _, e := range entries {
 		if e.IsDir() || isTemp(e.Name()) {
 			continue

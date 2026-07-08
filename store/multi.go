@@ -77,6 +77,32 @@ func (m *MultiStore) Put(r io.Reader) (c4.ID, error) {
 	return m.stores[0].Put(r)
 }
 
+// SetSyncMode forwards the write-durability policy to member stores
+// that support it.
+func (m *MultiStore) SetSyncMode(mode SyncMode) {
+	for _, s := range m.stores {
+		sm, ok := s.(interface{ SetSyncMode(SyncMode) })
+		if !ok {
+			continue
+		}
+		sm.SetSyncMode(mode)
+	}
+}
+
+// Sync flushes every member store that supports a durability barrier.
+func (m *MultiStore) Sync() error {
+	for _, s := range m.stores {
+		sy, ok := s.(Syncer)
+		if !ok {
+			continue
+		}
+		if err := sy.Sync(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *MultiStore) Remove(id c4.ID) error {
 	// Remove from all stores that have it.
 	var lastErr error

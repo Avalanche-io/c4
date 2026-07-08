@@ -6,17 +6,19 @@ import (
 	"path/filepath"
 )
 
-// DurableWriter writes to a temp file, then on Close syncs to disk and
-// atomically renames to the final path. This guarantees that the final
-// file is either fully written or absent — never partially written.
+// DurableWriter writes to a temp file, then on Close flushes per its
+// sync mode and atomically renames to the final path. This guarantees
+// that the final file is either fully written or absent — never
+// partially written.
 type DurableWriter struct {
-	tmp    *os.File
-	final  string
-	nosync bool
+	tmp   *os.File
+	final string
+	sync  SyncMode
 }
 
 // NewDurableWriter creates a temp file in the same directory as final,
-// ensuring the rename will be atomic (same filesystem).
+// ensuring the rename will be atomic (same filesystem). Close flushes
+// the file to stable storage before the rename.
 func NewDurableWriter(final string) (*DurableWriter, error) {
 	dir := filepath.Dir(final)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -38,7 +40,7 @@ func NewAtomicWriter(final string) (*DurableWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	w.nosync = true
+	w.sync = SyncNone
 	return w, nil
 }
 
@@ -54,12 +56,10 @@ func (w *DurableWriter) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (w *DurableWriter) Close() error {
-	if !w.nosync {
-		if err := w.tmp.Sync(); err != nil {
-			w.tmp.Close()
-			os.Remove(w.tmp.Name())
-			return err
-		}
+	if err := flushFile(w.tmp, w.sync); err != nil {
+		w.tmp.Close()
+		os.Remove(w.tmp.Name())
+		return err
 	}
 	if err := w.tmp.Close(); err != nil {
 		os.Remove(w.tmp.Name())
