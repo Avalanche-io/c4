@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Reconcile performance: 43x faster materialization
+
+Materializing a 20,050-file / 105 MB tree via `c4 patch snap.c4m dest/`
+took 164.6 s wall against 13.5 s CPU — the process was blocked, not
+computing. Root cause: `store.DurableWriter.Close` issues a per-file
+`F_FULLFSYNC` (a full device write-cache flush on darwin), serialized by
+a fully sequential Apply. See `design/reconcile-performance.md`.
+
+- `reconcile.WithSync(false)` — atomic (temp + rename) but non-fsync
+  writes for scratch materialization; default unchanged (durable).
+  Exposed as `c4 patch --no-fsync`.
+- Apply now runs consecutive create operations on a bounded worker pool
+  (`reconcile.WithMaxConcurrency`, default min(GOMAXPROCS, 16));
+  counters and errors merge in operation order.
+- `reconcile.WithTrustedMetadata(true)` — Plan reuses target IDs when
+  size+mtime match instead of re-hashing every existing file (the
+  guided-scan contract). Enabled by the CLI, matching its guided scan.
+- `reconcile.LocalSource` (optional `ContentPath` on sources) —
+  Apply copies file-to-file from local stores; `store.DurableWriter`
+  gained `ReadFrom` so copies use OS acceleration (`copy_file_range`
+  reflinks on Linux CoW filesystems). `store.NewAtomicWriter` is the
+  non-fsync writer. `Folder`, `ShardedFolder`, `TreeStore`,
+  `MultiStore`, and `DirSource` implement `ContentPath`.
+
+Gate benchmark (M-series, APFS, 20,050 files / 105 MB, verified
+byte-identical): master 171.2 s → branch durable 129.3 s → branch
+`--no-fsync` **4.0 s** (reference `cp -Rc` whole-tree clone: 2.9 s).
+No-op re-apply: 0.74 s → 0.20 s.
+
 ## v1.0.13
 
 ### Scan performance: quadratic propagation eliminated

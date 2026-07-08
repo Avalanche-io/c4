@@ -160,6 +160,34 @@ CLI behavior: `c4 patch` enables `WithTrustedMetadata(true)` (matching
 its existing guided scan of the same directory) and auto concurrency.
 Durability remains the CLI default; `--no-fsync` opts out.
 
+## Measured results (gate benchmark)
+
+Reproduced on the same machine class (M-series, APFS, macOS 26.6):
+synthetic 20,050-file / ~105 MB tree, local TreeStore, `c4 patch
+snap.c4m dest/` into an empty destination. All outputs verified
+byte-identical to the source tree (`diff -rq`).
+
+| Run | Wall | CPU (user+sys) | Notes |
+|---|---:|---:|---|
+| master v1.0.13 | 171.2 s | 13.1 s | baseline reproduced (164.6 s originally) |
+| branch, durable default | 129.3 s | 26.4 s | parallel fsync; F_FULLFSYNC serializes at the device |
+| branch `--no-fsync` | **4.0 s** | 42.5 s | **43x; target met** |
+| `cp -Rc` reference | 2.9 s | 2.7 s | whole-tree clonefile |
+| no-op re-apply, master | 0.74 s | 1.2 s | Plan hashes all 20k files |
+| no-op re-apply, branch | 0.20 s | 0.5 s | trusted-metadata plan |
+
+CoW option measurements:
+
+- **`exec cp -c` per file**: 2.11 ms/file measured → 42 s sequential
+  for 20k files; even parallelized it cannot beat the 4.0 s byte-copy
+  path. Confirms rejection.
+- **`x/sys unix.Clonefile` per file** (experiment outside the module,
+  16 workers): 20,050 clones in **2.48 s** (0.123 ms/file), real disk
+  allocation **6.4 MB** (df delta) vs ~157 MB for byte copies. Adopting
+  x/sys would cut materialization wall time roughly in half again and
+  reduce disk allocation ~25x — this is the measured case for the
+  dependency decision.
+
 ## Failure modes and trade-offs
 
 - `WithSync(false)`: after a power failure, recently created files may
