@@ -188,7 +188,12 @@ Content-addressed storage. Depends only on root `c4`.
 | `RAM` | In-memory store (testing). |
 | `Validating` | Wrapper that verifies content hashes on read/write. |
 | `Logger` | Wrapper that logs all operations. |
-| `DurableWriter` | Atomic write-to-temp-then-rename. |
+| `DurableWriter` | Atomic write-to-temp-then-rename. `NewDurableWriter` fsyncs on Close; `NewAtomicWriter` skips the fsync (atomic but not crash-durable — for scratch writes re-materializable from a store). `ReadFrom` delegates to the temp file so io.Copy gets OS copy acceleration (copy_file_range on Linux). |
+
+Local-path access: `Folder`, `ShardedFolder`, `TreeStore`, and
+`MultiStore` implement `ContentPath(id) (string, bool)`, returning the
+local filesystem path for existing content. This satisfies
+`reconcile.LocalSource`, enabling file-to-file copy fast paths.
 
 ### Configuration
 
@@ -202,12 +207,29 @@ Filesystem reconciliation. Depends on `c4`, `c4m`, and `store`.
 | Type | Description |
 |------|-------------|
 | `Reconciler` | Stateful reconciler with content sources and saver. |
-| `ContentSource` | Interface: `Has(ID)` + `Open(ID)`. |
-| `DirSource` | Wraps a directory + manifest as a `ContentSource`. |
+| `ContentSource` | Interface: `Has(ID)` + `Open(ID)`. Must tolerate concurrent `Open` when Apply concurrency > 1. |
+| `LocalSource` | Optional interface: `ContentPath(ID) (string, bool)`. Apply prefers local paths for file-to-file copies (CoW clone hook point — see design/reconcile-performance.md). |
+| `DirSource` | Wraps a directory + manifest as a `ContentSource` (also a `LocalSource`). |
 | `Saver` | Interface: `Put(io.Reader) (ID, error)` + `Has(ID) bool`. |
 | `Plan` | Ordered operation list with missing-content check. |
 | `Operation` | Single filesystem operation (mkdir, create, move, remove, chmod, chtimes). |
 | `Result` | Outcome counts and errors from `Apply`. |
+
+Options:
+
+| Option | Purpose |
+|---|---|
+| `WithSource` | add a content source |
+| `WithDryRun` | plan-only Apply |
+| `WithStoreRemovals` | store content before removal |
+| `WithSync` | default true; false skips per-file fsync (atomic, not crash-durable) |
+| `WithMaxConcurrency` | Apply create workers: 0 = auto (min(GOMAXPROCS, 16)), 1 = sequential |
+| `WithTrustedMetadata` | default false; true lets Plan reuse target IDs on size+mtime match (guided-scan contract) instead of hashing |
+
+Apply runs consecutive create operations on a bounded worker pool,
+merging counters and errors in operation order (deterministic output).
+Creates prefer a `LocalSource` path — file-to-file copy with OS
+acceleration, falling back to streaming `Open` on any failure.
 
 Distribution (single-pass multi-target):
 
