@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 // FileMetadata represents generic file metadata that implements os.FileInfo
@@ -112,9 +113,18 @@ func (m *BasicFileMetadata) AddChild(child FileMetadata) {
 
 // MetadataToEntry converts FileMetadata to a c4m.Entry
 func MetadataToEntry(md FileMetadata) *Entry {
+	// An unstated modification time (e.g. structure mode) is null — it must
+	// render as "-", not as the zero time's 0001-01-01T00:00:00Z.
+	ts := md.ModTime()
+	if ts.IsZero() {
+		ts = c4m.NullTimestamp()
+	} else {
+		ts = ts.UTC()
+	}
+
 	entry := &Entry{
 		Mode:      md.Mode(),
-		Timestamp: md.ModTime().UTC(),
+		Timestamp: ts,
 		Size:      md.Size(),
 		Name:      md.Name(),
 		Target:    md.Target(),

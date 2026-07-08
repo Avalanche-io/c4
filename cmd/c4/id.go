@@ -187,6 +187,7 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 		entry.Size = info.Size()
 	} else {
 		entry.Size = -1
+		entry.Timestamp = c4m.NullTimestamp() // null renders as "-"
 	}
 
 	if mode == scan.ModeFull {
