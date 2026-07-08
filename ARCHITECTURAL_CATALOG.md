@@ -257,6 +257,26 @@ Ten commands dispatched from `main.go`:
 | `patch.go` | `c4 patch` | Actor |
 | `merge.go` | `c4 merge` | Actor |
 | `split.go` | `c4 split` | Actor |
+Safety defaults (`design/safety-defaults.md`):
+
+- **Self-capturing snapshots** — every ingest path stores the manifest's
+  canonical text (`storeManifestSelf` in `id.go`, ID = the manifest's own
+  C4 ID) and the root's one-level record (ID = `ComputeC4ID`, the root
+  directory ID), then reports `stored: <manifest-id>` on stderr after the
+  durability barrier (`reportStored`). `storeDirectoryC4m` returns the
+  record's ID (empty-content ID for empty directories, matching scan).
+- **Patch pre-state capture** — reconcile forms (`c4m×dir`, `dir×dir`,
+  `-r`) call `capturePreState` (`patch.go`) before Apply: vanishing
+  content (removed or overwritten), directory records (computed
+  deepest-first when the guided scan left IDs nil), root record, and
+  manifest text, then the batch barrier — durable before destruction.
+  `--no-store` opts out (`reconcileStore` avoids prompting then);
+  `--no-fsync` is clamped to `SyncBatch` for capture writes. After a
+  successful Apply, `reportPreState` prints the verbatim revert command.
+  `c4 patch -r` accepts a changeset file or a stored manifest ID
+  (`manifestFromStore`); one-level records expand through stored
+  directory records (`expandIfRecord` in `cat.go`) and incomplete
+  expansions are refused (`validateRevertTarget`).
 
 Supporting files: `flags.go` (custom flag parser), `helpers.go` (shared utilities),
 `version.go`, `main.go` (dispatch + bare shortcuts).
@@ -286,3 +306,4 @@ c4 --> (stdlib only)
 - **Single-pass distribution**: `reconcile.Distribute` hashes + copies in one read pass
 - **Atomic writes**: `store.DurableWriter` writes to temp file then renames
 - **Batch durability barrier**: CLI ingest lands objects with cheap per-object fsyncs and issues one `F_FULLFSYNC` (`store.Syncer.Sync`) at completion — durable-at-completion instead of durable-per-object (`design/store-ingest-performance.md`)
+- **Safety defaults**: snapshots store their own description (manifest text + root record, `stored:` on stderr); patch reconcile forms capture the destination's prior state before applying and print a verbatim revert command (`design/safety-defaults.md`)

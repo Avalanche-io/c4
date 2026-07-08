@@ -82,6 +82,27 @@ c4 id -s myproject/ > project.c4m
 c4 id . | c4
 ```
 
+### Self-capturing snapshots
+
+`c4 id -s` stores the snapshot's own description alongside the
+content: the manifest's canonical text (under the manifest's own C4
+ID) and the root directory's one-level record. Once storage is
+durable, stderr reports:
+
+```
+stored: <manifest-id>
+```
+
+Lose the tree *and* the `.c4m` file, and the snapshot still recovers
+from the store alone:
+
+```bash
+c4 cat <manifest-id> > recovered.c4m   # byte-identical manifest
+c4 patch recovered.c4m ./restored/     # materialize from the store
+```
+
+With `-q` the stored line is the only output.
+
 ### Flags
 
 | Flag | Long | Description |
@@ -175,8 +196,8 @@ would look like before running `c4 patch -r`:
 # Preview what reverting would change
 c4 diff -r changeset.c4m ./project/
 
-# The changeset must have been produced with -s so the pre-patch
-# manifest is in the store
+# The prior state manifest must be in the store — c4 patch stores it
+# by default (unless the patch ran with --no-store)
 ```
 
 ## `c4 patch` — Apply Target State
@@ -203,19 +224,38 @@ When reconciling a directory (`c4m×dir`, `dir×dir`), the computed diff
 is written to stdout as a changeset. This changeset can be redirected
 to a file and used later for reversal with `-r`.
 
+### Prior state is stored by default
+
+Before a reconcile form touches the destination, `c4 patch` captures
+its prior state into the content store: content that would be removed
+or overwritten, the directory records, and the pre-state manifest —
+durable before the first destructive operation. After applying,
+stderr reports the way back:
+
+```
+prior state stored: <id> (revert: c4 patch -r <id> <dir>)
+```
+
+That revert command works verbatim, even if stdout was discarded.
+`--no-store` opts out. `--dry-run` changes and captures nothing. If no
+store is configured, `c4 patch` offers to create the default store
+(non-interactive runs proceed with a warning). The capture is never
+unsynced: `--no-fsync` still leaves the prior state durable via the
+batch barrier; `--durable` flushes it per object.
+
 ### Flags
 
 | Flag | Long | Description |
 |------|------|-------------|
-| `-s` | `--store` | Store pre-patch c4m + removed content (enables `-r` reversal) |
-| `-r` | `--reverse` | Revert: restore directory to pre-patch state using stored c4m |
+| `-s` | `--store` | Also store content at removal time during apply (redundant belt; prior state is captured by default) |
+| `-r` | `--reverse` | Revert a directory to a stored prior state (changeset file or manifest ID) |
 | `-q` | `--quiet` | Suppress changeset output to stdout |
 | `-e` | `--ergonomic` | Output ergonomic form |
 | `-n` | `--number` | Resolve to specific patch number (1-based) |
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
 | | `--dry-run` | Show planned operations without making changes |
-| | `--no-store` | Suppress content storage |
-| | `--no-fsync` | Skip per-file fsync when writing (faster, not crash-durable) |
+| | `--no-store` | Skip prior-state capture and content storage |
+| | `--no-fsync` | Skip per-file fsync when writing (faster, not crash-durable; prior-state capture stays durable) |
 | | `--durable` | Fsync every stored object during ingest (slower; default is one flush per ingest batch) |
 | | `--source` | Additional content source path (repeatable) |
 
@@ -232,12 +272,13 @@ c4 patch -n 3 project.c4m
 c4 patch common.c4m release.c4m
 
 # Reconcile a directory to match a c4m, capture changeset
+# (the prior state is stored automatically; stderr prints the revert)
 c4 patch target.c4m ./project/ > changeset.c4m
 
-# Same, but store pre-patch state for later reversal
-c4 patch -s target.c4m ./project/ > changeset.c4m
+# Revert using the manifest ID printed by the forward patch
+c4 patch -r <manifest-id> ./project/
 
-# Revert using the stored pre-patch state
+# Or revert using the saved changeset
 c4 patch -r changeset.c4m ./project/
 
 # Preview reconciliation without making changes
@@ -264,9 +305,13 @@ missing C4 IDs and exits non-zero. Use `--source` to provide additional
 directories where content can be found, or ensure the content store has
 the needed files.
 
-The `-s` flag stores the pre-patch c4m in the content store, keyed
-by its C4 ID. This is what enables `-r` reversal — the stored c4m
-is the revert target.
+Reversal (`-r`) reconciles the directory back to a stored prior
+state. The first argument is either the manifest ID printed by the
+forward patch or a changeset file — the changeset's leading bare C4 ID
+names the prior state's root record, which expands through the stored
+directory records. If any needed directory record is missing from the
+store, the revert is refused rather than reconciling toward a
+truncated tree.
 
 ## `c4 merge` — Combine Trees
 

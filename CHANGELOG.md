@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Safety defaults: self-capturing snapshots and patch pre-state
+
+Two gaps between "the store is the safety net" and what the CLI put in
+it are closed. See `design/safety-defaults.md`.
+
+**Behavior change — `c4 patch` reconcile forms now store the prior
+state by default.** `c4 patch <file.c4m> <dir>`, `c4 patch <dir>
+<dir>`, and `c4 patch -r` capture the destination's pre-state before
+applying: content that would be removed or overwritten, every
+directory's one-level record, the root record, and the pre-state
+manifest text — durable (batch barrier) before the first destructive
+operation. After applying, stderr reports:
+
+    prior state stored: <id> (revert: c4 patch -r <id> <dir>)
+
+and that revert command works verbatim. `--no-store` opts out;
+`--dry-run` still changes (and captures) nothing; `-s` remains as a
+removal-time belt (now redundant in normal use). When no store is
+configured, reconcile forms offer to create the default store;
+non-interactive runs proceed with a warning. Measured on a 5,050-file
+dest: worst case (everything vanishes) 1.0 s → 2.7 s; typical patch
+(50 files change) unchanged at 0.4 s.
+
+**Snapshots capture themselves.** `c4 id -s` (and every other ingest
+path) now also stores the manifest's canonical text — retrievable by
+the manifest's own C4 ID — and the scan root's one-level record
+(retrievable by the root directory ID), and reports `stored:
+<manifest-id>` on stderr after the durability barrier. Lose the tree
+and the `.c4m` file: `c4 cat <manifest-id>` reproduces the manifest
+byte-identically and `c4 patch <recovered.c4m> <dir>/` materializes
+the tree from the store alone.
+
+- `c4 patch -r` accepts a stored manifest ID as well as a changeset
+  file. The changeset form is fixed for nested trees (the OldID names
+  the root record, which now exists in the store and expands through
+  stored directory records; previously the lookup always failed with
+  "pre-patch manifest not found"). A revert target with a missing
+  directory record is refused instead of silently truncating the tree.
+- Capture is never unsynced: `--no-fsync` is clamped to the batch
+  barrier for pre-state writes; `--durable` upgrades them to
+  per-object flushes.
+
 ### Store ingest performance: 44x faster snapshots
 
 Snapshotting a 20,050-file / 105 MB tree with `c4 id -s` took ~180 s:

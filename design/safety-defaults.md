@@ -172,6 +172,38 @@ Reconciled project/: 340 created 12 removed
 Zen accounting: zero new flags, two stderr lines, one flag
 (`--no-store`) grows one sentence of meaning.
 
+## Known limits
+
+- The guided dest scan trusts size+mtime (second precision): a dest
+  file whose content differs from the target's at the same path with
+  identical size and mtime is assumed unchanged, so its old content is
+  not captured. This is the existing guided-scan/trusted-metadata
+  contract, not new exposure.
+- Folded sequence entries are not captured (warned).
+- A revert target loaded from the store is refused if any directory
+  record it needs is missing (`prior state incomplete`) — never
+  silently reconciled toward a truncated tree.
+- The changeset-form drift warning can fire spuriously for standalone
+  changeset files (their BaseID is an external reference the resolver
+  cannot follow); pre-existing, and the ID form has no such warning.
+
+## Measured results (5,050-file / ~26 MB dest tree)
+
+`c4 patch t.c4m dest/`, fresh dest copy and fresh store per run
+(target snapshot pre-stored), APFS, M-series Mac. Two runs each.
+
+| Scenario | default (capture) | `--no-store` | `--durable` |
+|---|---:|---:|---:|
+| catastrophic: all 5,050 files vanish | 2.7 s | 1.0 s | 43–45 s |
+| light: 50 files change | 0.4 s | 0.4 s | — |
+
+The accident case costs ~1.7 s to make fully revertible — the batch
+barrier is what makes this shippable as a default (per-object flushes
+would cost ~40 s, the `--durable` column). The common case is
+within noise. End-to-end at scale: the printed revert command restored
+all 5,050 files byte-identically (`c4 diff` empty; revert wall 26.5 s,
+dominated by reconcile's default durable file writes).
+
 ## Status
 
 Design complete. Implemented on `feature/safety-defaults` (stacked on
