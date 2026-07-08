@@ -21,6 +21,7 @@ func runPatch(args []string) {
 	dryRun := fs.boolFlag("dry-run", 0, false, "Show plan without making changes")
 	sourceFlags := fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
 	noStore := fs.boolFlag("no-store", 0, false, "Suppress content storage")
+	noFsync := fs.boolFlag("no-fsync", 0, false, "Skip per-file fsync when writing (faster, not crash-durable)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f")
 	fs.parse(args)
 
@@ -40,7 +41,7 @@ func runPatch(args []string) {
 			fmt.Fprintf(os.Stderr, "Usage: c4 patch -r [-s] <changeset.c4m> <dir>\n")
 			os.Exit(1)
 		}
-		runPatchReverse(fs.args[0], fs.args[1], *storeFlag, *dryRun, *quiet, *sourceFlags)
+		runPatchReverse(fs.args[0], fs.args[1], *storeFlag, *dryRun, *quiet, *noFsync, *sourceFlags)
 		return
 	}
 
@@ -48,7 +49,7 @@ func runPatch(args []string) {
 	case 1:
 		runPatchSingle(fs.args[0], mode, *n, *ergonomic, *noStore)
 	case 2:
-		runPatchPair(fs.args[0], fs.args[1], mode, *ergonomic, *dryRun, *noStore, *storeFlag, *quiet, *sourceFlags)
+		runPatchPair(fs.args[0], fs.args[1], mode, *ergonomic, *dryRun, *noStore, *storeFlag, *quiet, *noFsync, *sourceFlags)
 	default:
 		// 3+ args: multi-file chain resolution (existing behavior).
 		runPatchChain(fs.args, *n, *ergonomic)
@@ -95,7 +96,7 @@ func runPatchSingle(path string, mode scan.ScanMode, n int, ergonomic, noStore b
 }
 
 // runPatchPair handles two-argument patch with dispatch based on argument types.
-func runPatchPair(target, dest string, mode scan.ScanMode, ergonomic, dryRun, noStore, storeRemovals, quiet bool, sources []string) {
+func runPatchPair(target, dest string, mode scan.ScanMode, ergonomic, dryRun, noStore, storeRemovals, quiet, noFsync bool, sources []string) {
 	targetIsDir := isDirectory(target)
 	destIsDir := isDirectory(dest)
 
@@ -103,11 +104,11 @@ func runPatchPair(target, dest string, mode scan.ScanMode, ergonomic, dryRun, no
 	case !targetIsDir && !destIsDir:
 		runPatchC4mToC4m(target, dest, ergonomic)
 	case !targetIsDir && destIsDir:
-		runPatchC4mToDir(target, dest, mode, dryRun, storeRemovals, quiet, sources)
+		runPatchC4mToDir(target, dest, mode, dryRun, storeRemovals, quiet, noFsync, sources)
 	case targetIsDir && !destIsDir:
 		runPatchDirToC4m(target, dest, mode, noStore)
 	default:
-		runPatchDirToDir(target, dest, mode, dryRun, noStore, storeRemovals, quiet, sources)
+		runPatchDirToDir(target, dest, mode, dryRun, noStore, storeRemovals, quiet, noFsync, sources)
 	}
 }
 
@@ -134,7 +135,7 @@ func runPatchC4mToC4m(target, dest string, ergonomic bool) {
 
 // runPatchC4mToDir reconciles a directory to match a c4m target state.
 // Outputs the computed diff to stdout.
-func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeRemovals, quiet bool, sources []string) {
+func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeRemovals, quiet, noFsync bool, sources []string) {
 	targetManifest := resolveC4m(target)
 
 	// Scan current state using target as a guide — only hash changed files.
@@ -161,8 +162,13 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeR
 		storeManifestAsContent(currentManifest, s)
 	}
 
-	// Build content sources.
+	// Build content sources. Plan trusts size+mtime matches, consistent
+	// with the guided scan above.
 	var opts []reconcile.Option
+	opts = append(opts, reconcile.WithTrustedMetadata(true))
+	if noFsync {
+		opts = append(opts, reconcile.WithSync(false))
+	}
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(currentManifest, dirPath)))
 
 	if s != nil {
@@ -230,7 +236,7 @@ func runPatchDirToC4m(dirPath, destPath string, mode scan.ScanMode, noStore bool
 
 // runPatchDirToDir scans source directory and reconciles dest to match.
 // Outputs the computed diff to stdout.
-func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet bool, sources []string) {
+func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet, noFsync bool, sources []string) {
 	shouldStore := !noStore && mode == scan.ModeFull
 	targetManifest := scanDirectory(srcDir, mode, false, shouldStore, nil, "", nil)
 
@@ -259,6 +265,10 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 	}
 
 	var opts []reconcile.Option
+	opts = append(opts, reconcile.WithTrustedMetadata(true))
+	if noFsync {
+		opts = append(opts, reconcile.WithSync(false))
+	}
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(targetManifest, srcDir)))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(destManifest, destDir)))
 
@@ -386,7 +396,7 @@ func opName(op reconcile.Op) string {
 // runPatchReverse reverts a directory to the pre-patch state using a stored manifest.
 // The changeset's first bare C4 ID (OldID) identifies the pre-patch manifest
 // which must be in the content store (stored by a prior -s operation).
-func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun, quiet bool, sources []string) {
+func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun, quiet, noFsync bool, sources []string) {
 	if !isDirectory(dirPath) {
 		fatalf("Error: %s is not a directory", dirPath)
 	}
@@ -463,6 +473,10 @@ func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun, 
 
 	// Build content sources and reconcile.
 	var opts []reconcile.Option
+	opts = append(opts, reconcile.WithTrustedMetadata(true))
+	if noFsync {
+		opts = append(opts, reconcile.WithSync(false))
+	}
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(currentManifest, dirPath)))
 	opts = append(opts, reconcile.WithSource(s))
 	if storeRemovals {
