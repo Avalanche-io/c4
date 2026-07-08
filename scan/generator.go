@@ -619,17 +619,26 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 	}
 
 	if dirEntry != nil {
-		// Resolve this directory's null Size/Timestamp from its direct
-		// children — subdirectory children were already resolved by their
-		// own generateDir calls, so [self, children...] is all the canonical
-		// c4m.PropagateMetadata needs. The final whole-manifest pass in
-		// GenerateFromPath then early-outs (nothing left to resolve).
-		scope := make([]*Entry, 0, len(directChildren)+1)
-		scope = append(scope, dirEntry)
-		scope = append(scope, directChildren...)
-		c4m.PropagateMetadata(scope)
-
 		if g.mode == ModeFull {
+			// Resolve this directory's null Size/Timestamp from its direct
+			// children — subdirectory children were already resolved by
+			// their own generateDir calls, so [self, children...] is all
+			// the canonical c4m.PropagateMetadata needs; the final
+			// whole-manifest pass in GenerateFromPath then early-outs.
+			//
+			// ModeFull only: stat always yields real sizes there, so
+			// children are never null. In structure/metadata modes a child
+			// directory can carry a legitimately-null (nil-infected) Size,
+			// which this truncated scope — lacking the child's own
+			// descendants — would misread as an empty directory and wrongly
+			// resolve to 0. Those modes compute no C4 IDs, so they need no
+			// per-directory resolution; the whole-manifest pass handles
+			// them with full context, as before.
+			scope := make([]*Entry, 0, len(directChildren)+1)
+			scope = append(scope, dirEntry)
+			scope = append(scope, directChildren...)
+			c4m.PropagateMetadata(scope)
+
 			dirEntry.C4ID = g.dirID(directChildren)
 		}
 		if err := g.emit(dirEntry); err != nil {

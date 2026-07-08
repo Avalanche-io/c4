@@ -187,11 +187,17 @@ func TestStructureModeNullTimestamp(t *testing.T) {
 		}
 	}
 
-	// The exact canonical form of a structure-mode file entry.
+	// Exact canonical forms: files render all-null; a non-empty directory
+	// keeps its nil-infected null Size ("-"), never a spurious 0.
+	want := map[string]string{
+		"a.txt": "- - - a.txt -",
+		"sub/":  "- - - sub/ -",
+		"b.txt": "- - - b.txt -",
+	}
 	for _, e := range m.Entries {
-		if e.Name == "a.txt" {
-			if got, want := e.Canonical(), "- - - a.txt -"; got != want {
-				t.Errorf("canonical = %q, want %q", got, want)
+		if w, ok := want[e.Name]; ok {
+			if got := e.Canonical(); got != w {
+				t.Errorf("canonical = %q, want %q", got, w)
 			}
 		}
 	}
