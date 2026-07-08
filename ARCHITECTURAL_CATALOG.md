@@ -175,6 +175,7 @@ Content-addressed storage. Depends only on root `c4`.
 | `Source` | `Open(ID) (io.ReadCloser, error)` |
 | `Sink` | `Create(ID) (io.WriteCloser, error)` |
 | `Store` | `Source` + `Sink` + `Has(ID) bool` + `Put(io.Reader) (ID, error)` + `Remove(ID) error` |
+| `Syncer` | Optional: `Sync() error` — batch durability barrier: makes every object written so far durable. Implemented by `TreeStore` and `MultiStore` (forwards). |
 
 ### Implementations
 
@@ -182,13 +183,13 @@ Content-addressed storage. Depends only on root `c4`.
 |------|-------------|
 | `Folder` | Flat directory: one file per ID. |
 | `ShardedFolder` | Two-level directory using ID chars 3-4 as shard key. |
-| `TreeStore` | Adaptive trie sharding: splits leaf dirs at threshold (default 4096). |
+| `TreeStore` | Adaptive trie sharding: splits leaf dirs at threshold (default 4096; O(1) amortized split accounting via cached per-leaf counts). `SetSyncMode` selects the write-durability policy (`SyncEach` default / `SyncBatch` / `SyncNone`); `Sync` is the batch barrier. `Put` is safe for concurrent use. |
 | `S3Store` | S3-compatible object store. SigV4 signing with stdlib only. |
 | `MultiStore` | Writes to first, reads from all in order. |
 | `RAM` | In-memory store (testing). |
 | `Validating` | Wrapper that verifies content hashes on read/write. |
 | `Logger` | Wrapper that logs all operations. |
-| `DurableWriter` | Atomic write-to-temp-then-rename. `NewDurableWriter` fsyncs on Close; `NewAtomicWriter` skips the fsync (atomic but not crash-durable — for scratch writes re-materializable from a store). `ReadFrom` delegates to the temp file so io.Copy gets OS copy acceleration (copy_file_range on Linux). |
+| `DurableWriter` | Atomic write-to-temp-then-rename; Close flushes per its `SyncMode`. `NewDurableWriter` flushes to stable storage on Close (`SyncEach`); `NewAtomicWriter` skips the flush (`SyncNone` — atomic but not crash-durable, for scratch writes re-materializable from a store); `TreeStore.Create` hands out writers following the store's mode. `ReadFrom` delegates to the temp file so io.Copy gets OS copy acceleration (copy_file_range on Linux). |
 
 Local-path access: `Folder`, `ShardedFolder`, `TreeStore`, and
 `MultiStore` implement `ContentPath(id) (string, bool)`, returning the
@@ -284,3 +285,4 @@ c4 --> (stdlib only)
 - **Patch chains**: append-only versioning via bare C4 ID separators in c4m files
 - **Single-pass distribution**: `reconcile.Distribute` hashes + copies in one read pass
 - **Atomic writes**: `store.DurableWriter` writes to temp file then renames
+- **Batch durability barrier**: CLI ingest lands objects with cheap per-object fsyncs and issues one `F_FULLFSYNC` (`store.Syncer.Sync`) at completion — durable-at-completion instead of durable-per-object (`design/store-ingest-performance.md`)

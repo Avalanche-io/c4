@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Store ingest performance: 44x faster snapshots
+
+Snapshotting a 20,050-file / 105 MB tree with `c4 id -s` took ~180 s:
+`TreeStore.Put` flushed every object with `F_FULLFSYNC` (6–13 ms per
+device flush on darwin), sequentially, plus an O(n) `ReadDir` split
+check per Put. See `design/store-ingest-performance.md`.
+
+- New write-durability policy on the store: `store.SyncMode`
+  (`SyncEach` / `SyncBatch` / `SyncNone`), selected via
+  `(*TreeStore).SetSyncMode`, with `(*TreeStore).Sync` as the batch
+  barrier and optional-interface discovery via `store.Syncer`.
+  `MultiStore` forwards both. Library default unchanged (`SyncEach`,
+  per-object F_FULLFSYNC).
+- CLI ingest defaults to the batch barrier: objects land atomically
+  with a cheap plain `fsync(2)` each, and one `F_FULLFSYNC` at command
+  completion makes the whole batch durable. `--durable` restores
+  per-object flushes; `--no-fsync` skips flushing entirely. Flags on
+  `c4 id`, `c4 diff`, and `c4 patch` (which already had `--no-fsync`).
+  The `c4 patch -s` safety-net writes (pre-state manifests, removal
+  content) stay per-object durable regardless of flags.
+- `storeManifestContent` stores objects on a bounded worker pool
+  (min(GOMAXPROCS, 16)); `TreeStore.Put` is now safe for concurrent
+  use (publish step serialized under the store mutex).
+- Leaf split accounting is now O(1) amortized via cached per-directory
+  counts instead of a `ReadDir` per Put.
+
+Gate benchmark (M-series, APFS, 20,050 files / 105 MB, fresh store per
+run, store contents verified identical and materializing byte-identical
+trees): master 178–180 s → branch default **4.0–4.1 s** (`--durable`
+163 s, `--no-fsync` 3.9 s). Small-repo case (182 files): 1.4 s →
+0.05 s.
+
 ### Reconcile performance: 43x faster materialization
 
 Materializing a 20,050-file / 105 MB tree via `c4 patch snap.c4m dest/`
