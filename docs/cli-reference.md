@@ -212,6 +212,7 @@ to a file and used later for reversal with `-r`.
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
 | | `--dry-run` | Show planned operations without making changes |
 | | `--no-store` | Suppress content storage |
+| | `--no-fsync` | Skip per-file fsync when writing (faster, not crash-durable) |
 | | `--source` | Additional content source path (repeatable) |
 
 ### Examples
