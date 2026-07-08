@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"syscall"
 
 	"github.com/Avalanche-io/c4/c4m"
-	"github.com/Avalanche-io/c4/store"
 )
 
 // Apply executes the plan against the filesystem.
@@ -27,17 +27,27 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	// because writing children updates the directory mtime.
 	var dirOps []Operation
 
+	// Consecutive creates batch for parallel execution. The batch flushes
+	// before any other operation type, preserving plan order between
+	// creates and everything else.
+	var creates []Operation
+	flush := func() {
+		r.applyCreates(creates, res)
+		creates = creates[:0]
+	}
+
 	for _, op := range plan.Operations {
+		if op.Type == OpCreate {
+			creates = append(creates, op)
+			continue
+		}
+		flush()
 		switch op.Type {
 		case OpMkdir:
 			if err := r.applyMkdir(op, res); err != nil {
 				res.Errors = append(res.Errors, err)
 			}
 			dirOps = append(dirOps, op)
-		case OpCreate:
-			if err := r.applyCreate(op, res); err != nil {
-				res.Errors = append(res.Errors, err)
-			}
 		case OpMove:
 			if err := r.applyMove(op, res); err != nil {
 				res.Errors = append(res.Errors, err)
@@ -69,6 +79,7 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 			}
 		}
 	}
+	flush()
 
 	// Post-pass: set directory metadata. Process deepest first so that
 	// setting a child directory's timestamp doesn't reset its parent's.
@@ -105,6 +116,43 @@ func (r *Reconciler) applyMkdir(op Operation, res *Result) error {
 	return nil
 }
 
+// applyCreates executes create operations, in parallel when the worker
+// count allows. Counters and errors merge in operation order regardless
+// of completion order, so results are deterministic.
+func (r *Reconciler) applyCreates(ops []Operation, res *Result) {
+	workers := r.workers(len(ops))
+	if workers <= 1 || r.dryRun {
+		for _, op := range ops {
+			if err := r.applyCreate(op, res); err != nil {
+				res.Errors = append(res.Errors, fmt.Errorf("create %s: %w", op.Path, err))
+			}
+		}
+		return
+	}
+
+	results := make([]Result, len(ops))
+	errs := make([]error, len(ops))
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for i := range ops {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int) {
+			defer func() { <-sem; wg.Done() }()
+			errs[i] = r.applyCreate(ops[i], &results[i])
+		}(i)
+	}
+	wg.Wait()
+
+	for i := range ops {
+		res.Created += results[i].Created
+		res.Skipped += results[i].Skipped
+		if errs[i] != nil {
+			res.Errors = append(res.Errors, fmt.Errorf("create %s: %w", ops[i].Path, errs[i]))
+		}
+	}
+}
+
 func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 	// Idempotent: check if file already has correct content.
 	size := int64(-1)
@@ -120,13 +168,23 @@ func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 		return nil
 	}
 
+	// Local fast path: copy file-to-file from a LocalSource, falling back
+	// to streaming on any failure.
+	if src, ok := r.localPath(op.ContentID); ok {
+		if err := r.copyFile(src, op.Path); err == nil {
+			r.setMetadata(op.Path, op.Entry)
+			res.Created++
+			return nil
+		}
+	}
+
 	rc, err := r.openContent(op.ContentID)
 	if err != nil {
 		return err
 	}
 	defer rc.Close()
 
-	dw, err := store.NewDurableWriter(op.Path)
+	dw, err := r.newWriter(op.Path)
 	if err != nil {
 		return err
 	}
@@ -167,7 +225,7 @@ func (r *Reconciler) applyMove(op Operation, res *Result) error {
 	if err != nil {
 		// Cross-device: fall back to copy + remove.
 		if isEXDEV(err) {
-			if err := copyFile(op.SrcPath, op.Path); err != nil {
+			if err := r.copyFile(op.SrcPath, op.Path); err != nil {
 				return err
 			}
 			if err := os.Remove(op.SrcPath); err != nil && !os.IsNotExist(err) {
@@ -315,15 +373,21 @@ func (r *Reconciler) setMetadata(path string, entry *c4m.Entry) {
 	}
 }
 
-// copyFile copies src to dst using a durable writer.
-func copyFile(src, dst string) error {
+// copyFile copies src to dst atomically, attempting a copy-on-write
+// clone first. The byte-copy fallback goes file-to-file so the OS can
+// accelerate it (see store.DurableWriter.ReadFrom).
+func (r *Reconciler) copyFile(src, dst string) error {
+	if err := cloneFile(src, dst); err == nil {
+		return nil
+	}
+
 	sf, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer sf.Close()
 
-	dw, err := store.NewDurableWriter(dst)
+	dw, err := r.newWriter(dst)
 	if err != nil {
 		return err
 	}

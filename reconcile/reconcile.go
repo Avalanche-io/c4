@@ -4,16 +4,28 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/store"
 )
 
 // ContentSource provides read access to content by C4 ID.
+// Sources must tolerate concurrent Open calls when Apply runs with
+// concurrency greater than one (all in-package sources do).
 type ContentSource interface {
 	Has(id c4.ID) bool
 	Open(id c4.ID) (io.ReadCloser, error)
+}
+
+// LocalSource is a ContentSource whose content lives in the local
+// filesystem. ContentPath returns a path holding the content for id,
+// and whether one is available. Apply prefers local paths: file-to-file
+// copies use OS acceleration and, where supported, copy-on-write clones.
+type LocalSource interface {
+	ContentPath(id c4.ID) (string, bool)
 }
 
 // DirSource wraps a directory as a ContentSource using a C4 ID to path index.
@@ -85,6 +97,17 @@ func (ds *DirSource) Open(id c4.ID) (io.ReadCloser, error) {
 	return nil, os.ErrNotExist
 }
 
+// ContentPath returns a local filesystem path holding the content for id.
+func (ds *DirSource) ContentPath(id c4.ID) (string, bool) {
+	for _, p := range ds.index[id] {
+		info, err := os.Stat(p)
+		if err == nil && info.Mode().IsRegular() {
+			return p, true
+		}
+	}
+	return "", false
+}
+
 // Op identifies the type of filesystem operation.
 type Op int
 
@@ -135,9 +158,12 @@ type Saver interface {
 
 // Reconciler orchestrates filesystem reconciliation.
 type Reconciler struct {
-	sources       []ContentSource
-	dryRun        bool
-	storeRemovals Saver // if set, store content before removing files
+	sources        []ContentSource
+	dryRun         bool
+	storeRemovals  Saver // if set, store content before removing files
+	sync           bool  // fsync created files before rename (default true)
+	maxConcurrency int   // Apply worker cap: 0 = auto, 1 = sequential
+	trustMetadata  bool  // Plan may reuse target IDs on size+mtime match
 }
 
 // Option configures a Reconciler.
@@ -166,9 +192,39 @@ func WithStoreRemovals(s Saver) Option {
 	}
 }
 
+// WithSync controls whether Apply fsyncs created files to stable storage
+// before renaming them into place. Default true (durable). When false,
+// writes remain atomic — readers never observe a partial file — but a
+// power failure may lose content. Use for scratch materialization where
+// content can be re-pulled from a store.
+func WithSync(v bool) Option {
+	return func(r *Reconciler) {
+		r.sync = v
+	}
+}
+
+// WithMaxConcurrency caps the workers Apply uses for file creation.
+// 0 = auto (min(GOMAXPROCS, 16)), 1 = sequential, n > 1 = explicit.
+func WithMaxConcurrency(n int) Option {
+	return func(r *Reconciler) {
+		r.maxConcurrency = n
+	}
+}
+
+// WithTrustedMetadata lets Plan reuse the target entry's C4 ID when an
+// existing file's size and mtime (second precision) match, skipping the
+// content hash — the same trust contract as guided scanning. Default
+// false: every existing file is hashed. A file whose content changed
+// while preserving size and mtime is treated as unchanged when enabled.
+func WithTrustedMetadata(v bool) Option {
+	return func(r *Reconciler) {
+		r.trustMetadata = v
+	}
+}
+
 // New creates a Reconciler with the given options.
 func New(opts ...Option) *Reconciler {
-	r := &Reconciler{}
+	r := &Reconciler{sync: true}
 	for _, o := range opts {
 		o(r)
 	}
@@ -184,6 +240,44 @@ func (r *Reconciler) openContent(id c4.ID) (io.ReadCloser, error) {
 		}
 	}
 	return nil, os.ErrNotExist
+}
+
+// localPath searches all sources for a local filesystem path holding the
+// content for id.
+func (r *Reconciler) localPath(id c4.ID) (string, bool) {
+	for _, src := range r.sources {
+		ls, ok := src.(LocalSource)
+		if !ok {
+			continue
+		}
+		if p, ok := ls.ContentPath(id); ok {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// newWriter returns a durable or atomic writer for path per WithSync.
+func (r *Reconciler) newWriter(path string) (*store.DurableWriter, error) {
+	if r.sync {
+		return store.NewDurableWriter(path)
+	}
+	return store.NewAtomicWriter(path)
+}
+
+// workers returns the effective worker count for a batch of n operations.
+func (r *Reconciler) workers(n int) int {
+	w := r.maxConcurrency
+	if w <= 0 {
+		w = runtime.GOMAXPROCS(0)
+		if w > 16 {
+			w = 16
+		}
+	}
+	if w > n {
+		w = n
+	}
+	return w
 }
 
 // fileMatchesID returns true if the file at path has the expected C4 ID.

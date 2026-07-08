@@ -47,6 +47,11 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 
 			// Compute C4 ID for regular files.
 			if info.Mode().IsRegular() && info.Size() >= 0 {
+				if id, ok := r.trustedID(targetPaths[rel], info); ok {
+					currentIDs[rel] = id
+					idToCurrentPaths[id] = append(idToCurrentPaths[id], rel)
+					return nil
+				}
 				f, ferr := os.Open(path)
 				if ferr == nil {
 					id := c4.Identify(f)
@@ -288,6 +293,22 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	ops = append(ops, rmdirs...)
 
 	return &Plan{Operations: ops}, nil
+}
+
+// trustedID returns the target entry's C4 ID without hashing when
+// trusted-metadata planning is enabled and the file's size and mtime
+// (second precision) match the entry — the guided-scan contract.
+func (r *Reconciler) trustedID(e *c4m.Entry, info os.FileInfo) (c4.ID, bool) {
+	if !r.trustMetadata || e == nil || e.C4ID.IsNil() || e.IsDir() || e.IsSymlink() {
+		return c4.ID{}, false
+	}
+	if e.Size != info.Size() || e.Timestamp.Equal(c4m.NullTimestamp()) {
+		return c4.ID{}, false
+	}
+	if !info.ModTime().UTC().Truncate(time.Second).Equal(e.Timestamp.UTC().Truncate(time.Second)) {
+		return c4.ID{}, false
+	}
+	return e.C4ID, true
 }
 
 // depthOf counts path separators to determine nesting depth.
