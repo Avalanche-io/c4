@@ -13,6 +13,7 @@ C4 is a command line tool for identifying files, directories, and piped data usi
 | `c4 merge` | Combine 2+ filesystem trees (c4m files or directories) |
 | `c4 log` | List patches in a chain |
 | `c4 split` | Split a patch chain for branching |
+| `c4 gc` | Collect store objects unreachable from given c4m files (dry run unless `--force`) |
 | `c4 version` | Print version |
 
 ## Quick Examples

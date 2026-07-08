@@ -145,7 +145,7 @@ func (s *TreeStore) Walk(fn func(id c4.ID, size int64) error) error {
 			return err
 		}
 		id, perr := c4.Parse(d.Name())
-		if perr != nil {
+		if perr != nil || id.String() != d.Name() {
 			return nil
 		}
 		info, err := d.Info()

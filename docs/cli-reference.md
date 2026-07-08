@@ -43,6 +43,7 @@ c4 split <file> <N> <before> <after>
 c4 explain <command> [args]     Human-readable command narration
 c4 paths [<file.c4m> | -]      Convert between c4m and path lists
 c4 intersect <id|path> <a> <b>  Find common entries between c4m files
+c4 gc [--force] <file.c4m>...   Collect store objects the c4m files cannot reach
 c4 version                      Print version
 
 c4 <path>                       Identify + store (shortcut for c4 id -s)
@@ -399,6 +400,52 @@ c4 intersect path monday.c4m friday.c4m
 # Pipe to paths for a plain file list
 c4 intersect id old.c4m new.c4m | c4 paths
 ```
+
+## `c4 gc` — Collect Store Garbage
+
+Mark-and-sweep garbage collection for the local content store. The
+keep-set roots are the c4m files named as arguments: an object survives if
+its ID appears in a named file, or in any stored c4m description reachable
+from one (directory records, external base manifests, chain blocks).
+Everything else is garbage.
+
+Dry run by default — `c4 gc` reports what would be reclaimed and deletes
+nothing until you pass `--force`.
+
+### Flags
+
+| Flag | Long | Description |
+|------|------|-------------|
+|      | `--force` | Delete unreferenced objects (default is a dry run) |
+| `-v` | `--verbose` | List each unreferenced object ID |
+
+### Examples
+
+```bash
+# What would keeping only project.c4m reclaim?
+$ c4 gc project.c4m
+objects          20,000   (1,254,887,424 bytes)
+reachable           412   (18,733,056 bytes)
+garbage          19,588   (1,236,154,368 bytes)
+
+Dry run — nothing deleted. Re-run with --force to delete.
+
+# Keep several snapshots, delete the rest
+$ c4 gc --force project.c4m archive/*.c4m
+```
+
+### Safety
+
+- Dry run unless `--force` (which has no single-letter form).
+- Refuses an empty keep-set: no arguments is a usage error, and roots
+  that reference no C4 IDs abort with an error.
+- Any root that fails to parse aborts the run with a non-zero exit
+  before the store is examined.
+- Every intermediate state of a kept patch chain stays reachable; use
+  `c4 split` first if you want intermediates collected.
+- Local stores only (`C4_STORE` path or `~/.c4/config`).
+
+See `design/store-gc.md` for the full reachability model.
 
 ## `c4 version`
 
