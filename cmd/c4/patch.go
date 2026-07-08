@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/reconcile"
 	"github.com/Avalanche-io/c4/scan"
@@ -16,11 +19,11 @@ func runPatch(args []string) {
 	n := fs.intFlag("number", 'n', 0, "Resolve to specific patch number (1-based)")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form")
 	quiet := fs.boolFlag("quiet", 'q', false, "Suppress stdout output (changeset)")
-	storeFlag := fs.boolFlag("store", 's', false, "Store content that would be removed")
-	reverseFlag := fs.boolFlag("reverse", 'r', false, "Reverse: revert to pre-patch state using stored manifest")
+	storeFlag := fs.boolFlag("store", 's', false, "Also store content at removal time (prior state is captured by default)")
+	reverseFlag := fs.boolFlag("reverse", 'r', false, "Revert dir to a stored prior state (changeset file or manifest ID)")
 	dryRun := fs.boolFlag("dry-run", 0, false, "Show plan without making changes")
 	sourceFlags := fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
-	noStore := fs.boolFlag("no-store", 0, false, "Suppress content storage")
+	noStore := fs.boolFlag("no-store", 0, false, "Skip prior-state capture and content storage")
 	noFsync := fs.boolFlag("no-fsync", 0, false, "Skip per-file fsync when writing (faster, not crash-durable)")
 	durable := fs.boolFlag("durable", 0, false, "Fsync every stored object (slower; default is one flush per ingest batch)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f")
@@ -37,13 +40,13 @@ func runPatch(args []string) {
 		fatalf("Error: %v", err)
 	}
 
-	// Reverse mode: c4 patch -r changeset.c4m dir/
+	// Reverse mode: c4 patch -r <changeset.c4m|manifest-id> dir/
 	if *reverseFlag {
 		if len(fs.args) != 2 {
-			fmt.Fprintf(os.Stderr, "Usage: c4 patch -r [-s] <changeset.c4m> <dir>\n")
+			fmt.Fprintf(os.Stderr, "Usage: c4 patch -r <changeset.c4m|manifest-id> <dir>\n")
 			os.Exit(1)
 		}
-		runPatchReverse(fs.args[0], fs.args[1], *storeFlag, *dryRun, *quiet, *noFsync, *sourceFlags)
+		runPatchReverse(fs.args[0], fs.args[1], *storeFlag, *noStore, *dryRun, *quiet, *noFsync, *sourceFlags)
 		return
 	}
 
@@ -69,6 +72,8 @@ func patchUsage() {
 	fmt.Fprintf(os.Stderr, "  c4 patch <dir> <file.c4m>          Scan dir, store, write c4m\n")
 	fmt.Fprintf(os.Stderr, "  c4 patch <dir> <dir>               Reconcile dest dir to match source\n")
 	fmt.Fprintf(os.Stderr, "  c4 patch <file.c4m>...             Multi-file chain resolution\n")
+	fmt.Fprintf(os.Stderr, "\nReconcile forms store dest's prior state before applying\n")
+	fmt.Fprintf(os.Stderr, "(revert: c4 patch -r <id> <dir>). --no-store opts out.\n")
 }
 
 // runPatchSingle handles single-argument patch.
@@ -106,7 +111,7 @@ func runPatchPair(target, dest string, mode scan.ScanMode, ergonomic, dryRun, no
 	case !targetIsDir && !destIsDir:
 		runPatchC4mToC4m(target, dest, ergonomic)
 	case !targetIsDir && destIsDir:
-		runPatchC4mToDir(target, dest, mode, dryRun, storeRemovals, quiet, noFsync, sources)
+		runPatchC4mToDir(target, dest, mode, dryRun, noStore, storeRemovals, quiet, noFsync, sources)
 	case targetIsDir && !destIsDir:
 		runPatchDirToC4m(target, dest, mode, noStore)
 	default:
@@ -137,7 +142,7 @@ func runPatchC4mToC4m(target, dest string, ergonomic bool) {
 
 // runPatchC4mToDir reconciles a directory to match a c4m target state.
 // Outputs the computed diff to stdout.
-func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeRemovals, quiet, noFsync bool, sources []string) {
+func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet, noFsync bool, sources []string) {
 	targetManifest := resolveC4m(target)
 
 	// Scan current state using target as a guide — only hash changed files.
@@ -148,6 +153,13 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeR
 		currentManifest = c4m.NewManifest()
 	}
 
+	s := reconcileStore(noStore)
+
+	// Capture dest's prior state before anything is applied. Runs
+	// before the diff is printed so the changeset's OldID matches the
+	// stored root record.
+	preID := maybeCapturePreState(s, currentManifest, targetManifest, dirPath, noStore, dryRun)
+
 	// Output the diff to stdout (the changeset being applied).
 	if !quiet {
 		diff := c4m.PatchDiff(currentManifest, targetManifest)
@@ -156,12 +168,6 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeR
 			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
 			fmt.Println(diff.NewID)
 		}
-	}
-
-	// Store the pre-patch manifest if -s is set (enables -r reversal later).
-	s, _ := store.OpenStore()
-	if storeRemovals && s != nil {
-		storeManifestAsContent(currentManifest, s)
 	}
 
 	// Build content sources. Plan trusts size+mtime matches, consistent
@@ -213,8 +219,10 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, storeR
 	if err != nil {
 		fatalf("Error applying reconciliation: %v", err)
 	}
+	syncStore(s)
 
 	reportResult(dirPath, result)
+	reportPreState(preID, dirPath)
 }
 
 // runPatchDirToC4m scans a directory, stores content, and writes a c4m file.
@@ -250,6 +258,11 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 		destManifest = c4m.NewManifest()
 	}
 
+	s := reconcileStore(noStore)
+
+	// Capture dest's prior state before anything is applied.
+	preID := maybeCapturePreState(s, destManifest, targetManifest, destDir, noStore, dryRun)
+
 	// Output the diff to stdout.
 	if !quiet {
 		diff := c4m.PatchDiff(destManifest, targetManifest)
@@ -258,12 +271,6 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
 			fmt.Println(diff.NewID)
 		}
-	}
-
-	// Store the pre-patch manifest if -s is set.
-	s, _ := store.OpenStore()
-	if storeRemovals && s != nil {
-		storeManifestAsContent(destManifest, s)
 	}
 
 	var opts []reconcile.Option
@@ -314,8 +321,10 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 	if err != nil {
 		fatalf("Error applying reconciliation: %v", err)
 	}
+	syncStore(s)
 
 	reportResult(destDir, result)
+	reportPreState(preID, destDir)
 }
 
 // runPatchChain handles 3+ args: multi-file chain resolution (original behavior).
@@ -395,68 +404,73 @@ func opName(op reconcile.Op) string {
 	}
 }
 
-// runPatchReverse reverts a directory to the pre-patch state using a stored manifest.
-// The changeset's first bare C4 ID (OldID) identifies the pre-patch manifest
-// which must be in the content store (stored by a prior -s operation).
-func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun, quiet, noFsync bool, sources []string) {
+// runPatchReverse reverts a directory to a stored prior state. The first
+// argument is either a changeset file — its first bare C4 ID (OldID) names
+// the prior state — or the manifest ID printed by "prior state stored".
+func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun, quiet, noFsync bool, sources []string) {
 	if !isDirectory(dirPath) {
 		fatalf("Error: %s is not a directory", dirPath)
 	}
 
-	// Read the changeset to extract OldID (first bare C4 ID).
-	data, err := os.ReadFile(changesetPath)
-	if err != nil {
-		fatalf("Error reading %s: %v", changesetPath, err)
-	}
-	sections, err := c4m.DecodePatchChain(bytes.NewReader(data))
-	if err != nil {
-		fatalf("Error decoding %s: %v", changesetPath, err)
-	}
-	if len(sections) == 0 {
-		fatalf("Error: changeset is empty")
-	}
-
-	// The OldID is the BaseID of the first section (or we compute it from the section).
-	oldID := sections[0].BaseID
-	if oldID.IsNil() {
-		// First section has no base reference — it IS the base. Compute its ID.
-		base := &c4m.Manifest{Version: "1.0", Entries: sections[0].Entries}
-		oldID = base.ComputeC4ID()
-	}
-
-	// Load the pre-patch manifest from the store.
-	s, _ := store.OpenStore()
+	s := reconcileStore(noStore)
 	if s == nil {
-		fatalf("Error: no content store configured (needed to load pre-patch manifest)")
-	}
-	if !s.Has(oldID) {
-		fatalf("Error: pre-patch manifest %s not found in store\n"+
-			"Was the original patch run with -s?", oldID)
+		fatalf("Error: no content store configured (needed to load the prior state manifest)")
 	}
 
-	rc, err := s.Open(oldID)
-	if err != nil {
-		fatalf("Error loading pre-patch manifest: %v", err)
+	// Resolve the revert target: changeset file or stored manifest ID.
+	var targetManifest *c4m.Manifest
+	var sections []*c4m.PatchSection
+	if _, err := os.Stat(source); err == nil {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			fatalf("Error reading %s: %v", source, err)
+		}
+		sections, err = c4m.DecodePatchChain(bytes.NewReader(data))
+		if err != nil {
+			fatalf("Error decoding %s: %v", source, err)
+		}
+		if len(sections) == 0 {
+			fatalf("Error: changeset is empty")
+		}
+		// The OldID is the BaseID of the first section (or we compute it
+		// from the section: no base reference means it IS the base).
+		oldID := sections[0].BaseID
+		if oldID.IsNil() {
+			base := &c4m.Manifest{Version: "1.0", Entries: sections[0].Entries}
+			oldID = base.ComputeC4ID()
+		}
+		targetManifest = manifestFromStore(s, oldID)
+	} else if looksLikeC4ID(source) {
+		id, err := c4.Parse(source)
+		if err != nil {
+			fatalf("Error: invalid C4 ID: %v", err)
+		}
+		targetManifest = manifestFromStore(s, id)
+	} else {
+		fatalf("Error: %s is neither a changeset file nor a C4 ID", source)
 	}
-	targetManifest, err := c4m.NewDecoder(rc).Decode()
-	rc.Close()
-	if err != nil {
-		fatalf("Error decoding pre-patch manifest: %v", err)
-	}
+
+	// A one-level root record expands into the full tree through the
+	// stored per-directory records.
+	targetManifest = expandIfRecord(targetManifest, s)
+	validateRevertTarget(targetManifest)
 
 	// Scan current directory state.
 	currentManifest := resolveManifestOrDir(dirPath, scan.ModeFull)
 
-	// Check for drift: has the directory changed since the forward patch?
-	currentID := currentManifest.ComputeC4ID()
-	// The changeset's NewID is the post-patch state. If current differs, warn.
-	changesetManifest := c4m.ResolvePatchChain(sections, 0)
-	expectedID := changesetManifest.ComputeC4ID()
-	if currentID != expectedID {
-		fmt.Fprintf(os.Stderr, "Warning: directory has changed since this patch was applied.\n")
-		fmt.Fprintf(os.Stderr, "Reverting will also undo changes made after the original patch.\n")
-		fmt.Fprintf(os.Stderr, "Use -s and redirect stdout to capture the reverse changeset.\n")
+	// Drift check (changeset form only): has the directory changed since
+	// the forward patch? The changeset's NewID is the post-patch state.
+	if sections != nil {
+		changesetManifest := c4m.ResolvePatchChain(sections, 0)
+		if currentManifest.ComputeC4ID() != changesetManifest.ComputeC4ID() {
+			fmt.Fprintf(os.Stderr, "Warning: directory has changed since this patch was applied.\n")
+			fmt.Fprintf(os.Stderr, "Reverting will also undo changes made after the original patch.\n")
+		}
 	}
+
+	// Capture the current (pre-revert) state — the revert itself is
+	// revertible.
+	preID := maybeCapturePreState(s, currentManifest, targetManifest, dirPath, noStore, dryRun)
 
 	// Output the reverse diff to stdout.
 	if !quiet {
@@ -466,11 +480,6 @@ func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun, 
 			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
 			fmt.Println(diff.NewID)
 		}
-	}
-
-	// Store current state manifest if -s is set (for re-reversal).
-	if storeRemovals {
-		storeManifestAsContent(currentManifest, s)
 	}
 
 	// Build content sources and reconcile.
@@ -518,20 +527,138 @@ func runPatchReverse(changesetPath, dirPath string, storeRemovals bool, dryRun, 
 	if err != nil {
 		fatalf("Error applying reconciliation: %v", err)
 	}
+	syncStore(s)
 
 	reportResult(dirPath, result)
+	reportPreState(preID, dirPath)
 }
 
-// storeManifestAsContent stores a manifest's canonical c4m as content in the store.
-// This enables future -r reversal by storing the pre-patch state keyed by its C4 ID.
-func storeManifestAsContent(m *c4m.Manifest, s store.Store) {
-	data, err := c4m.Marshal(m)
+// reconcileStore returns the store handle for a reconcile: the prompting
+// ingest handle when the prior state will be captured, a silent open
+// otherwise (--no-store must not prompt).
+func reconcileStore(noStore bool) store.Store {
+	if noStore {
+		return openStoreOrNil()
+	}
+	return getOrSetupStore()
+}
+
+// maybeCapturePreState captures dest's prior state unless there is
+// nothing to capture (empty dest), nothing will be destroyed (dry run),
+// or the user opted out. Warns when no store is available to hold it.
+func maybeCapturePreState(s store.Store, current, target *c4m.Manifest, dirPath string, noStore, dryRun bool) c4.ID {
+	if noStore || dryRun || len(current.Entries) == 0 {
+		return c4.ID{}
+	}
+	if s == nil {
+		fmt.Fprintf(os.Stderr, "Warning: no content store configured — prior state not stored (use --no-store to silence)\n")
+		return c4.ID{}
+	}
+	return capturePreState(s, current, target, dirPath)
+}
+
+// capturePreState makes a reconcile revertible before it destroys
+// anything. It stores dest content that would vanish (removed or
+// overwritten), each directory's one-level record, the root record, and
+// the pre-state manifest text, then issues the durability barrier — the
+// prior state is on stable storage before Apply mutates the directory.
+// Returns the pre-state manifest's C4 ID.
+//
+// Capture never runs unsynced: --no-fsync is clamped to the batch
+// barrier here (--durable is honored). See design/safety-defaults.md.
+func capturePreState(s store.Store, current, target *c4m.Manifest, dirPath string) c4.ID {
+	if ingestSync == store.SyncNone {
+		if sm, ok := s.(interface{ SetSyncMode(store.SyncMode) }); ok {
+			sm.SetSyncMode(store.SyncBatch)
+		}
+	}
+
+	// Content is vanishing if its ID appears nowhere among the target's
+	// files: the post-patch tree cannot supply it at revert time.
+	targetIDs := make(map[c4.ID]bool, len(target.Entries))
+	for _, e := range target.Entries {
+		if !e.IsDir() && !e.C4ID.IsNil() {
+			targetIDs[e.C4ID] = true
+		}
+	}
+
+	for path, e := range c4m.EntryPaths(current.Entries) {
+		if e.IsDir() || e.Target != "" || e.C4ID.IsNil() ||
+			targetIDs[e.C4ID] || s.Has(e.C4ID) {
+			continue
+		}
+		if e.IsSequence {
+			fmt.Fprintf(os.Stderr, "Warning: prior state: sequence %s not captured\n", path)
+			continue
+		}
+		storeFileEntry(s, e, path, filepath.Join(dirPath, filepath.FromSlash(path)))
+	}
+
+	// Directory records make changeset-based -r work on nested trees.
+	// Guided scans leave directory IDs nil — compute them deepest-first
+	// so parent records embed child directory IDs.
+	var dirs []*c4m.Entry
+	for _, e := range current.Entries {
+		if e.IsDir() {
+			dirs = append(dirs, e)
+		}
+	}
+	sort.SliceStable(dirs, func(i, j int) bool { return dirs[i].Depth > dirs[j].Depth })
+	for _, e := range dirs {
+		if !e.C4ID.IsNil() && s.Has(e.C4ID) {
+			continue
+		}
+		if id := storeDirectoryC4m(current, e, s); e.C4ID.IsNil() {
+			e.C4ID = id
+		}
+	}
+
+	id := storeManifestSelf(s, current)
+	syncStore(s)
+	return id
+}
+
+// validateRevertTarget refuses a prior state whose description is
+// incomplete: a directory entry with content (a non-empty ID) but no
+// children after expansion means its record is missing from the store —
+// reconciling toward it would silently delete that directory's contents.
+func validateRevertTarget(m *c4m.Manifest) {
+	empty := c4.Identify(bytes.NewReader(nil))
+	for _, e := range m.Entries {
+		if !e.IsDir() || e.C4ID.IsNil() || e.C4ID == empty {
+			continue
+		}
+		if len(m.Children(e)) == 0 {
+			fatalf("Error: prior state incomplete: no stored record for directory %s (%s)", e.Name, e.C4ID)
+		}
+	}
+}
+
+// manifestFromStore loads and decodes a manifest stored by a prior
+// state capture (or c4 id -s).
+func manifestFromStore(s store.Store, id c4.ID) *c4m.Manifest {
+	if !s.Has(id) {
+		fatalf("Error: prior state manifest %s not found in store\n"+
+			"Was the prior state stored? (default unless --no-store)", id)
+	}
+	rc, err := s.Open(id)
 	if err != nil {
+		fatalf("Error loading prior state manifest: %v", err)
+	}
+	defer rc.Close()
+	m, err := c4m.NewDecoder(rc).Decode()
+	if err != nil {
+		fatalf("Error decoding prior state manifest: %v", err)
+	}
+	return m
+}
+
+// reportPreState prints the revert hint after a successful apply.
+func reportPreState(id c4.ID, dirPath string) {
+	if id.IsNil() {
 		return
 	}
-	if _, err := s.Put(bytes.NewReader(data)); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store pre-patch manifest: %v\n", err)
-	}
+	fmt.Fprintf(os.Stderr, "prior state stored: %s (revert: c4 patch -r %s %s)\n", id, id, dirPath)
 }
 
 // reportResult prints a reconciliation summary to stderr.

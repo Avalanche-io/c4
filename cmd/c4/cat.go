@@ -135,6 +135,26 @@ func expandRecursive(m *c4m.Manifest, s store.Store) *c4m.Manifest {
 	return result
 }
 
+// expandIfRecord turns a one-level directory record (all entries at
+// depth 0) into the full tree by inlining stored per-directory records.
+// Full manifests — anything with nested entries — pass through
+// unchanged.
+func expandIfRecord(m *c4m.Manifest, s store.Store) *c4m.Manifest {
+	hasDir := false
+	for _, e := range m.Entries {
+		if e.Depth > 0 {
+			return m // nested entries: already a full manifest
+		}
+		if e.IsDir() && !e.C4ID.IsNil() {
+			hasDir = true
+		}
+	}
+	if !hasDir {
+		return m
+	}
+	return expandRecursive(m, s)
+}
+
 // fetchManifestFromStore fetches a C4 ID from the store and tries to parse
 // it as a c4m manifest. Returns nil if not found or not c4m.
 func fetchManifestFromStore(s store.Store, id c4.ID) *c4m.Manifest {

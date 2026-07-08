@@ -105,8 +105,9 @@ func runID(args []string) {
 			if shouldStore {
 				s := getOrSetupStore()
 				if s != nil {
-					storeManifestAsContent(m, s)
+					id := storeManifestSelf(s, m)
 					syncStore(s)
+					reportStored(id)
 				}
 			}
 			if !*quiet {
@@ -121,7 +122,11 @@ func runID(args []string) {
 	}
 
 	if shouldStore {
-		syncStore(getOrSetupStore())
+		if s := getOrSetupStore(); s != nil {
+			id := storeManifestSelf(s, combined)
+			syncStore(s)
+			reportStored(id)
+		}
 	}
 
 	if !*quiet {
@@ -281,8 +286,53 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		storeDirectoryC4m(manifest, entry, s)
 	}
 
+	// The snapshot captures itself: manifest text + root record.
+	id := storeManifestSelf(s, manifest)
+
 	// Batch barrier: the whole ingest becomes durable in one flush.
 	syncStore(s)
+	reportStored(id)
+}
+
+// storeManifestSelf stores a manifest's own description: its canonical
+// text (retrievable by the manifest's C4 ID) and the scan root's
+// one-level directory record (retrievable by the root directory's
+// C4 ID, i.e. ComputeC4ID). Together with the per-directory records
+// this makes a snapshot self-contained — content, structure, and the
+// description itself all live in the store. Returns the manifest's ID.
+func storeManifestSelf(s store.Store, m *c4m.Manifest) c4.ID {
+	data, err := c4m.Marshal(m)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to encode manifest: %v\n", err)
+		return c4.ID{}
+	}
+	id, err := s.Put(bytes.NewReader(data))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to store manifest: %v\n", err)
+		return c4.ID{}
+	}
+
+	// Root record: the canonical top-level view. Mirrors ComputeC4ID
+	// (copy, canonicalize, canonical text) so the stored bytes hash to
+	// the root directory's ID.
+	record := m.Copy()
+	record.Canonicalize()
+	if text := record.Canonical(); text != "" {
+		if _, err := s.Put(strings.NewReader(text)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to store root record: %v\n", err)
+		}
+	}
+	return id
+}
+
+// reportStored prints the stored-manifest line to stderr. Called after
+// the durability barrier so "stored" means durable. Stdout stays pure —
+// stdout is the c4m.
+func reportStored(id c4.ID) {
+	if id.IsNil() {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "stored: %s\n", id)
 }
 
 // storeFileEntry stores one file's content, c4m-aware: c4m files are
@@ -316,13 +366,15 @@ func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
 // storeDirectoryC4m extracts a directory's direct children from a manifest
 // and stores the resulting one-level c4m as content. This enables c4 cat <dir-id>
 // to retrieve the directory listing, and c4 cat -r to recursively expand.
+// Returns the record's C4 ID — the directory's own ID — which for an empty
+// directory is the empty-content ID (nothing stored, matching scan).
 //
 // The stored c4m is canonical: only direct children at depth 0, sorted.
 // This matches how directory C4 IDs are computed (one-level canonical form).
-func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Store) {
+func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Store) c4.ID {
 	children := manifest.Children(dirEntry)
 	if len(children) == 0 {
-		return
+		return c4.Identify(bytes.NewReader(nil))
 	}
 
 	sub := c4m.NewManifest()
@@ -338,12 +390,15 @@ func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Stor
 	sub.SortEntries()
 	canonical := sub.Canonical()
 	if canonical == "" {
-		return
+		return c4.ID{}
 	}
 
-	if _, err := s.Put(strings.NewReader(canonical)); err != nil {
+	id, err := s.Put(strings.NewReader(canonical))
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to store directory c4m for %s: %v\n", dirEntry.Name, err)
+		return c4.ID{}
 	}
+	return id
 }
 
 // ingestStore memoizes the store handle for ingest: every Put in a
