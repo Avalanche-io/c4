@@ -17,7 +17,10 @@ func runDiff(args []string) {
 	reverseFlag := fs.boolFlag("reverse", 'r', false, "Reverse: diff against pre-patch state from a changeset")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directories: s/m/f")
+	durable := fs.boolFlag("durable", 0, false, "Fsync every stored object (slower; default is one flush at completion)")
+	noFsync := fs.boolFlag("no-fsync", 0, false, "Skip store fsync entirely (fastest, not crash-safe)")
 	fs.parse(args)
+	setIngestSync(*durable, *noFsync)
 
 	if len(fs.args) != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 diff [-r] [-s] [-e] [-m mode] <old> <new>\n")

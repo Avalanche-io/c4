@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/Avalanche-io/c4/c4m"
-	"github.com/Avalanche-io/c4/scan"
 	"github.com/Avalanche-io/c4/reconcile"
+	"github.com/Avalanche-io/c4/scan"
 	"github.com/Avalanche-io/c4/store"
 )
 
@@ -22,8 +22,10 @@ func runPatch(args []string) {
 	sourceFlags := fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
 	noStore := fs.boolFlag("no-store", 0, false, "Suppress content storage")
 	noFsync := fs.boolFlag("no-fsync", 0, false, "Skip per-file fsync when writing (faster, not crash-durable)")
+	durable := fs.boolFlag("durable", 0, false, "Fsync every stored object (slower; default is one flush per ingest batch)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f")
 	fs.parse(args)
+	setIngestSync(*durable, *noFsync)
 
 	if len(fs.args) == 0 {
 		patchUsage()

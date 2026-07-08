@@ -277,3 +277,45 @@ func fatalf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
 }
+
+// ingestSync is the write-durability mode for store ingest. The default
+// is batch: objects land atomically (complete or absent) during the run
+// and one device flush at the end of the command makes the whole batch
+// durable. See design/store-ingest-performance.md.
+var ingestSync = store.SyncBatch
+
+// setIngestSync translates the --durable / --no-fsync flags into the
+// ingest durability mode.
+func setIngestSync(durable, noFsync bool) {
+	switch {
+	case durable && noFsync:
+		fatalf("Error: --durable and --no-fsync are mutually exclusive")
+	case durable:
+		ingestSync = store.SyncEach
+	case noFsync:
+		ingestSync = store.SyncNone
+	}
+}
+
+// applyIngestSync configures a store for the ingest durability mode.
+func applyIngestSync(s store.Store) store.Store {
+	if sm, ok := s.(interface{ SetSyncMode(store.SyncMode) }); ok {
+		sm.SetSyncMode(ingestSync)
+	}
+	return s
+}
+
+// syncStore issues the ingest batch barrier: everything stored so far
+// becomes durable. No-op for stores without batch semantics.
+func syncStore(s store.Store) {
+	if s == nil {
+		return
+	}
+	sy, ok := s.(store.Syncer)
+	if !ok {
+		return
+	}
+	if err := sy.Sync(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: store sync: %v\n", err)
+	}
+}

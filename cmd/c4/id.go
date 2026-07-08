@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -25,7 +27,10 @@ func runID(args []string) {
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s/1=structure, m/2=metadata, f/3=full")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Continue from existing c4m (use as guide)")
+	durable := fs.boolFlag("durable", 0, false, "Fsync every stored object (slower; default is one flush at completion)")
+	noFsync := fs.boolFlag("no-fsync", 0, false, "Skip store fsync entirely (fastest, not crash-safe)")
 	fs.parse(args)
+	setIngestSync(*durable, *noFsync)
 
 	paths := fs.args
 
@@ -101,6 +106,7 @@ func runID(args []string) {
 				s := getOrSetupStore()
 				if s != nil {
 					storeManifestAsContent(m, s)
+					syncStore(s)
 				}
 			}
 			if !*quiet {
@@ -112,6 +118,10 @@ func runID(args []string) {
 		// Regular file → single-entry c4m
 		entry := identifyFile(p, info, mode, shouldStore)
 		combined.AddEntry(entry)
+	}
+
+	if shouldStore {
+		syncStore(getOrSetupStore())
 	}
 
 	if !*quiet {
@@ -127,6 +137,7 @@ func doStdin(storeFlag bool) {
 			if err != nil {
 				fatalf("Error storing: %v", err)
 			}
+			syncStore(s)
 			fmt.Println(id)
 			return
 		}
@@ -214,7 +225,14 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		return
 	}
 
-	// Walk manifest entries and store file content.
+	// Collect work sequentially — path reconstruction is order-dependent.
+	type fileItem struct {
+		entry *c4m.Entry
+		path  string // relative, for warnings
+		full  string
+	}
+	var files []fileItem
+	var dirs []*c4m.Entry
 	var dirStack []string
 	for _, entry := range manifest.Entries {
 		if entry.Depth < len(dirStack) {
@@ -226,46 +244,72 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 			}
 			dirStack[entry.Depth] = entry.Name
 
-			// Store the directory's c4m as content (enables c4 cat -r).
+			// The directory's c4m is stored as content (enables c4 cat -r).
 			if !entry.C4ID.IsNil() && !s.Has(entry.C4ID) {
-				storeDirectoryC4m(manifest, entry, s)
+				dirs = append(dirs, entry)
 			}
 			continue
 		}
 		if entry.C4ID.IsNil() || s.Has(entry.C4ID) {
 			continue
 		}
-
-		// Reconstruct path relative to baseDir.
 		relPath := strings.Join(dirStack, "") + entry.Name
-		fullPath := filepath.Join(baseDir, relPath)
+		files = append(files, fileItem{entry, relPath, filepath.Join(baseDir, relPath)})
+	}
 
-		// Use c4m-aware storage: c4m files within directories get
-		// canonicalized before storing.
-		data, err := os.ReadFile(fullPath)
-		if err != nil {
-			continue // skip files we can't open
-		}
-		var storeData []byte
-		if strings.HasSuffix(entry.Name, ".c4m") || looksLikeC4m(data) {
-			canonical, _ := canonicalizeC4mBytes(data)
-			if canonical != nil {
-				storeData = canonical
-			}
-		}
-		if storeData == nil {
-			storeData = data
-		}
-		newID, err := s.Put(bytes.NewReader(storeData))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
-			continue
-		}
+	// Store file content on a bounded worker pool — objects are
+	// independent and store.Put is safe for concurrent use.
+	workers := runtime.GOMAXPROCS(0)
+	if workers > 16 {
+		workers = 16
+	}
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for _, it := range files {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(it fileItem) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			storeFileEntry(s, it.entry, it.path, it.full)
+		}(it)
+	}
+	wg.Wait()
 
-		// If canonicalization changed the ID (c4m file), update the entry.
-		if newID != entry.C4ID {
-			entry.C4ID = newID
+	// Store directory c4m objects after all file entry IDs are final.
+	for _, entry := range dirs {
+		storeDirectoryC4m(manifest, entry, s)
+	}
+
+	// Batch barrier: the whole ingest becomes durable in one flush.
+	syncStore(s)
+}
+
+// storeFileEntry stores one file's content, c4m-aware: c4m files are
+// canonicalized before storing, and the entry's ID is updated when
+// canonicalization changed it.
+func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return // skip files we can't open
+	}
+	var storeData []byte
+	if strings.HasSuffix(entry.Name, ".c4m") || looksLikeC4m(data) {
+		canonical, _ := canonicalizeC4mBytes(data)
+		if canonical != nil {
+			storeData = canonical
 		}
+	}
+	if storeData == nil {
+		storeData = data
+	}
+	newID, err := s.Put(bytes.NewReader(storeData))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
+		return
+	}
+	if newID != entry.C4ID {
+		entry.C4ID = newID
 	}
 }
 
@@ -309,7 +353,7 @@ func getOrSetupStore() store.Store {
 		return nil
 	}
 	if s != nil {
-		return s
+		return applyIngestSync(s)
 	}
 
 	// No store configured — offer to create default (local only).
@@ -328,7 +372,7 @@ func getOrSetupStore() store.Store {
 			fmt.Fprintf(os.Stderr, "Error creating store: %v\n", err)
 			return nil
 		}
-		return s
+		return applyIngestSync(s)
 	}
 
 	fmt.Fprintf(os.Stderr, "Set C4_STORE=/path/to/store or s3://bucket/prefix\n")
