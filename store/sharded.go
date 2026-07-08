@@ -70,6 +70,20 @@ func (f ShardedFolder) Path(id c4.ID) string {
 	return f.path(id)
 }
 
+// ContentPath returns the local filesystem path for id when present,
+// checking the sharded layout first, then the flat layout.
+func (f ShardedFolder) ContentPath(id c4.ID) (string, bool) {
+	p := f.path(id)
+	if _, err := os.Stat(p); err == nil {
+		return p, true
+	}
+	flat := filepath.Join(string(f), id.String())
+	if _, err := os.Stat(flat); err == nil {
+		return flat, true
+	}
+	return "", false
+}
+
 // Has returns true if the content exists in either sharded or flat layout.
 func (f ShardedFolder) Has(id c4.ID) bool {
 	if _, err := os.Stat(f.path(id)); err == nil {

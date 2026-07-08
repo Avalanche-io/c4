@@ -46,6 +46,23 @@ func (m *MultiStore) Open(id c4.ID) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("c4 id %s not found in any store", id)
 }
 
+// ContentPath returns a local filesystem path for id from the first
+// member store that can provide one.
+func (m *MultiStore) ContentPath(id c4.ID) (string, bool) {
+	for _, s := range m.stores {
+		cp, ok := s.(interface {
+			ContentPath(c4.ID) (string, bool)
+		})
+		if !ok {
+			continue
+		}
+		if p, ok := cp.ContentPath(id); ok {
+			return p, true
+		}
+	}
+	return "", false
+}
+
 func (m *MultiStore) Create(id c4.ID) (io.WriteCloser, error) {
 	if len(m.stores) == 0 {
 		return nil, ErrNotImplemented

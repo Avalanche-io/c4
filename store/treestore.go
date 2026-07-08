@@ -121,6 +121,15 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	return id, nil
 }
 
+// ContentPath returns the local filesystem path for id when present.
+func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
+	p := s.path(id)
+	if _, err := os.Stat(p); err != nil {
+		return "", false
+	}
+	return p, true
+}
+
 // Remove deletes the content for the given ID.
 func (s *TreeStore) Remove(id c4.ID) error {
 	return os.Remove(s.path(id))

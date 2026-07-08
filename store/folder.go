@@ -31,6 +31,15 @@ func (f Folder) Create(id c4.ID) (io.WriteCloser, error) {
 	return NewDurableWriter(path)
 }
 
+// ContentPath returns the local filesystem path for id when present.
+func (f Folder) ContentPath(id c4.ID) (string, bool) {
+	p := filepath.Join(string(f), id.String())
+	if _, err := os.Stat(p); err != nil {
+		return "", false
+	}
+	return p, true
+}
+
 func (f Folder) Has(id c4.ID) bool {
 	_, err := os.Stat(filepath.Join(string(f), id.String()))
 	return err == nil
