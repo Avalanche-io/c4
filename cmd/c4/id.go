@@ -346,7 +346,25 @@ func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Stor
 	}
 }
 
+// ingestStore memoizes the store handle for ingest: every Put in a
+// command goes through one instance, so the final Sync barrier covers
+// the whole batch. Also avoids re-reading config (and re-prompting)
+// per file.
+var (
+	ingestStore     store.Store
+	ingestStoreOpen bool
+)
+
 func getOrSetupStore() store.Store {
+	if ingestStoreOpen {
+		return ingestStore
+	}
+	ingestStoreOpen = true
+	ingestStore = openOrSetupStore()
+	return ingestStore
+}
+
+func openOrSetupStore() store.Store {
 	s, err := store.OpenStore()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: store error: %v\n", err)
