@@ -55,7 +55,7 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 |------|-------------|
 | `Source` | Interface: `ToManifest() (*Manifest, error)`. |
 | `ManifestSource` | Wraps a `*Manifest` as a `Source`. |
-| `DiffResult` | Added/removed/modified entries between two manifests. |
+| `DiffResult` | Added/removed/modified entries between two manifests. `Diff` matches entries by full path (never bare name), so same-named files in different directories cannot collide. |
 | `PatchResult` | Result of applying a patch to a manifest. |
 | `Resolver` | Resolves patch chains via content store. |
 | `ManifestCache` | Caches resolved manifests by C4 ID. |
@@ -136,6 +136,21 @@ sub-scans, so the cap is global. Each parent stitches its children back in
 source order before the final `SortEntries` pass — **output is
 byte-identical regardless of concurrency level**. `WithMaxConcurrency(1)`
 forces purely sequential.
+
+Directory identity (ModeFull): computed **bottom-up** during the walk —
+each directory's C4 ID is the hash of the canonical one-level listing of
+its already-scanned direct children (spec: files before dirs, natural
+sort, one canonical line each; empty dir hashes the empty string), and its
+null Size/Timestamp are resolved via `c4m.PropagateMetadata` over
+`[self, direct children]`. Directories are therefore never re-scanned
+(O(N) total, previously O(2^depth)) and guided scans stay root-anchored
+(guide paths are only matched against the single main walk). The private
+`Generator.dirIdentity` function field is the seam for alternate
+directory canonicalizations (e.g. a future content mode); the default is
+`canonicalDirID`. `clone()` is used only for symlink-target sub-scans and
+deliberately does not copy the guide (guide paths are root-relative).
+Directory entries stream post-order via `WithEntryStream` — fully
+resolved at emit time.
 
 Streaming + cancellation: when `WithContext` or `WithEntryStream` is set,
 `Dir` / `GenerateFromPath` return the *partial* manifest alongside any
