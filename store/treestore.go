@@ -29,6 +29,7 @@ type TreeStore struct {
 }
 
 var _ Store = (*TreeStore)(nil)
+var _ Walker = (*TreeStore)(nil)
 
 // NewTreeStore creates a TreeStore rooted at the given directory.
 // The directory is created if it does not exist.
@@ -133,6 +134,26 @@ func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
 // Remove deletes the content for the given ID.
 func (s *TreeStore) Remove(id c4.ID) error {
 	return os.Remove(s.path(id))
+}
+
+// Walk enumerates every object in the store, calling fn with each object's
+// ID and size. Files whose names do not parse as C4 IDs (temp files, stray
+// files) are skipped. A non-nil error from fn stops the walk.
+func (s *TreeStore) Walk(fn func(id c4.ID, size int64) error) error {
+	return filepath.WalkDir(s.root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		id, perr := c4.Parse(d.Name())
+		if perr != nil {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		return fn(id, info.Size())
+	})
 }
 
 // path resolves the storage path for an ID by walking the trie.

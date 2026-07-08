@@ -34,5 +34,11 @@ type Store interface {
 	Remove(id c4.ID) error
 }
 
+// Walker enumerates every object in a store. A non-nil error from fn
+// stops the walk and is returned.
+type Walker interface {
+	Walk(fn func(id c4.ID, size int64) error) error
+}
+
 // ErrNotImplemented is the error to return for unimplemented interface methods.
 var ErrNotImplemented = fmt.Errorf("not implemented")
