@@ -138,6 +138,74 @@ func TestDiff(t *testing.T) {
 	}
 }
 
+// TestDiffSameNameAcrossDirectories is the regression test for the
+// basename-keyed diff bug: with x/f.txt and y/f.txt in both manifests and
+// only x/f.txt modified, the two f.txt entries used to collide in the
+// lookup map, so the file-level modification vanished from the result.
+func TestDiffSameNameAcrossDirectories(t *testing.T) {
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk := func(xContent string) *Manifest {
+		m := NewManifest()
+		m.AddEntry(&Entry{Name: "x/", Depth: 0, Mode: os.ModeDir | 0755, Timestamp: ts,
+			Size: int64(len(xContent)), C4ID: c4.Identify(strings.NewReader("dir-x-" + xContent))})
+		m.AddEntry(&Entry{Name: "f.txt", Depth: 1, Mode: 0644, Timestamp: ts,
+			Size: int64(len(xContent)), C4ID: c4.Identify(strings.NewReader(xContent))})
+		m.AddEntry(&Entry{Name: "y/", Depth: 0, Mode: os.ModeDir | 0755, Timestamp: ts,
+			Size: 9, C4ID: c4.Identify(strings.NewReader("dir-y"))})
+		m.AddEntry(&Entry{Name: "f.txt", Depth: 1, Mode: 0644, Timestamp: ts,
+			Size: 9, C4ID: c4.Identify(strings.NewReader("y-content"))})
+		return m
+	}
+	a := mk("old x content")
+	b := mk("new x content!")
+
+	diff, err := Diff(ManifestSource{Manifest: a}, ManifestSource{Manifest: b})
+	if err != nil {
+		t.Fatalf("Diff() error = %v", err)
+	}
+
+	if n := len(diff.Added.Entries); n != 0 {
+		t.Errorf("Added has %d entries, want 0", n)
+	}
+	if n := len(diff.Removed.Entries); n != 0 {
+		t.Errorf("Removed has %d entries, want 0", n)
+	}
+
+	// Modified must contain BOTH the changed directory x/ and, critically,
+	// the file-level entry for x/f.txt.
+	modFiles, modDirs := 0, 0
+	for _, e := range diff.Modified.Entries {
+		if e.IsDir() {
+			modDirs++
+			if e.Name != "x/" {
+				t.Errorf("unexpected modified dir %q", e.Name)
+			}
+		} else {
+			modFiles++
+			if e.Name != "f.txt" {
+				t.Errorf("unexpected modified file %q", e.Name)
+			}
+		}
+	}
+	if modFiles != 1 {
+		t.Errorf("Modified contains %d file entries, want 1 (x/f.txt lost to basename collision?)", modFiles)
+	}
+	if modDirs != 1 {
+		t.Errorf("Modified contains %d dir entries, want 1 (x/)", modDirs)
+	}
+
+	// The unchanged y/f.txt must be reported as Same, not swallowed.
+	sameFiles := 0
+	for _, e := range diff.Same.Entries {
+		if !e.IsDir() && e.Name == "f.txt" {
+			sameFiles++
+		}
+	}
+	if sameFiles != 1 {
+		t.Errorf("Same contains %d f.txt entries, want 1 (y/f.txt)", sameFiles)
+	}
+}
+
 func TestDiffResultIsEmpty(t *testing.T) {
 	tests := []struct {
 		name string

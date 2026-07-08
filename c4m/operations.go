@@ -297,6 +297,8 @@ func flattenPatchTree(node *patchNode, depth int, result *[]*Entry) {
 }
 
 // Diff compares two sources and returns a categorized diff result.
+// Entries are matched by their full path within each manifest, so
+// same-named files in different directories never collide.
 // For patch-format output, prefer PatchDiff which produces properly
 // nested entries suitable for direct serialization.
 func Diff(a, b Source) (*DiffResult, error) {
@@ -317,20 +319,21 @@ func Diff(a, b Source) (*DiffResult, error) {
 		Same:     NewManifest(),
 	}
 
-	// Build maps for efficient lookup
+	// Build maps for efficient lookup, keyed by full path (never by bare
+	// name — same-named entries in different directories must not collide).
 	aMap := make(map[string]*Entry)
 	for _, entry := range manifestA.Entries {
-		aMap[entry.Name] = entry
+		aMap[manifestA.EntryPath(entry)] = entry
 	}
 
 	bMap := make(map[string]*Entry)
 	for _, entry := range manifestB.Entries {
-		bMap[entry.Name] = entry
+		bMap[manifestB.EntryPath(entry)] = entry
 	}
 
 	// Check entries in A
-	for name, entryA := range aMap {
-		if entryB, exists := bMap[name]; exists {
+	for path, entryA := range aMap {
+		if entryB, exists := bMap[path]; exists {
 			if entriesEqual(entryA, entryB) {
 				result.Same.AddEntry(entryA)
 			} else {
@@ -342,8 +345,8 @@ func Diff(a, b Source) (*DiffResult, error) {
 	}
 
 	// Check entries only in B (added)
-	for name, entryB := range bMap {
-		if _, exists := aMap[name]; !exists {
+	for path, entryB := range bMap {
+		if _, exists := aMap[path]; !exists {
 			result.Added.AddEntry(entryB)
 		}
 	}
