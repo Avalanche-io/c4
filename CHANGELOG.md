@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Windows: batch barrier fixed
+
+v1.0.14's batch durability barrier fsync'd the store root (and, in
+reconcile, the destination) as a directory handle, which Windows
+refuses (`Access is denied`): four store tests failed and every
+`c4 id -s` / `c4 patch` printed spurious warnings on Windows. The
+barrier now goes through the platform-conditional `store.SyncDir` —
+a no-op on Windows, where per-file `Sync` already reaches stable
+storage and NTFS journals rename metadata; unchanged elsewhere
+(F_FULLFSYNC device flush on darwin, directory fsync on other
+Unixes). No data was ever at risk on Windows. Verified on real
+Windows hardware: full suite green, smoke-tested ingest and
+materialize clean. The new platform files also restore the paired
+legacy `// +build` lines, keeping the Go 1.16 build pledge.
+
 ### Scan correctness: guided-scan directory IDs (action required)
 
 **If you ever ran `c4 id --continue` (guided scan) on v1.0.13 or
