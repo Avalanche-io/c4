@@ -175,7 +175,6 @@ Content-addressed storage. Depends only on root `c4`.
 | `Source` | `Open(ID) (io.ReadCloser, error)` |
 | `Sink` | `Create(ID) (io.WriteCloser, error)` |
 | `Store` | `Source` + `Sink` + `Has(ID) bool` + `Put(io.Reader) (ID, error)` + `Remove(ID) error` |
-| `Walker` | Optional: `Walk(fn func(ID, int64) error) error` — enumerate every object. Implemented by `TreeStore` (used by `c4 gc`). |
 
 ### Implementations
 
@@ -243,7 +242,7 @@ Distribution (single-pass multi-target):
 
 ## cmd/c4 (CLI)
 
-Eleven commands dispatched from `main.go`:
+Ten commands dispatched from `main.go`:
 
 | File | Command | Category |
 |------|---------|----------|
@@ -257,13 +256,6 @@ Eleven commands dispatched from `main.go`:
 | `patch.go` | `c4 patch` | Actor |
 | `merge.go` | `c4 merge` | Actor |
 | `split.go` | `c4 split` | Actor |
-| `gc.go` | `c4 gc` | Actor |
-
-`c4 gc` is mark-and-sweep collection for the local store: roots are the
-c4m files named on the command line, marking is token-based (every C4 ID
-appearing in a root or in any reachable stored c4m description), sweep
-uses `store.Walker`. Dry run by default; `--force` deletes; empty
-keep-sets and parse errors refuse. See `design/store-gc.md`.
 
 Supporting files: `flags.go` (custom flag parser), `helpers.go` (shared utilities),
 `version.go`, `main.go` (dispatch + bare shortcuts).

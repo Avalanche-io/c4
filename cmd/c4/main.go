@@ -40,9 +40,6 @@ func main() {
 		case "explain":
 			runExplain(os.Args[2:])
 			return
-		case "gc":
-			runGC(os.Args[2:])
-			return
 		case "version":
 			runVersion(os.Args[2:])
 			return
@@ -101,8 +98,6 @@ Usage:
   c4 intersect <id|path> <a> <b> Find common entries between c4m files
   c4 log <file.c4m>...            List patches in a chain
   c4 explain <command> [args]       Human-readable command narration
-  c4 gc [--force] <file.c4m>...   Collect store objects the given c4m files
-                                  cannot reach (dry run unless --force)
   c4 split <file.c4m> <N> <before.c4m> <after.c4m>
                                   Split chain at patch N
   c4 version                      Print version

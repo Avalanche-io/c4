@@ -56,3 +56,4 @@ Thumbs.db
 # Project-local state
 .docket-claims/
 .claude/
+.worktrees/

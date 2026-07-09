@@ -2,20 +2,6 @@
 
 ## Unreleased
 
-### `c4 gc` — store garbage collection
-
-New verb: mark-and-sweep collection for the local content store. Keep-set
-roots are the c4m files named on the command line; an object survives if
-its ID appears in a root or in any stored c4m description reachable from
-one (directory records, external base manifests, chain blocks).
-
-- Dry run by default with a summary table (objects / reachable / garbage,
-  counts and bytes); deletion requires an explicit `--force`.
-- Refuses empty keep-sets; root parse errors abort with a non-zero exit
-  before the store is examined.
-- New optional `store.Walker` interface; `TreeStore` implements `Walk`.
-- Design: `design/store-gc.md`.
-
 ### Reconcile performance: 43x faster materialization
 
 Materializing a 20,050-file / 105 MB tree via `c4 patch snap.c4m dest/`

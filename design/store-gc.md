@@ -1,5 +1,17 @@
 # c4 gc — Reclaim Unreferenced Store Content
 
+> **Status: WITHDRAWN from the release surface (2026-07-09).** Implemented,
+> then pulled before v1.0.14 and reverted from master. The explicit-roots
+> model deletes any object referenced only by a c4m the caller forgot to
+> name: the harm gc mitigates is disk growth (a nuisance); its failure mode
+> is data loss (a catastrophe) — the wrong asymmetry for a shipping verb. A
+> `trash <c4m>` inverse shares the defect: any deletion verb needs a
+> complete catalog of what the store references. gc returns when the store
+> journal (snapshot-loop design) provides that catalog — roots become every
+> journaled ID automatically, with retention expressed as `split` + gc.
+> This document is kept as the design record; the reverted implementation
+> is in git history (263d586^..c765cc5 era, reverted on `revert-gc`).
+
 ## Summary
 
 `c4 gc` is mark-and-sweep garbage collection for the local content store.
