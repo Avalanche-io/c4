@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/store"
 )
 
 // Apply executes the plan against the filesystem.
@@ -92,6 +93,20 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 		}
 	}
 
+	// Batch barrier: created files were handed to the device with cheap
+	// flushes; one device-cache flush makes the whole batch durable
+	// before Apply returns. Skipped when nothing was written.
+	if !r.dryRun && r.syncMode == store.SyncBatch && r.wroteFiles {
+		if f, err := os.Open(dirPath); err == nil {
+			if err := f.Sync(); err != nil {
+				res.Errors = append(res.Errors, fmt.Errorf("durability barrier: %w", err))
+			}
+			f.Close()
+		} else {
+			res.Errors = append(res.Errors, fmt.Errorf("durability barrier: %w", err))
+		}
+	}
+
 	return res, nil
 }
 
@@ -120,6 +135,9 @@ func (r *Reconciler) applyMkdir(op Operation, res *Result) error {
 // count allows. Counters and errors merge in operation order regardless
 // of completion order, so results are deterministic.
 func (r *Reconciler) applyCreates(ops []Operation, res *Result) {
+	if len(ops) > 0 && !r.dryRun {
+		r.wroteFiles = true
+	}
 	workers := r.workers(len(ops))
 	if workers <= 1 || r.dryRun {
 		for _, op := range ops {

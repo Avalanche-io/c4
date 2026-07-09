@@ -40,9 +40,9 @@ the tree from the store alone.
   stored directory records; previously the lookup always failed with
   "pre-patch manifest not found"). A revert target with a missing
   directory record is refused instead of silently truncating the tree.
-- Capture is never unsynced: `--no-fsync` is clamped to the batch
-  barrier for pre-state writes; `--durable` upgrades them to
-  per-object flushes.
+- Capture rides the same batch durability barrier as every other
+  write: the prior state is on stable storage before the first
+  destructive operation.
 
 ### Store ingest performance: 44x faster snapshots
 
@@ -57,24 +57,21 @@ check per Put. See `design/store-ingest-performance.md`.
   barrier and optional-interface discovery via `store.Syncer`.
   `MultiStore` forwards both. Library default unchanged (`SyncEach`,
   per-object F_FULLFSYNC).
-- CLI ingest defaults to the batch barrier: objects land atomically
-  with a cheap plain `fsync(2)` each, and one `F_FULLFSYNC` at command
-  completion makes the whole batch durable. `--durable` restores
-  per-object flushes; `--no-fsync` skips flushing entirely. Flags on
-  `c4 id`, `c4 diff`, and `c4 patch` (which already had `--no-fsync`).
-  The `c4 patch -s` safety-net writes (pre-state manifests, removal
-  content) stay per-object durable regardless of flags.
+- The CLI uses the batch barrier everywhere, with no flag to change
+  it: objects land atomically with a cheap plain `fsync(2)` each, and
+  one `F_FULLFSYNC` at command completion makes the whole batch
+  durable. Durability is one default behavior — anything `c4` prints
+  (IDs, revert commands) refers to durable state.
 - `storeManifestContent` stores objects on a bounded worker pool
   (min(GOMAXPROCS, 16)); `TreeStore.Put` is now safe for concurrent
   use (publish step serialized under the store mutex).
 - Leaf split accounting is now O(1) amortized via cached per-directory
   counts instead of a `ReadDir` per Put.
 
-Gate benchmark (M-series, APFS, 20,050 files / 105 MB, fresh store per
+Gate benchmark (M-series, APFS, 20k files / 105 MB, fresh store per
 run, store contents verified identical and materializing byte-identical
-trees): master 178–180 s → branch default **4.0–4.1 s** (`--durable`
-163 s, `--no-fsync` 3.9 s). Small-repo case (182 files): 1.4 s →
-0.05 s.
+trees): master 178–180 s → batch-barrier default **4.3 s**
+(re-measured flagless). Small-repo case (182 files): 1.4 s → 0.05 s.
 
 ### Reconcile performance: 43x faster materialization
 
@@ -84,9 +81,10 @@ computing. Root cause: `store.DurableWriter.Close` issues a per-file
 `F_FULLFSYNC` (a full device write-cache flush on darwin), serialized by
 a fully sequential Apply. See `design/reconcile-performance.md`.
 
-- `reconcile.WithSync(false)` — atomic (temp + rename) but non-fsync
-  writes for scratch materialization; default unchanged (durable).
-  Exposed as `c4 patch --no-fsync`.
+- `reconcile.WithSyncMode` — created-file durability mirroring
+  `store.SyncMode`: `SyncEach` (library default, durable per file),
+  `SyncBatch` (atomic writes + one device barrier at the end of
+  Apply — the CLI's mode for reconcile forms), `SyncNone` (scratch).
 - Apply now runs consecutive create operations on a bounded worker pool
   (`reconcile.WithMaxConcurrency`, default min(GOMAXPROCS, 16));
   counters and errors merge in operation order.
@@ -100,10 +98,11 @@ a fully sequential Apply. See `design/reconcile-performance.md`.
   non-fsync writer. `Folder`, `ShardedFolder`, `TreeStore`,
   `MultiStore`, and `DirSource` implement `ContentPath`.
 
-Gate benchmark (M-series, APFS, 20,050 files / 105 MB, verified
-byte-identical): master 171.2 s → branch durable 129.3 s → branch
-`--no-fsync` **4.0 s** (reference `cp -Rc` whole-tree clone: 2.9 s).
-No-op re-apply: 0.74 s → 0.20 s.
+Gate benchmark (M-series, APFS, 20k files / 105 MB, verified
+byte-identical): master 171.2 s → per-file durable 129.3 s →
+batch-barrier default **4.4 s** (re-measured with the barrier as the
+only mode; reference `cp -Rc` whole-tree clone: 2.9 s). No-op
+re-apply: 0.74 s → 0.30 s.
 
 ## v1.0.13
 

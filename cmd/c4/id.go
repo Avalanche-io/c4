@@ -27,10 +27,7 @@ func runID(args []string) {
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s/1=structure, m/2=metadata, f/3=full")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Continue from existing c4m (use as guide)")
-	durable := fs.boolFlag("durable", 0, false, "Fsync every stored object (slower; default is one flush at completion)")
-	noFsync := fs.boolFlag("no-fsync", 0, false, "Skip store fsync entirely (fastest, not crash-safe)")
 	fs.parse(args)
-	setIngestSync(*durable, *noFsync)
 
 	paths := fs.args
 

@@ -284,19 +284,6 @@ func fatalf(format string, args ...interface{}) {
 // durable. See design/store-ingest-performance.md.
 var ingestSync = store.SyncBatch
 
-// setIngestSync translates the --durable / --no-fsync flags into the
-// ingest durability mode.
-func setIngestSync(durable, noFsync bool) {
-	switch {
-	case durable && noFsync:
-		fatalf("Error: --durable and --no-fsync are mutually exclusive")
-	case durable:
-		ingestSync = store.SyncEach
-	case noFsync:
-		ingestSync = store.SyncNone
-	}
-}
-
 // applyIngestSync configures a store for the ingest durability mode.
 func applyIngestSync(s store.Store) store.Store {
 	if sm, ok := s.(interface{ SetSyncMode(store.SyncMode) }); ok {

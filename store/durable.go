@@ -44,6 +44,19 @@ func NewAtomicWriter(final string) (*DurableWriter, error) {
 	return w, nil
 }
 
+// NewBatchWriter is like NewDurableWriter but Close hands the data to
+// the device with a cheap flush (fsync(2)) instead of a full
+// device-cache flush; pair with one later barrier (fsync of any file
+// or directory on the device) to make the whole batch durable.
+func NewBatchWriter(final string) (*DurableWriter, error) {
+	w, err := NewDurableWriter(final)
+	if err != nil {
+		return nil, err
+	}
+	w.sync = SyncBatch
+	return w, nil
+}
+
 func (w *DurableWriter) Write(b []byte) (int, error) {
 	return w.tmp.Write(b)
 }

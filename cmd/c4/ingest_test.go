@@ -90,37 +90,23 @@ func TestIDStoreBatchBarrierComplete(t *testing.T) {
 	}
 }
 
-// TestIDStoreDurableAndNoFsyncFlags verifies the explicit durability
-// flags ingest identical content and reject being combined.
-func TestIDStoreDurableAndNoFsyncFlags(t *testing.T) {
+// TestDurabilityFlagsRemoved pins the D2 decision: durability is one
+// default behavior (the batch barrier), not a flag. The old flags must
+// be rejected as unknown so scripts written against them fail loudly
+// rather than silently changing durability.
+func TestDurabilityFlagsRemoved(t *testing.T) {
 	bin := buildC4(t)
 	tree := t.TempDir()
-	content := []byte("flagged ingest content\n")
-	if err := os.WriteFile(filepath.Join(tree, "a.txt"), content, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tree, "a.txt"), []byte("content\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	id := c4.Identify(bytes.NewReader(content))
 
 	for _, flag := range []string{"--durable", "--no-fsync"} {
 		storeDir := filepath.Join(t.TempDir(), "store")
-		_, stderr, code := runC4WithEnv(t, bin,
+		_, _, code := runC4WithEnv(t, bin,
 			map[string]string{"C4_STORE": storeDir}, "id", "-s", "-q", flag, tree)
-		if code != 0 {
-			t.Fatalf("%s: exit %d: %s", flag, code, stderr)
+		if code == 0 {
+			t.Fatalf("%s: should be rejected as an unknown flag", flag)
 		}
-		s, err := store.NewTreeStore(storeDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !s.Has(id) {
-			t.Fatalf("%s: store missing %s", flag, id)
-		}
-	}
-
-	storeDir := filepath.Join(t.TempDir(), "store")
-	_, _, code := runC4WithEnv(t, bin,
-		map[string]string{"C4_STORE": storeDir}, "id", "-s", "-q", "--durable", "--no-fsync", tree)
-	if code == 0 {
-		t.Fatal("--durable --no-fsync should be rejected")
 	}
 }

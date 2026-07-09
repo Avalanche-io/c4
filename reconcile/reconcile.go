@@ -160,10 +160,11 @@ type Saver interface {
 type Reconciler struct {
 	sources        []ContentSource
 	dryRun         bool
-	storeRemovals  Saver // if set, store content before removing files
-	sync           bool  // fsync created files before rename (default true)
-	maxConcurrency int   // Apply worker cap: 0 = auto, 1 = sequential
-	trustMetadata  bool  // Plan may reuse target IDs on size+mtime match
+	storeRemovals  Saver          // if set, store content before removing files
+	syncMode       store.SyncMode // created-file durability (default SyncEach)
+	wroteFiles     bool           // any create executed; gates the batch barrier
+	maxConcurrency int            // Apply worker cap: 0 = auto, 1 = sequential
+	trustMetadata  bool           // Plan may reuse target IDs on size+mtime match
 }
 
 // Option configures a Reconciler.
@@ -192,14 +193,16 @@ func WithStoreRemovals(s Saver) Option {
 	}
 }
 
-// WithSync controls whether Apply fsyncs created files to stable storage
-// before renaming them into place. Default true (durable). When false,
-// writes remain atomic — readers never observe a partial file — but a
-// power failure may lose content. Use for scratch materialization where
-// content can be re-pulled from a store.
-func WithSync(v bool) Option {
+// WithSyncMode selects how created files reach stable storage, mirroring
+// the store's write-durability policy. SyncEach (the default) makes each
+// file durable before it is renamed into place. SyncBatch hands each file
+// to the device with a cheap flush and issues one device-cache barrier at
+// the end of Apply — every write is atomic (complete or absent) during
+// the run, and the whole batch is durable when Apply returns. SyncNone
+// skips flushing entirely (scratch materialization only).
+func WithSyncMode(m store.SyncMode) Option {
 	return func(r *Reconciler) {
-		r.sync = v
+		r.syncMode = m
 	}
 }
 
@@ -224,7 +227,7 @@ func WithTrustedMetadata(v bool) Option {
 
 // New creates a Reconciler with the given options.
 func New(opts ...Option) *Reconciler {
-	r := &Reconciler{sync: true}
+	r := &Reconciler{} // zero syncMode = store.SyncEach: durable per file
 	for _, o := range opts {
 		o(r)
 	}
@@ -257,12 +260,15 @@ func (r *Reconciler) localPath(id c4.ID) (string, bool) {
 	return "", false
 }
 
-// newWriter returns a durable or atomic writer for path per WithSync.
+// newWriter returns a writer for path per WithSyncMode.
 func (r *Reconciler) newWriter(path string) (*store.DurableWriter, error) {
-	if r.sync {
-		return store.NewDurableWriter(path)
+	switch r.syncMode {
+	case store.SyncBatch:
+		return store.NewBatchWriter(path)
+	case store.SyncNone:
+		return store.NewAtomicWriter(path)
 	}
-	return store.NewAtomicWriter(path)
+	return store.NewDurableWriter(path)
 }
 
 // workers returns the effective worker count for a batch of n operations.

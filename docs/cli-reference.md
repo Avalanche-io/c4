@@ -115,8 +115,6 @@ With `-q` the stored line is the only output.
 | `-c` | `--continue` | Continue from existing c4m (use as guide) |
 | | `--exclude` | Glob pattern to exclude (repeatable) |
 | | `--exclude-file` | File of exclude patterns (one per line) |
-| | `--durable` | Fsync every stored object (slower; default is one flush at completion) |
-| | `--no-fsync` | Skip store fsync entirely (fastest, not crash-safe) |
 
 ### Excluding Files
 
@@ -182,8 +180,6 @@ Empty diff produces no output.
 | `-q` | `--quiet` | Suppress output (useful with `-s`) |
 | `-e` | `--ergonomic` | Output ergonomic form |
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
-| | `--durable` | Fsync every stored object (slower; default is one flush at completion) |
-| | `--no-fsync` | Skip store fsync entirely (fastest, not crash-safe) |
 
 ### Reverse diff with a changeset
 
@@ -239,9 +235,9 @@ prior state stored: <id> (revert: c4 patch -r <id> <dir>)
 That revert command works verbatim, even if stdout was discarded.
 `--no-store` opts out. `--dry-run` changes and captures nothing. If no
 store is configured, `c4 patch` offers to create the default store
-(non-interactive runs proceed with a warning). The capture is never
-unsynced: `--no-fsync` still leaves the prior state durable via the
-batch barrier; `--durable` flushes it per object.
+(non-interactive runs proceed with a warning). The capture rides the
+same durability barrier as every other write: the prior state is on
+stable storage before the first destructive operation.
 
 ### Flags
 
@@ -255,8 +251,6 @@ batch barrier; `--durable` flushes it per object.
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
 | | `--dry-run` | Show planned operations without making changes |
 | | `--no-store` | Skip prior-state capture and content storage |
-| | `--no-fsync` | Skip per-file fsync when writing (faster, not crash-durable; prior-state capture stays durable) |
-| | `--durable` | Fsync every stored object during ingest (slower; default is one flush per ingest batch) |
 | | `--source` | Additional content source path (repeatable) |
 
 ### Examples
@@ -479,22 +473,17 @@ C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
 On first use of `-s` without a configured store, the CLI offers to
 create `~/.c4/store`.
 
-### Ingest durability
+### Durability
 
-By default, storing content is crash-consistent and fast: each object
-lands atomically (complete or absent) and one device flush at command
+Durability is one default behavior, not a flag. Storing content and
+writing trees are crash-consistent and fast: each file or object lands
+atomically (complete or absent) and one device flush at command
 completion makes the whole batch durable. A power failure mid-command
-may lose recently stored objects — the command has not reported
-success at that point and the source still exists; re-run to heal.
-Two flags change the policy:
-
-- `--durable` — flush every object to stable storage as it lands
-  (pre-1.0.14 behavior; much slower on macOS).
-- `--no-fsync` — no flushing at all; a crash may lose objects even
-  after the command succeeds. Scratch stores only.
-
-The safety-net writes of `c4 patch -s` (pre-patch manifests and
-removed content) are always flushed per object, regardless of flags.
+may lose recently written data — but the command has not reported
+success at that point, nothing it printed refers to unsynced state,
+and the source still exists; re-run to heal. There is no flag to skip
+or strengthen this: an ID or revert command printed by `c4` always
+refers to durable state.
 
 ## Stdin Shortcut
 

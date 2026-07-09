@@ -169,3 +169,13 @@ materializes a tree byte-identical to the source (`diff -rq`).
 
 Small-repo case (the c4 repo tree sans .git, 182 files / ~20 MB,
 fresh store): master 1.45 s / 1.33 s → branch 0.06 s / 0.05 s.
+
+---
+
+**Status note (2026-07-09, D2):** the `--durable` / `--no-fsync` CLI
+flags described above were removed before v1.0.14 shipped. Durability
+is one default behavior — the batch barrier — on every write path
+(ingest, reconcile materialization, pre-state capture), with no flag
+to weaken or strengthen it. The library keeps the full `SyncMode` axis
+(`store.SyncMode`, `reconcile.WithSyncMode`); only the CLI surface is
+flagless. See `design/snapshot-loop/` (v6) for the design rationale.

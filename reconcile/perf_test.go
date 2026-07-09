@@ -12,6 +12,7 @@ import (
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/store"
 )
 
 type treeFile struct {
@@ -55,7 +56,7 @@ func TestApplyParallelCreates(t *testing.T) {
 	rec := New(
 		WithSource(NewDirSource(target, srcDir)),
 		WithMaxConcurrency(8),
-		WithSync(false),
+		WithSyncMode(store.SyncNone),
 	)
 	plan, err := rec.Plan(target, dstDir)
 	if err != nil {
@@ -134,7 +135,7 @@ func TestApplyParallelErrorOrder(t *testing.T) {
 	rec := New(
 		WithSource(&failOpenSource{inner: NewDirSource(target, srcDir), fail: fail}),
 		WithMaxConcurrency(8),
-		WithSync(false),
+		WithSyncMode(store.SyncNone),
 	)
 	plan, err := rec.Plan(target, dstDir)
 	if err != nil {
@@ -297,7 +298,7 @@ func TestApplyLocalSourceFastPath(t *testing.T) {
 	})
 
 	src := &pathSource{paths: map[c4.ID]string{id: filepath.Join(srcDir, "blob")}}
-	rec := New(WithSource(src), WithSync(false))
+	rec := New(WithSource(src), WithSyncMode(store.SyncNone))
 	plan, err := rec.Plan(target, dstDir)
 	if err != nil {
 		t.Fatal(err)

@@ -208,3 +208,13 @@ dominated by reconcile's default durable file writes).
 
 Design complete. Implemented on `feature/safety-defaults` (stacked on
 `feature/store-ingest-perf`).
+
+---
+
+**Status note (2026-07-09, D2):** the `--durable` / `--no-fsync` CLI
+flags described above were removed before v1.0.14 shipped. Durability
+is one default behavior — the batch barrier — on every write path
+(ingest, reconcile materialization, pre-state capture), with no flag
+to weaken or strengthen it. The library keeps the full `SyncMode` axis
+(`store.SyncMode`, `reconcile.WithSyncMode`); only the CLI surface is
+flagless. See `design/snapshot-loop/` (v6) for the design rationale.

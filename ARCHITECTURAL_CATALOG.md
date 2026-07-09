@@ -223,7 +223,7 @@ Options:
 | `WithSource` | add a content source |
 | `WithDryRun` | plan-only Apply |
 | `WithStoreRemovals` | store content before removal |
-| `WithSync` | default true; false skips per-file fsync (atomic, not crash-durable) |
+| `WithSyncMode` | created-file durability, mirroring `store.SyncMode`: `SyncEach` default (durable per file); `SyncBatch` = atomic writes + one device barrier at end of Apply (the CLI's mode); `SyncNone` scratch only |
 | `WithMaxConcurrency` | Apply create workers: 0 = auto (min(GOMAXPROCS, 16)), 1 = sequential |
 | `WithTrustedMetadata` | default false; true lets Plan reuse target IDs on size+mtime match (guided-scan contract) instead of hashing |
 
@@ -270,8 +270,7 @@ Safety defaults (`design/safety-defaults.md`):
   content (removed or overwritten), directory records (computed
   deepest-first when the guided scan left IDs nil), root record, and
   manifest text, then the batch barrier — durable before destruction.
-  `--no-store` opts out (`reconcileStore` avoids prompting then);
-  `--no-fsync` is clamped to `SyncBatch` for capture writes. After a
+  `--no-store` opts out (`reconcileStore` avoids prompting then). After a
   successful Apply, `reportPreState` prints the verbatim revert command.
   `c4 patch -r` accepts a changeset file or a stored manifest ID
   (`manifestFromStore`); one-level records expand through stored
