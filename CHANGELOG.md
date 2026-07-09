@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v1.0.15
+
+Same-day supersede of v1.0.14: identical content plus the Windows
+batch-barrier fix and Go 1.16 test compatibility below. v1.0.14's tags
+remain for module-proxy immutability; install v1.0.15.
 
 ### Windows: batch barrier fixed
 
@@ -16,6 +20,12 @@ Unixes). No data was ever at risk on Windows. Verified on real
 Windows hardware: full suite green, smoke-tested ingest and
 materialize clean. The new platform files also restore the paired
 legacy `// +build` lines, keeping the Go 1.16 build pledge.
+
+## v1.0.14 (superseded by v1.0.15)
+
+Released and superseded the same day: on Windows the batch barrier
+printed spurious "Access is denied" warnings/errors (no data loss) and
+four store tests failed. Use v1.0.15.
 
 ### Scan correctness: guided-scan directory IDs (action required)
 
