@@ -1,0 +1,347 @@
+[
+  {
+    "item": "Two user-visible identity concepts: content ID and snapshot ID, one sentence each",
+    "status": "decided",
+    "reason": "Unanimous across candidates and the provable minimum: T3 needs machine-independent sameness, T1/T2 need exact-record fidelity; no single ID answers both. Round-1 sims: all four personas used both correctly. Round-2 sims: both doc-only personas used both correctly again."
+  },
+  {
+    "item": "Content-form (stat-free) directory identity as the default for c4 id (-m c default)",
+    "status": "decided",
+    "reason": "Fixes the standing determinism violation and is the only way T3 is answerable by string equality; frozen nulls, zero grammar change; observation stays one flag away (-m f)."
+  },
+  {
+    "item": "Stat-bearing directory ID retained as any default identity",
+    "status": "rejected",
+    "reason": "Violates principle 10 and answers no question content ID + snapshot ID don't answer better; drift detection is diff's job."
+  },
+  {
+    "item": "Snapshot ID = ID of the full-observation root listing (flatten rule: description's canonical-text ID == root directory ID at the same knowledge level)",
+    "status": "decided",
+    "reason": "A's found unification, verified against shipped WriteCanonical; makes self-ID, pipe law, and round-trip verification one rule and one object kind."
+  },
+  {
+    "item": "Separate whole-text description blob as the snapshot object",
+    "status": "rejected",
+    "reason": "Mints a second object kind, invites the documented key-collision, loses per-directory Merkle dedup; the flatten unification makes it unnecessary."
+  },
+  {
+    "item": "Snapshot ingestion stores BOTH listing graphs (full-form and content-form) per directory",
+    "status": "decided",
+    "reason": "cat/restore resolve either ID with no index or projection machinery; listings scale with direct-child count and dedup across snapshots; closes the content-ID-resolution gap."
+  },
+  {
+    "item": "Full-form listings carry child full-listing IDs; content-form carry child content IDs (line-local verification in both graphs)",
+    "status": "decided",
+    "reason": "Every ID in any listing is the hash of the exact text it names; dissolves the invisible null-form transform count."
+  },
+  {
+    "item": "Directory size field = total bytes of contained files, both forms",
+    "status": "decided",
+    "reason": "st_size for directories is filesystem-dependent and would re-taint the content ID; sum is deterministic and informative. v2.5: every recorded size derives from the scan itself — a file's size is the byte count actually read and hashed, never a separate stat (closes the stat-vs-read divergence that could mint permanently unverifiable snapshots); a symlink's size is its target text's byte length."
+  },
+  {
+    "item": "Description-input dispatch pinned: .c4m argument and id's '-' parse as descriptions; unparseable .c4m errors; all other files are bytes; bare c4 stdin is raw bytes",
+    "status": "decided",
+    "reason": "Kills content-sniffing nondeterminism; dispatch is a pure function of the argument text. v2.5 completes dispatch: an argument whose first slash-separated component is syntactically a C4 ID (90 chars, c4 prefix, all base58 — the full three-part predicate stated identically everywhere) is a store address in every verb, never silently hashed as a local file; ./ forces the filesystem; the ID test precedes the .c4m suffix test; a store path's final component named *.c4m yields bytes."
+  },
+  {
+    "item": "Files inside scanned trees are ALWAYS bytes — never parsed, canonicalized, or re-ID'd",
+    "status": "decided",
+    "reason": "Shipped scan-time canonicalization silently corrupts trees containing c4m-shaped files and falsifies T1 byte-exactness; hard-pinned on the surface."
+  },
+  {
+    "item": "id computes descriptions at their own knowledge level; -m projects downward only",
+    "status": "decided",
+    "reason": "Restores snapshot-ID recomputability while preserving the pipe law and cat -r round-trip verify (same rule via the flatten identity)."
+  },
+  {
+    "item": "Patch chains resolve to final state before identification/display; -n reaches earlier states",
+    "status": "decided",
+    "reason": "Pins the previously undefined chain-identity case deterministically using an existing flag."
+  },
+  {
+    "item": "-q requires an ID-bearing mode (c or f); errors under -m s/m",
+    "status": "decided",
+    "reason": "An ID printed from bytes never hashed would be assertion, not verification."
+  },
+  {
+    "item": "id -s prints the snapshot ID alone on stdout; narration on stderr",
+    "status": "decided",
+    "reason": "The ID is the machine datum (principle 9); the description text is exactly the losable artifact of complaint 1 and lives in the store instead. v2.5 extends compatibly for multiple paths: one ID line and one journal section per path, argument order, each claimed independently (earlier snapshots stand if a later path fails); all paths attempted; exit = 1 if any failed, else 2 if any partial, else 0."
+  },
+  {
+    "item": "id -s conflicts with -m (always full detail; content projection stored alongside)",
+    "status": "decided",
+    "reason": "One canonical -s behavior; the content graph is always stored and the content ID always derivable."
+  },
+  {
+    "item": "Bare-invocation auto-ingest (bare 'c4 <path>' storing; stdin auto-store; -x escape)",
+    "status": "rejected",
+    "reason": "A cold user asking 'what is this?' must not silently write gigabytes; uniform rule 'writes require -s or restore --force'. Breaking pre-freeze change, deliberate. Bare c4 <path> = read-only id."
+  },
+  {
+    "item": "Store journal <store>/log.c4m: ordinary c4m patch chain, one section per -s ingest (snapshots, stdin blobs, every restore pre-image, including empty ones)",
+    "status": "decided",
+    "reason": "Store names its own roots; closes 'the ID itself is losable' and the lone-file-unrooted gc deletion; 'logged iff stored-at-your-request iff gc-protected' is one teachable sentence. Sims confirmed: journal rescued the lost-scrollback undo in T2."
+  },
+  {
+    "item": "Journal as basename-keyed catalog with current-state resolution",
+    "status": "rejected",
+    "reason": "Basename collision hands the user the WRONG pre-image — the safety feature becomes the destroyer; history listing evicts nothing and log is the verb named for it."
+  },
+  {
+    "item": "Bare 'c4 patch' as the catalog/recovery entry point",
+    "status": "rejected",
+    "reason": "Undiscoverable and mis-signaled: cold users will not run an apparently mutating verb with no arguments to read state."
+  },
+  {
+    "item": "Journal torn-tail handling: writers repair under advisory lock before appending; readers warn on stderr (uniform c4m trailing-garbage behavior)",
+    "status": "decided",
+    "reason": "At-rest file stays valid c4m with zero grammar change; no location-specific parse dialect; repair algorithm and worst case pinned."
+  },
+  {
+    "item": "Journal appends serialized by advisory lock; store puts concurrent-safe by construction (temp+fsync+rename, put-by-ID)",
+    "status": "decided",
+    "reason": "Pins concurrency semantics at the exact file the durability contract rests on. v2.5 REOPENED WITH CONCRETE DEFECT and strengthened, not reversed: an append-time-only lock let a gc --force sweep run between an ingest's staging and its append, deleting staged-but-unrooted objects, after which the ingest appended and printed an ID whose closure was gone — printed=>durable falsified with no crash. Fix: the append lock is unchanged; a separate sweep lock is added — ingests and restore --force hold it shared for their whole duration, gc --force holds it exclusive from before it reads the journal (mark) through the sweep, dry run lockless. Mark under the lock closes the stale-root-set hole; lock order sweep-then-append, gc takes only sweep — no deadlock. v3: man pages name the locks consistently — gc(1) the sweep lock (with a pointer to the separate append lock), log(1) the append lock."
+  },
+  {
+    "item": "Durability protocol: temp+fsync(2)+rename per object; barrier; journal append+fsync; barrier; print. Printed => durable; unprinted => nothing claimed, tree untouched, store consistent, rerun idempotent",
+    "status": "decided",
+    "reason": "Convergent and grounded in measured physics; per-file fsync keeps dedup's presence-implies-integrity valid after a crash. v2 added the reader-side equivalence (complete journal line => durable snapshot); v2.5 makes it unconditional against concurrent gc --force via the sweep lock; v3 states it interruption-agnostic (ordering-derived: killed process, kernel panic, power loss are one case)."
+  },
+  {
+    "item": "Per-file F_FULLFSYNC durability",
+    "status": "rejected",
+    "reason": "Measured ~6.4ms/file (~3 minutes per 20k files) and buys nothing over the claim-point barrier; a promise nobody can act on."
+  },
+  {
+    "item": "Durability contract worded platform-neutrally; APFS/M-series numbers cited as measurements",
+    "status": "decided",
+    "reason": "F_FULLFSYNC-specific semantics must not be the contract; accepted tradeoff: unmeasured platforms get the ordering contract, never invented constants. v2.5: the per-platform primitives are named (macOS fsync+F_FULLFSYNC; Linux fsync of files and containing dirs + device flush; Windows FlushFileBuffers + atomic replace) and the promise is stated as exactly as strong as those primitives. Round-2 repeat (skeptic: trusting those primitives cannot be verified from a man page) is this accepted tradeoff restated — discounted; the falsifiability recipe (pull the plug, read c4 log, recompute any line's ID in one pipe) is on the surface."
+  },
+  {
+    "item": "Restored trees get the strong promise: per-file fsync+rename, verify by recomputation at the target's knowledge level, barrier, then line 2 prints",
+    "status": "decided",
+    "reason": "'No tree durability promise' under-promises when the strong claim costs ~126us/file; between-lines state pinned as mix of whole files with both endpoints durable."
+  },
+  {
+    "item": "--no-fsync flag (anywhere)",
+    "status": "rejected",
+    "reason": "Safe was made fast (~126us/file); the mode would only multiply crash states."
+  },
+  {
+    "item": "restore is the ONLY tree-writing verb; patch returns to pure text algebra and errors on directories with a teaching message",
+    "status": "decided",
+    "reason": "One implementation per idea; deletes the accident grammar of complaint 2. Sims: the teaching error was followed correctly."
+  },
+  {
+    "item": "restore is dry-run by default; --force applies (the single new flag)",
+    "status": "decided",
+    "reason": "Principle 8's literal text, the gc --force precedent, and the founding wrong-usage user; always-apply rejected for pre-image completeness holes and suite inconsistency."
+  },
+  {
+    "item": "Dry-run plan output: boundary IDs always present, equal with no entries when already matching",
+    "status": "decided",
+    "reason": "One parseable contract. v2.5 REOPENED WITH CONCRETE DEFECT and repaired: for a content-ID target the companion sentence ('plan line 1 is exactly what --force prints', a full-form pre-image) forced a perfectly matching directory to print UNEQUAL boundaries — the two decided sentences could not both hold. Fix: the plan is computed at the target's knowledge level (line 1 = dir's current ID at that level; matching <=> no entry lines <=> equal boundaries); plan-line-1 = force-line-1 is claimed only for snapshot-ID targets."
+  },
+  {
+    "item": "--force stdout = two lines: pre-image snapshot ID (durable, before first mutation) then verified target ID",
+    "status": "decided",
+    "reason": "'Backups durable before destruction begins' is the meaning of line 1. v2.5 REOPENED WITH CONCRETE DEFECT and repaired: under exit-2 omissions a verified TARGET ID on line 2 is unprintable, and 'both lines equal when matching' was false for content targets. Fix: at most two lines, nothing else; line 1 = full-form pre-image before first modification; line 2 = the verified, recomputed as-built ID at the target's knowledge level, printed whenever recomputation completed (always on exit 0 and 2); exit 0 <=> line 2 equals the target. Every printed line is a true recomputable claim in every outcome."
+  },
+  {
+    "item": "Opt-out of the pre-image (--no-store broadening)",
+    "status": "rejected",
+    "reason": "Inheriting destructiveness into a benign shipped flag is the opposite of long-form-explicit; the expensive case is the case the pre-image exists for; rm -rf remains the honest capture-free spelling."
+  },
+  {
+    "item": "--force refuses (exit 1, offenders listed, nothing touched) when <dir> contains entries a snapshot cannot fully capture",
+    "status": "decided",
+    "reason": "Destruction demands complete capture; description alone stays partial-friendly (id warns, nulls, exit 2). v2.5: gate = unreadable files or directories, sockets, fifos, devices; symlinks, broken or not, are fully capturable — a link is its name and target."
+  },
+  {
+    "item": "Fidelity boundary stated on the surface: records names/sizes/modes/mtimes/symlinks/hardlinks/sequences/content; NOT ownership/xattrs/ACLs/special files",
+    "status": "decided",
+    "reason": "'Byte-exact including recorded metadata' must not overpromise; sidecar can extend later. v2.5 completes the boundary: the root directory's own mode/mtime are recorded in no listing (verified against shipped WriteCanonical) — provenance, not identity; restored as platform defaults; outside verification. A hard-link partner outside the snapshot root restores as an independent file with identical bytes."
+  },
+  {
+    "item": "gc default roots = every ID in ANY journal section (full history, both graphs, closures); explicit args ADD roots; forgetting = explicit split then gc --force",
+    "status": "decided",
+    "reason": "Closes gc-eats-undo and the history-vs-current ambiguity in favor of history; retention stays explicit composition, never policy. v2.5: the closure of a folded sequence explicitly includes its ID-list object and every member ID in it (else gc eats sequence members)."
+  },
+  {
+    "item": "restore targets are descriptions only (ID[/path], .c4m, or -); never a directory; mirroring = restore --force $(c4 id -s A) B with the missing-content trap named",
+    "status": "decided",
+    "reason": "Direction confusion becomes unconstructible; the -s requirement and its reason stated where a cold user hits it. v2.5: an ID/path target must land on a directory entry — a file or symlink final component is refused with 'extract files with c4 cat'; ID/ and ID name the same target; an ID naming bytes that do not parse as a listing is an error; .c4m and - never take /path."
+  },
+  {
+    "item": "--source flag on restore (content from arbitrary directories, store-bypass mirroring)",
+    "status": "rejected",
+    "reason": "No success task needs it; store-mediated transfer is the architecture; same-volume clonefile ingest ~free (0.26s/14k); preserves the last flag of budget headroom. Revisit only on measured pain."
+  },
+  {
+    "item": "Empty description constant as pre-image of absent/empty dirs; undo of restore-into-absent-dir leaves an empty directory; no-op forced restore prints the same ID twice",
+    "status": "decided",
+    "reason": "One always-resolvable fixed point replaces three special cases; the one-inode boundary stated honestly. v2.5: the constant is also the identity of an empty directory and of zero bytes (verified against the shipped empty-input test vector) — one ID for 'nothing' at every level. 'Same ID twice' holds for snapshot-ID targets (levels coincide)."
+  },
+  {
+    "item": "Concurrent restores of one directory: uncoordinated, stated on the surface (store safe, tree outcome undefined)",
+    "status": "decided",
+    "reason": "ACCEPTED TRADEOFF, standing: destination locking is coordination machinery a snapshot tool should not grow; the store is never at risk; the sentence is on the surface. Repeat friction does not count. Not re-raised in round 2."
+  },
+  {
+    "item": "Journal entry format: one entry line per section plus chain boundary; provenance flow link; history-only semantics",
+    "status": "decided",
+    "reason": "Provenance flow link (frozen grammar) makes entries self-explanatory; collisions harmless under history-only semantics. v2.5 AMENDED (round-2 open + latent grammar break): one total rule per field — mode null; time = UTC at append (RFC 3339 seconds, provenance never identity); size = bytes of the object the ID names (root listing text / blob bytes / 0 for empty); name = final component of the argument's absolute path (lexical Abs, symlinks not resolved), '.c4m' appended iff the ingest produced a description and the name lacks the suffix (kills saved.c4m.c4m), root.c4m at /, constants stdin / stdin.c4m for stdin; origin = host:abs-path with host = first dot-delimited hostname label sanitized to [a-zA-Z0-9_-] ('-' substitution, 'h' prefix when not letter-initial, 'localhost' only when empty — dotted hostnames violated the frozen flow-target charset), parsers split at the first colon; stdin records NO origin link. The edge-pinner valid-or-localhost fallback was declined: it discarded real information and fabricated the maximally misleading value."
+  },
+  {
+    "item": "Legacy stat-bearing listings/IDs read as ordinary full-form listings; content IDs re-derived by c4 id -q; no permanent dual-rule verifier",
+    "status": "decided",
+    "reason": "Under the merged model legacy IDs ARE full-form IDs; migration is one recompute; mixed-fleet T3 governed by the coordinated suite release. v2.5: also covers legacy symlink entries with target-derived IDs — historical text, verifiable as text, re-derived by one recompute."
+  },
+  {
+    "item": "Multi-store config: first store is the write store and holds the journal",
+    "status": "decided",
+    "reason": "Pins the 'store line(s) plural' ambiguity in one sentence. v2.5: reads consult configured stores in order; locks are per store and live in the write store; closures resolved from secondary stores are as stable as those stores' own discipline (a failed pull mid-restore is loud and exits 3 with the undo standing)."
+  },
+  {
+    "item": "id/id -s exit 2 on partial scans; restore exits 2 when target null-ID entries were skipped",
+    "status": "decided",
+    "reason": "Partial knowledge stays a valid, LOUD state: degraded output plus a distinct exit code. v2.5 precedence pin: restore exit 2 iff every difference between the recomputed as-built tree and the target is an omitted null-ID FILE entry (symlink entries carry no ID by rule and are never omissions); any other post-line-1 divergence is exit 3."
+  },
+  {
+    "item": "id -s side effects enumerated on the surface: writes only inside the store (objects + journal); no .c4m file, nothing in the scanned tree or working directory, ever",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: both cold personas doubted whether -s leaves artifacts outside the store; one surface sentence makes T1's 'delete artifacts outside the store' the empty set by construction. Round-2: the skeptic persona read the repetition (help + id(1) + transcript) as overcompensating while completing every task without friction — retained; a tone impression is not a concrete defect and the round-1 cold-user evidence is stronger. Revisit only if doc-only round-3 sims re-raise it (then consolidate to help block + id(1))."
+  },
+  {
+    "item": "Named references / ref namespace for snapshots and undo handles",
+    "status": "rejected",
+    "reason": "ROUND-1 FOLD: ACCEPTED TRADEOFF. Refs are mutable state that can dangle, race, and lie; handles are IDs — stdout line 1, the stderr undo hint, and a permanent journal entry. 'c4 log is the reflog' stated in restore(1) UNDO. Repeat friction on wanting names does not count. Re-flagged by the round-2 skeptic (undo burden = grepping c4 log under pressure); discounted as this ledgered tradeoff; stands."
+  },
+  {
+    "item": "-q framed as output form only; identity level is chosen by -m (content default); stated in help and man",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: user believed -q selects stability, inverting the git mental model; the stable ID is the default level, -q merely quiets. Wording fix, zero semantics change."
+  },
+  {
+    "item": "Progress narration on stderr: live file/byte count on a terminal, one summary line otherwise; stdout never carries narration",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: silent 6s runs read as hangs; stderr is the sanctioned narration channel, non-contractual, zero flags. v2.5 pin (round-2 open closed): detection is isatty(stderr) and nothing else — no env sniffing, no TERM/CI detection, nothing colored; on a TTY one live line rewritten in place with no escape codes, replaced by one summary line; otherwise exactly one summary line; declared non-contractual — parse nothing from stderr; transcript shapes are illustrative."
+  },
+  {
+    "item": "ID/path store addressing: any store-resolved ID may be followed by /relative/path, descending listings by exact entry-name match, each level rehash-verified; on cat, restore targets, and diff sides",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: 'cat -r | grep' as the documented lookup is fragile; sugar over the documented walk; 0 new flags/verbs, not an identity concept; also yields subtree restore for free. v2.5: acceptance stays exactly these three places; classification is global (see dispatch entry); id refuses store addresses with a teaching error printing the cat composition."
+  },
+  {
+    "item": "Restore verification pinned per knowledge level; 'platform-default metadata' defined (whatever creation under your umask/clock produced — not recorded, not claimed, not verified)",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: 'verified against what — my umask?' was answerable but unstated; snapshot targets apply recorded modes/mtimes explicitly then recompute full-form; content targets recompute content-form only. v2.5: symlink entries recompute as name + target text + target length with nulls, and the root's own stat is outside identity, so verification is a total pure function of <dir> and never reads outside it; line 2 is the verified as-built ID and exit 0 <=> it equals the target."
+  },
+  {
+    "item": "Journal repair algorithm and worst case pinned: writer truncates trailing partial section under the append lock; readers parse complete sections and warn once; torn tail <=> ingest that never printed; complete line after crash <=> fully durable snapshot; unclaimed objects unrooted (gc dry-run lists them)",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: the equivalence strengthens T4. v2.5 REOPENED WITH CONCRETE DEFECT and strengthened: the equivalence did not hold against a CONCURRENT gc --force (staged-unrooted objects swept between staging and claim; the ingest then journals and prints an ID naming missing objects, no crash anywhere). Closed by the sweep lock with mark under the lock; the equivalence is now unconditional against both crashes and concurrent collection. v3 (round-2 sim fold): the equivalence is stated interruption-agnostic — ordering-derived, so killed process, kernel panic, and power loss are one case — and 'advisory' is scoped: c4's writers are the only sanctioned writers inside a store; foreign edits are corruption, and corruption is loud (rehash-verified reads; every journal line recomputable in one pipe)."
+  },
+  {
+    "item": "Hash-collision stance: ID equality is SHA-512 equality, stated once in IDENTITY; no per-line hedging; every store read rehash-verified",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: ACCEPTED TRADEOFF. Collision resistance is the axiom of every content-addressed system; the surface says so once, honestly. Repeat friction does not count. Not re-raised in round 2."
+  },
+  {
+    "item": "Timing model reconciled on the surface: ~130us/file + two ~5ms barriers is durability overhead BEYOND reading/hashing; worked example sums to the transcript's 6.1s",
+    "status": "decided",
+    "reason": "ROUND-1 FOLD: the constant and the transcript contradicted by 2x when 'overhead' was read as total; the man page states what the constant excludes and shows the sum. v2.5: transcript numbers made recomputable (journal listing size 412 matches the printed listing's byte count; directory sizes sum to the narrated 4.8 GB; child mtimes precede the snapshot time). Round-2 doc-only sims: timing answered T4 with no friction."
+  },
+  {
+    "item": "ID/path edge semantics: symlink or file component mid-path; trailing-slash form; whether .c4m-file targets may take /path",
+    "status": "decided",
+    "reason": "ROUND-2 CLOSED: components split on '/' (empty/./.. are errors; a single trailing slash is an assertion, not a component); matching is byte-exact against decoded recorded names (dir entries match with or without trailing slash; no globs/case folding/normalization; a folded sequence matches only its folded name — a member filename errors naming the folded entry; a listing holding both x and x/ refuses bare x as ambiguous); every non-final component must match a directory entry (file mid-path = not a directory; symlink mid-path = error printing the recorded target — paths never follow symlinks, and under always-null symlink IDs there is nothing to follow); final component: directory=listing, file=bytes, folded sequence=its ID-list object, symlink=error printing the target, null-ID=error; trailing slash requires a listing (ID/ asserts the root parses; as a restore target ID/ == ID); every level rehash-verified; .c4m and - never take /path; restore targets must land on a directory entry; diff sides must resolve to listings. Root descent is the one parse-gated step (no containing entry exists); everything below is kind-gated by the recorded listing — no sniffing."
+  },
+  {
+    "item": "Journal entry naming for stdin blobs (| c4 -s): name and origin fields",
+    "status": "decided",
+    "reason": "ROUND-2 CLOSED (see amended journal entry format): stdin journals the constant name 'stdin' (raw blob) or 'stdin.c4m' (parsed description) and records NO origin link — the grammar's optional flow link; no pseudo-path is invented; size = the journaled object's own bytes under the one uniform size rule."
+  },
+  {
+    "item": "stderr progress line format and TTY detection",
+    "status": "decided",
+    "reason": "ROUND-2 CLOSED (see amended narration entry): isatty(stderr) only; one live rewritten line on a TTY replaced by one summary line, else exactly one summary line; no color or escape codes; non-contractual."
+  },
+  {
+    "item": "Exact c4 log column layout and narration wording",
+    "status": "decided",
+    "reason": "ROUND-2 CLOSED: log output = one line per entry — the section's 1-based index (the exact c4 split coordinate), a single space, then the entry line exactly as recorded (canonical c4m, single-space fields, no unescaped spaces in fields); append order, oldest first (tail -1 = latest); byte-stable — a printed line is printed identically by every future run; first field = index, last field = ID (awk '{print $NF}'); the same rendering applies to explicit chain arguments, so another store's journal prints identically; the journal FILE is the contract, log output a view."
+  },
+  {
+    "item": "Journal semantics for non-local (s3/remote) stores",
+    "status": "decided",
+    "reason": "ROUND-2 CLOSED by definitional scoping (less surface than the per-verb refusal matrix): a store is a directory on a local filesystem; the durability and journal contracts define no semantics for network or object stores; networking remains a declared non-goal; any future remote store must re-prove the print barrier and journal equivalence for its medium."
+  },
+  {
+    "item": "Retention recipe concurrency (stop writers during split; gc lock discipline)",
+    "status": "decided",
+    "reason": "ROUND-2 CLOSED: gc --force takes the sweep lock exclusively BEFORE reading the journal and holds it through the sweep; ingests and restore --force hold it shared for their whole run; dry run lockless and always safe. The journal swap (split + reinstall) is a plain rename that takes no lock, so 'stop snapshot and restore activity for the swap' remains a stated procedural requirement with the failure mode named (an append to the renamed-away inode would be lost)."
+  },
+  {
+    "item": "Fidelity sidecar (xattrs/ownership/ACLs) as an external structure referencing snapshot IDs",
+    "status": "decided",
+    "reason": "ROUND-2 CLOSED: stays future work under the sidecar doctrine — an external structure keyed by snapshot ID referencing immutable content IDs; the c4m format never grows fields; the v1 surface states the recorded/not-recorded boundary honestly, now including the root-directory stat exclusion and the hard-link boundary. No surface spend."
+  },
+  {
+    "item": "Symlink scan semantics: a symlink entry is its name, its target text, and a size equal to the target text's byte length; mode, time, and ID null in EVERY listing form; a symlink names no store object",
+    "status": "decided",
+    "reason": "NEW v2.5 (spec derivation reopened with concrete defects; grammar untouched — nulls are first-class, same doctrine as the null-stat listing pin). Defect in the spec rule: ln -s . self makes a directory's ID an input to itself (uncomputable Merkle cycle) and out-of-tree targets leak outside bytes into content IDs, breaking T3 and forcing verification to read outside <dir>. The entry is complete without an ID: identity is a pure function of the tree at every scan root (subtree IDs stable; dedup and diff work); cycles unconstructible; symlinks never exit-2 omissions and always materialize; verification never reads outside <dir>; cat of a symlink component errors, printing the recorded target."
+  },
+  {
+    "item": "Conditional in-tree symlink content IDs (ID = target's content ID iff the target resolves lexically to a regular file inside the scanned tree, else null)",
+    "status": "rejected",
+    "reason": "Concrete defect: the rule is root-relative — the same subtree yields different listing bytes under different scan roots, so the surface's own subtree-restore example (restore --force SNAP/src src/ with an out-of-subtree relative link) fails verification on a byte-perfect restore, subtree dedup breaks, and diff SNAP/src liveSrc/ is permanently non-empty. The unconditional-null rule is strictly simpler and loses only cat-through-a-link sugar."
+  },
+  {
+    "item": "Padded-column c4 log layout (per-invocation column widths)",
+    "status": "rejected",
+    "reason": "Concrete defect: padding is computed per run across all lines, so one later long name re-renders every earlier line — a layout called frozen that is not byte-stable — and 'minimum two spaces' licenses byte-divergent conforming outputs. Superseded by index + verbatim canonical entry."
+  },
+  {
+    "item": "gc-vs-ingest re-verify/re-put protocol (gc holds the append lock through delete; ingests stat and re-put claimed objects post-lock)",
+    "status": "rejected",
+    "reason": "Three holes shown in-case: nothing forced the mark set to be computed under the lock (a conforming gc could still delete a just-journaled snapshot); a stdin blob cannot re-read stdin to re-put; re-put objects need a second flush barrier that only inference supplied. Superseded by the shared/exclusive sweep lock — waiting is simpler than repairing, and it also protects restore's content pulls."
+  },
+  {
+    "item": "Per-verb refusal matrix for non-local write stores (id -s / restore --force / gc / no-arg log refuse s3:// etc.)",
+    "status": "rejected",
+    "reason": "Superseded by definitional scoping: a store is a directory on a local filesystem, so there is no remote write store to refuse — one sentence instead of four rules; networking is a declared non-goal."
+  },
+  {
+    "item": "Frozen narration summary grammars (pinned live-line and summary shapes, byte-format and count-order rules)",
+    "status": "rejected",
+    "reason": "Freezing exact stderr shapes invites the parsing the non-contractual declaration forbids, and the proposed frozen shapes self-contradicted (em dash one bullet after a plain-ASCII pin). The light pin (isatty; one live line replaced by one summary; no escape codes; parse nothing) is the lesser surface; transcript shapes are illustrative."
+  },
+  {
+    "item": "restore exit 3: modification began but the resulting tree differs from the target in any way other than declared null-ID file omissions; line 1 printed and its undo stands; line 2 prints iff as-built recomputation completed; --force stdout is at most two lines, nothing else",
+    "status": "decided",
+    "reason": "NEW v2.5, forced by the reopened exit contract: without it, exit 1's 'nothing modified' is falsified by any post-line-1 failure and exit 2's boundary is undecidable. Completes the state machine (line count plus exit code fully determines state); non-flag surface, honestly ledgered; precedence pinned in the exit-2 entry."
+  },
+  {
+    "item": "Store-address classification is global; acceptance is per-verb (cat, restore targets, diff sides); id and every other verb refuse a store address with a teaching error printing the cat composition",
+    "status": "decided",
+    "reason": "NEW v2.5: both revisions leaked the dispatch paragraph into c4-id(1) while pinning acceptance at exactly three places, permitting two conforming implementations of c4 id <ID>. Classification-global keeps 'never silently hash an ID-shaped argument' deterministic in every verb; per-verb acceptance keeps id a filesystem/description verb (one implementation per idea — cat reads the store); the teaching refusal follows the patch-teaches-restore idiom."
+  },
+  {
+    "item": "Journal growth stated and bounded in cost: one short entry line per ingest, not data; appends inspect only the file tail; log streams; gc reads the journal once per run; shortening is the explicit split recipe",
+    "status": "decided",
+    "reason": "NEW v2.5 (freeze-audit year-three check): history is the product; growth is text lines (~10^6 ingests on the order of half a GB); costs stay flat with history length."
+  },
+  {
+    "item": "Durability and journal claims stated interruption-agnostic; 'advisory' locking scoped to c4's own writers; foreign edits to store files declared corruption, loud by construction",
+    "status": "decided",
+    "reason": "NEW v3 (round-2 sim fold, skeptic worst-confusion P2): the claims were argued only for power loss, and 'advisory' read as a hole under an absolute claim ('the docs never address non-power failure modes... asserted, not verifiable'). The ordering argument never distinguished interruption kinds, so the repair is wording, not mechanism: a killed process, a kernel panic, and power loss are one case; c4's tools are the only sanctioned writers of files inside a store; corruption cannot be silent — every read is rehash-verified and every journal line is a recomputable claim (c4 cat -r ID | c4 id -q -). Stated in id(1) DURABILITY, log(1) JOURNAL ENTRY, restore(1) DURABILITY, and design section 3. Zero surface spend."
+  },
+  {
+    "item": "Round-2 blind-sim evidence weighting: personas that executed the shipped v1.0.13 binary measured version skew, not the design",
+    "status": "decided",
+    "reason": "NEW v3: two of four sims ran the real v1.0.13 against the v2.5 docs; every logged failure (no restore verb; id -s prints a description, not an ID; id -q silent; no-arg log rejected; no ID/path) is a ledgered deliberate pre-freeze breaking change observed from the wrong side. Void as doc evidence; the doc-only personas went 12/12 tasks with zero-to-cosmetic friction. Incidentally previews the mixed-state the coordinated suite release gate (RELEASE.md) exists to prevent. Round-3 sims must be doc-only or prototype-backed — open item."
+  }
+]

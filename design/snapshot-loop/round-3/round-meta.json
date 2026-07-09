@@ -1,0 +1,64 @@
+{
+  "ledger_additions": [
+    {
+      "item": "Hard-link structure is not recorded in any listing form: a hard-linked file scans as an ordinary file (its bytes; observed mode/mtime in full form); linkness never affects an ID at either level; restore materializes every file entry as an independent file with identical bytes, wherever the partners lived; link structure joins ownership/xattrs/ACLs outside the fidelity boundary (sidecar territory)",
+      "status": "decided",
+      "reason": "ROUND-3 FREEZE-CHECK BLOCKER 1. Amends the decided fidelity-boundary item under the concrete-defect standard: v3 asserted recording with no encoding, no knowledge-level assignment, no verification rule — conforming implementations mint divergent snapshot IDs for the same tree, or linkness in content form falsifies 'equal iff byte-identical' (ln a b vs cp -p a b). No compliant encoding exists: the grammar is frozen and a cross-directory link-group entry is root-relative — the defect class that rejected conditional symlink IDs. Withdraws an unimplementable claim; nothing ever encoded it, so nothing dangles."
+    },
+    {
+      "item": "Recording hard-link groups in listings (any encoding)",
+      "status": "rejected",
+      "reason": "The frozen grammar offers no field; a link-group entry naming a path outside the entry's own subtree makes listing bytes root-relative (unstable subtree IDs; byte-perfect subtree restores failing verification) — the exact defect that rejected conditional symlink IDs; a within-one-directory-only rule is a partial rule with an arbitrary boundary. Sidecar territory if measured demand appears."
+    },
+    {
+      "item": "Recomputation is target-guided for sequences: folding is a scan choice recorded in the listing, never a verification choice — verification and the dry-run plan fold exactly the member files the target's folded entries record (recomputed member IDs form the ID list, hashed as the entry's ID) and nothing else; diff against a description folds what that side records; restore's pre-image is a complete default scan (nothing excluded, nothing folded)",
+      "status": "decided",
+      "reason": "ROUND-3 FREEZE-CHECK BLOCKER 2: v3 left refolding unspecified while folded targets are constructible (id -s -S is legal; a saved -S description can be snapshotted and restored), so a byte-perfect restore exited 0 or 3 depending on implementation, the exit-3 one printing a false claim — violating conflict 7's 'every printed line is a true, recomputable claim in every outcome'."
+    },
+    {
+      "item": "Partial-scan recording is total for every entry kind: an unreadable entry records name and kind from the parent's listing, every field the scan observed (full form keeps observed mode/mtime; content form nulls them as always), and null for everything unread — size and ID always; an unreadable directory is a directory entry with null size and null ID recording no children; sockets/fifos/devices remain omitted; directory size = total file bytes the scan read beneath it (recursive; unread entries contribute nothing); same tree, same access outcomes yields same listing bytes from every conforming scanner",
+      "status": "decided",
+      "reason": "ROUND-3 FREEZE-CHECK BLOCKER 3: the rule pinned files only, so chmod-000 directories let conforming scanners mint divergent listing bytes (null-ID entry vs omission; uncomputable size) — the divergence class the sizes-derive-from-scan pin was adopted to eliminate. Also promotes the transcript's demonstrated recursive size sum to the stated rule."
+    },
+    {
+      "item": "Restore keep-as-found at null-ID target entries: restore never creates, modifies, or removes anything at a null-ID entry's name (file or directory; whatever <dir> holds is left exactly as found, absent stays absent); omissions listed on stderr; exit 2 iff every as-built difference sits at a null-ID target entry — conflict 7's precedence pin widened from FILE to any null-ID entry; exit 3 reserved for conditions a re-run can fix; line 2 always a true recomputable claim",
+      "status": "decided",
+      "reason": "ROUND-3 FREEZE-CHECK BLOCKER 4: v3 let a conforming restore destroy a pre-existing file at a null-ID name (keep and remove both satisfied exit 2 — the destructive verb's resulting tree was implementation-defined), and null-ID directory entries had no materialization rule and routed to exit 3, whose 're-run to finish' advice never terminates for a permanent target-side condition. Keep-as-found is the maximally non-destructive total rule; the resulting tree is again fully determined."
+    },
+    {
+      "item": "c4 log byte-stability scoped per journal file: over any given journal file a printed line reprints identically forever; the index is a per-file coordinate, never a permanent name (split installs a new file whose sections count from 1, stated at the gc recipe); the entry text after the index is immutable history in every file that carries it",
+      "status": "decided",
+      "reason": "ROUND-3 FREEZE-CHECK BLOCKER 5: the unconditional byte-stability sentence contradicted the design's own sanctioned split recipe, which renumbers surviving sections — two decided items in direct contradiction. One scoping clause repairs it; amends the decided log-layout item under the concrete-defect standard."
+    },
+    {
+      "item": "Resolution-failure discrimination is human-level: every ID/path resolution failure exits 1; stderr text distinguishes kinds for humans only; a machine distinguishing cases walks the listings (c4 cat <ID>/, then each level) instead of matching stderr; per-kind exit codes rejected",
+      "status": "decided",
+      "reason": "ROUND-3 SIM FOLD (novel friction 2, skeptic P1): 'not found' vs 'member of a folded sequence' are near-identical to a stderr-matching script. Per-kind exit codes are exit-code surface growth for a probe-level nicety and would sanctify the stderr parsing the non-contractual declaration forbids. ACCEPTED TRADEOFF — repeat friction does not count. The machine recipe is one sentence in cat(1) ERRORS."
+    },
+    {
+      "item": "Stderr undo hint scoped as human convenience: the complete undo command echoed on stderr is for a human retyping; scripts take stdout line 1; stated as a parenthetical in restore(1) UNDO",
+      "status": "decided",
+      "reason": "ROUND-3 SIM FOLD (novel friction 1, skeptic T2): the hint read as self-contradictory beside 'parse nothing from stderr'. The handle story is unchanged (stdout line 1, journal); one parenthetical, zero mechanism, zero surface."
+    },
+    {
+      "item": "Round-4 confirmation of v4: doc-only blind sims plus a fresh freeze-check exercising the five round-3 repairs (hard-link invariance incl. ln-vs-cp; folded-target restore round-trips; chmod-000 file and directory scans; null-ID restore over pre-existing content; log output across a split); freeze requires two consecutive clean rounds (0 blocking, 0 novel friction, no text change) from round 4",
+      "status": "open",
+      "reason": "Round 3 was the intended confirmation round and instead refuted v3 with 5 blockers. All five repairs are new contract text no sim or prosecutor has exercised; the convergence counter is reset to zero."
+    }
+  ],
+  "counts": {
+    "blocking": 5,
+    "novel": 2
+  },
+  "verdict": "NOT CONVERGED — counter reset to zero. The two-consecutive-rounds rule requires two consecutive rounds measuring 0 blocking and 0 novel friction with no text change. Taken at face value, round 3 — the intended confirmation round — measured 5 blocking findings (round 2 had claimed 0) plus 2 novel frictions and forced text changes (v4): it refutes rather than confirms freeze-readiness, and retroactively shows round 2's 0-blocking measurement was a miss of defects latent in v3, so no clean round exists on either side of the pair. I verified all five freeze-check findings against the v3 text myself; each is a genuine contract hole or decided-item contradiction on a constructible input — none is spurious, none is ledger-accepted friction. Every sim this round was doc-only (no no-execution violations; the two harness artifacts — a stray closing tag and answers filed in friction fields — are methodology noise, not friction). v4's five repairs (hard links not recorded; target-guided refolding; unreadable-entry totality; null-ID keep-as-found with widened exit-2; per-journal-file log stability) are unexercised contract text: v4 must go to a round-4 doc-only sim plus freeze-check, and the earliest possible freeze is after rounds 4 and 5 both measure clean on unchanged text.",
+  "changes": [
+    "Repair 1 (freeze blocker 1): hard-link recording claim withdrawn — no listing form records link structure; a hard-linked file scans as an ordinary file (bytes; observed mode/mtime in full form) so linkness never affects an ID at either level; restore materializes every file entry as an independent file; fidelity boundary restated in restore(1) NOTES and id(1) IDENTITY; amends the decided fidelity-boundary item under the concrete-defect standard (the only compliant alternatives were a frozen-grammar violation or the root-relativity defect that rejected conditional symlink IDs)",
+    "Repair 2 (freeze blocker 2): recomputation is target-guided for sequences — folding is a scan choice recorded in the listing, never a verification choice; verification and the dry-run plan fold exactly the member files the target's folded entries record and nothing else; diff against a description folds what that side records; the pre-image is pinned as a complete default scan (nothing excluded, nothing folded); byte-perfect restores of folded targets now verify exit 0 in every conforming implementation",
+    "Repair 3 (freeze blocker 3): partial-scan rule made total for every entry kind — an unreadable entry records name and kind from the parent's listing, observed fields (full form keeps mode/mtime), and null for everything unread (size and ID always); an unreadable directory is a directory entry with null size/ID recording no children; directory size restated as the total file bytes the scan read beneath it (recursive, always computable; also closes the check's non-blocking direct-vs-recursive wording note)",
+    "Repair 4 (freeze blocker 4): restore keep-as-found at null-ID target entries — never creates, modifies, or removes anything at a null-ID entry's name (absent stays absent); conflict-7 exit-2 precedence widened from FILE entries to any null-ID entry (file or directory), so permanent target-side omissions exit 2 with line 2 printed and exit 3 is reserved for conditions a re-run can actually fix",
+    "Repair 5 (freeze blocker 5): c4 log byte-stability scoped per journal file — the index is a per-file coordinate, never a permanent name; split installs a new file whose sections count from 1 (stated at the gc split recipe); the entry text after the index is immutable in every file that carries it; amends the decided log-layout item and removes the contradiction with the sanctioned split recipe",
+    "Sim fold (novel friction 1): restore(1) UNDO parenthetical — the stderr undo hint is a convenience for a human retyping; scripts take stdout line 1; parse nothing from stderr",
+    "Sim fold (novel friction 2, adjudicated + ledgered): cat(1) ERRORS now states all resolution failures exit 1 and machines walk the listings instead of matching stderr; per-kind exit codes rejected as surface growth that would sanctify forbidden stderr parsing",
+    "Draft bookkeeping: round-3 freeze-check fold and blind-sim fold sections added; conflicts 1 and 7 amended inline with round-3 markers; round-2 fold section retitled as historical measurement; surface accounting, migration notes, task closure (T3 gains the ln-vs-cp invariance), GC retention recipe, future-work (hard-link sidecar note), and round-3 closure updated; v4 files written to oss/c4/design/snapshot-loop/round-3/ (draft-v4.md, surface-v4.md)"
+  ]
+}

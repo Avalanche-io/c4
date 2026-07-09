@@ -1,0 +1,111 @@
+{
+  "open_items": [
+    "Pin ID/path edge semantics before freeze: component naming a symlink or file mid-path (error vs follow-never), trailing-slash form (require for directory listings?), and whether .c4m-file targets may also take /path descent.",
+    "Define the journal entry's <name>.c4m and origin fields for stdin blob ingests (| c4 -s), which have no basename or abs-path; must be deterministic.",
+    "Pin the stderr progress format and TTY-detection rule once (non-contractual narration, but agents benefit from a stable shape).",
+    "Freeze the exact c4 log column layout (survived all four sims unchanged; low pressure).",
+    "Carried non-goals: journal semantics for non-local (s3/remote) stores; retention recipe concurrency (stop writers during split, gc holds append lock); fidelity sidecar for xattrs/ownership/ACLs as an external structure.",
+    "Round-2 sim note: keep T1's wording ('delete every file the snapshot produced outside the store') — the surface now answers it explicitly ('-s writes only inside the store'), so it becomes a test that the sentence lands rather than a trap.",
+    "Round-2 verification targets: have a sim exercise c4 cat ID/path on a deep path and a missing name; have a sim reason through the crash-between-journal-and-print case using only c4-log(1)'s text."
+  ],
+  "counts": {
+    "blocking": 0,
+    "novel_friction": 9,
+    "surface": {
+      "concepts": 2,
+      "new_verbs": 1,
+      "new_flags": 1
+    }
+  },
+  "summary": "Round-1 fold: 4 personas went 20/20 on the success tasks; 0 prosecutor blocking counts remain unresolved; 9 distinct novel friction events were folded. Two design changes: (1) ID/path store addressing (`c4 cat SNAP/src/parser.go`, restore targets, diff sides) — descends stored listings by exact entry name, each level rehash-verified; replaces the fragile `cat -r | grep` idiom flagged by two personas, at zero new flags/verbs/concepts. (2) Journal-line durability equivalence with the repair algorithm and worst case pinned: a complete journal line found after a crash names a fully durable snapshot (objects barriered before append); a torn tail belongs only to an ingest that never printed; repair = truncate the trailing partial section under the append lock; unclaimed objects are unrooted and shown by gc's dry run. Seven exactness fixes on the surface: id -s side effects enumerated (writes only inside the store — killing both cold-user worst confusions about phantom artifacts); -q reframed as output-form-only with content as the default identity level (git-user inversion); restore verification defined per knowledge level and 'platform-default metadata' given a definition; the timing model reconciled against its own transcript (durability overhead vs hash-bound total, with the worked 3.5s+2.6s≈6.1s sum shown); the SHA-512 axiom stated once in IDENTITY instead of implied as an unconditional guarantee; stderr progress narration added (TTY live count, pipe summary); and 'c4 log is the reflog / there is no ref namespace' stated in restore(1) UNDO. Ledger updated: 9 new decided items tagged ROUND-1 FOLD, named-refs rejected as an accepted tradeoff, hash-axiom and concurrent-restore items explicitly marked accepted tradeoffs so repeat friction stops counting, and 3 new open items (ID/path edges, stdin-blob journal naming, progress format). Budget unchanged: 2 identity concepts, 1 new verb (restore), 1 new flag (--force), 0 grammar changes, 0 deps.",
+  "drafts_meta": [
+    {
+      "stance": "Subtractive-minimal — the store is the design: one property (an ID is printed only after everything it names is durable in the store, and any printed ID is recoverable from the store alone) carries identity, self-description, durability, and undo; the surface change is +1 verb, +0 flags, −7 flags, 2 named identity concepts, 0 format changes.",
+      "surface_count": {
+        "concepts": 2,
+        "new_verbs": 1,
+        "new_flags": 0
+      },
+      "key_decisions": [
+        "The print barrier is the store's one contract: no ID reaches stdout before everything it transitively names is durable (one device flush, ~5.4ms), and any printed ID is recoverable from the store alone — identity, self-description, durability, and undo are all corollaries.",
+        "Zero new object kinds: by the existing flatten-on-canonicalize rule a description's canonical ID equals the described root's directory ID, so the 'snapshot object' is just the root's one-level listing stored like any other content; the whole fix for complaint #1 is 'store the root listing too, print its ID'.",
+        "Two named identities, one mechanism: content ID (stat-free — mode/timestamp null, size/names/IDs real; machine-, clock-, umask-independent) and snapshot ID (full observation; the recovery handle); they differ only in which fields are null, and files keep their single blob ID.",
+        "c4 id defaults flip to ask-vs-preserve: plain id scans in new content mode (-m gains value 'c'; answers T3), id -s scans full and prints only the snapshot ID (was: the whole manifest), -q now prints only the ID (was: silence) — breaking default changes accepted, grammar and Merkle rule untouched.",
+        "restore is the sole tree-writing verb and has zero flags: it always snapshots the target directory (full mode, durable, printed as line 1) before the first mutation, reconciles, verifies by recomputation at the target's own knowledge level, then prints the target ID as line 2; undo = restore line 1, redo = restore line 2.",
+        "patch is demoted to pure text algebra (chains in, resolved c4m out) and loses ~7 flags (-s, -r, -q, --dry-run, --source, --no-store, --no-fsync, -m); pointing patch at a directory errors with the restore command — the accident vector of complaint #2 is deleted, not guarded.",
+        "Durability physics: per-file F_FULLFSYNC (6.4ms → 3min/20k) is rejected; plain fsync+rename per object (~126µs) plus one end barrier gives 'printed ⇒ durable' at ~2.5s overhead per 20k files, so there is no --no-fsync mode anywhere; torn objects are self-detecting because objects verify against their names.",
+        "Uniform argument resolution: anywhere a verb takes a c4m file it also takes a description ID resolved from the store (cat, diff, id, restore), so tree-ID-from-snapshot, after-the-fact changesets (diff id id), and store-only reading need no new surface.",
+        "Nulls are the identity engine, not an edge case: a null field is 'no claim' — content IDs are the null-projection of snapshots, verification recomputes only claimed fields, and restore never rewrites a file a partial description doesn't contradict.",
+        "The empty description (zero bytes) has a fixed, always-resolvable ID: it is the pre-image of an absent directory and the way to empty one — no special cases in the undo story.",
+        "Naming/refs/GC policy stay outside the store (a kept ID is a line of text — shell history, a lockfile entry, a git-committed file); the store remains a bag of self-verifying closures beside git, not a VCS."
+      ]
+    },
+    {
+      "stance": "composition-first: every capability is a composition of the existing verbs (id, cat, diff, patch, merge, log, split, paths, intersect, explain, gc) and the frozen c4m grammar; new behavior arrives only as changed defaults of existing verbs plus one store-resident file that is itself an ordinary c4m patch chain readable by the existing chain verbs.",
+      "surface_count": {
+        "concepts": 2,
+        "new_verbs": 0,
+        "new_flags": 0
+      },
+      "key_decisions": [
+        "Directory identity becomes stat-free by default: a directory's C4 ID hashes the one-level canonical listing in content form (mode '-', timestamp '-'), using the spec's first-class null fields — no grammar change, and identical bytes now yield identical IDs on any machine (fixes T3, honors determinism).",
+        "Exactly two user-visible identity concepts: content ID (bytes) and snapshot ID (a recorded description's own bytes) — one hashing mechanism, two named roles; a snapshot is just a c4m file stored as content.",
+        "The ID a c4m stream denotes (c4 id of stdin/file, diff/patch boundary IDs, chain checkpoints) is its root content ID, making the spec's pipe law 'c4 id DIR | c4 id == ID(DIR)' hold exactly.",
+        "Snapshot-with-storage always captures the description: id -s / bare c4 / patch scan paths store the full snapshot c4m at its own ID and append one entry to the store log (founding complaint 1 fixed as a default, zero new surface).",
+        "The store log <store>/log.c4m is an ordinary c4m patch chain — one file-entry section per recorded description ('rootname.c4m' + snapshot ID); history, catalog, time-travel, and archiving are the existing log / patch / patch -n / split verbs.",
+        "No-argument defaults unify discovery: c4 log, c4 patch, and c4 gc with no c4m named operate on the store log ('when no c4m is named, the store's log is the c4m').",
+        "Reconcile records a durable pre-image by default before the first destructive operation (retiring patch -s and patch -r); undo is the log itself — cat the pre-image snapshot and patch it back; undo is undoable because the undo run records its own pre-image.",
+        "Destructive opt-out is long-form only: --no-store (existing flag, honestly broadened) skips all store writes including the pre-image; --dry-run remains the free look; no interactive prompts.",
+        "Durability protocol from the measured physics: per-object fsync+atomic-rename (~130 microseconds/file), then log append, then ONE full-device flush barrier (~5.4 ms) before the command reports — ~2.5 s overhead for 20k files, never per-file F_FULLFSYNC (~3 min); contract: reported means power-loss-proof, unreported means the log never changed.",
+        "Log tail is WAL-disciplined: a section appears completely or not at all; readers ignore a torn final section and the next append repairs it.",
+        "c4 cat verifies on read that an object's bytes hash to its ID before emitting — one-command falsifiability for every object class (files, listings, snapshots).",
+        "Surface budget spent: 0 new verbs, 0 new flags, 2 concepts; two flags retired and one broadened — the design is net-subtractive."
+      ]
+    },
+    {
+      "stance": "CONTRARIAN. Three premises killed after attack, one reframed. (1) KILLED: \"undo belongs to reconcile.\" An undo subsystem (patch -r, the -s store-removals flag, kept changesets) is a vote of no confidence in the store itself; today undo requires three opt-ins the accident-user never made. Undo is not a feature — it is restore of a pre-image snapshot that destructive reconciliation must have durably stored before destroying anything. (2) KILLED: the stat-tainted directory ID. It violates the project's own determinism principle (same bytes, two machines, two IDs) and answers no question that content ID and snapshot ID don't answer better; it dies entirely. (3) KILLED: \"durability = every write durable\" and \"materialized trees have durability.\" Per-file F_FULLFSYNC buys a 3-minute promise nobody can use; durability is promised only at the claim point (logged ⇒ durable), and working trees get no durability promise at all — the store is the system of record, trees are projections. REFRAMED: snapshots do NOT auto-store (id stays pure), but storing is never partial — content and description are not separable acts, so -s becomes total (bytes + listings + description + log line) rather than the current half-store that motivated complaint #1.",
+      "surface_count": {
+        "concepts": 2,
+        "new_verbs": 1,
+        "new_flags": 1
+      },
+      "key_decisions": [
+        "KILL: undo-as-a-subsystem is deleted (patch -r, diff -r, store-removals -s, kept changesets); the default pre-image snapshot of every destructive restore IS the undo, and its ID is the command's stdout",
+        "KILL: the stat-tainted directory ID dies; directory C4 IDs hash the one-level canonical listing in content form (stat fields null, per frozen null machinery), so identical bytes give identical tree IDs across machines (T3 by string equality)",
+        "KILL: durable-every-write and tree durability; durability is promised only at the claim point — objects fsync'd, one device barrier, log line fsync'd, second barrier, then exit 0 — so 'logged implies durable'; materialization never per-file-fsyncs (--no-fsync deleted) and restored trees carry no power-loss promise (re-run restore)",
+        "REFRAME: id stays pure (no auto-store), but -s becomes a total ingest — file bytes + directory listings + the canonical description itself + one log line — storing content and description are never separable",
+        "Exactly two user-visible identities, one mechanism: content ID (what the bytes are; files and trees) and snapshot ID (the C4 ID of a description's canonical text, pinning recorded metadata)",
+        "The store self-describes via <store>/snapshots.c4m — an ordinary c4m patch chain (frozen grammar): one entry per snapshot with label, ingest time, size, inbound flow-link provenance (host:/path), and snapshot ID; c4 cat = current, c4 log = history, c4 gc <log> = root set",
+        "restore is the ONLY verb that writes working trees; patch returns to pure chain algebra (its 7-way dispatch and 6 flags deleted), making the original accident unconstructible",
+        "restore's target is always a description (c4m file, ID, or stdin '-'), never a directory; dir-to-dir mirroring is the pipeline `c4 id -s A | c4 restore --force - B`",
+        "restore defaults to a dry run whose stdout is the exact changeset in frozen patch format, and the plan's first bare ID line equals the pre-image ID that --force will print",
+        "--force is the only new flag: validate sources, ingest the pre-image durably BEFORE any destruction, print the pre-image snapshot ID to stdout, reconcile, narrate the literal undo command on stderr; no opt-out flag for the pre-image",
+        "id -q is redefined (not added): print bare content IDs only — root tree ID for a directory, a c4m file's own snapshot ID — matching the existing bare-ID stdin behavior",
+        "Restoring a tree content ID degrades gracefully (null metadata → umask/current-time defaults); restoring a snapshot ID reproduces recorded times and modes, closing the byte-exact round trip (a re-scan of a restored tree reproduces the same snapshot ID)",
+        "T4 physics: 20k files ingest in seconds (~126µs/file plain fsync + two ~5.4ms barriers); the ~3-minute per-file F_FULLFSYNC regime is rejected as buying an unusable promise"
+      ]
+    }
+  ],
+  "friction_meta": [
+    {
+      "persona": "New developer encountering c4 CLI for the first time, working only from provided documentation",
+      "worst": "Task T1's phrase \"delete every file the snapshot produced outside the store.\" The documentation states that 'c4 id -s' only prints a snapshot ID and writes content to the store — nothing is created outside the store by this command. The task wording suggests there are artifacts to delete outside the store, but none exist from the snapshot operation itself. This contradicts the premise. I resolved it by interpreting the instruction as \"delete the original tree that was snapshotted\" (matching the TRANSCRIPT behavior) but the ambiguous wording created real uncertainty about what was being asked.</confusion>\n</invoke>",
+      "failures": []
+    },
+    {
+      "persona": "15-year git power user attempting c4 CLI",
+      "worst": "The distinction between `-q` (content ID: stable everywhere) and `-s` (snapshot ID: platform-specific with mtimes). A git user expects hashes to always be stable by default. Here, `-s` snapshots include metadata that varies across machines, and `-q` gives the content-only hash. The docs explain it but require intentional flag selection — this is opposite the git mental model where git-show-ref is always stable. Additionally, the undo handle being print-only rather than stored as a named reference breaks the git expectation of persistent ref tracking.",
+      "failures": []
+    },
+    {
+      "persona": "Autonomous CLI agent",
+      "worst": "None. All tasks have unambiguous documented behavior. Every command follows directly from the CLI help text and transcript examples without requiring undocumented behavior or interpretation.",
+      "failures": []
+    },
+    {
+      "persona": "Skeptical HN reader skimming the c4 man page",
+      "worst": "T1's task wording ('delete the tree AND every file the snapshot produced outside the store') assumes `c4 id -s` produces files outside the store, but nothing in the man page supports that -- id -s writes only into $C4_STORE. Either the task is a trap to see if I hallucinate side-effect files, or the docs are hiding some cache/tmp behavior they never disclose. Close second: the T4 timing model (130us/file + 10ms barriers) mathematically contradicts the transcript's own '6.1s for 20,312 files' figure by more than 2x, and the doc never reconciles the discrepancy or accounts for actual data throughput (4.8GB) in its 'overhead' claim.</worst_confusion>\n",
+      "failures": []
+    }
+  ]
+}
