@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+### Scan correctness: guided-scan directory IDs (action required)
+
+**If you ever ran `c4 id --continue` (guided scan) on v1.0.13 or
+earlier, regenerate those c4m files.** A bug caused every *directory*
+entry produced by a guided scan to be silently written with the
+empty-input C4 ID instead of the directory's real ID. File entries
+were unaffected — file IDs are hashed directly from content — so the
+damage is confined to directory roll-up IDs, but any tool comparing
+directory or tree identity against an affected c4m file gets wrong
+answers. A fresh scan (`c4 id <dir>` or `c4 id --continue` on
+v1.0.14) produces correct IDs.
+
+Root cause: directory IDs were computed by re-scanning each
+directory's subtree with a cloned scanner that incorrectly inherited
+the guide filter; root-relative guide paths never match a re-rooted
+sub-scan, so every sub-scan came back empty, and the empty manifest's
+ID was assigned without error. Two fixes at once:
+
+- **Directory C4 IDs are now computed bottom-up** from the
+  already-scanned children — the canonical one-level listing of the
+  directory's direct entries, byte-identical to a fresh scan rooted
+  there. Directories are never re-scanned, guided scans stay
+  root-anchored, and the regression is pinned by tests that assert a
+  guided re-scan of an unchanged tree reproduces the original
+  manifest exactly.
+- **Deep trees now scan in linear time.** The per-directory subtree
+  re-scan made full-mode scans O(2^depth): ~93 s at depth 20, never
+  finishing at depth 40. Bottom-up computation is O(N): ~0.007 s at
+  depth 20.
+
+Cross-implementation audit: the defect is Go-only. `c4py` computes
+directory IDs bottom-up in memory and has no guided-scan feature;
+`c4ts`, `c4-swift`, and `libc4` do not compute directory entry IDs at
+all (parsed or caller-supplied only). No equivalent fix is needed
+elsewhere in the suite.
+
+### Diff correctness: entries keyed by full path
+
+`c4m.Diff` keyed entries by bare name, so same-named files in
+different directories could collide and misreport. Entries are now
+keyed by full path.
+
+### Structure mode: null timestamps render as `-`
+
+Structure-mode scans render unstated timestamps as the null sentinel
+`-`, not the zero time `0001-01-01T00:00:00Z`.
+
 ### Safety defaults: self-capturing snapshots and patch pre-state
 
 Two gaps between "the store is the safety net" and what the CLI put in
