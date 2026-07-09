@@ -166,30 +166,32 @@ func TestProgressiveScanner(t *testing.T) {
 		scanner.c4Workers = 1
 		
 		scanner.Start()
-		
+
+		// Poll until the scanner reaches StageComplete (or time out).
+		// How many intermediate stages a poller happens to observe is
+		// scheduling luck — a tiny tree can pass through them between
+		// polls — so progression is asserted by reaching the terminal
+		// stage, not by counting sightings.
 		stages := make(map[ScanStage]bool)
-		
-		// Monitor stage progression
-		for i := 0; i < 20; i++ {
-			time.Sleep(50 * time.Millisecond)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
 			status := scanner.RequestStatus()
 			if status != nil {
 				stages[status.Stage] = true
+				if status.Stage == StageComplete {
+					break
+				}
 			}
-			
-			if len(stages) >= 3 {
-				break // Seen all stages
-			}
+			time.Sleep(time.Millisecond)
 		}
-		
+
 		scanner.Stop()
 		scanner.Wait()
-		
-		// Should have progressed through stages
-		if len(stages) < 2 {
-			t.Errorf("Expected at least 2 stages, saw %d", len(stages))
+
+		if !stages[StageComplete] {
+			t.Errorf("scanner never reached StageComplete; stages seen: %v", stages)
 		}
-		
+
 		// Check that metadata was collected
 		metaCount := atomic.LoadInt64(&scanner.metadataScanned)
 		if metaCount == 0 {
