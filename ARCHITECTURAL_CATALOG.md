@@ -183,7 +183,7 @@ Content-addressed storage. Depends only on root `c4`.
 |------|-------------|
 | `Folder` | Flat directory: one file per ID. |
 | `ShardedFolder` | Two-level directory using ID chars 3-4 as shard key. |
-| `TreeStore` | Adaptive trie sharding: splits leaf dirs at threshold (default 4096; O(1) amortized split accounting via cached per-leaf counts). `SetSyncMode` selects the write-durability policy (`SyncEach` default / `SyncBatch` / `SyncNone`); `Sync` is the batch barrier. `Put` is safe for concurrent use. |
+| `TreeStore` | Adaptive trie sharding: splits leaf dirs at threshold (default 4096; O(1) amortized split accounting via cached per-leaf counts). `SetSyncMode` selects the write-durability policy (`SyncEach` default / `SyncBatch` / `SyncNone`); `Sync` is the batch barrier. `Put` is safe for concurrent use. `Walk` enumerates every stored object (verification/tests; the seam a future journal-rooted collector needs). |
 | `S3Store` | S3-compatible object store. SigV4 signing with stdlib only. |
 | `MultiStore` | Writes to first, reads from all in order. |
 | `RAM` | In-memory store (testing). |
