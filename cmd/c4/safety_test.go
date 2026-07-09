@@ -14,8 +14,8 @@ import (
 func storedID(t *testing.T, stderr string) string {
 	t.Helper()
 	for _, line := range strings.Split(stderr, "\n") {
-		if rest, ok := strings.CutPrefix(line, "stored: "); ok {
-			return strings.TrimSpace(rest)
+		if strings.HasPrefix(line, "stored: ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "stored: "))
 		}
 	}
 	t.Fatalf("no 'stored:' line in stderr: %s", stderr)

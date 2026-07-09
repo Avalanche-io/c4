@@ -21,12 +21,16 @@ jobs:
             go: '1.16'
           - os: windows-latest
             go: '1.16'
+          # Old-Go binaries lack LC_UUID; the current macos-latest
+          # image's dyld aborts them ("missing LC_UUID load command").
+          # macOS coverage comes from the 'stable' leg; 1.16/1.21
+          # compatibility is covered on ubuntu and windows.
+          - os: macos-latest
+            go: '1.21'
         include:
           # Test Go 1.16 compatibility without race detector
+          # (vet + build only on macos-latest — see LC_UUID note)
           - os: ubuntu-latest
-            go: '1.16'
-            race: false
-          - os: macos-latest
             go: '1.16'
             race: false
           - os: windows-latest
