@@ -95,14 +95,10 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 
 	// Batch barrier: created files were handed to the device with cheap
 	// flushes; one device-cache flush makes the whole batch durable
-	// before Apply returns. Skipped when nothing was written.
+	// before Apply returns. Skipped when nothing was written. No-op on
+	// Windows, where per-file Sync already reaches stable storage.
 	if !r.dryRun && r.syncMode == store.SyncBatch && r.wroteFiles {
-		if f, err := os.Open(dirPath); err == nil {
-			if err := f.Sync(); err != nil {
-				res.Errors = append(res.Errors, fmt.Errorf("durability barrier: %w", err))
-			}
-			f.Close()
-		} else {
+		if err := store.SyncDir(dirPath); err != nil {
 			res.Errors = append(res.Errors, fmt.Errorf("durability barrier: %w", err))
 		}
 	}

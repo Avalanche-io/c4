@@ -72,12 +72,7 @@ func (s *TreeStore) Sync() error {
 	if s.syncMode != SyncBatch || !s.dirty {
 		return nil
 	}
-	f, err := os.Open(s.root)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := f.Sync(); err != nil {
+	if err := SyncDir(s.root); err != nil {
 		return err
 	}
 	s.dirty = false
