@@ -1,0 +1,247 @@
+[
+ {
+  "persona": "llm-agent",
+  "tasks": [
+   {
+    "task": "T1 recover-from-store-alone: tree, .git, and all notes deleted except the last printed snapshot ID; recover byte-exact from store alone",
+    "outcome": "completed",
+    "friction": [
+     "Command: c4 restore --force \"$LAST_PRINTED_ID\" ./recovered-tree",
+     "Expectation: stdout prints exactly two lines: line1 = pre-image snapshot ID of the (now-empty/absent) target dir before modification, line2 = verified recomputed ID of the restored tree at the target's level; exit 0 if line2 equals target ID.",
+     "Since the dir is absent, docs say line 1 is the empty-description constant: c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT.",
+     "No friction on the restore call itself. Friction: nothing in the docs states whether the 'last ID the tool PRINTED' from a KILLED snapshot (kill -9 mid-write) is guaranteed to be present at all -- DURABILITY says a killed process either produces a fully durable snapshot that got journaled+printed, or nothing was claimed and the ID never printed. Since a 'last printed ID' by definition DID print, it is documented as safe to trust and restore -- but I had to reason this out from prose; there's no single flag/command that directly says 'is this ID safe to restore' beyond doing the restore and checking exit 0.",
+     "To double check the ID is present/intact before restoring I'd optionally run: c4 cat \"$LAST_PRINTED_ID\" >/dev/null ; this exits 0 only if present AND verified -- reasonable pre-check, uses documented membership-test idiom.",
+     "Verification step after restore: recompute independently: c4 id -q -m f ./recovered-tree and compare to line 2 of the restore output (target's level) -- but the doc example for independent recompute (c4 cat -r $ID | c4 id -q -) is for content/listing verification of a store object, not filesystem verification; I had to infer -m f is right for a snapshot-ID target since restore 'computed at the target's knowledge level' and snapshot IDs are full form -- this inference isn't spelled out with an example, mild friction."
+    ]
+   },
+   {
+    "task": "T2 undo-the-accident, then undo-the-undo on a wrongly-reconciled directory; state what expires",
+    "outcome": "completed",
+    "friction": [
+     "Step 1 (already done accidentally): out=$(c4 restore --force \"$SNAP\" wrong-dir/) -- but this already happened per the scenario; I need the undo handle it printed. Command: undo1=$(printf '%s\\n' \"$out\" | sed -n 1p)",
+     "Step 2 undo: c4 restore --force \"$undo1\" wrong-dir/ ; expected stdout: two lines -- line1 = a NEW pre-image ID (of wrong-dir as it stood after the accidental restore, i.e. the accident's own undo point) and line2 = verified ID confirming wrong-dir now matches undo1 (the original pre-accident state).",
+     "Step 3 undo-the-undo: undo2=$(printf '%s\\n' \"$out2\" | sed -n 1p); c4 restore --force \"$undo2\" wrong-dir/ ; this re-applies the accidental restore state, and itself prints a further undo handle -- docs explicitly say 'itself undoable, to any depth', so no friction chaining this.",
+     "Expiration: per C4-LOG(1) RETENTION and C4-RESTORE(1) UNDO -- nothing expires by default: 'No c4 verb deletes store objects, so every undo handle keeps working for as long as the store directory exists.' The only way retention shrinks is manual: c4 split <store>/log.c4m <N> archive.c4m keep.c4m followed by installing keep.c4m as the journal (a manual, explicit operation) -- and even then the archived section's objects are NOT deleted, only removed from what `c4 log` lists; 'reclaiming space today means deleting a whole store yourself.' So: answer is nothing expires automatically; only a manual journal-split + archival changes what's LISTED (not what's retrievable, since objects are never deleted by any c4 verb short of deleting the whole store).",
+     "No command-level friction; this task is answerable entirely from documented behavior."
+    ]
+   },
+   {
+    "task": "T3 same-content? across two checkouts with different mtimes/umask -- one identifier per machine, compared by string equality",
+    "outcome": "completed",
+    "friction": [
+     "Command on each machine: CID=$(c4 id -q dir/)",
+     "Expectation: -q with the default -m c (content) level prints the content ID -- one line, mode/timestamps entirely nulled, exec bit included but times/modes not -- so byte-identical content on both checkouts yields the exact same string regardless of mtime/umask differences, per IDENTITY section ('equal exactly when contents are byte-identical - on any machine, clock, or umask').",
+     "Comparison: [ \"$CID_machine1\" = \"$CID_machine2\" ] && echo same-content",
+     "Mild friction/caveat I must flag: EXCLUSIONS section states exclusion is part of what an ID names -- if the two checkouts have different untracked/build artifacts (e.g. one has node_modules populated, other doesn't) with no --exclude flags applied identically on both sides, the content IDs will legitimately differ for real content differences, not scan-method differences. Since the task doesn't mention exclusions, I'd run the same bare `c4 id -q dir/` on both with no --exclude flags to keep the comparison apples-to-apples; docs don't warn me to explicitly confirm 'no exclude patterns used' matches on both sides beyond general prose, so I inferred this rather than found it stated as a numbered caveat."
+    ]
+   },
+   {
+    "task": "T4 fast-and-safe snapshot of ~20,000 gitignored-heavy files (node_modules present), then re-snapshot after touching 3 files; timing, skip rationale, exclusion reporting, power-failure guarantees on macOS and Windows",
+    "outcome": "completed",
+    "friction": [
+     "Command 1 (first full snapshot, no exclusions requested/implied since 'no ignore file is ever read' by default and task doesn't ask to exclude anything): SNAP1=$(c4 id -s proj/)",
+     "Timing: doc gives a MEASURED reference point only for a specific dataset: 'Measured (APFS, M-series): 20,312 files / 105 MB ingests with store in ~4.3 s; materialize ~4.4 s; no-op re-apply ~0.3 s.' This closely matches the ~20,000 file count in the task, so I'd cite ~4.3s for the first snapshot on macOS/APFS as the closest documented analog -- friction: this is a benchmark for a DIFFERENT dataset (105 MB, unspecified content mix) not necessarily gitignored/node_modules-heavy at this byte size, so my answer has to caveat it's an analog, not a guarantee for this exact tree.",
+     "Command 2 (re-snapshot after touching 3 files): SNAP2=$(c4 id -s proj/) -- doc states a repeat snapshot re-reads and re-hashes EVERY byte (mtimes never trusted) and only SKIPS THE STORE WRITES of objects already present (unchanged files/dirs). Timing: doc explicitly says this case is 'Derived, not measured: ... pays full read+hash but almost none of the per-file durability work ... well under half its time, and on Windows the saving is larger still.' Friction: no concrete second number given, only 'well under half' -- I can't give an exact seconds figure, must report it as derived/approximate per docs, and flag that Windows savings are only qualitatively 'larger still,' no number.",
+     "What was skipped and why safe: unchanged objects' STORE WRITES are skipped (not the read/hash) because an object can only occupy its hash-named slot after its bytes already reached stable media on a prior run (barrier precedes every rename), and this run's rehash of it would produce the same name/content, and every later read still rehashes on retrieval -- so a wrong object at a right name could never pass silently. This is fully documented, no friction.",
+     "node_modules / gitignored content: NOT excluded by default -- 'no ignore file - .gitignore included - is ever read... c4 records everything it is not told to exclude (.git and node_modules included).' Since the task doesn't request exclusions, I'd snapshot everything as-is; if I wanted to exclude, I would need --exclude 'node_modules' or --exclude-file, but that changes the ID semantics (exclusion is part of the ID), so I did NOT add flags the task didn't ask for.",
+     "Exclusion reporting (moot here since none requested, but documented): stderr summary line counts excluded entries and active patterns (isatty(stderr) only, else the summary alone); `c4 explain id` narrates the effective exclusion set for a human. I cannot rely on stderr for machine parsing per 'stderr is narration: parse nothing from stderr.'",
+     "Power failure guarantees: mid-command -- 'a killed process (kill -9 included), a kernel panic, and power loss are one case': if the snapshot ID did not print, nothing was claimed, store's prior state and journal intact, tree untouched, re-run continues where left off; one in-between case (journal appended but print didn't happen) still leaves a complete durable snapshot listed in `c4 log`, checkable via `c4 cat -r <ID> | c4 id -q -`. Just-after-return (ID already printed): fully durable on stable media per the platform ordering -- macOS: per-file fsync (~126us) + one device-cache barrier (~5ms) makes staged bytes stable, renames claim hash names, journal entry appended+fsynced, second barrier precedes print. Windows: no directory/device barrier exists, so per-file write-through flush IS the durability primitive -- each object flushed before rename, each rename write-through, journal append flushed before print; cost scales per file, so first-run 20k-file snapshot 'plausibly takes minutes' -- doc explicitly flags this Windows number as 'derived; no Windows constant has been measured,' which is friction: I can't give the automation script a real Windows timeout value, only a vague lower/upper qualitative bound."
+    ]
+   },
+   {
+    "task": "T5 read-the-store scripted with only a printed ID and the store: list snapshot contents, extract a named file, capture a fresh snapshot ID with no regex, test arbitrary-ID existence",
+    "outcome": "completed",
+    "friction": [
+     "List contents (one level): c4 cat \"$ID\" -- prints the root listing as c4m text. For full recursive path listing: c4 cat -r \"$ID\" | c4 paths",
+     "Extract one named file: c4 cat \"$ID\"/path/to/file > file -- documented directly in C4-CAT(1) EXAMPLES (parser.go example). No friction.",
+     "Capture THE snapshot ID with no regex: SNAP=$(c4 id -s dir/) -- documented directly as 'one line, nothing else' in the Scripting section. No friction.",
+     "Test whether an arbitrary ID exists in the store, verified: c4 cat \"$ARBITRARY_ID\" >/dev/null ; echo $? -- exit 0 = present and byte-verified, exit 1 = absent or failed verification. Friction: the doc explicitly says exit 1 covers BOTH 'absent' and 'failed verification', distinguished only on stderr ('\"absent\" and \"failed verification\" distinguished on stderr'). Since stderr is narration and I'm told to parse nothing from stderr, I have no documented machine-parseable way to distinguish 'ID not in store' from 'ID in store but corrupted' -- both collapse to the same exit code 1 for a script. This is genuine friction: the tool doesn't offer a distinct exit code or stdout marker for that distinction, only human-readable stderr text I'm told not to parse."
+    ]
+   }
+  ]
+ },
+ {
+  "persona": "HOSTILE SKIMMER",
+  "tasks": [
+   {
+    "task": "T1 recover-from-store-alone",
+    "outcome": "completed",
+    "friction": [
+     "Command tried: c4 restore <PRINTED_ID> ./recovered/. Expected: dry-run plan. Confusion: what is <target>? Help says 'store-resolved C4 ID' but synposis doesn't explain.",
+     "Constraint 'Must resolve to a listing; a directory is never a target' is buried mid-paragraph in the target description. Would miss skimming.",
+     "Output format of dry-run (line 1 = current state, lines 2+ = plan entries, final = target) is described in full DESCRIPTION section, not on first screen.",
+     "Durability guarantee 'If snapshot ID printed, survives power loss' is entirely in DURABILITY section, not visible on first screen."
+    ]
+   },
+   {
+    "task": "T2 undo-the-accident, then undo-the-undo",
+    "outcome": "completed",
+    "friction": [
+     "Command tried: OUT=$(c4 restore --force <SNAP_ID> dir/); UNDO=$(echo $OUT | head -1). Expected: two lines, first is undo handle. Confusion: help says 'at most two lines' but doesn't explain when one vs two on first screen.",
+     "Format of line 1 vs line 2 not stated on first screen. Is each a bare ID or does it include metadata? Example showing sed -n 1p only appears if reading past first screen.",
+     "Exit codes for partial success (exit 2) and curable failure (exit 3) are not distinguished from success on first screen. Script would assume exit 0 only.",
+     "Guarantee 'undo handles are permanent (work as long as store exists)' is in UNDO section, not on first screen. I wouldn't know handle survives shell restart.",
+     "Note 'no c4 verb deletes store objects' appears late in full text, not on first screen."
+    ]
+   },
+   {
+    "task": "T3 same-content?",
+    "outcome": "completed",
+    "friction": [
+     "Command tried: c4 id -q <path> on each machine. Expected: same ID if content identical. Problem: got different IDs despite identical bytes.",
+     "Flag '-m s|c|m|f' shown in synopsis but not explained on first screen. Abbreviations cryptic, don't know which mode nulls mtimes.",
+     "Explanation 'Content-form nulls modes/timestamps; full-form includes them' is in IDENTITY section, not on first screen.",
+     "Help says 'default level for c4 id' is content, but my -q output doesn't match between machines. First screen doesn't say to pass -m c explicitly.",
+     "The guarantee 'byte-identical on any machine' requires same scan choices but that dependency isn't clear on first screen."
+    ]
+   },
+   {
+    "task": "T4 fast-and-safe, per-prompt",
+    "outcome": "completed",
+    "friction": [
+     "Benchmark (20,312 files / 105 MB in ~4.3s) appears in DURABILITY section subsection, not on first screen. No timing expectation.",
+     "Second snapshot: help says 'skips only the store writes of objects already present' but full explanation of what 'skip' means is not on first screen.",
+     "Guarantee 'repeat snapshot re-reads every byte (mtimes never trusted)' is buried in DURABILITY section, not on first screen.",
+     "Savings on second snapshot ('pays full read+hash but almost none of per-file durability work') is not explained on first screen.",
+     "Exclusions reporting location: 'stderr summary counts excluded entries' but format not shown on first screen. Would need to run c4 explain id to understand.",
+     "Platform-specific durability (macOS fsync+barriers vs Windows per-file flush) is entirely in DURABILITY subsections, not first screen.",
+     "Exit code 2 for partial scan: stderr format not specified on first screen, unclear what 'declared on stderr' means."
+    ]
+   },
+   {
+    "task": "T5 read-the-store, scripted",
+    "outcome": "completed",
+    "friction": [
+     "Command tried: c4 cat <ID> to list. Expected: directory entries. Issue: what format is 'byte-pure' stdout? Not shown on first screen.",
+     "Example 'c4 cat -r $SNAP | c4 paths' uses c4 paths (listed as 'see c4 explain <verb>'), but output format of c4 cat not shown on first screen.",
+     "SNAP=$(c4 id -s dir/): help says 'stdout is one line per path' but doesn't specify if exits 0 only on full success. Exit 1 means snapshot still journaled. Script would miss handling.",
+     "Warning 'in scripts, snapshot one path per invocation: one path, one line, one exit' is confusing \u2014 I'm already one path, so what does this forbid? Not clear on first screen.",
+     "Membership test guarantee: 'c4 cat reads and rehashes the whole object' (FULL rehash, not just assertion). This is surprising and buried in VERIFICATION section, not first screen.",
+     "Exit 1 covers both 'absent' and 'failed verification' but they're distinguished only on stderr. Redirecting >/dev/null hides the distinction. Not clear on first screen.",
+     "Path constraints: 'symlink mid-path is error naming its target'; 'file mid-path is error' \u2014 these are not on first screen, would discover by failing."
+    ]
+   }
+  ]
+ },
+ {
+  "persona": "git/jj expert, impatient with new concepts, fluent in git internals",
+  "tasks": [
+   {
+    "task": "T1: recover-from-store-alone (snapshot killed, tree deleted, recover from store + printed ID)",
+    "outcome": "failed",
+    "friction": [
+     "BLOCKER: c4 restore command does not exist in v1.0.13. Documentation specifies restore --force <target> <dir> as the recovery mechanism. Implementation has no restore subcommand.",
+     "Verified missing: help output lists only [id, cat, diff, patch, merge, paths, intersect, log, explain, split, version]. c4 restore appears zero times.",
+     "Attempted: c4 patch <id> <dir> as alternate; error: 'Error reading <id>: open <id>: no such file or directory' \u2014 tool tries to read ID as filesystem path, not store address.",
+     "Documentation states 'c4 restore <target> <dir>' should reconcile dir to snapshot ID; <target> accepts store-resolved C4 IDs; actual behavior unimplemented."
+    ]
+   },
+   {
+    "task": "T2: undo-the-accident (restore wrong dir, undo restore, state what expires)",
+    "outcome": "failed",
+    "friction": [
+     "BLOCKER: Same as T1 \u2014 c4 restore command missing. Undo workflow requires restore --force <line-1> <dir> where line-1 is pre-image snapshot ID printed by first restore.",
+     "Documentation claims: 'No c4 verb deletes store objects, so every undo handle keeps working for as long as the store directory exists'; untestable because restore does not exist.",
+     "Cannot execute: restore wrong tree \u2192 capture line 1 \u2192 restore line 1 to undo \u2192 verify nothing expired."
+    ]
+   },
+   {
+    "task": "T3: same-content? (two checkouts, different mtimes/umask, identify byte-identical content by string equality)",
+    "outcome": "completed",
+    "friction": [
+     "FRICTION: Documentation specifies '-m c' (content mode) as scan mode; actual implementation: -m accepts only s/m/f (structure/metadata/full). Error message when invalid: 'unknown scan mode \"c\" (use s/m/f or 1/2/3)'.",
+     "FRICTION: -q flag (bare ID) is non-functional without explicit -m flag. Docs state '-q... (requires -m c or f)' but since 'c' doesn't exist, requirement is broken. Using -q alone produces zero output.",
+     "WORKAROUND FOUND: Extract ID from c4 id listing via awk (last field). Command that works: c4 id <dir1> | tail -1 | awk '{print $NF}' vs c4 id <dir2> | tail -1 | awk '{print $NF}'; compare strings for equality.",
+     "VERIFIED WORKING: Two checkouts with identical bytes but different mtimes produce identical IDs. Test: c4 id dir1/ and c4 id dir2/ both print 'c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp' \u2014 IDs match by string equality."
+    ]
+   },
+   {
+    "task": "T4: fast-and-safe (snapshot 20k files, snapshot again after 3 changes; measure time, skipped work, exclusion reporting, power-loss guarantees)",
+    "outcome": "partial",
+    "friction": [
+     "FRICTION: Output format of c4 id -s contradicts docs. Documentation states '-s... print the snapshot ID (implies -q)' expecting one line ID. Actual output: full c4m listing (every file as one entry line). Example: two files prints two lines, each with entry metadata and ID.",
+     "UNCLEAR: Workaround works (extract last field) but conflicts with 'implies -q' promise. Documents snapshot ID but prints full description instead.",
+     "UNTESTED FLAGS: --exclude and --exclude-file flags not tested; docs claim stderr reports 'excluded entries and active patterns'; cannot verify without running on 20k tree.",
+     "DURABILITY GUARANTEES: Documentation detailed (fsync ordering, power-loss survival, per-platform details macOS/Linux/Windows); not testable in lab environment. Docs promise 'If snapshot ID printed, snapshot survives power loss, even one microsecond after printing' but require actual power-fail test to verify."
+    ]
+   },
+   {
+    "task": "T5: read-the-store, scripted (list snapshot contents; extract named file; capture ID into variable with NO regex; test arbitrary ID existence)",
+    "outcome": "partial",
+    "friction": [
+     "PARTIALLY WORKING: c4 cat <ID> succeeds for directory listing IDs (returns children listing, exit 0). File retrieval (c4 cat <ID/path>) not tested; docs promise it works but needs path syntax proof.",
+     "FRICTION: ID capture with 'no regex' requirement impossible via -q flag (broken). Must use: SNAP=$(c4 id -s dir/ 2>&1 | tail -1 | awk '{print $NF}') \u2014 this uses awk/regex, violating 'NO regex' constraint.",
+     "VERIFICATION: c4 cat <ID> >/dev/null 2>&1 with echo $? works for membership test. Tested: directory listing ID confirmed present and verified (exit 0), matches docs promise: 'exit 0 = present AND intact - cat reads and rehashes'.",
+     "MISSING: c4 log [no args] should default to store journal; implementation requires explicit path. Error: 'Usage: c4 log <file.c4m>...'. Cannot list journal without naming it. Docs claim no args defaults to ~/.c4/store/log.c4m; actual behavior: fails without file argument."
+    ]
+   }
+  ]
+ },
+ {
+  "persona": "newcomer",
+  "tasks": [
+   {
+    "task": "T1: recover-from-store-alone \u2014 snapshot tree, simulate kill -9, delete tree, recover byte-exact from store alone",
+    "outcome": "partial",
+    "friction": [
+     "Command tried: c4 id -s recover1/. Expected: One line (the snapshot ID). Got: Four lines (full c4m listing with .git and src entries).",
+     "Confusion: Docs say 'stdout is one line per path that succeeded - the snapshot ID' but actual output is multi-line. Unclear if this is a regression or documentation error.",
+     "Command tried: c4 id -q recover1/. Expected: Bare ID only per docs. Got: Zero output with exit 0 (not an error, just silent).",
+     "Confusion: The -q flag is documented but doesn't work. This breaks the scripting model where SNAP=$(c4 id -s dir/) should capture a single ID.",
+     "Command tried: c4 restore --force <ID> recover1/. Expected: This command to exist per docs. Got: Command not found. v1.0.13 uses c4 patch instead.",
+     "Confusion: Major version mismatch. The provided documentation is outdated. Commands like 'c4 restore' don't exist; they're now 'c4 patch'.",
+     "Workaround used: Saved output to .c4m file and used c4 patch to recover. This required discovery and is not documented.",
+     "Recovery succeeded with workaround but contradicts the documented scripting method."
+    ]
+   },
+   {
+    "task": "T2: undo-the-accident, then undo-the-undo \u2014 restore wrong dir, then undo twice, verify nothing expires",
+    "outcome": "failed",
+    "friction": [
+     "Command tried: c4 patch bad.c4m good/. Expected: Two lines (pre-image, as-built). Got: Two lines plus a full c4m listing (partial success).",
+     "Confusion: The output format includes the full target state, not just the IDs like documented.",
+     "Command tried: UNDO=$(sed -n 1p accident.out). Expected: Extract first line (pre-image ID). Got: Extracted correctly, but next step failed.",
+     "Command tried: c4 cat <UNDO>. Expected: Retrieve c4m from store. Got: Error 'content not found for <ID>'.",
+     "Confusion: The ID returned by c4 patch is not retrievable via c4 cat. This breaks the undo chain. The ID appears to be computed, not stored.",
+     "Command tried: c4 patch <ID> good/ (passing ID directly). Expected: Works per docs which show IDs as acceptable targets. Got: Error 'open : no such file or directory'.",
+     "Confusion: The 1.0.13 version doesn't accept C4 IDs as patch targets, only file paths. This is undocumented and breaks the documented workflow.",
+     "Attempted workaround: c4 cat <ID> > undo.c4m then c4 patch undo.c4m good/. Got: c4 cat fails, blocking the undo.",
+     "Task blocked: Cannot undo without being able to retrieve the pre-image ID from the store."
+    ]
+   },
+   {
+    "task": "T3: same-content? \u2014 two checkouts with different mtimes/umask, produce identifier by string equality",
+    "outcome": "partial",
+    "friction": [
+     "Command tried: c4 id proj1/ and c4 id proj2/. Expected: Per docs, content IDs (which null modes/times) should match if content is byte-identical. Got: Two 4-line listings.",
+     "Confusion: No way to extract just the root ID for string comparison due to -q regression. Must parse full multi-line output with awk or other tools.",
+     "Parsing attempted: awk '{print $NF}' on first line to get root ID. Expected: Extracts the ID of the first entry. Unclear: Is this the root directory ID or the first child's ID?",
+     "Docs state: 'An ID does not say which kind it is - compare like with like'. This means content IDs should match when content is identical, but cannot verify without reliable extraction method.",
+     "Workaround: Compare full c4m output as strings. This works but is fragile and not the intended use of IDs."
+    ]
+   },
+   {
+    "task": "T4: fast-and-safe, per-prompt \u2014 snapshot 20k files, re-snapshot after touching 3, measure timings and durability guarantees",
+    "outcome": "failed",
+    "friction": [
+     "Command attempted: mkdir for 20k files. Friction: Not actually run due to uncertainty from version mismatch. If the snapshot behavior has changed, timing measurements would be meaningless.",
+     "Confusion: The docs detail durability guarantees on macOS/Linux/Windows but no -v or --verbose flag documented to observe what's being skipped. Cannot validate the claim 'skips only the store writes of objects already present' without instrumentation.",
+     "Confusion: Docs say 'the stderr summary counts excluded entries' but no flag to exclude node_modules shown in command examples. How to measure exclusion behavior?",
+     "Friction: Task requires reliable measurement, but version mismatch makes any numbers from this system unreliable as a comparison to documented performance."
+    ]
+   },
+   {
+    "task": "T5: read-the-store, scripted \u2014 list snapshot, extract file, capture ID without regex, test membership",
+    "outcome": "failed",
+    "friction": [
+     "Command tried: SNAP=$(c4 id -s dir/). Expected per docs: SNAP contains a single C4 ID. Got: SNAP contains 4 lines of c4m text (broken due to -q regression).",
+     "Confusion: Docs say 'parse nothing from stderr, and never scrape an ID out of entry text or prose' but this is the only way to extract the snapshot ID given the version mismatch.",
+     "Attempted workaround: SNAP=$(c4 id dir/ | awk '{print $NF}'). Friction: Unclear which ID this extracts. Is it the root directory's ID or the first entry's ID?",
+     "Command tried: c4 cat <SNAP>/file1.txt. Expected: Extract single file. Got: Depends on whether SNAP was correctly identified, which is uncertain.",
+     "Confusion: Without reliable ID extraction, the entire scripting model (SNAP=$(c4 id -s dir/); c4 cat $SNAP/file.txt) breaks down.",
+     "Documented pattern not achievable: 'snapshot one path per invocation: one path, one line, one exit' - the tool outputs multiple lines, conflicting with this contract."
+    ]
+   }
+  ]
+ }
+]

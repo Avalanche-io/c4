@@ -1,0 +1,14 @@
+{
+ "blocking_findings": 0,
+ "novel_friction": 2,
+ "surface_count": {
+  "identity_concepts": 2,
+  "new_flags": 1,
+  "verbs": 1
+ },
+ "convergence_note": "NOT a clean round, by the fold's own arithmetic: blocking findings 0, novel friction 2 (both single-sentence first-screen SCRIPTING clarity nits from the hostile skimmer \u2014 bare-ID/undo-feedback annotation and the one-path-per-invocation rationale \u2014 zero task impact, folded as wording), and the text changed by construction (v6 -> v7 is the judged merge of three brief-v2 candidates plus this sim fold). The surface-growth clause IS satisfied: spend is byte-identical to v6 at 2 identity concepts / 1 new verb (restore) / 1 new flag (--force, second flag deliberately unspent), 0 grammar changes, 0 dependencies, stdout byte-pure. So the clean counter stands at 0 of the required 2. Sim evidence: the two doc-only personas passed 10/10 tasks; the two binary-executing personas' failures (no restore verb, no -m c, inert -q, id -s printing listings, no-arg log refusing, patch printing unstored IDs) measure v1.0.15 implementation lag, voided per the round-2 precedent (now re-affirmed as a ledger entry), seated as the build work order, and they reproduced founding complaints 1 and 3 live on the shipped verbs \u2014 evidence for shipping this design, not against the text. Remains open: the constructed-input check of v7's new sentences (barrier-before-rename crash matrix, multi-path stdout matrix, EPIPE under pipefail, exclusion-dialect single-reading, retention-after-split, residual gc/sweep-lock/guided-scan sweep); the regression sweep of the 14 standing repairs; the Windows write-through-rename verification and benchmark; D5; the Copilot bake-off. Since every v7 delta beyond the adjudicated merge is wording-only, the next round is the first that can plausibly measure clean; two consecutive clean rounds on unchanged text remain required before any freeze.",
+ "round": 1,
+ "brief": "brief.md (v2, 2026-07-10)",
+ "agents": 15,
+ "tokens": 2040456
+}

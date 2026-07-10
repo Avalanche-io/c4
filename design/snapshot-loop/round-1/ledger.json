@@ -1,0 +1,212 @@
+[
+ {
+  "item": "gc off the surface; retention = nothing expires; journal = the future collector's complete root set; conflict-2 sweep-lock protocol parked as a ledgered inheritance obligation on the future collection design",
+  "status": "decided",
+  "reason": "Named brief-v2 frozen fact (v1.0.15 ships no gc; deletion/GC policy is a non-goal). Unanimous across all three candidates; the withdrawal's cause (no complete root catalog) is answered by construction \u2014 every stored root is a journal line."
+ },
+ {
+  "item": "Retention universals scoped falsifiably: 'no c4 verb deletes store objects' and 'for as long as the store directory exists' replace unbounded 'ever/permanently' prose; the one permanent inheritance pin is 'nothing a journal line reaches is ever collectable'",
+  "status": "decided",
+  "reason": "prosecutor:beside-incumbent showed unbounded universals are scheduled to be falsified by the future collector the same document plans; per-release truth keeps the frozen machine contract unbreakable."
+ },
+ {
+  "item": "Root catalog vs split reconciled: the catalog = installed journal + every split-off archive; the future collector consumes the INSTALLED journal as its root set (split = the deliberate-forget boundary); surface warns keep-the-archive",
+  "status": "decided",
+  "reason": "prosecutor:subtractive constructed the contradiction (one split falsified 'complete root catalog from the journal alone'); beside-incumbent's deliberate-forget framing adopted."
+ },
+ {
+  "item": "Per-platform durability: universal ordering contract (bytes stable before visible; everything stable before journaled; journaled stable before printed); macOS/Linux per-file fsync + two device barriers; Windows per-file write-through including write-through renames, no barrier claimed, no invented constants",
+  "status": "decided",
+  "reason": "Named Windows-physics frozen fact; convergent across all three candidates. Both prosecutors' rename-durability findings folded: write-through rename is pinned as the required Windows primitive and flagged as a scheduled verification (documentation-derived, unexercised)."
+ },
+ {
+  "item": "Ingest protocol amendment (concrete-defect standard): stage+fsync all objects, ONE device barrier, THEN rename into place, then journal append+fsync, second barrier, print \u2014 no object appears at its hash name before its bytes are on stable media; barrier count and measured constants unchanged",
+  "status": "decided",
+  "reason": "prosecutor:subtractive's constructed input: under the old per-object stage-sync-rename order, power loss could leave a crash-torn object at its final name; a re-run adopted it by presence and printed a snapshot claiming it \u2014 falsifying printed=>durable and routing an uncurable condition to exit 3. Amends the round-1 decided protocol; not a reversal."
+ },
+ {
+  "item": "Presence-skip doctrine made consistent: presence gates WRITES (true post-amendment: presence implies bytes reached stable media; every read rehashes so wrong bytes at a right name are loud); presence never answers an integrity question \u2014 the membership probe reads",
+  "status": "decided",
+  "reason": "prosecutor:subtractive's asymmetry finding (same inference doctrine in one paragraph, heresy in the next); closed by the protocol amendment plus one consistent rule stated on the surface."
+ },
+ {
+  "item": "Guided scans (id -c GUIDE) \u2014 the stat-match incremental path",
+  "status": "rejected",
+  "reason": "Three judge-endorsed defects: (a) the 2-second racy window is defeated by constructible everyday inputs (a >2s guide scan with a concurrent same-granule writer journals a stale ID as a store-backed skip \u2014 the exact per-prompt loop the flag serves) and the constant is invented, unmeasured; (b) plain -c without -s mints machine-captured IDs from bytes never hashed \u2014 the assertion state the '-q requires c or f' ledger rejection forbids; (c) stored-ID guides and the -s presence precondition force id to read the store, contradicting the decided 'id never reads the store' pin, and the conflict-4 amendment's cited license (founding complaint 1) is carried-forward context, not new. T4 is answered at zero flags by writes-skipped-never-reads. Re-litigation requires a named new defect or brief item plus a skip mechanism that verifies rather than asserts."
+ },
+ {
+  "item": "Conflict 4 store-address acceptance list stays exactly cat, restore targets, diff sides; 'id never reads the store' stands verbatim",
+  "status": "decided",
+  "reason": "The only proposed amendment (-c guides) fell with the guided-scan rejection; its reopening was procedurally unlicensed."
+ },
+ {
+  "item": "cat --exists (proposed flag 2 of 2): machine membership probe, absent IDs to stdout, exit 0/2/1",
+  "status": "rejected",
+  "reason": "The zero-spend composition c4 cat \"$ID\" >/dev/null already answers founding complaint 3 and T5 with a STRONGER claim (present AND byte-verified); --exists would invert cat's read semantics, add unpinned edge states (partial absent-list on error; -r/-e interaction), and spend the final flag on batch set-arithmetic no task requires. Budget headroom deliberately preserved at 1 of 2 flags."
+ },
+ {
+  "item": "Membership probe = blessed composition c4 cat \"$ID\" >/dev/null, documented at cat(1) and in the help SCRIPTING block with its O(object-size) cost stated",
+  "status": "decided",
+  "reason": "2 of 3 candidates; verification-over-assertion (the only yes that is checked); complaint-3 evidence shows cat+exit-code is the probe consumers already reach for \u2014 now sanctioned. Cost sentence added per prosecutor:beside-incumbent."
+ },
+ {
+  "item": "Machine-output contract promoted to design section 5: total per-verb stdout enumeration; whole-line rule; SCRIPTING block leading --help; explain is the only prose verb; stderr never contract",
+  "status": "decided",
+  "reason": "Founding complaint 3 (named new context); unanimous across candidates; placement is load-bearing (the resolver-lab failure was scattered contract prose)."
+ },
+ {
+  "item": "Multi-path -q/-s line contract (amendment, concrete-defect standard): one stdout line per SUCCEEDED path in argument order; a failed path prints nothing; positional attribution valid only on exit 0; scripts snapshot one path per invocation",
+  "status": "decided",
+  "reason": "prosecutor:revise-v6 and prosecutor:beside-incumbent independently constructed the defect: the elevated 'one line per path' pin was unsatisfiable on multi-path failure (2 lines for 3 args silently misattributes \u2014 complaint 3's exact failure mode reintroduced by the contract meant to kill it)."
+ },
+ {
+  "item": "Exit-map honesty: '1 = error; lines already printed remain true claims' replaces 'refused, nothing done'; stdout is claimed line by line \u2014 a printed line is a completed claim regardless of later failures",
+  "status": "decided",
+  "reason": "prosecutor:beside-incumbent's blocking finding: the old map falsified printed-means-durable on multi-path -s where earlier snapshots stand; generalizes conflict-7's every-printed-line-true pin to all verbs."
+ },
+ {
+  "item": "Print-failure exits pinned: filesystem/store work never rolls back on a stdout write failure; id exits 1 with the claim journaled (c4 log holds the ID; re-run reprints); restore exits 3 (re-run reprints both lines); EPIPE is an error exit, never silent SIGPIPE death",
+  "status": "decided",
+  "reason": "beside-incumbent's resilience pin adopted and completed \u2014 prosecutor:beside-incumbent showed the exit status was knowingly left unpinned on the destructive verb; re-run closes both cases so exit 3's curable-only ownership is preserved."
+ },
+ {
+  "item": "CID recipe honesty: c4 id -q dir/ = THE content ID of a file or directory; c4 id -q file.c4m = the description's own canonical ID at its own detail level \u2014 two recipes, never conflated",
+  "status": "decided",
+  "reason": "prosecutor:beside-incumbent's blocking finding: the merged 'CID of a file, dir, or c4m file' recipe re-taught complaint 3 (a full-form .c4m yields a snapshot ID captured as 'CID', poisoning T3 comparisons undetectably)."
+ },
+ {
+  "item": "'Scanned alike' = same -S choice AND same exclusion choices; -m dropped from the content-ID equality sentence",
+  "status": "decided",
+  "reason": "Exclusions change listing bytes exactly as folding does (T4 names exclusions as measured surface); prosecutor:revise-v6's coherence note accepted \u2014 a content ID is definitionally the content projection, so -m cannot vary between two things both called content IDs. Extends round-5 wording note (a), which was open text."
+ },
+ {
+  "item": "Exclusion mechanism pinned as a total rule: --exclude/--exclude-file only; nothing excluded by default; no ignore file or environment variable ever consulted; portable glob dialect (*, ?, [...]; no **; /-bearing patterns match root-relative paths, others bare names; byte-exact; matched directories pruned whole); exclude-file = one pattern per line, blank lines ignored, no comment syntax",
+  "status": "decided",
+  "reason": "prosecutor:revise-v6 blocking: an unpinned dialect lets two conforming implementations prune different sets and mint different IDs from the same command line \u2014 the condemned divergence class on T4's own input. Zero dependencies: the dialect is stdlib-expressible."
+ },
+ {
+  "item": "Recording applied exclusion patterns inside the snapshot or the journal entry",
+  "status": "rejected",
+  "reason": "Frozen grammar has no place for it; out-of-band doctrine matches the permanent projection decision; the journal entry field rule is a decided total rule. The consequence is an ACCEPTED TRADEOFF stated on the surface: after the tree drifts the applied pattern set is not recoverable from artifacts \u2014 the diff report is honestly scoped to 'right after a snapshot' (closes prosecutor:subtractive's 'forever' overclaim)."
+ },
+ {
+  "item": "Exclusion reporting: count folded into THE one stderr summary line (no per-pattern stderr lines); c4 explain id narrates the effective set; recomputable report = c4 diff SNAP dir/ scoped to the tree as scanned",
+  "status": "decided",
+  "reason": "prosecutor:subtractive: per-pattern stderr lines contradicted the decided conflict-6 narration pin (one summary line), which no named item reopens; explain is the prose verb, so per-pattern detail lives there."
+ },
+ {
+  "item": "Restore-removes-excluded warning stated at BOTH sites (id(1) EXCLUSIONS and restore(1) NOTES), naming the pre-image as what holds the excluded state",
+  "status": "decided",
+  "reason": "prosecutor:beside-incumbent: the design's two flagship recipes (--exclude snapshot; restore --force undo) compose into silent deletion of node_modules per rollback; complaint 2's standard is that the accident must not be quiet. One sentence per site, zero mechanism."
+ },
+ {
+  "item": "Pre-image is always a complete default scan: nothing excluded, nothing folded (never-guided is vacuous with guided scans rejected)",
+  "status": "decided",
+  "reason": "Carried v6 pin restated against the new exclusion surface: exclusions serve ingest ergonomics, never undo fidelity."
+ },
+ {
+  "item": "Implicit C4_EXCLUDE_FILE per-directory exclude loading superseded/removed (migration note)",
+  "status": "decided",
+  "reason": "prosecutor:beside-incumbent: ambient env state silently changing what an ID names is invisible to 'scanned alike' and breaks T3/T4; it contradicted the pinned 'only mechanism / nothing implicit' sentence, so the supersession must be explicit."
+ },
+ {
+  "item": "Append lock semantics pinned: an OS advisory lock on the journal file that dies with its holder; never a lockfile whose existence blocks",
+  "status": "decided",
+  "reason": "prosecutor:revise-v6: T1's named kill -9 scenario diverged between conforming lockfile and flock implementations, wedging recovery at the exact file the durability contract rests on."
+ },
+ {
+  "item": "Journal honesty: a line proves its claim, never its file's completeness; c4's tools are the only sanctioned writers; the split-install swap is the one sanctioned by-hand operation inside a store",
+  "status": "decided",
+  "reason": "prosecutor:beside-incumbent: 'corruption is loud' was false for silently dropped complete sections and the split recipe was itself a foreign write by the old definition; scoped claims replace the overclaim."
+ },
+ {
+  "item": "Journal-extraction recipe scoped to the installed journal ('every ID the installed journal lists'), not 'every ID ever claimed'",
+  "status": "decided",
+  "reason": "Same completeness finding: the unscoped recipe is false after any sanctioned split; the scoped recipe is true always."
+ },
+ {
+  "item": "Session journal = captured stdout plus c4 log; documentation, not mechanism",
+  "status": "decided",
+  "reason": "Complaint 3's third observed behavior (hand-rolled session journal); unanimous \u2014 the store journal already is the product answer."
+ },
+ {
+  "item": "Shipped 'stored: <id>' stderr line superseded: under -s the ID is stdout's only content",
+  "status": "decided",
+  "reason": "Complaint 3 named: an ID behind a prose prefix on stderr is exactly the documented regex-bait; unanimous across candidates; stderr shape was never contract."
+ },
+ {
+  "item": "Beside-incumbent stance section kept, compact: six demoable recomputable properties, each with its verification command; incumbent contrasts phrased as documented-behavior-today; impossibility claims softened pending the Copilot bake-off",
+  "status": "decided",
+  "reason": "The brief names the five structural gaps and the pending bake-off; prosecutor:beside-incumbent's overreach finding endorsed (a shadow-repo rewind could close the .git row) \u2014 competitive claims are held to verification-over-assertion."
+ },
+ {
+  "item": "Identity concepts stay exactly two (content ID, snapshot ID); no named third concept for a description's own-level ID",
+  "status": "decided",
+  "reason": "Budget cap; the prosecutor's concept-count concern is resolved by honest recipe wording ('its own ID, at its own detail level'), not by minting a concept."
+ },
+ {
+  "item": "Eleven verified repairs (rounds 3-4) and round-5's three repairs plus wording pins carried verbatim; all prior REJECTED entries stand (stat-bearing default IDs; separate snapshot blob; bare auto-ingest; --no-fsync; pre-image opt-out; --source; ref namespaces; conditional symlink IDs; padded log columns; member-filename fold resolution; per-kind exit codes; lstat-or-refuse roots; frozen narration grammars; basename catalogs; re-verify/re-put gc; per-verb remote refusal matrix)",
+  "status": "decided",
+  "reason": "Ground rules: no candidate produced a named new-context license to reopen any of them; the subtractive candidate's -S and journal prosecutions ended in keeps that reconfirm the pins."
+ },
+ {
+  "item": "Round-1 per-file F_FULLFSYNC rejection stands, platform-scoped: rejected where a batch barrier exists (macOS/Linux); Windows per-file write-through is not a revival because no barrier alternative exists there",
+  "status": "decided",
+  "reason": "Named Windows physics voids only the 'buys nothing over the batch barrier' prong on a platform with no barrier; both prosecutors' budget audits concur. The Windows minutes-class first-snapshot cost this implies is owned in text as derived (T4 demands both platforms)."
+ },
+ {
+  "item": "T4 repeat-snapshot estimate corrected to 'well under half' the first run, labeled derived",
+  "status": "decided",
+  "reason": "prosecutor:subtractive: the first run is durability-dominated on the measured tree (per-file work the skip eliminates), so 'just under' misread the design's own physics; every derived number carries the derived label."
+ },
+ {
+  "item": "Store phrasing scoped: 'argv in, stdout + exit code out, one directory on disk' for this loop, without 'no daemon ever' universals",
+  "status": "decided",
+  "reason": "prosecutor:beside-incumbent: the c4d architecture routes network operations through a daemon; the harness-independence property is real for this local loop and must not freeze a false universal."
+ },
+ {
+  "item": "Binary-executing sim personas (newcomer, git/jj expert) measured design-vs-shipped-v1.0.15 skew \u2014 restore verb absent, -m c unknown, -q inert, id -s printing full listings, no-arg log refusing, patch taking only file paths and printing IDs cat cannot fetch: void as evidence against the design text; seated as the implementation work order and as the post-implementation acceptance battery",
+  "status": "decided",
+  "reason": "Round-2 precedent re-affirmed for the brief-v2 run (binary personas measure the build, not the text; the deliverable is design text). The same runs are affirmative evidence: content-ID equality held across differing mtimes on the shipped binary, the membership probe worked exactly as designed, and the newcomer's patch dead-end (a printed pre-image ID that was never stored) is founding complaint 1 reproduced live \u2014 the defect the journaled, stored pre-image closes. Pre-freeze sim batteries stay doc-only."
+ },
+ {
+  "item": "The membership probe's nonzero answer is ONE answer: absent and failed-verification both exit 1, distinguished on stderr only \u2014 a script cannot and need not tell them apart (no verified bytes; do not trust the ID)",
+  "status": "accepted-tradeoff",
+  "reason": "LLM-agent and skimmer T5 re-flagged the documented behavior as friction. Covered in class by the round-3 uniform-resolution-failure tradeoff (error kinds are human-level narration) plus the standing per-kind-exit-codes rejection and stdout purity; no brief task needs the distinction (T5 asks present-or-not). Now stated where it bites (help SCRIPTING probe line; cat(1) DESCRIPTION and the membership paragraph); the why is human diagnosis; healing is future fsck territory."
+ },
+ {
+  "item": "First-screen SCRIPTING self-sufficiency pins: the restore recipe states both stdout lines are bare IDs and shows the undo invocation (line 1 fed straight back as the target); the one-path-per-invocation rule carries its one-clause rationale at the block",
+  "status": "decided",
+  "reason": "The round's two counted novel frictions (hostile skimmer T2/T5; zero task impact). The decided machine-output-contract item makes the SCRIPTING block the load-bearing placement for cold consumers, so its recipes must be self-sufficient at their own site; both folds are wording, zero surface spend."
+ },
+ {
+  "item": "The one stderr summary line additionally counts store writes skipped on a repeat snapshot (narration, non-contractual, conflict-6 one-line pin intact); the never-dangles sentence stated at the point of need (help durability paragraph; id(1) DURABILITY): a printed ID never dangles \u2014 if it printed, you can get it back; the line-2 independent-recompute recipe added to restore(1) EXAMPLES",
+  "status": "decided",
+  "reason": "Gratis folds from discounted sim friction (newcomer T4 skip observability \u2014 void-class persona, task not run; LLM-agent T1 printed-ID trust and the -m f recompute recipe \u2014 both resolved in-sim from existing text). Zero mechanism, zero contract change, stated where the reader needs it."
+ },
+ {
+  "item": "--verbose / instrumentation flag for observing skipped writes or scan progress",
+  "status": "rejected",
+  "reason": "Narration already owns human observability at zero spend (the one summary line counts skips and exclusions; explain narrates), stdout must stay byte-pure, and the skip claim is checkable the design's way (an identical printed ID; every read rehashes). Would spend the deliberately-unspent second flag on non-contract output."
+ },
+ {
+  "item": "Standing accepted tradeoffs re-flagged by this round's sims, re-affirmed without text growth: one-machine measured constants are an analog, not a guarantee; repeat-snapshot and Windows costs stay derived-labeled with no invented constants; the typeless store; uniform exit-1 resolution failures with kinds as stderr narration; exclusions vs edits indistinguishable after drift; help-screen/man-page structure (contracts and recipes on screen one, totality in the owning section)",
+  "status": "accepted-tradeoff",
+  "reason": "Each was re-raised by a sim persona; each is already ledgered with its consequence stated on the surface; re-flagging a documented tradeoff is discounted per the round-4/5 precedent. Several skimmer placement claims were factually false against the surface (durability promise, undo permanence, exit codes, probe cost, scanned-alike are all on the first screen) \u2014 skim-misses, no fold."
+ },
+ {
+  "item": "Windows mechanism verification: write-through rename ordering (rename stable no later than the journal entry) and the torn-tail/journal equivalences under per-file flushing on NTFS; the Windows durability benchmark",
+  "status": "open",
+  "reason": "The brief requires Windows-true sentences; the mechanism claim is documentation-derived and has never been exercised \u2014 scheduled as a named check with a kill/power-loss matrix before any freeze."
+ },
+ {
+  "item": "Freeze path: exercise v7's new sentences on constructed inputs (barrier-before-rename crash matrix incl. stray-object adoption; multi-path failed-path stdout matrix; EPIPE exit statuses under pipefail; exclusion-dialect single-reading check and diff-report closure; retention sentences against a split store; zero residual gc/sweep-lock/guided-scan references); regression-sweep the eleven verified repairs plus round-5's three; re-run doc-only sims with a Windows persona (pre-implementation batteries stay doc-only; the binary battery is the post-implementation acceptance test); then two consecutive clean rounds on unchanged text",
+  "status": "open",
+  "reason": "Standing convergence requirement inherited whole from the prior run's NOT-CONVERGED exit; v7 is unverified text and this round's sim fold changed text (wording only)."
+ },
+ {
+  "item": "D5 default exclusion pattern list (Joshua's decision) and the Copilot CLI rewind bake-off (the six stance demos are the script; any gap the incumbent closes softens its surface row)",
+  "status": "open",
+  "reason": "Brief non-goals name D5 as out of scope (mechanism and reporting are ready for it) and the bake-off as pending; both are external to this design text."
+ }
+]
