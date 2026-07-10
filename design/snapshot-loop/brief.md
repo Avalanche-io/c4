@@ -1,47 +1,84 @@
-# Crucible brief: the snapshot–store–restore loop
+# Crucible brief v2: the snapshot–store–restore loop
 
-Date: 2026-07-08. Status: crucible run in progress. This brief is the fixed
-measuring stick for the whole run — it does not change between rounds.
+Date: 2026-07-10. Status: fresh run. This brief supersedes the 2026-07-08
+brief (archived with its five rounds in `superseded-2026-07-10/`) because
+the world changed under it: suite v1.0.15 shipped, the content-projection
+decision was made, and the first external consumer of the CLI produced
+hard evidence about the surface. This brief is the fixed measuring stick
+for the whole run — it does not change between rounds.
+
+## Carry-forward (do not burn prior work)
+
+Draft v6 (`superseded-2026-07-10/round-5/draft-v6.md` and
+`surface-v6.md`) plus the round ledgers are **canonical input**: eleven
+verified repairs stand, and every `REJECTED — <reason>` entry stays
+rejected unless a *named item of new context below* reopens it. Designers
+revise v6 against this brief; they do not restart from zero. v6's own
+round-5 additions (unspellable-name class, fold readability precondition,
+argument-root OS path resolution, range-order pin) have never been
+exercised — they are open text, not settled pins.
 
 ## Design question
 
 Design c4's snapshot–store–restore loop as ONE coherent surface:
 
-1. **Identity** — what identity/identities does a tree and its description
-   have, and how are they named to users? (Today: directory IDs hash child
-   mtimes/modes, so identical content on two machines gets different IDs;
-   the spec's null fields permit a stat-free identity. A c4m's own ID is
-   the ID of its canonicalized text.)
-2. **Self-description** — how does a snapshot describe itself so the store
-   ALONE is sufficient to recover everything, including the description?
-3. **Durability** — what are the write-durability semantics of store
-   ingestion and tree materialization, and what does the user get to
-   assume on power loss?
-4. **Destructive-reconcile safety** — reconciling a directory to a target
-   state destroys its prior state; what is the default protection and the
-   undo story?
+1. **Identity** — what identity/identities does a tree and its
+   description have, and how are they named to users?
+2. **Self-description** — how does a snapshot describe itself so the
+   store ALONE is sufficient to recover everything, including the
+   description?
+3. **Durability** — what write-durability semantics do ingestion and
+   materialization have, and what may the user assume on power loss —
+   stated honestly per platform (see Windows physics below)?
+4. **Destructive-reconcile safety** — reconciling a directory destroys
+   its prior state; what is the default protection and the undo story —
+   including undoing the restore itself?
+5. **The machine-output contract** — what exactly does each verb print,
+   such that a script or LLM agent can extract THE identity it needs in
+   one line, byte-pure, without regex-scraping? This is frozen product
+   surface, not ergonomics (see founding complaint 3).
 
-Unconstrained by any current or in-flight implementation. The designers
-must not be told what is currently built beyond frozen facts listed below.
+Unconstrained by any in-flight implementation. Designers must not be
+told what is currently built beyond the frozen facts below.
 
 ## Frozen facts (constraints, not design)
 
 - The c4m format grammar is FROZEN: plain-text, entry-only stream; no
-  headers, no directives (`@` lines rejected); null fields render as `-`
-  and are first-class; directory C4 ID = ID of the one-level canonical
-  listing of direct children (Merkle); patch chains are concatenated diff
-  sections (resolve/log/split exist); sequences fold.
+  headers, no directives; null fields render as `-` and are first-class;
+  directory C4 ID = ID of the one-level canonical listing of direct
+  children (Merkle); patch chains are concatenated diff sections
+  (resolve/log/split exist); sequences fold.
 - C4 IDs are SMPTE ST 2114: SHA-512, base58, 90 chars. Fixed.
-- Existing verbs: id, cat, diff, patch, merge, log, split, paths,
-  intersect, explain, gc. Store: content-addressed sharded directory,
-  put-by-ID, dedup by construction.
-- Measured physics (APFS/M-series): per-file F_FULLFSYNC ≈ 6.4 ms (20k
-  files ≈ 3 min); plain fsync(2) ≈ 126 µs/file; no fsync ≈ 112 µs/file;
-  one directory-fd F_FULLFSYNC barrier ≈ 5.4 ms; whole-tree APFS clonefile
-  of 14k files ≈ 0.26 s.
+- **DECIDED 2026-07-09 (Joshua, permanent): the content-only projection
+  is full-null** — mode and timestamp nulled entirely (no exec-bit
+  preservation); names, sizes, symlink targets, child content IDs real.
+  Content IDs are equal iff contents are byte-identical, on any machine,
+  clock, or umask. An ID does not self-describe its projection;
+  comparisons are like-mode; the projection travels out of band.
+- Shipped surface (suite v1.0.15, 2026-07-09): verbs are id, cat, diff,
+  patch, merge, log, split, paths, intersect, explain, version. **There
+  is no gc** — it was built and withdrawn before release (explicit-roots
+  deletion is unsafe without a complete root catalog); no deletion verb
+  exists until something provides that catalog.
+- Durability as shipped: **one default, zero flags** — batch barrier
+  (atomic per-file writes with cheap flushes; one device-cache flush at
+  command completion). `--no-fsync`/`--durable` were removed before
+  release. Reconcile forms capture the destination's pre-state durably
+  before the first destructive operation and print a verbatim revert
+  command. Snapshots self-capture (manifest text + root record stored;
+  `stored: <id>` on stderr after the barrier).
+- Measured physics (APFS/M-series, 20k files / 105 MB): ingest with
+  store ~4.3 s; materialize ~4.4 s; no-op re-apply ~0.3 s; per-file
+  F_FULLFSYNC ≈ 6.4 ms; plain fsync(2) ≈ 126 µs/file; one directory-fd
+  F_FULLFSYNC barrier ≈ 5.4 ms.
+- **Windows physics**: a directory handle cannot be flushed
+  (FlushFileBuffers on a directory is refused), so there is no
+  device-barrier equivalent; per-file `Sync` IS the durability, and NTFS
+  journals rename metadata. Any durability sentence the design prints
+  must be true on Windows too.
 - Zero dependencies in the core module. Zero format changes available.
 
-## The two founding complaints (verbatim intent)
+## The three founding complaints (verbatim intent)
 
 1. "It feels unnatural to create a c4m that captures all the files into
    the store but doesn't then capture the c4m output. If the c4m file is
@@ -49,28 +86,56 @@ must not be told what is currently built beyond frozen facts listed below.
 2. "I patched over a directory because I got the usage wrong and it
    quietly destroyed the prior state. We built flags for the backup
    solution — it needs to be the default."
+3. New, from the first external consumer (2026-07-10 resolver lab): a
+   friendly program needed THE identity of a c4m file; the CLI printed
+   the file's normalized entries; the program regex-scraped stdout and
+   silently shipped the *last leaf's* ID as the project identity on a
+   public dashboard. The same consumer probed store membership by
+   running `cat` and checking the exit code, and hand-rolled a session
+   journal of what it had stored. Cold consumers will script this
+   surface; what the verbs print is the API.
 
-## Incumbents it sits beside
+## Incumbents it sits beside (updated 2026-07-10)
 
-git (per-repo, committed-state only), Time Machine/backup tools (opaque,
-not content-addressed), harness checkpoints (session-local, tool-blind).
-LLM agents are first-class users driving the CLI cold from --help.
+git (per-repo, committed-state only); jj (replaces the VCS; IS the repo
+rather than protecting `.git` as data); APFS/ZFS snapshots
+(volume-scoped, OS-locked, expiring, ID-less, not per-prompt drivable);
+harness checkpoints — **note: GitHub Copilot CLI now documents a
+git-based whole-workspace rewind covering manual edits, shell effects,
+and untracked files** (documentation claim, hands-on bake-off pending).
+The surviving structural gaps an incumbent cannot close: durability of
+anything printed (`kill -9` survivable), `.git` itself as recoverable
+data, undo of the restore, portability of history to another machine,
+independence from any one harness or session. The design should own
+exactly those gaps. LLM agents are first-class users driving the CLI
+cold from --help.
 
 ## Success tasks (fixed; a cold user + only the user-facing surface)
 
 - **T1 recover-from-store-alone**: Snapshot a working tree with content
-  storage. Delete the tree AND every file the snapshot produced outside
-  the store. Recover the tree byte-exact using only the store.
-- **T2 undo-the-accident**: Reconcile the WRONG directory to a snapshot.
-  Realize the mistake. Restore that directory byte-exact.
+  storage; `kill -9` a later snapshot mid-write. Delete the tree AND
+  every file outside the store — including `.git` — and every note of
+  what the IDs were except the last ID the tool *printed*. Recover the
+  tree byte-exact from the store alone. (If it printed, you can get it
+  back.)
+- **T2 undo-the-accident, then undo-the-undo**: Reconcile the WRONG
+  directory to a snapshot. Restore that directory byte-exact. Then
+  decide the restore itself was wrong and undo it too. State what the
+  retention story is — what, if anything, ever expires.
 - **T3 same-content?**: Two checkouts of the same project on different
-  machines (different mtimes, umask). Produce one identifier on each that
-  answers "byte-identical content?" by string equality.
-- **T4 fast-and-safe**: Snapshot ~20,000 files. Say how long it takes and
-  state precisely what is guaranteed if power fails mid-command or just
-  after it returns.
-- **T5 read-the-store**: Given one ID and the store only, list what the
-  snapshot contains and extract a single named file.
+  machines (different mtimes, umask). Produce one identifier on each
+  that answers "byte-identical content?" by string equality.
+- **T4 fast-and-safe, per-prompt**: Snapshot ~20,000 files, then snapshot
+  again after touching 3 files (a gitignored-heavy tree with
+  node_modules present). Say how long each takes, what is skipped and
+  why it is safe to skip it, what exclusions applied and where the user
+  sees them, and precisely what is guaranteed if power fails mid-command
+  or just after it returns — on macOS and on Windows.
+- **T5 read-the-store, scripted**: Given one printed ID and the store
+  only: list what the snapshot contains, extract one named file, and — 
+  in a shell script with no regex over prose — capture THE snapshot ID
+  of a fresh snapshot into a variable and test whether an arbitrary ID
+  is present in the store.
 
 ## Surface budget
 
@@ -80,5 +145,10 @@ LLM agents are first-class users driving the CLI cold from --help.
 
 ## Non-goals
 
-Networking/daemon, multi-repo binding, GC policy (exists), UI, and any
-implementation — the deliverable is a design document.
+Networking/daemon, multi-repo binding, deletion/GC policy (the journal
+must make a future root catalog *possible*, but designing collection is
+out of scope), plugin/hook UX (the plugin consumes this surface, it does
+not define it), secrets-exclusion *policy* (Joshua's open decision D5 —
+the design specifies the mechanism and where exclusions are reported,
+not the default pattern list), and any implementation — the deliverable
+is a design document.
