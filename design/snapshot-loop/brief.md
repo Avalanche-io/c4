@@ -77,6 +77,32 @@ told what is currently built beyond the frozen facts below.
   journals rename metadata. Any durability sentence the design prints
   must be true on Windows too.
 - Zero dependencies in the core module. Zero format changes available.
+- **DECIDED 2026-07-10 (Joshua, security/integrity posture): re-scan
+  trust.** Two invariants, deliberately different in strength:
+  (1) **Store integrity is absolute** — bytes never enter the store
+  without being hashed at ingest, and store reads re-verify. Nothing
+  may weaken this. (2) **Re-scan of a previously-snapshotted tree is
+  metadata-trusted by default** — full re-hash at terabyte media scale
+  is not a viable default. A file is re-hashed iff it is new, its size
+  changed, its mtime changed, or it is *racy* (potentially modified
+  concurrently with the prior scan — the racy rule must be total, with
+  no invented constants); otherwise the prior snapshot's recorded ID is
+  reused. Reuse references bytes already verified in the store; it
+  extends trust only to the *description* of the live tree. The
+  accepted, documented risk: a same-size byte change with a restored
+  mtime (deliberate obfuscation) is invisible to the default re-scan —
+  the design states this plainly as a posture, not a bug. Bitrot or
+  malice against live copies is defended by the verified store and by
+  **forced verification on demand** (full re-hash / re-ingest of the
+  whole tree or named paths — this MAY spend the second budget flag).
+  First-ever snapshot of a tree is definitionally a full scan.
+  This decision REOPENS, by name, the round-1 ledger rejection of
+  metadata-trusted re-scans: the round-1 objections (racy window,
+  invented time constant, id-reads-store, assertion-vs-verification)
+  are constraints the mechanism must now answer — not grounds for
+  rejecting the posture. Note the guide for reuse can be the prior
+  snapshot's *description* (a file), which need not violate any
+  id-never-reads-store pin.
 
 ## The three founding complaints (verbatim intent)
 
