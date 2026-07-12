@@ -1,6 +1,6 @@
 # Store index, deliberate GC, and link records — idea notes
 
-Status: idea notes (2026-07-10, Joshua). ADJUDICATED — see
+Status: idea notes (2026-07-10, Joshua). DECIDED — see
 design/store-records-architecture.md for the evaluated recommendation.
 Originally: needs testing and discussion
 before any of it becomes a requirements doc. Recorded here so the ideas

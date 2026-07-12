@@ -1,10 +1,16 @@
 # Store records architecture — adjudicated recommendation
 
-Status: RECOMMENDED (2026-07-10), pending the decisions listed at the
-end. Produced by a four-stance adversarial evaluation (journal-
-authoritative, master-record-authoritative, minimalist-composition,
-link-web-first; each prosecuted; judged). Resolves the open question
-of design/store-index-and-links.md. Nothing here is frozen.
+Status: **ACCEPTED (2026-07-10, Joshua)** — the architecture and the
+open-question recommendations are adopted; see the "Decided" section.
+Vocabulary note: **"shred" is renamed "scrub"** throughout (shred(1)
+connotes physical erasure that CoW filesystems and SSDs cannot
+promise; scrub says what the pass does). The gc design round runs in
+parallel with the v7 build; gc code lands after. Produced by a
+four-stance adversarial evaluation (journal-authoritative,
+master-record-authoritative, minimalist-composition, link-web-first;
+each prosecuted; judged). Resolves the open question of
+design/store-index-and-links.md. Semantics decided; exact spellings
+freeze in the gc design round.
 
 ## Recommendation
 
@@ -67,7 +73,32 @@ WHY THIS IS SAFE — the withdrawn-gc lesson answered structurally, three invers
 - **Shred as unlink-only, or scrub-in-place at the hash name** — Unlink-only under the name 'shred' asserts erasure the verb does not attempt; scrub-in-place is crash-unsafe — an interruption leaves scrubbed garbage AT a hash name, which the presence-gated write-skip adopts into a future printed snapshot (printed-means-durable broken with no lying drive). Shipped shred = vacate name (rename to non-ID staging) then overwrite then unlink, with per-platform honesty in v7's Windows voice.
 - **Restore automatically re-rooting or un-trashing a trashed root (journal-authoritative's trash-safety mechanism)** — The mechanism does not exist under v7 — restore journals the PRE-IMAGE, never the restored target — so 'use re-claims' is false as designed. Unneeded anyway: trash changes nothing physical, so restore just works, narrates the trashed status on stderr, and suggests keep; if the root is later emptied, the materialized tree on disk is untouched and re-snapshotting re-ingests it.
 
-## Open — only Joshua can decide
+## Decided (2026-07-10, Joshua — accepting the recommendations)
+
+1. **Retention line syntax: testimony shape-A verbatim** —
+   `<id> <verdict> <actor> <time>` — converging with the future
+   interchange record by construction, and field-testing shape-A ahead
+   of the testimony freeze.
+2. **"shred" -> "scrub"** (vocabulary: keep, trash, scrub, drop), with
+   the per-platform honesty sentence at the point of promise. Retention
+   filename accepted as `<store>/retain` (working name; revisit cheaply
+   in the gc design round spelling pass).
+3. **Scheduling: gc design round in parallel with the v7 build; gc code
+   lands after.**
+4. **Links never pin bytes — permanent.** A stored or received
+   testimony/link record does not root its endpoints; retention is the
+   sole rooting mechanism (federation denial-of-service rationale).
+5. Substrate-map amendment signed off: the retention record is the
+   sanctioned store-local instance of class (c) testimony-about-IDs.
+6. SQLite/link-DB: deferred to the Avalanche app decision point (in-app
+   first; no new sidecar repo, no suite surface, until real pull).
+7. Adoption posture: gc reports unaccounted objects; re-running the
+   adopt step is the manual cure (no standing --adopt flag until demand
+   shows).
+8. T1 benchmark scope approved as written (scan cost vs SHA-512,
+   prefix-length vs collision, posting-format shootout).
+
+## Formerly open (retained for the record) — resolved above
 
 1. Naming of the destructive vocabulary: keep the word 'shred' with its per-platform honesty sentence at the point of promise, or rename (expunge/scrub) since shred(1) connotes physical erasure APFS/CoW/SSDs cannot promise. Also the retention record's filename (<store>/retain vs other) and whether the trash verb is porcelain ('c4 trash ID') or a mode of one retention verb — the surface-spelling round needs his budget cap (recommended: <=2 retention verbs, gc + --empty-trash, no more).
 2. Retention-record line syntax: adopt testimony shape-A form verbatim now ('<id> <verdict> <actor> <time>', converging with the future interchange record by construction) versus a minimal bespoke form (converging later by mapping). Either way gc does NOT wait on the testimony freeze — but the choice affects whether the vocabulary later reads as store-local testimony.

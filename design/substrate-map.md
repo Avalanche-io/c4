@@ -118,3 +118,10 @@ If a proposed primitive is not (a) an immutable value with an ID,
 (b) the one mutable binding kind, or (c) testimony about IDs — it is
 application layer, and it belongs above the substrate, in a separate
 repo, consuming these records.
+
+## Amendment (2026-07-10, accepted)
+
+The retention record (`design/store-records-architecture.md`) is the
+sanctioned store-local instance of class (c) — testimony about IDs —
+with an operational fold. It is not a new primitive class; the
+one-line test stands.

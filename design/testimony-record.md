@@ -16,13 +16,13 @@ everything checkable is checked from bytes and everything merely
 
 ## Positioning — beside, not instead
 
-| Plane | Owner | This design's relationship |
-|-----------|--------------------------|-----------------------------------------------|
-| Byte identity & containment | C4 IDs + c4m files | uses as-is; adds nothing to the format |
-| Checksums in delivery specs | ASC MHL (already supports C4 digests; Netflix mandates MHL ingest verification) | sits beside; never replaces |
-| Content credentials, signatures | C2PA 2.2, in-toto/SLSA | the record is *what gets signed*; signing is never implemented here |
-| Editorial structure | OpenTimelineIO | out of scope entirely |
-| Execution / job description | OpenJD, REAPI semantics | out of scope entirely (the resolver lab's action records must not become a standard by accident) |
+| Plane                           | Owner                                                                           | This design's relationship                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Byte identity & containment     | C4 IDs + c4m files                                                              | uses as-is; adds nothing to the format                                                           |
+| Checksums in delivery specs     | ASC MHL (already supports C4 digests; Netflix mandates MHL ingest verification) | sits beside; never replaces                                                                      |
+| Content credentials, signatures | C2PA 2.2, in-toto/SLSA                                                          | the record is *what gets signed*; signing is never implemented here                              |
+| Editorial structure             | OpenTimelineIO                                                                  | out of scope entirely                                                                            |
+| Execution / job description     | OpenJD, REAPI semantics                                                         | out of scope entirely (the resolver lab's action records must not become a standard by accident) |
 
 The only genuinely new artifact is the testimony record itself, and it
 is deliberately small.
@@ -121,16 +121,16 @@ dies in the conformance spec, not here.)
 
 ## Demo B traceability (DEMO_PORTFOLIO_V2.md §B)
 
-| Storyboard beat | Covered by |
-|--------------------------------------------|---------------------------------------|
-| Inventory a package without copying it | c4m file (exists) |
-| Intersect v1/v2 by content, not pathname | `c4 intersect id` (exists) |
-| Same-name/different-bytes replacement | path-intersect vs id-intersect (recipe)|
-| Duplicates, missing, unaccounted remainder | recipes over ID sets (R-remainder) |
-| AI-origin declaration bound to exact IDs | testimony record (this design) |
-| "Byte evidence stops here; testimony begins" | R3 boundary events |
-| C2PA credential beside C4 | R6 + shape-C mapping |
-| One-line delivery-spec pilot ask | R7 |
+| Storyboard beat                              | Covered by                              |
+| -------------------------------------------- | --------------------------------------- |
+| Inventory a package without copying it       | c4m file (exists)                       |
+| Intersect v1/v2 by content, not pathname     | `c4 intersect id` (exists)              |
+| Same-name/different-bytes replacement        | path-intersect vs id-intersect (recipe) |
+| Duplicates, missing, unaccounted remainder   | recipes over ID sets (R-remainder)      |
+| AI-origin declaration bound to exact IDs     | testimony record (this design)          |
+| "Byte evidence stops here; testimony begins" | R3 boundary events                      |
+| C2PA credential beside C4                    | R6 + shape-C mapping                    |
+| One-line delivery-spec pilot ask             | R7                                      |
 
 ## Non-goals
 
@@ -157,3 +157,11 @@ c4d; any implementation before this document stabilizes.
    conformance spec beside the ID grammar?
 4. Record filename convention inside a delivery package (beside the
    MHL): e.g. `<package>.declarations` — bikeshed deliberately deferred.
+
+## Update (2026-07-10, accepted)
+
+Shape A's line grammar is adopted for the store's retention record
+(`<id> <verdict> <actor> <time>` — see store-records-architecture.md),
+so the two records converge by construction. The interchange record's
+own freeze remains open on this doc's track, with shape A leading and
+now field-tested by the retention record.
