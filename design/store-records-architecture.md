@@ -81,3 +81,102 @@ WHY THIS IS SAFE — the withdrawn-gc lesson answered structurally, three invers
 ## Next-major scope
 
 NEXT MAJOR (the GC commitment honored, with honest surface accounting): (1) Build snapshot-loop v7 as frozen — journal, restore, print barrier, machine-output contract — the prerequisite for everything here and the already-committed work order. (2) The three named v7 retention amendments landed as text with their concrete defects stated (collector consumes the fold-filtered root catalog and the forget boundary moves from split to the drop verdict; the 'never collectable' universal gains its pre-built falsifiable scope; conflict-2's sweep lock specified — shared side held by every claim path from first store interaction through print, exclusive held by the collector) so no frozen sentence is falsified by gc shipping. (3) GC itself, semantics as adjudicated here, through one tightly-scoped design round (it is a destructive frozen surface) that pins only spelling, the closure-walk total grammar, and the output/exit contract: the retention record (1 new store-root file, 1 pinned line grammar with a 4-word vocabulary), retention porcelain (<=2 verbs), c4 gc dry-run default with --empty-trash long-form, the positive-warrant sweep with record-leads-bytes-follow ordering, the adoption/init step for pre-journal stores, the shred scrub pass with vacate-name ordering, and cross-implementation conformance tests for the closure walk. Core spend: 1 file, 1 small pinned grammar, ~2-3 verbs total including gc, ~1-2 long-form flags, 0 dependencies, 0 changes to log.c4m's grammar or any shipped identity concept, 0 indexes. (4) The T1 ingest-scan benchmark runs (cheap; answers Joshua's testable question; informs the later sidecar) but nothing ships against it and nothing in the major waits on it. (5) The interim mitigation documented immediately, before any of this lands: the zero-design recipe on shipped mechanisms — re-ingest the roots you care about into a fresh store and swap directories — so the urgency has a stopgap that survives any slip. LATER, each behind a real pull: the reference index as a plain-text sidecar with completeness watermark (post-T1, post-freeze); the c4m-catalog cache (recipe now, cache on measured demand); the testimony-record freeze on its own track (<=6 predicates, tied to the -m c conformance ID grammar — never bundled with gc); the link DB in Avalanche or a c4-links sidecar after that freeze (SQLite pending sign-off); Bloom-filter federation and the web-of-AI exchange, app layer, on multi-store demand; remote/S3 collection only after re-proving the print-barrier and sweep-lock equivalences per medium; Avalanche GUI navigation where drag-to-trash is one verdict line. Nothing in the later column sits on the sweeper's critical path — which is exactly what makes it free to slip while the growth relief ships.
+
+---
+
+## Appendix: performance & storage optimality (verified 2026-07-10)
+
+Three-agent pass: scaling model, incumbent comparison, adversarial
+verification with live measurements on the shipped v1.0.15 binary.
+Full transcripts in the session workflow record.
+
+### Verified performance picture
+
+- **Per-prompt snapshots (code, 20k files/105MB):** lstat walk of 20k
+  entries is **55–61ms warm**; shipped no-op re-snapshot 1.21s;
+  3-file-change 0.74s. Under the re-scan posture + v7, steady state is
+  sub-second. First ingest 4.4s — **durability/write-bound, not
+  hash-bound** (hashing 106MB is ~1.2s of it).
+- **Snapshot storage, shipped vs design:** unchanged re-snapshot = 0
+  new bytes (listing dedup holds: identical text → identical ID → one
+  object). BUT the shipped binary stores the **full manifest canonical
+  text per snapshot** (~2.85MB at 20k entries): a 3-file change costs
+  ~2.9MB shipped → **~2.9GB/day at 1000 snapshots/day**. v7's
+  chain/listing structure brings this to ~10s-of-MB/day. Agent-loop
+  viability at scale therefore *depends on the v7 build*, not just the
+  re-scan posture.
+- **Sweep cost:** journal-rooted closures read only description
+  objects — seconds-to-minutes even at 300k-snapshot scale (~5–6M
+  objects, 10–25 min worst case for a full year-archive empty under
+  the exclusive lock; dry-run pays the same walk). Cost is
+  proportional to *retained history*, not reclaimed bytes.
+- **Media store (500GB NAS):** first snapshot is wire-bound; the store
+  **duplicates the tree (+500GB day one)** — the honest headline.
+  Sweep stays ~30–90s *only if* the closure grammar never reads
+  leaves (see load-bearing sentence below).
+
+### The one load-bearing grammar sentence (gc design round input)
+
+The closure walk avoids reading file leaves only because parent
+entries self-describe child kind. **Adopted bare ID-list roots carry
+no kind marker** — if the pinned grammar says "probe each member," the
+first sweep of an adopted 500GB media store reads all 500GB over the
+NAS (content-bound, hours); if it says "adopted members are leaves"
+(sound because adoption is transitively closed at init, while the
+no-foreign-writer contract holds), the sweep stays ~100× cheaper.
+This sentence belongs in the gc design round and its conformance
+tests.
+
+### Retention-record scale caveat (gc design round input)
+
+Archive reclamation ("keep 1 month, drop 11" over 300k snapshots)
+needs per-root verdicts → ~550k permanent lines (~80MB). The record's
+"human-scale" assumption is violated by exactly this workload; the
+design round should consider an **aggregate condemnation primitive**
+(e.g., a verdict over a journal-section range or an ID-list root of
+condemned roots) without weakening the positive-warrant property.
+
+### NAS semantics caveat
+
+The print barrier, OS-lock-dies-with-holder, and torn-tail truncation
+pins assume local fsync/flock semantics. A "local" store path on an
+NFS/SMB mount silently bypasses v7's own rule that remote stores must
+re-prove the barrier per medium. The surface should say this.
+
+### Incumbent comparison (honest table)
+
+| vs | Code text | Immutable media | Large mutating files |
+|---|---|---|---|
+| **git** (zlib+packs) | git 3–5× smaller (10–50× on deep history) | **C4 wins** — git-LFS lands at C4's cost minus verifiability | git fails outright |
+| **borg/restic** (CDC+zstd) | ≈parity on dedup; borg ~3× on compression | byte parity; C4 wins on plain files, no locks, per-object degradation | **borg 20–75× smaller — the one real gap** |
+| **ZFS/btrfs** | substrate, not competitor | substrate | ZFS ~similar win to borg |
+
+**Mitigations, philosophy-compatible:** (1) **chunk-map sidecar** for
+large mutating files — an external ID-list of CDC chunk IDs bound to
+the whole-file content ID, riding the folded-sequence machinery;
+recomputable (concatenate-and-hash), measurement-gated, chunking
+parameters live in the sidecar never the grammar; (2) **run the store
+on compressed ZFS/btrfs** — reads return true bytes so
+every-read-rehashes still passes ("beside, not instead" applied to
+entropy coding); (3) reflink materialization for checkout
+multiplication — **currently a stub** (see shipped defects); (4)
+LucidLink-shaped derived cache stores (disposable MultiStore fronts,
+zero authority).
+
+### Shipped defects found by this pass (v1.0.15, filed on docket)
+
+1. **`TreeStore.Put` renames objects to final hash names BEFORE the
+   command-end barrier** — the torn-object-at-hash-name hazard v7 §3
+   closes on paper is live in the shipped binary (power cut mid-ingest
+   → torn object at a valid name → adopted by the presence-gated
+   write-skip of a later run).
+2. **`c4 log` is super-quadratic** — resolves the whole chain per
+   section: 500 sections = 61.5s; 1000 = did not finish.
+3. **`-S` folded sequences likely never store member content** —
+   storeManifestContent reconstructs paths from entry names; a folded
+   name is not a real file; the failure is silent. Blocks the future
+   chunk-map sidecar until fixed.
+4. Minor: ARCHITECTURAL_CATALOG overstates guided scanning (describes
+   reconcile.Plan's size+mtime trust, not scan.WithGuide's path
+   filter); the generator still auto-loads per-directory exclude files
+   (behavior v7 supersedes as an ID-integrity hazard).
