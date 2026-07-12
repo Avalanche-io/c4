@@ -35,10 +35,19 @@ func runLog(args []string) {
 		return
 	}
 
-	// Display each section with summary stats.
+	// Display each section with summary stats. The chain resolves
+	// incrementally — each section's state is the previous state plus
+	// one patch — so a long history costs one apply per section, not a
+	// from-scratch resolution per section.
 	var prev *c4m.Manifest
 	for i, sec := range allSections {
-		current := c4m.ResolvePatchChain(allSections, i+1)
+		var current *c4m.Manifest
+		if i == 0 {
+			current = c4m.ResolvePatchChain(allSections[:1], 1)
+		} else {
+			patch := &c4m.Manifest{Version: "1.0", Entries: sec.Entries}
+			current = c4m.ApplyPatch(prev, patch)
+		}
 		id := current.ComputeC4ID()
 
 		if i == 0 {
