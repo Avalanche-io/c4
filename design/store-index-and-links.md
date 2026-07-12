@@ -105,3 +105,52 @@ survive; nothing below is decided.
 - **Scope note:** GC-in-next-major is a roadmap commitment to carry
   into release planning; the withdrawn design (`design/store-gc.md`)
   plus the master-record idea are its inputs.
+
+## Link DB scale and encoding notes (2026-07-10, follow-up discussion)
+
+Joshua's observation: naive triples (3 full C4 IDs per edge, ~280 B as
+text / 192 B raw) explode at web-of-AI scale; optimizations like
+zone-local partial IDs indexing to full IDs, and one-to-many grouping
+(1 subject + M predicates + N objects instead of 3 IDs per edge) are
+available.
+
+Both instincts are the standard art, under established names:
+
+- **Interning / dictionary encoding** (the original "enumerated list of
+  IDs, triples as integer indexes"): one table of full 64-byte digests,
+  edges as ~3 varint integers → ~12–16 B/edge plus the node dictionary.
+  This is RDF dictionary encoding (HDT); every serious triple store
+  does it.
+- **One-to-many grouping** = adjacency-list / CSR (compressed sparse
+  row) with delta-encoded sorted object lists: ~2–6 B/edge per index
+  direction. Predicates are nearly free — even with predicate-as-C4-ID,
+  the *distinct* predicate count is tiny, so P interns to 1–2 bytes.
+- **Permutations**: answering "what references X" needs the inverse
+  (OPS) index too — plan on 2–3 directions, so ~6–18 B/edge total.
+  Priors: HDT compresses web-scale RDF to ~5–8 % of N-Triples text;
+  WebGraph gets < 1 B/edge on web graphs.
+- **Worked example**: 1 B edges over 100 M nodes ≈ 6.4 GB dictionary +
+  10–20 GB indexes ≈ **20–30 GB total vs ~280 GB naive** (~10–15×).
+  A media facility at 10⁷–10⁸ edges fits in single-digit GB — SQLite
+  on a laptop territory.
+- **Provenance survives grouping**: per the adjudication every edge
+  carries per-edge provenance (which record asserted it) — one more
+  small integer into a record dictionary, ~2–4 B/edge.
+
+Two rules that keep this coherent with the adjudicated architecture:
+
+1. **Intern integers are zone-private and never travel.** The wire and
+   the authoritative records always speak full IDs (plain text);
+   integers are a per-database compression detail. Federation
+   exchanges Bloom hints + full-ID records, never indexes.
+2. **All of this freedom exists *because* the link DB is derived and
+   disposable.** It carries no authority and rebuilds from plain-text
+   records + store scan, so its on-disk format can be as aggressive as
+   measurements demand (CSR, mmap, SQLite, whatever) at zero
+   philosophy cost. The interchange layer never carries the
+   optimization burden — that is the payoff of the
+   authoritative/derived split.
+
+Scale reality check: any ONE zone's DB is bounded by that zone's
+content; global scale is reached by federation, not by one table. The
+enormity concern mostly dissolves into per-zone bounded databases.
