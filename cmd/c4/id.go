@@ -252,6 +252,23 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 			}
 			continue
 		}
+		if entry.IsSequence {
+			// A folded entry's name is a pattern, not a file on disk.
+			// Expand to the member filenames and store each member's
+			// bytes — otherwise a sequence snapshot silently stores
+			// nothing for its frames.
+			members, err := c4m.ExpandSequencePattern(entry.Name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: cannot expand sequence %s: %v\n", entry.Name, err)
+				continue
+			}
+			prefix := strings.Join(dirStack, "")
+			for _, m := range members {
+				relPath := prefix + m
+				files = append(files, fileItem{nil, relPath, filepath.Join(baseDir, relPath)})
+			}
+			continue
+		}
 		if entry.C4ID.IsNil() || s.Has(entry.C4ID) {
 			continue
 		}
@@ -273,6 +290,10 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		go func(it fileItem) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			if it.entry == nil {
+				storeSequenceMember(s, it.path, it.full)
+				return
+			}
 			storeFileEntry(s, it.entry, it.path, it.full)
 		}(it)
 	}
@@ -335,6 +356,20 @@ func reportStored(id c4.ID) {
 // storeFileEntry stores one file's content, c4m-aware: c4m files are
 // canonicalized before storing, and the entry's ID is updated when
 // canonicalization changed it.
+// storeSequenceMember stores one expanded member of a folded sequence
+// entry. Members are raw content — Put computes each member's own ID.
+func storeSequenceMember(s store.Store, relPath, fullPath string) {
+	f, err := os.Open(fullPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: cannot read sequence member %s: %v\n", relPath, err)
+		return
+	}
+	defer f.Close()
+	if _, err := s.Put(f); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
+	}
+}
+
 func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
