@@ -124,7 +124,7 @@ Options:
 | `WithHidden` | include dotfiles |
 | `WithSequenceDetection` | collapse `file.[0001-0100].exr` patterns |
 | `WithExclude`, `WithExcludeFile` | glob exclusions |
-| `WithGuide` | reuse IDs from a reference manifest |
+| `WithGuide` | restrict the scan to paths present in a reference manifest (a root-relative path FILTER — it does not reuse the guide's IDs; ID reuse on size+mtime match is `reconcile.WithTrustedMetadata`, a different mechanism) |
 | `WithProgress(cb)` | periodic `ScanStats` callbacks; zero overhead when unset |
 | `WithMaxConcurrency(n)` | cap worker pool (0 = auto, 1 = sequential, n > 1 = explicit) |
 | `WithContext(ctx)` | cancellation observed at directory + entry boundaries |
