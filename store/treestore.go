@@ -29,6 +29,14 @@ type TreeStore struct {
 	mu             sync.Mutex
 	counts         map[string]int // leaf dir → file count (split accounting)
 	dirty          bool           // batch writes awaiting a Sync barrier
+	// pending holds complete batch-mode objects awaiting the barrier,
+	// keyed by ID, valued by their temp path. Objects are published at
+	// their hash names only AFTER Sync's device barrier, so presence at
+	// a hash name always implies bytes on stable media — a power cut
+	// can lose a pending object (safe: it was never claimed durable)
+	// but can never leave a torn object at a valid name for a later
+	// run's write-skip to adopt.
+	pending map[c4.ID]string
 }
 
 var _ Store = (*TreeStore)(nil)
@@ -65,15 +73,33 @@ func (s *TreeStore) SetSyncMode(mode SyncMode) {
 // write is already durable and under SyncNone durability is waived, so
 // both are no-ops. Under SyncBatch this is the batch barrier: one
 // device-cache flush (F_FULLFSYNC on darwin) covering every object
-// written since the last Sync.
+// written since the last Sync — issued BEFORE pending objects are
+// renamed to their hash names, so a rename is only ever visible for
+// bytes that are already on stable media.
 func (s *TreeStore) Sync() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.syncMode != SyncBatch || !s.dirty {
+	if s.syncMode != SyncBatch || (!s.dirty && len(s.pending) == 0) {
 		return nil
 	}
 	if err := SyncDir(s.root); err != nil {
 		return err
+	}
+	for id, tmpName := range s.pending {
+		p := s.path(id)
+		if _, err := os.Stat(p); err == nil {
+			os.Remove(tmpName)
+			delete(s.pending, id)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			return fmt.Errorf("mkdir: %w", err)
+		}
+		if err := os.Rename(tmpName, p); err != nil {
+			return fmt.Errorf("rename: %w", err)
+		}
+		s.noteAdd(filepath.Dir(p))
+		delete(s.pending, id)
 	}
 	s.dirty = false
 	return nil
@@ -81,12 +107,24 @@ func (s *TreeStore) Sync() error {
 
 // Has reports whether the store contains content for the given ID.
 func (s *TreeStore) Has(id c4.ID) bool {
+	s.mu.Lock()
+	_, ok := s.pending[id]
+	s.mu.Unlock()
+	if ok {
+		return true
+	}
 	_, err := os.Stat(s.path(id))
 	return err == nil
 }
 
 // Open opens the content for reading.
 func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
+	s.mu.Lock()
+	tmpName, ok := s.pending[id]
+	s.mu.Unlock()
+	if ok {
+		return os.Open(tmpName)
+	}
 	return os.Open(s.path(id))
 }
 
@@ -95,9 +133,24 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 // sync mode and renames atomically.
 func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	p := s.path(id)
-	if _, err := os.Stat(p); err == nil {
+	if s.Has(id) {
 		return nil, &os.PathError{Op: "create", Path: p, Err: os.ErrExist}
 	}
+
+	// Batch mode: write to a temp file and defer publication to the
+	// Sync barrier, same as Put — a rename must never precede the
+	// durability of the bytes it exposes.
+	if s.syncMode == SyncBatch {
+		tmp, err := os.CreateTemp(s.root, ".ingest.*")
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		s.dirty = true
+		s.mu.Unlock()
+		return &pendingWriter{f: tmp, s: s, id: id}, nil
+	}
+
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return nil, err
 	}
@@ -112,6 +165,47 @@ func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	return w, nil
 }
 
+// pendingWriter is Create's batch-mode writer: bytes land in a temp
+// file with a cheap flush on Close, and the object is registered as
+// pending so it publishes at its hash name only after the Sync barrier.
+type pendingWriter struct {
+	f  *os.File
+	s  *TreeStore
+	id c4.ID
+}
+
+func (w *pendingWriter) Write(b []byte) (int, error) {
+	return w.f.Write(b)
+}
+
+func (w *pendingWriter) Close() error {
+	tmpName := w.f.Name()
+	if err := flushFile(w.f, SyncBatch); err != nil {
+		w.f.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := w.f.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	w.s.mu.Lock()
+	defer w.s.mu.Unlock()
+	if _, ok := w.s.pending[w.id]; ok {
+		os.Remove(tmpName)
+		return nil
+	}
+	if _, err := os.Stat(w.s.path(w.id)); err == nil {
+		os.Remove(tmpName)
+		return nil
+	}
+	if w.s.pending == nil {
+		w.s.pending = make(map[c4.ID]string)
+	}
+	w.s.pending[w.id] = tmpName
+	return nil
+}
+
 // Put reads all content from r, computes its C4 ID, stores it, and returns
 // the ID. If the content already exists the write is skipped. Put is safe
 // for concurrent use: hashing, temp writes, and flushes overlap; only the
@@ -123,7 +217,12 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 		return c4.ID{}, fmt.Errorf("create temp: %w", err)
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // clean up on any error path
+	keepTmp := false
+	defer func() {
+		if !keepTmp {
+			os.Remove(tmpName) // clean up on any error path
+		}
+	}()
 
 	h := sha512.New()
 	w := io.MultiWriter(tmp, h)
@@ -153,6 +252,24 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 		return id, nil
 	}
 
+	// Batch mode: defer publication. The object must not appear at its
+	// hash name until the barrier has made its bytes durable — a rename
+	// visible after a power cut must always imply good bytes, or a
+	// later run's presence-gated write-skip adopts a torn object into a
+	// printed snapshot.
+	if s.syncMode == SyncBatch {
+		if _, ok := s.pending[id]; ok {
+			return id, nil
+		}
+		if s.pending == nil {
+			s.pending = make(map[c4.ID]string)
+		}
+		s.pending[id] = tmpName
+		keepTmp = true
+		s.dirty = true
+		return id, nil
+	}
+
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return c4.ID{}, fmt.Errorf("mkdir: %w", err)
 	}
@@ -168,7 +285,15 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 }
 
 // ContentPath returns the local filesystem path for id when present.
+// A pending batch object's temp path is returned: the file is complete
+// (written and closed), just not yet published at its hash name.
 func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
+	s.mu.Lock()
+	tmpName, ok := s.pending[id]
+	s.mu.Unlock()
+	if ok {
+		return tmpName, true
+	}
 	p := s.path(id)
 	if _, err := os.Stat(p); err != nil {
 		return "", false
