@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.0.16
+
+Correctness patch: three defects found by adversarial review of the
+shipped binary.
+
+### Durability: batch objects publish only after the barrier
+
+In batch mode (the only mode since v1.0.15), objects were renamed to
+their final hash names *before* the end-of-command device barrier. A
+power cut in that window could leave a torn object at a valid hash
+name, which a later run's presence-gated write-skip would adopt
+silently. Objects now stay at temp names until `Sync` issues the
+barrier, then publish — presence at a hash name always implies bytes
+on stable media. During a run, pending objects are still served by
+`Has`/`Open`/`ContentPath`, so behavior is unchanged apart from the
+crash window. (Stores written by ≤ v1.0.15 cannot be repaired
+retroactively; objects verify on read as always.)
+
+### `c4 log`: linear chain resolution
+
+`c4 log` resolved the entire patch chain from scratch for every
+section — super-quadratic: 500 sections took ~60 s and 1000 did not
+finish. The chain now resolves incrementally (one patch application
+per section): 1000 sections in ~5 s including per-step IDs.
+
+### Sequences: `-S` ingest stores member content
+
+With sequence folding, the store pass reconstructed paths from entry
+names — a folded pattern (`frame.[0001-0100].exr`) is not a file, so
+every member was silently skipped and a "stored" sequence snapshot
+held none of its frames. Folded entries now expand to their member
+files at store time; unreadable members warn instead of vanishing.
+
 ## v1.0.15
 
 Same-day supersede of v1.0.14: identical content plus the Windows
