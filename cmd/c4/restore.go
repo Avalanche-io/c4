@@ -165,18 +165,23 @@ func runRestore(args []string) {
 }
 
 // resolveRestoreTarget loads a restore target: a store address
-// (expanded through stored directory records) or a .c4m description
-// file. Restore targets are descriptions only.
+// (optionally with /path descent by recorded entry name, expanded
+// through stored directory records) or a .c4m description file.
+// Restore targets are descriptions only.
 func resolveRestoreTarget(s store.Store, arg string) *c4m.Manifest {
-	if looksLikeC4ID(arg) {
-		id, err := c4.Parse(arg)
+	if first := strings.SplitN(arg, "/", 2)[0]; looksLikeC4ID(first) {
+		id, err := c4.Parse(first)
 		if err != nil {
 			fatalf("Error: invalid C4 ID: %v", err)
 		}
 		if !s.Has(id) {
 			fatalf("Error: %s is not in the store", id)
 		}
-		m := manifestFromStore(s, id)
+		id, _ = storeDescend(s, id, arg[len(first):])
+		m := verifiedManifestFromStore(s, id)
+		if m == nil {
+			fatalf("Error: %s must resolve to a listing (extract files with c4 cat)", arg)
+		}
 		m = expandIfRecord(m, s)
 		validateRevertTarget(m)
 		return m
@@ -247,24 +252,6 @@ func validateRevertTarget(m *c4m.Manifest) {
 			fatalf("Error: target incomplete: no stored record for directory %s (%s)", e.Name, e.C4ID)
 		}
 	}
-}
-
-// manifestFromStore loads and decodes a description stored by a
-// snapshot (c4 id -s) or a restore pre-image.
-func manifestFromStore(s store.Store, id c4.ID) *c4m.Manifest {
-	if !s.Has(id) {
-		fatalf("Error: description %s not found in store", id)
-	}
-	rc, err := s.Open(id)
-	if err != nil {
-		fatalf("Error loading description: %v", err)
-	}
-	defer rc.Close()
-	m, err := c4m.NewDecoder(rc).Decode()
-	if err != nil {
-		fatalf("Error decoding description: %v", err)
-	}
-	return m
 }
 
 // opName returns a human-readable name for a reconcile operation type.

@@ -31,13 +31,11 @@ func runDiff(args []string) {
 	outputDiff(oldManifest, newManifest, *ergonomic)
 }
 
-// resolveDiffSide loads a non-directory diff side: a store address or a
-// c4m file. Chains resolve to their final state.
+// resolveDiffSide loads a non-directory diff side: a store address
+// (ID/path allowed; the resolved object must be a listing) or a c4m
+// file. Chains resolve to their final state.
 func resolveDiffSide(arg string) *c4m.Manifest {
 	if first := strings.SplitN(arg, "/", 2)[0]; looksLikeC4ID(first) {
-		if first != arg {
-			fatalf("Error: ID/path descent is not yet supported here; use the bare ID")
-		}
 		id, err := c4.Parse(first)
 		if err != nil {
 			fatalf("Error: invalid C4 ID: %v", err)
@@ -46,7 +44,11 @@ func resolveDiffSide(arg string) *c4m.Manifest {
 		if s == nil {
 			fatalf("Error: %s is a store address and no store is configured", arg)
 		}
-		m := manifestFromStore(s, id)
+		id, _ = storeDescend(s, id, arg[len(first):])
+		m := verifiedManifestFromStore(s, id)
+		if m == nil {
+			fatalf("Error: %s must resolve to a listing", arg)
+		}
 		return expandIfRecord(m, s)
 	}
 	return resolveC4m(arg)
