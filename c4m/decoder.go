@@ -542,22 +542,32 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 			return buf.String(), pos, hasUnescapedBrackets, nil
 		}
 
-		// Check for boundary: space followed by link operator, c4 prefix, or -
+		// Check for boundary: space(s) followed by link operator, c4
+		// prefix, or -. Aligned (pretty) forms pad fields with runs of
+		// spaces, so the lookahead skips the whole run before testing.
 		if ch == ' ' {
-			rest := line[pos:]
-			if strings.HasPrefix(rest, " -> ") ||
-				strings.HasPrefix(rest, " <- ") ||
-				strings.HasPrefix(rest, " <> ") {
+			j := pos
+			for j < n && line[j] == ' ' {
+				j++
+			}
+			rest := line[j:]
+			if rest == "" {
+				// Trailing padding: the name ended at the first space.
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
-			// Hard link group marker: " ->N" where N is a digit 1-9
-			if len(rest) >= 4 && rest[1] == '-' && rest[2] == '>' && rest[3] >= '1' && rest[3] <= '9' {
+			if strings.HasPrefix(rest, "-> ") ||
+				strings.HasPrefix(rest, "<- ") ||
+				strings.HasPrefix(rest, "<> ") {
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
-			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
+			// Hard link group marker: "->N" where N is a digit 1-9
+			if len(rest) >= 3 && rest[0] == '-' && rest[1] == '>' && rest[2] >= '1' && rest[2] <= '9' {
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
-			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
+			if len(rest) >= 2 && rest[0] == 'c' && rest[1] == '4' {
+				return buf.String(), pos, hasUnescapedBrackets, nil
+			}
+			if rest[0] == '-' && (len(rest) == 1 || rest[1] == ' ') {
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
 		}
