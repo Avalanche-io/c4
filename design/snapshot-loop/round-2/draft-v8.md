@@ -138,3 +138,16 @@ design round.
 Everything else in v7 — identity concepts, durability protocol,
 folded sequences, exclusion mechanism, argument-root resolution,
 stance section — carries verbatim.
+
+## Amendment 4 — stale ingest-temp cleanup (added 2026-07-13, interrogation finding)
+
+Crashed ingests leave `.ingest.*` staging files: non-object names,
+invisible to Walk and to every closure. They hold good bytes (the
+barrier-before-rename protocol writes them completely before any
+publication) but nothing references them. Rule: **any holder of the
+EXCLUSIVE sweep lock may delete every `.ingest.*` staging file** — the
+lock proves no live writer exists, so every staging file present is
+stale by definition. `c4 retain adopt` and `c4 gc --empty-trash`
+perform this cleanup as a side effect, reporting the count on their
+summary line. No standalone verb; until gc ships, crashed-ingest temps
+leak (small, rare) and the interim fresh-store recipe clears them.
