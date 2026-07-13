@@ -10,6 +10,13 @@ import (
 )
 
 func runLog(args []string) {
+	for _, a := range args {
+		if a == "--help" {
+			fmt.Print(logHelp)
+			return
+		}
+	}
+
 	// No arguments: the store's own history — the journal. One line
 	// per claim, byte-pure data on stdout.
 	if len(args) < 1 {
@@ -28,14 +35,10 @@ func runLog(args []string) {
 		if err != nil {
 			fatalf("Error reading journal: %v", err)
 		}
-		for _, c := range claims {
-			origin := ""
-			if c.Origin != "" {
-				origin = " <- " + c.Origin
-			}
-			fmt.Printf("%s %d %s%s %s\n",
-				c.ScanStart.UTC().Format("2006-01-02T15:04:05Z"),
-				c.Size, c.Name, origin, c.ID)
+		// One line per section: the 1-based index (what c4 split takes),
+		// a space, then the entry exactly as recorded.
+		for i, c := range claims {
+			fmt.Printf("%d %s\n", i+1, c.EntryLine())
 		}
 		return
 	}
@@ -57,6 +60,34 @@ func runLog(args []string) {
 
 	if len(allSections) == 0 {
 		fmt.Fprintf(os.Stderr, "No patches found.\n")
+		return
+	}
+
+	// A journal file — every section one claim entry, each boundary ID
+	// equal to that claim's own ID — lists exactly like the installed
+	// journal: index, space, the entry as recorded. (A patch chain's
+	// boundaries are resolved-state IDs, never the entry's.)
+	journalShaped := true
+	for i, sec := range allSections {
+		if len(sec.Entries) != 1 {
+			journalShaped = false
+			break
+		}
+		e := sec.Entries[0]
+		if e.IsDir() || e.Mode != 0 || e.C4ID.IsNil() ||
+			e.Timestamp.Equal(c4m.NullTimestamp()) {
+			journalShaped = false
+			break
+		}
+		if i > 0 && sec.BaseID != allSections[i-1].Entries[0].C4ID {
+			journalShaped = false
+			break
+		}
+	}
+	if journalShaped {
+		for i, sec := range allSections {
+			fmt.Printf("%d %s\n", i+1, sec.Entries[0].Canonical())
+		}
 		return
 	}
 

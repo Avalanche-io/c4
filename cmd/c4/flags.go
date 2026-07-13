@@ -10,10 +10,16 @@ import (
 // flags is a minimal flag parser supporting short (-e) and long (--ergonomic)
 // flags with no external dependencies. It replaces pflag for the c4 CLI.
 type flags struct {
-	name    string
-	defs    []*flagDef
-	args    []string // remaining positional arguments after parsing
-	parsed  bool
+	name     string
+	defs     []*flagDef
+	args     []string // remaining positional arguments after parsing
+	parsed   bool
+	helpText string // printed by --help (stdout, exit 0)
+}
+
+// help installs the verb's reference page, printed by --help.
+func (f *flags) help(text string) {
+	f.helpText = text
 }
 
 type flagKind int
@@ -26,17 +32,17 @@ const (
 )
 
 type flagDef struct {
-	long     string
-	short    byte // 0 if no short form
-	kind     flagKind
-	boolVal  *bool
-	strVal   *string
-	intVal   *int
-	arrVal   *[]string
-	defBool  bool
-	defStr   string
-	defInt   int
-	usage    string
+	long    string
+	short   byte // 0 if no short form
+	kind    flagKind
+	boolVal *bool
+	strVal  *string
+	intVal  *int
+	arrVal  *[]string
+	defBool bool
+	defStr  string
+	defInt  int
+	usage   string
 }
 
 func newFlags(name string) *flags {
@@ -97,6 +103,11 @@ func (f *flags) parse(args []string) {
 		if arg == "--" {
 			f.args = append(f.args, args[i+1:]...)
 			return
+		}
+
+		if arg == "--help" && f.helpText != "" {
+			fmt.Print(f.helpText)
+			os.Exit(0)
 		}
 
 		if strings.HasPrefix(arg, "--") {

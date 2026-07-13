@@ -21,6 +21,7 @@ import (
 
 func runID(args []string) {
 	fs := newFlags("id")
+	fs.help(idHelp)
 	storeFlag := fs.boolFlag("store", 's', false, "Snapshot into the store; print the snapshot ID (implies -q; always full detail)")
 	quiet := fs.boolFlag("quiet", 'q', false, "Print one bare ID line per path (THE identity; byte-pure)")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form c4m")
@@ -101,9 +102,12 @@ func runID(args []string) {
 	// Collect results — multiple paths produce one combined manifest.
 	// Under -q the contract is: exactly one bare ID line per path that
 	// SUCCEEDS (a failed path prints nothing and the exit code is 1),
-	// so scripts capture THE identity without parsing prose.
+	// so scripts capture THE identity without parsing prose. A partial
+	// scan — unreadable entries recorded with nulls — still produces
+	// its description and exits 2 (1 beats 2 when both occur).
 	combined := c4m.NewManifest()
 	failed := false
+	partial := false
 
 	for _, p := range paths {
 		if p == "-" {
@@ -145,6 +149,9 @@ func runID(args []string) {
 
 		if info.IsDir() {
 			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide, guideStart, *verifyFlag)
+			if reportPartial(m, mode) {
+				partial = true
+			}
 			if *quiet {
 				// THE ID of a directory scan is the identity of its
 				// description: the manifest's canonical-text ID — the
@@ -153,6 +160,9 @@ func runID(args []string) {
 				continue
 			}
 			outputManifest(m, *ergonomic)
+			if partial {
+				os.Exit(2)
+			}
 			return
 		}
 
@@ -217,6 +227,27 @@ func runID(args []string) {
 	if failed {
 		os.Exit(1)
 	}
+	if partial {
+		os.Exit(2)
+	}
+}
+
+// reportPartial declares every entry a scan could not fully read —
+// recorded with null fields — on stderr, and reports whether any
+// exist. Only ID-bearing levels can tell unread from unrecorded.
+func reportPartial(m *c4m.Manifest, mode scan.ScanMode) bool {
+	if mode != scan.ModeFull && mode != scan.ModeContent {
+		return false
+	}
+	found := false
+	for path, e := range c4m.EntryPaths(m.Entries) {
+		if e.IsSequence || e.Target != "" || !e.C4ID.IsNil() {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "partial: %s recorded with nulls (unreadable)\n", path)
+		found = true
+	}
+	return found
 }
 
 // manifestFromStdin parses stdin as a c4m description (the `c4 id -`

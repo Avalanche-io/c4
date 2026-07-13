@@ -12,6 +12,7 @@ import (
 // directories — that is restore's job, behind restore's safety machine.
 func runPatch(args []string) {
 	fs := newFlags("patch")
+	fs.help(patchHelp)
 	n := fs.intFlag("number", 'n', 0, "Resolve to section N (1-based; 0 = final state)")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Column-aligned output")
 	fs.parse(args)

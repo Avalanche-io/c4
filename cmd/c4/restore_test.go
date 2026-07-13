@@ -50,13 +50,22 @@ func TestRestoreRecoverFromStoreAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Dry run first: prints nothing on stdout, changes nothing.
+	// Dry run first: the plan in c4m patch form — the current ID (the
+	// empty description for an absent dir), differing entries, the
+	// target ID — and nothing touched.
 	stdout, _, code = runC4WithEnv(t, bin, env, "restore", snapID, tree)
 	if code != 0 {
 		t.Fatalf("dry run exit %d", code)
 	}
-	if stdout != "" {
-		t.Fatalf("dry run printed to stdout: %q", stdout)
+	planLines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	if len(planLines) < 2 {
+		t.Fatalf("dry run plan too short: %q", stdout)
+	}
+	if planLines[len(planLines)-1] != snapID {
+		t.Fatalf("plan must end with the target ID:\n%s", stdout)
+	}
+	if planLines[0] == snapID {
+		t.Fatal("plan first line should be the (differing) current ID")
 	}
 	if _, err := os.Stat(tree); !os.IsNotExist(err) {
 		t.Fatal("dry run touched the filesystem")

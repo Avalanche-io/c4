@@ -17,6 +17,7 @@ import (
 // folding exactly what it folds.
 func runDiff(args []string) {
 	fs := newFlags("diff")
+	fs.help(diffHelp)
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Column-aligned output")
 	fs.parse(args)
 

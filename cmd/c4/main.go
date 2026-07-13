@@ -10,6 +10,9 @@ const version = "1.0.16"
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "--help", "-h", "help":
+			fmt.Printf("%s\nVersion: %s\n", topHelp, version)
+			return
 		case "id":
 			runID(os.Args[2:])
 			return
@@ -90,27 +93,5 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `c4 - Content-addressable identification using C4 IDs (SMPTE ST 2114)
-
-Usage:
-  c4 id [flags] <path>...         Identify files, directories, or c4m files
-  c4 cat [-e] [-r] <c4id|path>    Retrieve/display content (c4m-aware)
-  c4 diff <old> <new>             Produce c4m diff (patch)
-  c4 patch <target> [<dest>]     Apply target state (resolve diffs or reconcile)
-  c4 merge <path>...              Combine filesystem trees (c4m or directories)
-  c4 paths [<file.c4m> | -]       Convert between c4m and path lists
-  c4 intersect <id|path> <a> <b> Find common entries between c4m files
-  c4 log <file.c4m>...            List patches in a chain
-  c4 explain <command> [args]       Human-readable command narration
-  c4 split <file.c4m> <N> <before.c4m> <after.c4m>
-                                  Split chain at patch N
-  c4 version                      Print version
-
-  c4 <path>                      Identify + store (shortcut for c4 id -s)
-  c4 <path> -x                   Identify only, skip store
-  echo "data" | c4               Identify + store from stdin
-  echo "data" | c4 -x            Identify only from stdin
-
-Version: %s
-`, version)
+	fmt.Fprintf(os.Stderr, "%s\nVersion: %s\n", topHelp, version)
 }

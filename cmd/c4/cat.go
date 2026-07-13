@@ -14,6 +14,7 @@ import (
 
 func runCat(args []string) {
 	fs := newFlags("cat")
+	fs.help(catHelp)
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Pretty-print c4m content")
 	recursive := fs.boolFlag("recursive", 'r', false, "Recursively expand directory entries in c4m")
 	fs.parse(args)
@@ -297,4 +298,3 @@ func isBase58(b byte) bool {
 		(b >= 'a' && b <= 'k') ||
 		(b >= 'm' && b <= 'z')
 }
-

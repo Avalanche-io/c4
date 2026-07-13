@@ -47,6 +47,10 @@ func OpenJournal(storeRoot string) *Journal {
 // Path returns the journal file's path.
 func (j *Journal) Path() string { return j.path }
 
+// EntryLine renders the claim as a canonical c4m entry line — the
+// exact text the journal records; what c4 log reprints.
+func (c Claim) EntryLine() string { return c.entryLine() }
+
 // entryLine renders the claim as a canonical c4m entry line.
 func (c Claim) entryLine() string {
 	e := &Entry{

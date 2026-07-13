@@ -24,6 +24,7 @@ import (
 // found); 3 curable failure (cure and re-run).
 func runRestore(args []string) {
 	fs := newFlags("restore")
+	fs.help(restoreHelp)
 	force := fs.boolFlag("force", 0, false, "Apply the restore (default is a dry run)")
 	fs.parse(args)
 
@@ -103,6 +104,23 @@ func runRestore(args []string) {
 	}
 
 	if !*force {
+		// The plan in c4m patch form, computed at the target's knowledge
+		// level: line 1 is the destination's current ID at that level,
+		// one line per differing entry, then the target ID. Matching
+		// states print equal boundary IDs with no entry lines.
+		var current *c4m.Manifest
+		if destExists {
+			current = scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
+		} else {
+			current = c4m.NewManifest()
+		}
+		diff := c4m.PatchDiff(current, target)
+		fmt.Println(diff.OldID)
+		if !diff.IsEmpty() {
+			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
+		}
+		fmt.Println(diff.NewID)
+
 		plan := planRestore(s, target, destArg, destExists)
 		fmt.Fprintf(os.Stderr, "dry run: %d operations planned for %s (use --force to apply)\n",
 			len(plan.Operations), destArg)
