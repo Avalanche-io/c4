@@ -1,6 +1,7 @@
 # Getting Started with C4
 
-This guide walks through the core workflow: identifying files, creating c4m snapshots, comparing directories, and versioning with patches.
+This guide walks through the core loop: identifying files, snapshotting
+into the store, comparing states, restoring, and versioning with patches.
 
 ## Install
 
@@ -10,48 +11,56 @@ go install github.com/Avalanche-io/c4/cmd/c4@latest
 
 ## 1. Identify Files
 
-Every file gets a c4m entry with its metadata and C4 ID:
-
 ```bash
 $ c4 id photo.jpg
--rw-r--r-- 2026-03-04T14:22:10Z 4404019 photo.jpg c43zYcLni5LF...
+- - 4404019 photo.jpg c43zYcLni5LF...
 
 $ echo "hello world" | c4
 c44SjyfSsNez6bqFCJeFCSurmMiQ3DFCXkG67PiB9DJobUqG2YhvMeCvig6fjuh67SmrUUYMcaHmJjNMeZCqbNkWcTP
 ```
 
-Piped data has no filesystem metadata, so it outputs a bare C4 ID. A directory produces a full recursive c4m listing:
+By default a description is at *content* level — mode and timestamp
+null, so the same bytes give the same IDs on any machine, clock, or
+umask. `-m f` records everything observed:
 
 ```bash
-$ c4 id myproject/
--rw-r--r-- 2026-03-04T14:22:10Z 1234 README.md c4abc...
--rw-r--r-- 2026-03-04T14:22:10Z 5678 main.go c4def...
+$ c4 id -m f photo.jpg
+-rw-r--r-- 2026-03-04T14:22:10Z 4404019 photo.jpg c43zYcLni5LF...
 ```
+
+Nothing here writes anything — `c4 id` (and bare `c4 <path>`) is
+read-only.
 
 ## 2. Create a c4m File
 
-A c4m file is a lightweight description of a directory — every file's permissions, timestamps, size, name, and C4 ID in a human-readable text format:
+A c4m file is a lightweight description of a directory — a small text
+file (typically a few KB) that fully describes a directory that could
+contain terabytes of data:
 
 ```bash
-# Save to a .c4m file
-c4 id myproject/ > project.c4m
+c4 id myproject/ > project.c4m          # content level
+c4 id -m f myproject/ > project.c4m     # full observed detail
 ```
 
-The c4m file is a small text file (typically a few KB) that fully describes a directory that could contain terabytes of data.
+## 3. Snapshot into the Store
 
-## 3. Store Content
-
-Store file content in a content-addressed store for later retrieval:
+`-s` stores a complete snapshot — every file's bytes, every
+directory's listing — and prints one thing: THE snapshot ID. The ID
+prints only after everything it names is on stable media; if it
+printed, you can get it back, even after `kill -9` or power loss.
 
 ```bash
-# Store content while identifying
-c4 id -s myproject/ > project.c4m
+$ SNAP=$(c4 id -s myproject/)
+$ echo "$SNAP"
+c43k2Jd...
 
-# Retrieve content by C4 ID
-c4 cat c43zYcLni5LF... > restored-file.jpg
+$ c4 cat "$SNAP"                        # the root listing
+$ c4 cat "$SNAP"/src/main.go > main.go  # extract one file, verified
+$ c4 log                                # every claim the store holds
 ```
 
-On first use of `-s`, the CLI offers to create a default store at `~/.c4/store`. You can also configure it explicitly:
+On first use of `-s`, the CLI offers to create a default store at
+`~/.c4/store`. You can also configure it explicitly:
 
 ```bash
 C4_STORE=/path/to/store                                        # local
@@ -59,52 +68,49 @@ C4_STORE=s3://bucket/prefix?region=us-west-2                   # S3
 C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2             # multiple
 ```
 
-## 4. Compare Directories
+## 4. Compare States
 
-See what changed between two snapshots. Arguments can be c4m files,
-directories, or any combination:
+See what changed. Sides can be c4m files, directories, or store IDs:
 
 ```bash
 c4 diff old.c4m new.c4m
 c4 diff project.c4m ./project/
-c4 diff ./old-project/ ./new-project/
+c4 diff "$SNAP" ./project/            # what changed since the snapshot
 ```
 
-## 5. Version with Patches
+## 5. Restore — with Undo
+
+Make a directory match a description. Dry run by default; `--force`
+snapshots the directory first, so every restore is undoable:
+
+```bash
+c4 restore "$SNAP" ./project/               # dry run: print the plan
+out=$(c4 restore --force "$SNAP" ./project/)
+
+# stdout is two bare-ID lines: the undo handle, then the verified result
+undo=$(printf '%s\n' "$out" | sed -n 1p)
+c4 restore --force "$undo" ./project/       # undo — prints its own undo
+```
+
+The undo handle is journaled before anything is destroyed — `c4 log`
+is the reflog, and no c4 verb deletes store objects.
+
+## 6. Version with Patches
 
 Append diffs to a c4m file to build a version history:
 
 ```bash
-# Initial snapshot
-c4 id -s ./project/ > project.c4m
+c4 id ./project/ > project.c4m                            # snapshot
+c4 diff project.c4m <(c4 id ./project/) >> project.c4m    # append changes
 
-# Later: append a patch
-c4 diff project.c4m <(c4 id -s ./project/) >> project.c4m
-
-# View history
-c4 log project.c4m
-
-# Resolve to current state
-c4 patch project.c4m > current.c4m
-
-# Branch: split at any point
-c4 split project.c4m 3 common.c4m rest.c4m
+c4 log project.c4m               # view history
+c4 patch project.c4m             # resolve to final state (text out)
+c4 patch -n 1 project.c4m        # recover the original state
+c4 split project.c4m 3 common.c4m rest.c4m   # branch at any point
 ```
 
-## 6. Reconcile a Directory
-
-Apply a target state to a live directory:
-
-```bash
-# Make ./project/ match target.c4m, store pre-patch state
-c4 patch -s target.c4m ./project/ > changeset.c4m
-
-# Revert later using the stored pre-patch state
-c4 patch -r changeset.c4m ./project/
-
-# Preview without making changes
-c4 patch --dry-run target.c4m ./project/
-```
+`patch` composes descriptions — text in, text out. To change a
+directory, use `restore`.
 
 ## Next Steps
 

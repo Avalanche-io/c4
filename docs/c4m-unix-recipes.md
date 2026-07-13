@@ -341,34 +341,26 @@ c4 patch project.c4m
 c4 patch -n 3 project.c4m
 ```
 
-### Reconcile a directory to match a target
+### Make a directory match a target
+
+`patch` never touches directories — `restore` does, undo-safely:
 
 ```bash
-# Apply target state, capturing the changeset
-c4 patch target.c4m ./project/ > changeset.c4m
+# Dry run: print the plan (nothing written)
+c4 restore target.c4m ./project/
 
-# Store pre-patch state for later reversal
-c4 patch -s target.c4m ./project/ > changeset.c4m
+# Apply: line 1 is the undo handle, line 2 the verified result
+out=$(c4 restore --force target.c4m ./project/)
 ```
 
-### Revert to pre-patch state
-
-If the forward patch was run with `-s`, the pre-patch manifest is in the
-content store. Use `-r` to revert:
+### Undo a restore
 
 ```bash
-# Revert the directory to its pre-patch state
-c4 patch -r changeset.c4m ./project/
-```
+undo=$(printf '%s\n' "$out" | sed -n 1p)
+c4 restore --force "$undo" ./project/    # undo — prints its own undo
 
-### Preview without making changes
-
-```bash
-# Dry-run a reconciliation
-c4 patch --dry-run target.c4m ./project/
-
-# Preview what reverting would change (diff against stored pre-patch state)
-c4 diff -r changeset.c4m ./project/
+# Lost the terminal? The undo handle is journaled:
+c4 log | tail -1
 ```
 
 ### Split history at a branch point

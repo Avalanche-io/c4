@@ -1,5 +1,98 @@
 # Changelog
 
+## Unreleased — the snapshot loop (BREAKING)
+
+The v8 snapshot-loop surface (`design/snapshot-loop`), crash-verified
+end-to-end (`design/snapshot-loop/kill9-crucible.sh`). Breaking
+changes are marked ⚠.
+
+### The print barrier and the journal
+
+Every store gains a journal, `<store>/log.c4m` — an ordinary c4m
+patch chain recording every claim the store makes (snapshots, stdin
+blobs, restore pre-images). No ID reaches stdout before its content is
+durable AND its journal entry is fsynced: printed ⇒ durable ⇒
+recoverable, through `kill -9`, kernel panic, and power loss. Appends
+serialize under an OS lock that dies with its holder; a torn tail is
+truncated on the next append. `c4 log` (no arguments) lists the
+journal: index, then the entry exactly as recorded.
+
+### `c4 restore` — the one tree-writing verb
+
+Make a directory match a description, undo-safely. Dry run by default
+(the plan in c4m patch form on stdout); `--force` snapshots the
+destination's pre-image — durable and journaled before the first
+destructive operation — then reconciles, verifies by recomputation,
+and prints exactly two bare-ID lines: the undo handle, then the
+as-built ID. Line 1 feeds straight back as a restore target; the undo
+prints its own undo. Exit machine: 0 verified / 1 refused untouched /
+2 declared omissions / 3 curable.
+
+### ⚠ Identity: content level is the default
+
+`c4 id` now describes at *content* level — mode and timestamp null at
+every level (the exec bit included) — so equal bytes give equal IDs on
+any machine, clock, or umask. `-m f` records everything observed.
+`-q` prints THE identity, one bare line per succeeded path. `-s`
+snapshots at full detail, implies `-q` (stdout = the snapshot ID,
+nothing else), conflicts with `-m`, and stores per-directory records
+plus the root record — THE snapshot ID is the root ID. Partial scans
+declare unreadable entries on stderr and exit 2.
+
+### ⚠ Nothing writes without `-s`
+
+Bare `c4 <path>` is now read-only (`c4 id <path>`); `c4 -s <path>`
+snapshots. `echo data | c4` prints the ID without storing;
+`echo data | c4 -s` stores. The `-x` flag is gone.
+
+### ⚠ `c4 patch` is text algebra
+
+`patch` resolves chains — c4m text in, c4m text out (`-n N` picks a
+section) — and never touches directories; a directory argument exits 1
+pointing at restore. The old reconcile/revert/pre-state forms
+(`patch <c4m> <dir>`, `-r`, `--dry-run`, `--no-store`, `--source`)
+moved behind `restore`'s safety machine.
+
+### ⚠ `c4 diff` slimmed
+
+`c4 diff [-e] <old> <new>`. Sides: directories, c4m files, or store
+IDs (ID/path allowed). Directories scan at content level, or at the
+other side's level when that side is a description. `-r`, `-s`, `-q`,
+`-m` removed.
+
+### Store addresses and ID/path descent
+
+An argument whose first slash-separated component is a C4 ID is a
+store address, accepted by `c4 cat`, restore targets, and diff sides:
+`<ID>/a/b` descends by recorded entry name, byte-exact, every level
+rehash-verified, never following symlinks. `c4 cat` verifies every
+read — exit 0 means present AND intact.
+
+### Fast re-scans: `-c` reuse guide and `--verify`
+
+⚠ `-c` is repurposed: it now takes a prior full description as a
+*reuse guide* — a file whose path, size, and mtime match (and whose
+mtime is strictly older than the guide's scan start; git's racy-index
+rule) keeps its recorded ID without being re-read. Summary on stderr:
+`reuse: R reused, H rehashed`. The documented trade: a same-size
+change under a restored mtime is invisible to a `-c` re-scan;
+`--verify` is the audit — full re-hash plus a report of every change
+hidden under unchanged metadata. (The old `-c` scan-filter workflow is
+retired.) ⚠ `C4_EXCLUDE_FILE` is removed: no environment variable
+adds exclusion patterns.
+
+### Reference pages
+
+`c4 --help` prints the one-page contract (identity, scripting rules,
+exit codes, durability); every verb's `--help` prints its full
+reference page. `c4 explain restore` narrates a restore plan.
+
+### c4m parser fix
+
+The decoder's name-field boundary now looks past aligned padding runs:
+column-aligned (ergonomic) listings with null timestamps round-tripped
+with padding absorbed into names.
+
 ## v1.0.16
 
 Correctness patch: three defects found by adversarial review of the

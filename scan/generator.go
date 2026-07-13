@@ -63,7 +63,6 @@ type Generator struct {
 	detectSequences bool
 	excludePatterns []string
 	excludeFile     string          // explicit exclude file path
-	excludeFileName string          // filename to look for in scanned dirs (from env)
 	guide           map[string]bool // paths from guide c4m (nil = no guide)
 	scanRoot        string
 	progress        *progress     // nil = no progress reporting (zero-cost path)
@@ -101,7 +100,6 @@ func NewGenerator() *Generator {
 		followSymlinks:  false,
 		includeHidden:   true,
 		detectSequences: false,
-		excludeFileName: os.Getenv("C4_EXCLUDE_FILE"),
 	}
 }
 
@@ -358,7 +356,6 @@ func (g *Generator) clone() *Generator {
 		includeHidden:   g.includeHidden,
 		detectSequences: g.detectSequences,
 		excludeFile:     g.excludeFile,
-		excludeFileName: g.excludeFileName,
 		maxConcurrency:  g.maxConcurrency,
 		sem:             g.sem,
 		ctx:             g.ctx,
@@ -449,10 +446,6 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	if g.excludeFile != "" {
 		g.loadExcludeFile(g.excludeFile)
 	}
-	// Load exclude patterns from env-named file in scanned directory.
-	if g.excludeFileName != "" && info.IsDir() {
-		g.loadExcludeFile(filepath.Join(absPath, g.excludeFileName))
-	}
 
 	if info.IsDir() {
 		entries, walkErr := g.generateDir(absPath, "", 0)
@@ -538,11 +531,6 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 		// children are scanned; the entry is emitted then, fully resolved.
 		out = append(out, dirEntry)
 		childDepth = depth + 1
-	}
-
-	// Load exclude patterns from env-named file in subdirectories.
-	if g.excludeFileName != "" && dirName != "" {
-		g.loadExcludeFile(filepath.Join(dirPath, g.excludeFileName))
 	}
 
 	// Filter and classify children. We need a fixed source order so the

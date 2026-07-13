@@ -8,11 +8,11 @@ or packages to avoid duplicating what already exists.
 ```
 github.com/Avalanche-io/c4
   c4/              Root package: ID, Tree, Identify(), Parse()
-  c4m/             c4m format: Entry, Manifest, Encoder, Decoder, patch chains
-  scan/            Directory scanner: Generator, ScanMode, guided scans
+  c4m/             c4m format: Entry, Manifest, Encoder, Decoder, patch chains, Journal
+  scan/            Directory scanner: Generator, ScanMode, reuse guides
   store/           Content-addressed storage: Store interface + implementations
   reconcile/       Filesystem reconciliation: Plan, Apply, Distribute
-  cmd/c4/          CLI binary (10 commands)
+  cmd/c4/          CLI binary (12 verbs)
     internal/scan/ Progressive CLI scanner (platform-specific)
 ```
 
@@ -71,6 +71,21 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | `SequenceExpander` | Expands sequence entries into individual file entries. |
 | `Conflict` | Reports conflicting entries during merge. |
 
+### Journal (c4m/journal.go)
+
+The store journal `<store>/log.c4m` — an ordinary c4m patch chain in
+which the store records every claim (one section per claim: entry line
++ bare-ID boundary). The print-barrier leg between store durability and
+stdout.
+
+| Type | Description |
+|------|-------------|
+| `Journal` | `OpenJournal(storeRoot)`; `Append(Claim)` (durable before return: OS lock that dies with its holder, torn-tail truncation, fsync); `Claims()` (drops a torn tail, warns once). |
+| `Claim` | ScanStart (the walk's start instant, NOT append time — the re-scan racy rule measures against it), Size, Name, Origin, ID. `EntryLine()` renders the recorded text (what `c4 log` reprints). |
+
+Platform locks: `journal_lock_unix.go` (flock, EINTR loop) /
+`journal_lock_windows.go` (LockFileEx).
+
 ### Key manifest methods
 
 - `AddEntry`, `RemoveEntry`, `SortEntries`
@@ -109,8 +124,8 @@ Directory scanner. Depends on `c4` and `c4m`.
 
 | Type | Description |
 |------|-------------|
-| `Generator` | Configurable scanner: mode, excludes, guide, sequences. |
-| `ScanMode` | `ModeStructure` / `ModeMetadata` / `ModeFull` |
+| `Generator` | Configurable scanner: mode, excludes, guides, sequences. |
+| `ScanMode` | `ModeStructure` / `ModeMetadata` / `ModeFull` / `ModeContent` (the content projection: mode+timestamp null at every level; machine/clock/umask-independent IDs) |
 | `FileSource` | Wraps a path + generator as a `c4m.Source`. |
 
 Convenience: `scan.Dir(path, ...Option)` for simple scans.
@@ -124,7 +139,8 @@ Options:
 | `WithHidden` | include dotfiles |
 | `WithSequenceDetection` | collapse `file.[0001-0100].exr` patterns |
 | `WithExclude`, `WithExcludeFile` | glob exclusions |
-| `WithGuide` | restrict the scan to paths present in a reference manifest (a root-relative path FILTER — it does not reuse the guide's IDs; ID reuse on size+mtime match is `reconcile.WithTrustedMetadata`, a different mechanism) |
+| `WithGuide` | restrict the scan to paths present in a reference manifest (a root-relative path FILTER — it does not reuse the guide's IDs; no CLI flag drives it since v8 repurposed `-c`) |
+| `WithReuseGuide(m, scanStart)` | metadata-trusted re-scan (the CLI's `-c`): a file reuses the guide's ID iff path+size+mtime match at second precision AND mtime is strictly older than scanStart (the racy rule — git's racy-index shape, no constants). `ReuseStats()` returns (reused, rehashed). |
 | `WithProgress(cb)` | periodic `ScanStats` callbacks; zero overhead when unset |
 | `WithMaxConcurrency(n)` | cap worker pool (0 = auto, 1 = sequential, n > 1 = explicit) |
 | `WithContext(ctx)` | cancellation observed at directory + entry boundaries |
@@ -243,42 +259,58 @@ Distribution (single-pass multi-target):
 
 ## cmd/c4 (CLI)
 
-Ten commands dispatched from `main.go`:
+Twelve verbs dispatched from `main.go` (surface of record:
+`design/snapshot-loop/round-1/surface-v7.md` + round-2 amendments; the
+reference pages live in `help.go` and print via each verb's `--help`):
 
 | File | Command | Category |
 |------|---------|----------|
-| `id.go` | `c4 id` | Observer |
-| `cat.go` | `c4 cat` | Observer |
+| `id.go` | `c4 id` | Observer; writer only with `-s` |
+| `restore.go` | `c4 restore` | THE tree writer (dry-run default; `--force`) |
+| `cat.go` | `c4 cat` | Observer (verified reads; ID/path descent) |
 | `diff.go` | `c4 diff` | Observer |
-| `log.go` | `c4 log` | Observer |
+| `patch.go` | `c4 patch` | Observer (text algebra; never touches directories) |
+| `log.go` | `c4 log` | Observer (journal + chain sections) |
 | `explain.go` | `c4 explain` | Observer |
 | `paths.go` | `c4 paths` | Observer |
 | `intersect.go` | `c4 intersect` | Observer |
-| `patch.go` | `c4 patch` | Actor |
-| `merge.go` | `c4 merge` | Actor |
-| `split.go` | `c4 split` | Actor |
-Safety defaults (`design/safety-defaults.md`):
+| `merge.go` | `c4 merge` | Observer (text out) |
+| `split.go` | `c4 split` | Writes its two named output files |
+| `version.go` | `c4 version` | Observer |
 
-- **Self-capturing snapshots** — every ingest path stores the manifest's
-  canonical text (`storeManifestSelf` in `id.go`, ID = the manifest's own
-  C4 ID) and the root's one-level record (ID = `ComputeC4ID`, the root
-  directory ID), then reports `stored: <manifest-id>` on stderr after the
-  durability barrier (`reportStored`). `storeDirectoryC4m` returns the
-  record's ID (empty-content ID for empty directories, matching scan).
-- **Patch pre-state capture** — reconcile forms (`c4m×dir`, `dir×dir`,
-  `-r`) call `capturePreState` (`patch.go`) before Apply: vanishing
-  content (removed or overwritten), directory records (computed
-  deepest-first when the guided scan left IDs nil), root record, and
-  manifest text, then the batch barrier — durable before destruction.
-  `--no-store` opts out (`reconcileStore` avoids prompting then). After a
-  successful Apply, `reportPreState` prints the verbatim revert command.
-  `c4 patch -r` accepts a changeset file or a stored manifest ID
-  (`manifestFromStore`); one-level records expand through stored
+The print barrier (`design/snapshot-loop`): no ID reaches stdout before
+its content is durable, its journal entry appended and fsynced
+(`journalClaim` in `helpers.go` — fatal on append failure), and the
+store barrier passed. Crash trial: `design/snapshot-loop/kill9-crucible.sh`.
+
+Safety defaults:
+
+- **Self-capturing snapshots** — `c4 id -s` stores every file's bytes,
+  every directory's one-level record deepest-first, and the root record
+  (`storeManifestSelf`, ID = `ComputeC4ID` = THE snapshot ID), journals
+  the claim, then prints the ID (implies `-q`). `stored:` on stderr is
+  narration.
+- **Restore pre-image** — `restore --force` snapshots the destination
+  (complete default scan) durably and journals it BEFORE the first
+  destructive operation; stdout line 1 is the pre-image ID (the undo
+  handle), line 2 the recomputed as-built ID. Targets resolve via
+  `resolveRestoreTarget` (store address with optional `storeDescend`
+  path descent, or .c4m file); one-level records expand through stored
   directory records (`expandIfRecord` in `cat.go`) and incomplete
-  expansions are refused (`validateRevertTarget`).
+  expansions are refused (`validateRevertTarget` in `restore.go`).
+- **Verified reads** — `readVerified` / `verifiedManifestFromStore`
+  (`cat.go`): every store read rehashes or nothing is written.
+- **Re-scan trust** — `id -c` wires `scan.WithReuseGuide`; the guide's
+  scan start resolves from the journal claim matching the guide's root
+  ID (`resolveGuideScanStart`), falling back to the guide file's mtime.
+  `--verify` forces full re-hash and reports obfuscated changes
+  (`reportObfuscated`). Partial scans declare on stderr and exit 2
+  (`reportPartial`).
 
-Supporting files: `flags.go` (custom flag parser), `helpers.go` (shared utilities),
-`version.go`, `main.go` (dispatch + bare shortcuts).
+Supporting files: `flags.go` (custom flag parser + `--help` pages),
+`helpers.go` (shared utilities incl. `journalClaim`, `claimName`,
+`claimOrigin`), `help.go` (the reference pages), `main.go` (dispatch +
+bare read-only shortcuts; `-s` is the only write opt-in).
 
 `cmd/c4/internal/scan/` contains the progressive CLI scanner with platform-specific
 implementations (darwin, linux, windows).
@@ -305,4 +337,6 @@ c4 --> (stdlib only)
 - **Single-pass distribution**: `reconcile.Distribute` hashes + copies in one read pass
 - **Atomic writes**: `store.DurableWriter` writes to temp file then renames
 - **Batch durability barrier**: CLI ingest lands objects with cheap per-object fsyncs and issues one `F_FULLFSYNC` (`store.Syncer.Sync`) at completion — durable-at-completion instead of durable-per-object (`design/store-ingest-performance.md`)
-- **Safety defaults**: snapshots store their own description (manifest text + root record, `stored:` on stderr); patch reconcile forms capture the destination's prior state before applying and print a verbatim revert command (`design/safety-defaults.md`)
+- **Print barrier**: content durable → store barrier → journal append fsynced → only then the ID prints ("printed ⇒ durable ⇒ recoverable"); the journal is an ordinary c4m patch chain inside the store
+- **Identity unification**: THE snapshot ID = the root directory's one-level canonical listing ID (`ComputeC4ID`); no full-text manifest object is stored — the tree recovers through per-directory records
+- **Safety defaults**: snapshots are self-capturing and journaled; restore is dry-run by default and `--force` journals the pre-image (the undo handle) before destroying anything; every store read is rehash-verified

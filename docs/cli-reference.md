@@ -1,28 +1,35 @@
 # C4 CLI Reference
 
+Every verb's `--help` prints its full reference page — this document
+is the tour. `c4 --help` prints the one-page contract, including the
+scripting rules and exit codes.
+
 ## Command Philosophy
 
-C4 commands divide into two categories:
+Nothing is written anywhere without `-s` (or `restore --force`), and
+`-s` writes only inside the store.
 
-**Observer commands** — read-only by default, no side effects unless you opt in:
+**Observer commands** — read-only:
 
-| Command | Purpose |
-|---------|---------|
-| `c4 id` | Identify files, directories, or c4m files |
-| `c4 diff` | Compare two trees, produce a patch |
-| `c4 log` | List patches in a chain |
-| `c4 cat` | Retrieve content by C4 ID from store |
-| `c4 explain` | Human-readable narration of what a command would do |
-| `c4 paths` | Convert between c4m format and plain path lists |
-| `c4 intersect` | Find common entries between two c4m files |
+| Command        | Purpose                                                      |
+|----------------|--------------------------------------------------------------|
+| `c4 id`        | Describe files, directories, or c4m files                    |
+| `c4 diff`      | Compare two states, produce a patch                          |
+| `c4 patch`     | Resolve patch chains to c4m text (never touches directories) |
+| `c4 log`       | List the store journal, or a chain's sections                |
+| `c4 cat`       | Retrieve a store object by ID or ID/path, verified           |
+| `c4 explain`   | Human-readable narration of what a command would do          |
+| `c4 paths`     | Convert between c4m format and plain path lists              |
+| `c4 intersect` | Find common entries between two c4m files                    |
+| `c4 merge`     | Combine 2+ trees into one c4m (text out, nothing written)    |
+| `c4 split`     | Split a patch chain (writes the two named output files)      |
 
-**Actor commands** — modify the filesystem or produce transformed output:
+**Writers** — exactly two ways bytes land anywhere:
 
-| Command | Purpose |
-|---------|---------|
-| `c4 patch` | Apply target state (reconcile, resolve, revert) |
-| `c4 merge` | Combine 2+ trees into one c4m |
-| `c4 split` | Split a patch chain for branching |
+| Command            | Purpose                                                  |
+|--------------------|----------------------------------------------------------|
+| `c4 id -s`         | Snapshot into the store; print the snapshot ID           |
+| `c4 restore --force` | Make a directory match a description, undo-safely     |
 
 `c4 version` prints version info.
 
@@ -31,387 +38,345 @@ The CLI has zero external dependencies. It requires Go 1.16+.
 ## Synopsis
 
 ```
-c4 id [flags] <path>...         Identify files, directories, or c4m files
-c4 cat [-e] [-r] <c4id|path>    Retrieve/display content (c4m-aware)
-c4 diff <old> <new>             Produce c4m diff/patch (directories or c4m files)
-c4 patch [flags] <target> [<dest>]
-                                Apply target state (reconcile, resolve, revert)
-c4 merge <tree> <tree>...       Combine filesystem trees (c4m files or directories)
-c4 log <file.c4m>...            List patches in a chain
-c4 split <file> <N> <before> <after>
-                                Split chain at patch N
-c4 explain <command> [args]     Human-readable command narration
-c4 paths [<file.c4m> | -]      Convert between c4m and path lists
-c4 intersect <id|path> <a> <b>  Find common entries between c4m files
-c4 version                      Print version
+c4 id [flags] <path>...              Describe files/directories/c4m files (c4m text to stdout)
+c4 id -s <path>...                   Snapshot into the store; print one snapshot ID per path
+c4 restore [--force] <target> <dir>  Make dir match a description (dry run by default)
+c4 cat [-e] [-r] <id[/path]|f.c4m>   Retrieve a store object by ID or ID/path (verified)
+c4 diff [-e] <old> <new>             Produce a c4m diff; sides: dirs, c4m files, or IDs
+c4 patch [-n N] [-e] <chain.c4m>...  Resolve patch chains to c4m text
+c4 log [<chain.c4m>...]              List a chain's sections (default: the store journal)
+c4 merge <tree> <tree>...            Combine filesystem trees (c4m files or directories)
+c4 split <file> <N> <before> <after> Split chain at section N
+c4 explain <command> [args]          Human-readable command narration
+c4 paths [<file.c4m> | -]            Convert between c4m and path lists
+c4 intersect <id|path> <a> <b>       Find common entries between c4m files
+c4 version                           Print version
 
-c4 <path>                       Identify + store (shortcut for c4 id -s)
-c4 <path> -x                    Identify only, skip store
-echo "data" | c4                Identify + store from stdin
-echo "data" | c4 -x             Identify only from stdin
+c4 <path>                            Read-only shortcut for c4 id <path>
+c4 -s <path>                         Snapshot shortcut for c4 id -s <path>
+echo "data" | c4                     ID of stdin (nothing stored)
+echo "data" | c4 -s                  Store stdin, print its ID
+... | c4 id -                        Parse stdin as a c4m description
 ```
 
-## `c4 id` — Identify
+## Identity — two concepts
 
-The core observer command. Reads paths and outputs their C4 representation.
-No side effects by default — content is never stored unless you pass `-s`.
+**Content ID** — the ID of bytes alone: a file's contents; a
+directory's child listing with mode and timestamp nulled entirely
+(the exec bit included). Equal exactly when contents are
+byte-identical, on any machine, clock, or umask. This is the default
+level for `c4 id`; get the bare ID with `-q`.
+
+**Snapshot ID** — the ID of a full description: everything observed
+at a moment (modes, times, sizes, names, content). Printed by
+`c4 id -s`; the store alone returns all of it.
+
+An ID never says which kind it is: compare like with like. A
+store-resolved ID may take `/path` to descend by recorded entry name
+(never following symlinks); store addresses are accepted by `c4 cat`,
+restore targets, and diff sides.
+
+## Scripting — the machine contract
+
+stdout is data, byte-pure; stderr is narration. Parse nothing from
+stderr, and never scrape an ID out of entry text or prose.
 
 ```bash
-# Single file → c4m entry (permissions, timestamp, size, name, C4 ID)
-c4 id photo.jpg
+SNAP=$(c4 id -s dir/)              # THE snapshot ID: one line, nothing else
+CID=$(c4 id -q dir/)               # THE content ID of a file or directory
+c4 cat "$ID" >/dev/null            # in the store? exit 0 = present AND byte-verified
+out=$(c4 restore --force "$T" d/)  # two lines: the undo handle, then the as-built ID
+c4 log | awk '{print $NF}'         # every ID the journal lists, oldest first
+c4 cat -r "$ID" | c4 id -q -       # recompute any claim instead of trusting it
+```
 
-# Directory → full recursive c4m
+Exit codes: 0 ok; 1 error — lines already printed remain true claims;
+2 completed with declared partiality on stderr; 3 (restore only)
+curable — cure, then re-run. In scripts, snapshot one path per
+invocation: a multi-path call prints one line per path that
+SUCCEEDED, so pairing lines to paths is guesswork unless exit is 0.
+
+## `c4 id` — Describe and Snapshot
+
+The core verb. Writes a plain-text c4m description of each path to
+stdout. Without `-s`, id reads only; nothing is written anywhere.
+
+```bash
+# Directory → content-level c4m (machine-independent; the default)
 c4 id myproject/
 
-# Multiple files → combined c4m
-c4 id *.exr
+# Full observed detail: permissions, timestamps, sizes, names, IDs
+c4 id -m f myproject/
 
-# c4m file → canonical form (normalizer)
+# THE identity, one bare line (content ID)
+c4 id -q myproject/
+
+# Snapshot into the store; prints THE snapshot ID (implies -q)
+SNAP=$(c4 id -s myproject/)
+
+# c4m file → canonical form (normalizer); -q prints its own ID
 c4 id project.c4m
+c4 id -q project.c4m
 
 # Ergonomic form (aligned columns, formatted sizes)
 c4 id -e myproject/
 
-# Stdin → bare C4 ID (no metadata available)
-echo "hello" | c4 id
+# Stdin → bare C4 ID (nothing stored)
+echo "hello" | c4
 
-# Store content while identifying (opt-in, zero extra I/O)
-c4 id -s myproject/ > project.c4m
-
-# Tree ID (pipe c4m through stdin)
-c4 id . | c4
+# Parse stdin as a c4m description
+c4 cat -r "$SNAP" | c4 id -q -
 ```
 
-### Self-capturing snapshots
+### Snapshots are self-capturing
 
-`c4 id -s` stores the snapshot's own description alongside the
-content: the manifest's canonical text (under the manifest's own C4
-ID) and the root directory's one-level record. Once storage is
-durable, stderr reports:
-
-```
-stored: <manifest-id>
-```
-
-Lose the tree *and* the `.c4m` file, and the snapshot still recovers
-from the store alone:
+`c4 id -s` stores a complete snapshot of each path: every file's
+bytes, every directory's one-level listing (root included), and one
+journal entry per path. The snapshot ID prints only after everything
+it stored is on stable media — a killed process (`kill -9` included),
+a kernel panic, and power loss are one case. If it printed, you can
+get it back:
 
 ```bash
-c4 cat <manifest-id> > recovered.c4m   # byte-identical manifest
-c4 patch recovered.c4m ./restored/     # materialize from the store
+SNAP=$(c4 id -s ./project/)
+# ...lose the tree entirely...
+c4 restore --force "$SNAP" ./project/     # rebuilt from the store alone
+c4 cat -r "$SNAP" | c4 id -q -            # recompute: verifies the claim
 ```
 
-With `-q` the stored line is the only output.
+`-s` writes only inside the store — no `.c4m` file, nothing in the
+scanned tree or working directory. To keep a description file, use
+the read-only form: `c4 id -m f ./project/ > project.c4m`.
 
 ### Flags
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-s` | `--store` | Store content in the configured store (opt-in) |
-| `-q` | `--quiet` | Suppress output (useful with `-s`) |
-| `-e` | `--ergonomic` | Output ergonomic form c4m |
-| `-S` | `--sequence` | Detect and fold file sequences |
-| `-m` | `--mode` | Scan mode: `s`/`m`/`f` (see Scan Modes) |
-| `-c` | `--continue` | Continue from existing c4m (use as guide) |
-| | `--exclude` | Glob pattern to exclude (repeatable) |
-| | `--exclude-file` | File of exclude patterns (one per line) |
+| Flag | Long             | Description                                                       |
+|------|------------------|-------------------------------------------------------------------|
+| `-q` | `--quiet`        | Bare ID only, one line per path (needs an ID-bearing level: c or f) |
+| `-s` | `--store`        | Snapshot into the store; print the snapshot ID (implies `-q`; always full detail — conflicts with `-m`) |
+| `-m` | `--mode`         | Scan detail: `s` structure, `c` content (default), `m` metadata, `f` full |
+| `-c` | `--continue`     | Reuse guide: trust unchanged size+mtime from this description     |
+|      | `--verify`       | Re-hash everything; with `-c`, report changes hidden under unchanged metadata |
+| `-e` | `--ergonomic`    | Column-aligned output                                             |
+| `-S` | `--sequence`     | Detect and fold file sequences                                    |
+|      | `--exclude`      | Glob pattern to exclude (repeatable)                              |
+|      | `--exclude-file` | File of exclude patterns (one per line)                           |
+
+### Fast re-scans (`-c` and `--verify`)
+
+A prior full description is a reuse guide. A file reuses the guide's
+recorded ID — without being read — exactly when its path is in the
+guide, its size and mtime match at second precision, and its mtime is
+strictly older than the guide's scan start (git's racy-index rule; no
+tunable window). Everything else re-hashes. The stderr summary counts
+the split: `reuse: R reused, H rehashed`.
+
+```bash
+c4 id -m f ./project/ > full.c4m        # the guide
+c4 id -c full.c4m -q ./project/         # fast re-scan
+c4 id -s -c full.c4m ./project/         # fast re-snapshot into the store
+```
+
+The documented, accepted risk: a same-size byte change under a
+deliberately restored older mtime is invisible to a `-c` re-scan.
+Bytes already in the store are immune (every read re-verifies), and
+`--verify` is the audit — it ignores every reuse rule, re-hashes
+everything, and reports each file whose bytes changed under unchanged
+size+mtime on stderr.
 
 ### Excluding Files
 
-C4 scans everything by default — unlike git, nothing is ignored implicitly.
-Three mechanisms for exclusion:
+C4 scans everything by default — nothing is ignored implicitly, no
+ignore file (`.gitignore` included) is ever read, and no environment
+variable adds patterns. `--exclude GLOB` (repeatable) and
+`--exclude-file FILE` are the only exclusion mechanism:
 
 ```bash
-# Inline patterns (repeatable)
 c4 id --exclude node_modules --exclude "*.tmp" ./project/
-
-# Explicit exclude file
 c4 id --exclude-file my-excludes.txt ./project/
-
-# Env var: auto-load a named file from scanned directories
-C4_EXCLUDE_FILE=.c4ignore c4 id ./project/
 ```
 
-The `C4_EXCLUDE_FILE` env var names a file to look for in each scanned
-directory. C4 itself never assumes any exclude file exists — you choose
-the name, you set the convention.
+Patterns are portable globs (`*`, `?`, `[...]`, no `**`); a pattern
+containing `/` matches the slash-separated path relative to the scan
+root, otherwise the bare name; a matched directory is pruned whole.
+Exclusion is part of what an ID names — reproducing an ID needs the
+same exclusions, supplied each run. Right after a snapshot,
+`c4 diff <SNAP> <dir>` lists exactly what was left out.
 
-Exclude patterns are simple globs matched against both the filename and
-the relative path from the scan root.
+### Partial scans
 
-## `c4 cat` — Retrieve Content
+An unreadable entry is reported on stderr and recorded with null
+fields for everything unread. The description is still produced; id
+exits 2. Partial knowledge is a valid state, not an error.
 
-Retrieves content by C4 ID from the configured content store.
+## `c4 restore` — Make a Directory Match a Description
+
+The one verb that writes to the filesystem. Dry run by default.
 
 ```bash
-c4 cat c43zYcLni5LF... > output.exr
+c4 restore "$SNAP" ./dir/                 # dry run: print the plan
+out=$(c4 restore --force "$SNAP" ./dir/)  # apply; two bare-ID lines
 ```
+
+The target is a store-resolved C4 ID (optionally with `/path`
+descent — it must land on a directory), or a c4m file (chains
+resolve). A snapshot-ID target restores recorded modes and times; a
+content-ID target restores byte-exact content with platform-default
+metadata.
+
+With `--force`:
+
+1. Every ID the target names must resolve from the store, else the
+   missing IDs are listed and nothing is touched (exit 1).
+2. The destination's pre-image is snapshotted — complete, durable,
+   and journaled before the first destructive operation — and printed
+   as stdout **line 1**: the undo handle.
+3. The directory is reconciled: entries created, moved, updated,
+   removed; content pulled by ID from the store and from bytes
+   already present (moves detected).
+4. The result is verified by recomputation and printed as **line 2**.
+   Exit 0 exactly when line 2 equals the target ID.
+
+Undo is line 1 fed straight back:
+
+```bash
+undo=$(printf '%s\n' "$out" | sed -n 1p)
+c4 restore --force "$undo" ./dir/     # undo — prints its own undo handle
+```
+
+Handles are IDs, never refs: journaled permanently (`c4 log` is the
+reflog), so a lost terminal loses nothing. No c4 verb deletes store
+objects, so every undo handle keeps working for as long as the store
+directory exists.
+
+Exit codes: 0 verified; 1 refused before any modification; 2 declared
+omissions (listed on stderr, line 2 printed and true); 3 curable
+failure after line 1 (cure, then re-run — the undo stands).
+
+## `c4 cat` — Retrieve Store Objects
+
+```bash
+c4 cat "$SNAP"                             # the root listing, one level
+c4 cat -r "$SNAP"                          # the whole tree, expanded
+c4 cat "$SNAP"/src/parser.go > parser.go   # extract by recorded name
+c4 cat "$ID" >/dev/null && echo verified   # membership test, checked
+```
+
+Every read is verified: the bytes must hash to the requested ID or
+cat writes nothing and exits 1 — exit 0 means present AND intact.
+`<ID>/a/b` descends by recorded entry name, byte-exact, each level
+rehash-verified, never following symlinks; a trailing slash asserts a
+listing. A `.c4m` file path displays the file, chains resolved.
 
 ## `c4 diff` — Produce Patch
 
-Compares two filesystem trees and outputs a c4m patch. Arguments can be
-c4m files, directories, or any combination. The patch format starts with
-the C4 ID of the base state, followed by changed entries, followed by
-the C4 ID of the new state. This output can be appended to the original
-c4m file for versioning.
+Compares two states — directories, c4m files, or store IDs — and
+emits a c4m patch on stdout. Directories scan at content level, or at
+the other side's level when that side is a description (using it as a
+guide so only changed files rehash). Equal states emit nothing.
 
 ```bash
-# Produce a patch (c4m files)
 c4 diff before.c4m after.c4m > changes.c4m
-
-# Diff two directories directly
 c4 diff ./old-project/ ./new-project/
-
-# Mix: c4m file vs live directory
 c4 diff project.c4m ./project/
-
-# Append a patch for versioning
-c4 diff project.c4m <(c4 id ./project/) >> project.c4m
+c4 diff "$SNAP" ./project/                 # what changed since the snapshot
+c4 diff project.c4m <(c4 id ./project/) >> project.c4m   # append for versioning
 ```
 
-Empty diff produces no output.
+The only flag is `-e` (column-aligned output).
 
-### Flags
+## `c4 patch` — Resolve Chains
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-r` | `--reverse` | With a changeset: diff against the pre-patch state from store. With two manifests/dirs: swap old and new. |
-| `-s` | `--store` | Store content from directory arguments |
-| `-q` | `--quiet` | Suppress output (useful with `-s`) |
-| `-e` | `--ergonomic` | Output ergonomic form |
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
-
-### Reverse diff with a changeset
-
-When `-r` is used with a changeset as the first argument, `c4 diff`
-loads the pre-patch c4m file from the content store and diffs the
-current directory against it. This lets you preview what a revert
-would look like before running `c4 patch -r`:
+Text algebra: c4m chains in, c4m text out. It never touches
+directories — that is restore's job, behind restore's safety machine.
 
 ```bash
-# Preview what reverting would change
-c4 diff -r changeset.c4m ./project/
-
-# The prior state manifest must be in the store — c4 patch stores it
-# by default (unless the patch ran with --no-store)
+c4 patch project.c4m           # resolve the chain to its final state
+c4 patch -n 3 project.c4m      # resolve to section 3
+c4 patch common.c4m release.c4m   # multiple files concatenate into one chain
 ```
 
-## `c4 patch` — Apply Target State
-
-The primary actor command. Applies a target state by resolving diffs,
-reconciling filesystems, or reverting to a stored prior state. Outputs
-the computed diff (changeset) to stdout when reconciling a directory.
-
-### Argument Patterns
-
-`c4 patch` dispatches based on what its arguments are:
-
-| Target | Dest | What it does |
-|--------|------|-------------|
-| `file.c4m` | *(none)* | Resolve patch chain, output final c4m to stdout |
-| `dir/` | *(none)* | Scan directory, store content, output c4m to stdout |
-| `file.c4m` | `file.c4m` | Resolve chain, write result to dest c4m |
-| `file.c4m` | `dir/` | Reconcile directory to match c4m target state |
-| `dir/` | `file.c4m` | Scan directory, store content, write c4m |
-| `dir/` | `dir/` | Reconcile dest directory to match source directory |
-| `file.c4m...` | *(none)* | Multi-file chain resolution (3+ args) |
-
-When reconciling a directory (`c4m×dir`, `dir×dir`), the computed diff
-is written to stdout as a changeset. This changeset can be redirected
-to a file and used later for reversal with `-r`.
-
-### Prior state is stored by default
-
-Before a reconcile form touches the destination, `c4 patch` captures
-its prior state into the content store: content that would be removed
-or overwritten, the directory records, and the pre-state manifest —
-durable before the first destructive operation. After applying,
-stderr reports the way back:
+A directory argument exits 1 with:
 
 ```
-prior state stored: <id> (revert: c4 patch -r <id> <dir>)
+patch composes descriptions; to change a directory: c4 restore <target> <dir>
 ```
 
-That revert command works verbatim, even if stdout was discarded.
-`--no-store` opts out. `--dry-run` changes and captures nothing. If no
-store is configured, `c4 patch` offers to create the default store
-(non-interactive runs proceed with a warning). The capture rides the
-same durability barrier as every other write: the prior state is on
-stable storage before the first destructive operation.
-
-### Flags
-
-| Flag | Long | Description |
-|------|------|-------------|
-| `-s` | `--store` | Also store content at removal time during apply (redundant belt; prior state is captured by default) |
-| `-r` | `--reverse` | Revert a directory to a stored prior state (changeset file or manifest ID) |
-| `-q` | `--quiet` | Suppress changeset output to stdout |
-| `-e` | `--ergonomic` | Output ergonomic form |
-| `-n` | `--number` | Resolve to specific patch number (1-based) |
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
-| | `--dry-run` | Show planned operations without making changes |
-| | `--no-store` | Skip prior-state capture and content storage |
-| | `--source` | Additional content source path (repeatable) |
-
-### Examples
-
-```bash
-# Resolve a patch chain to final state
-c4 patch project.c4m
-
-# Resolve to specific patch number
-c4 patch -n 3 project.c4m
-
-# Resolve across files (branching)
-c4 patch common.c4m release.c4m
-
-# Reconcile a directory to match a c4m, capture changeset
-# (the prior state is stored automatically; stderr prints the revert)
-c4 patch target.c4m ./project/ > changeset.c4m
-
-# Revert using the manifest ID printed by the forward patch
-c4 patch -r <manifest-id> ./project/
-
-# Or revert using the saved changeset
-c4 patch -r changeset.c4m ./project/
-
-# Preview reconciliation without making changes
-c4 patch --dry-run target.c4m ./project/
-
-# Reconcile with content from an additional source directory
-c4 patch --source /mnt/backup/ target.c4m ./project/
-
-# Sync one directory to match another
-c4 patch ./source/ ./dest/
-
-# Scan a directory, store content, write c4m
-c4 patch ./project/ output.c4m
-```
-
-### Reconciliation
-
-When patching a directory, `c4 patch` computes the diff between the
-directory's current state and the target, then applies operations
-(create, move, remove, chmod, chtimes) to make the directory match.
-
-If content needed by the target is missing, the command reports the
-missing C4 IDs and exits non-zero. Use `--source` to provide additional
-directories where content can be found, or ensure the content store has
-the needed files.
-
-Reversal (`-r`) reconciles the directory back to a stored prior
-state. The first argument is either the manifest ID printed by the
-forward patch or a changeset file — the changeset's leading bare C4 ID
-names the prior state's root record, which expands through the stored
-directory records. If any needed directory record is missing from the
-store, the revert is refused rather than reconciling toward a
-truncated tree.
+Flags: `-n N` (1-based section; 0 = final state), `-e` (aligned output).
 
 ## `c4 merge` — Combine Trees
 
-Combines two or more filesystem trees into one. Inputs can be c4m files,
-directories, or any combination. Requires at least 2 arguments. Outputs
-a merged c4m to stdout.
+Combines two or more filesystem trees into one c4m on stdout. Inputs
+can be c4m files, directories, or any combination.
 
 ```bash
-# Merge two c4m files
 c4 merge base.c4m overlay.c4m
-
-# Merge a c4m file with a live directory
-c4 merge base.c4m ./additional-files/
-
-# Merge multiple directories
 c4 merge ./assets/ ./overrides/ ./extras/
 ```
 
-### Flags
+Conflicts (same path, different content) are reported to stderr and
+cause a non-zero exit.
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-e` | `--ergonomic` | Output ergonomic form |
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
+## `c4 log` — The Journal, and Chain Sections
 
-Conflicts (same path, different content in both inputs) are reported to
-stderr and cause a non-zero exit.
+With no arguments, log lists the store journal `<store>/log.c4m` —
+an ordinary c4m patch chain in which the store records every claim it
+makes: each `c4 id -s` snapshot, each stdin blob, every pre-image
+taken by `restore --force`. One line per claim, append order, oldest
+first: the 1-based section index, a space, then the entry exactly as
+recorded. The last field is always the ID:
 
-## `c4 log` — List Patches
+```bash
+c4 log | tail -1              # the latest claim
+c4 log | awk '{print $NF}'    # the IDs — fields, never regex
+```
 
-Enumerates the patches in a c4m chain with summary statistics.
+Chain-file arguments list journal files the same way (a copied
+store's journal included); other chains list with summary statistics:
 
 ```bash
 $ c4 log project.c4m
 1  c4abc...  (base)  1,234 files, 45 dirs
 2  c4def...  +12 -3 ~5
-3  c4ghi...  +2 -0 ~1
 ```
+
+Nothing expires: every journaled ID and everything it names stays
+restorable for as long as the store directory exists. To shorten the
+listing, `c4 split` the journal and install the kept part — splitting
+changes what `c4 log` lists, never what the store retains.
 
 ## `c4 split` — Split Chain
 
 Extracts a range from a patch chain into two files, enabling branching.
 
 ```bash
-# Split at patch 3
 c4 split project.c4m 3 common.c4m remainder.c4m
-
-# Branch from common point
 c4 diff common.c4m <(c4 id ./release/) >> release.c4m
 c4 diff common.c4m <(c4 id ./dev/) >> dev.c4m
 ```
 
 ## `c4 explain` — Human-readable Narration
 
-A read-only command that describes what another command would do, in plain
-language. Never modifies any files.
+A read-only command that describes what another command would do, in
+plain language. Never modifies any files.
 
-### Subcommands
-
-| Subcommand | What it describes |
-|------------|-------------------|
-| `c4 explain id <path>` | What a directory or c4m file contains (file count, size, suggested next steps) |
-| `c4 explain diff <old> <new>` | What changed between two states (added, modified, removed counts with sizes) |
-| `c4 explain patch <target> [<dest>]` | What reconciliation would do (creates, updates, removes, store availability) |
-
-### Flags
-
-| Flag | Long | Description |
-|------|------|-------------|
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
-
-### Examples
-
-```bash
-# What does this directory contain?
-c4 explain id ./project/
-
-# What changed since the last snapshot?
-c4 explain diff snapshot.c4m ./project/
-
-# What would patching do?
-c4 explain patch target.c4m ./project/
-
-# Describe a c4m file without a destination
-c4 explain patch delivery.c4m
-```
+| Subcommand                            | What it describes                                     |
+|---------------------------------------|-------------------------------------------------------|
+| `c4 explain id <path>`                | What a directory or c4m file contains                 |
+| `c4 explain diff <old> <new>`         | What changed between two states                       |
+| `c4 explain patch <chain.c4m>...`     | What state a chain resolves to                        |
+| `c4 explain restore <target> [<dest>]` | What a restore would change, and how to apply safely |
 
 ## `c4 paths` — Convert Between c4m and Path Lists
 
-Bidirectional converter between c4m format and plain path lists. Detects
-the input format automatically:
-
-- **c4m input** — extracts full paths (one per line), sorted alphabetically
-- **Path list input** — builds a c4m with null metadata for each path
-
-Reads from a file argument or stdin.
+Bidirectional converter between c4m format and plain path lists.
+Detects the input format automatically. Reads from a file argument or
+stdin.
 
 ```bash
-# c4m → paths
-c4 paths project.c4m
-
-# paths → c4m
-find . -type f | c4 paths
-
-# Pipe from another c4 command
-c4 id -m s ./project/ | c4 paths
+c4 paths project.c4m           # c4m → paths
+find . -type f | c4 paths      # paths → c4m
+c4 cat -r "$SNAP" | c4 paths   # every path in a snapshot
 ```
 
 ## `c4 intersect` — Find Common Entries
@@ -419,128 +384,63 @@ c4 id -m s ./project/ | c4 paths
 Finds entries that appear in both of two c4m files (or directories).
 Output is a valid c4m from the second argument's perspective.
 
-### Subcommands
-
-| Subcommand | Match criterion |
-|------------|----------------|
-| `c4 intersect id <a> <b>` | Content identity (same C4 ID, regardless of path) |
-| `c4 intersect path <a> <b>` | Full path (same location in the tree) |
-
-### Flags
-
-| Flag | Long | Description |
-|------|------|-------------|
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
-
-### Examples
+| Subcommand                  | Match criterion                                 |
+|-----------------------------|-------------------------------------------------|
+| `c4 intersect id <a> <b>`   | Content identity (same C4 ID, regardless of path) |
+| `c4 intersect path <a> <b>` | Full path (same location in the tree)           |
 
 ```bash
-# Find files with identical content in two directories
 c4 intersect id ./dir-a/ ./dir-b/
-
-# Find files at the same paths in two c4m snapshots
 c4 intersect path monday.c4m friday.c4m
-
-# Pipe to paths for a plain file list
-c4 intersect id old.c4m new.c4m | c4 paths
-```
-
-## `c4 version`
-
-```bash
-$ c4 version
-c4 1.0.10 (darwin/arm64, go1.24.5)
 ```
 
 ## Content Store
 
-The content store holds file content addressed by C4 ID. Configure via:
+The content store holds objects addressed by C4 ID, plus one journal
+file (`log.c4m`). Copy a store anywhere and every printed ID resolves
+there identically; the history travels inside it. Configure via:
 
 1. `C4_STORE` environment variable — a path, `s3://` URI, or comma-separated list
 2. `~/.c4/config` file — one or more `store = ...` lines
 
-Multiple stores can be configured. Writes go to the first store. Reads
-check all stores in order, returning the first hit:
+Multiple stores can be configured. Writes go to the first store (it
+holds the journal). Reads check all stores in order:
 
 ```bash
-# Single store
 C4_STORE=/data/store
-
-# Multiple stores — local SSD for writes, S3 and NAS for reads
 C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
 ```
 
 On first use of `-s` without a configured store, the CLI offers to
 create `~/.c4/store`.
 
-### Durability
+### Durability — the print barrier
 
-Durability is one default behavior, not a flag. Storing content and
-writing trees are crash-consistent and fast: each file or object lands
-atomically (complete or absent) and one device flush at command
-completion makes the whole batch durable. A power failure mid-command
-may lose recently written data — but the command has not reported
-success at that point, nothing it printed refers to unsynced state,
-and the source still exists; re-run to heal. There is no flag to skip
-or strengthen this: an ID or revert command printed by `c4` always
-refers to durable state.
-
-## Stdin Shortcut
-
-Piping content to bare `c4` (no subcommand) outputs the C4 ID:
-
-```bash
-echo "hello" | c4
-tar cf - ./dir | c4
-```
+If a snapshot ID printed, the snapshot — content, listings, journal
+entry — survives power loss, even one microsecond after printing.
+The ordering is the contract on every platform: staged bytes reach
+stable media before any object appears at its hash name; every object
+a claim depends on is stable before its journal entry; the entry is
+stable before the ID prints. If nothing printed, nothing was claimed;
+re-running continues where it left off. There is no flag to skip or
+strengthen this. No c4 verb deletes store objects.
 
 ## Scan Modes
 
-The `-m` flag controls how much work `c4 id` does:
+The `-m` flag controls how much a description records:
 
-| Flag | Mode | What it does | Cost |
-|------|------|-------------|------|
-| `-m s` or `-m 1` | Structure | Names and hierarchy only | Fast (readdir only) |
-| `-m m` or `-m 2` | Metadata | + permissions, timestamps, sizes | Fast (stat) |
-| `-m f` or `-m 3` | Full | + C4 IDs | Expensive (read every byte) |
+| Flag         | Mode      | What it records                                        | Cost                    |
+|--------------|-----------|--------------------------------------------------------|-------------------------|
+| `-m s`       | Structure | Names and hierarchy only                               | Fast (readdir only)     |
+| `-m m`       | Metadata  | + permissions, timestamps, sizes (no IDs)              | Fast (stat)             |
+| `-m c`       | Content   | Sizes, names, IDs — mode and timestamp null            | Reads every byte        |
+| `-m f`       | Full      | Everything observed: modes, times, sizes, names, IDs   | Reads every byte        |
 
-Default is full (`-m f`). Lower modes are useful for previewing what
-a scan will cover before committing to the expensive hashing phase.
-
-## Continue from Existing c4m
-
-The `-c` flag takes an existing c4m file as a guide. Only entries present
-in the guide are processed — everything else is skipped. This enables a
-powerful scan-filter-continue workflow:
-
-```bash
-# 1. Structure scan (no hashing) — see what's there
-c4 id -m s ./project/ > project.c4m
-
-# 2. Edit the c4m — remove what you don't want
-#    To remove a directory, delete the directory line AND all indented
-#    lines immediately below it (its children). In c4m, depth is
-#    structural — children are indented deeper than their parent.
-vi project.c4m
-
-# 3. Continue — upgrade to full IDs, only for what survived the edit
-c4 id -m f -c project.c4m ./project/
-```
-
-This avoids hashing anything you filtered out. The I/O cost of step 3
-is proportional to what you kept, not what exists on disk.
-
-### Upgrading modes
-
-Continue works across mode transitions:
-
-```bash
-# Structure → metadata (add sizes without hashing)
-c4 id -m m -c structure.c4m ./project/ > metadata.c4m
-
-# Metadata → full (add C4 IDs)
-c4 id -m f -c metadata.c4m ./project/ > full.c4m
-```
+Default is content (`-m c`): the machine-independent projection —
+same bytes, same IDs, on any machine, clock, or umask. Use `-m f`
+when observed metadata matters (it is what `-s` snapshots always
+record). `-m` projects downward only: a description computes at its
+own knowledge level.
 
 ## Working with c4m as Text
 
@@ -554,13 +454,15 @@ spaces (which encode depth), each line has:
 <mode> <timestamp> <size> <name> [<flow> <target>] <c4id>
 ```
 
-- **Mode** (field 1): `d` prefix = directory, `-` = file, `l` = symlink
-- **Timestamp** (field 2): ISO 8601 UTC
+- **Mode** (field 1): `d` prefix = directory, `-` = file or null (content level)
+- **Timestamp** (field 2): ISO 8601 UTC, or `-` for null (content level)
 - **Size** (field 3): byte count, or `-` for null
 - **Name** (field 4): filename; directories always end with `/`
 - **C4 ID** (last field): 90-char ID starting with `c4`, or `-` for null
 
 Depth is the count of leading spaces (each level indented by 2).
+Directories are identified by the trailing `/` on the name — that
+holds at every level, content projection included.
 
 ### Finding entries
 
@@ -568,8 +470,8 @@ Depth is the count of leading spaces (each level indented by 2).
 # Find a file by name
 grep 'utils.go' project.c4m
 
-# Find all directories (mode starts with d)
-grep '^[[:space:]]*d' project.c4m
+# Find all directories (names end with /)
+grep -E '(^| )[^ ]+/ ' project.c4m
 
 # Find all EXR files
 grep '\.exr ' project.c4m
@@ -580,9 +482,7 @@ awk '{s=$0; gsub(/^ +/,"",s); split(s,f," "); if(f[3]+0 > 1000000) print}' proje
 
 ### Listing directories with full paths
 
-List all directories with their line numbers and reconstructed full paths.
-Useful for finding where a directory lives, then using the line number
-to extract or remove its subtree:
+List all directories with their line numbers and reconstructed full paths:
 
 ```bash
 awk '{
@@ -595,22 +495,6 @@ awk '{
     print NR, path name
   }
 }' project.c4m
-```
-
-Output:
-```
-3 src/
-7 src/lib/
-15 assets/
-22 assets/textures/
-```
-
-Pipe through grep to find a specific directory:
-
-```bash
-# Find the line number of the textures directory
-... | grep textures
-# 22 assets/textures/
 ```
 
 ### Reconstructing full paths for all entries
@@ -629,30 +513,6 @@ awk '{
 }' project.c4m
 ```
 
-### Finding a directory and all its children
-
-A directory entry is followed by its children at deeper indentation.
-To extract a subtree, find the directory line and capture everything
-indented deeper until you reach the same or shallower depth:
-
-```bash
-# Extract the src/ subtree (directory + all contents)
-awk '{
-  d=0; for(i=1;i<=length($0);i++){if(substr($0,i,1)==" ")d++;else break}
-  if(!skip && $0 ~ /src\//) {skip=1; sd=d; print; next}
-  if(skip) {if(d>sd){print;next}; skip=0}
-  if(!skip) print
-}' project.c4m
-
-# Remove the node_modules/ subtree
-awk '{
-  d=0; for(i=1;i<=length($0);i++){if(substr($0,i,1)==" ")d++;else break}
-  if(!skip && $0 ~ /node_modules\//) {skip=1; sd=d; next}
-  if(skip && d>sd) next
-  skip=0; print
-}' project.c4m > filtered.c4m
-```
-
 ### Removing entries
 
 Simple grep works for **individual files** by name pattern:
@@ -662,37 +522,11 @@ Simple grep works for **individual files** by name pattern:
 grep -v '\.tmp ' project.c4m > clean.c4m
 ```
 
-**Removing directories** requires removing the directory line AND all its
-children — the subsequent lines at deeper indentation, until you reach a
-line at the same or shallower depth. c4m uses indentation to show nesting
-(leading spaces are trimmed when computing the C4 ID, so indentation is
-structural, not cosmetic).
-
-In an editor, this is straightforward — select the directory line and all
-indented lines below it, delete the block:
-
-```bash
-# Structure scan — indentation shows the tree
-c4 id -m s ./project/ > project.c4m
-
-# In your editor, the tree structure is visible:
-#   file.txt
-#   node_modules/
-#     express/
-#       index.js
-#       ...
-#     .package-lock.json
-#   src/
-#     main.go
-#
-# Delete the node_modules/ line and everything indented under it.
-vi project.c4m
-
-# Continue — only hash what's left
-c4 id -c project.c4m ./project/
-```
-
-For scripted directory removal, count leading spaces to track depth:
+**Removing directories** requires removing the directory line AND all
+its children — the subsequent lines at deeper indentation, until you
+reach a line at the same or shallower depth (indentation is
+structural, not cosmetic). In an editor, select the directory line
+and the indented block below it. For scripted removal:
 
 ```bash
 # Remove node_modules/ and everything inside it
@@ -720,15 +554,14 @@ c4 diff project-v1.c4m project-v2.c4m
 
 ### When to exclude at scan time vs filter after
 
-**Exclude at scan time** (`--exclude`, or scan-filter-continue) when:
-- The excluded content is large (node_modules, build artifacts) — skipping
-  avoids hashing gigabytes of unwanted data
-- You want the c4m to never contain certain entries
+**Exclude at scan time** (`--exclude`) when the excluded content is
+large (node_modules, build artifacts) — skipping avoids hashing
+gigabytes of unwanted data — or when the c4m must never contain
+certain entries.
 
-**Filter after scanning** when:
-- You want the full c4m as a record of everything, then derive subsets
-- You're doing ad-hoc exploration ("what EXR files are in this project?")
-- You're building different views from the same scan
+**Filter after scanning** when you want the full c4m as a record of
+everything, then derive subsets; ad-hoc exploration; or building
+different views from the same scan.
 
-The c4m file is the truth. Filtering it is cheap. Scanning is where the
-I/O cost lives — exclude there when it matters for performance.
+The c4m file is the truth. Filtering it is cheap. Scanning is where
+the I/O cost lives — exclude there when it matters for performance.
