@@ -274,13 +274,20 @@ func TestProgressiveCLI(t *testing.T) {
 			cli.Run()
 		}()
 		
-		time.Sleep(50 * time.Millisecond)
-		
-		// Get snapshot while running
+		// Poll until the background scan has produced output — a fixed
+		// sleep is poll-luck on loaded CI runners.
 		var snapshot bytes.Buffer
-		err := cli.OutputSnapshot(&snapshot)
-		if err != nil {
-			t.Errorf("Failed to output snapshot: %v", err)
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			snapshot.Reset()
+			if err := cli.OutputSnapshot(&snapshot); err != nil {
+				t.Errorf("Failed to output snapshot: %v", err)
+				break
+			}
+			if snapshot.Len() > 0 || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(time.Millisecond)
 		}
 		
 		if snapshot.Len() == 0 {

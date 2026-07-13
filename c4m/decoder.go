@@ -44,6 +44,7 @@ func (d *Decoder) Decode() (*Manifest, error) {
 	var section []*Entry
 	firstLine := true
 	patchMode := false
+	externalBase := false
 
 	for {
 		line, err := d.readLine()
@@ -82,6 +83,7 @@ func (d *Decoder) Decode() (*Manifest, error) {
 			if firstLine && len(section) == 0 {
 				// First line of file: external base reference.
 				m.Base = id
+				externalBase = true
 			} else {
 				// Bare C4 ID = checkpoint: it names the accumulated
 				// manifest state (grammar erratum, draft-v9 §4). Flush
@@ -93,7 +95,9 @@ func (d *Decoder) Decode() (*Manifest, error) {
 					m.Entries = append(m.Entries, section...)
 				} else if len(section) > 0 {
 					patch := &Manifest{Version: "1.0", Entries: section}
+					base := m.Base
 					m = ApplyPatch(m, patch)
+					m.Base = base // ApplyPatch builds a fresh manifest; the reference survives
 				}
 				section = nil
 				patchMode = true
@@ -101,8 +105,10 @@ func (d *Decoder) Decode() (*Manifest, error) {
 				// A resolving decoder MUST verify checkpoints — except
 				// after an unresolved external base reference, where the
 				// accumulated state is unknowable here and verification
-				// defers to the resolver that fetches the base.
-				if m.Base.IsNil() {
+				// defers to the resolver that fetches the base. The
+				// deferral covers EVERY checkpoint of such a stream, not
+				// just the first (found by the libc4 conformance port).
+				if !externalBase {
 					if got := m.ComputeC4ID(); got != id {
 						return nil, fmt.Errorf("%w (line %d): accumulated %s, checkpoint %s",
 							ErrPatchIDMismatch, d.lineNum, got, id)
@@ -137,7 +143,9 @@ func (d *Decoder) Decode() (*Manifest, error) {
 		m.Entries = append(m.Entries, section...)
 	} else if len(section) > 0 {
 		patch := &Manifest{Version: "1.0", Entries: section}
+		base := m.Base
 		m = ApplyPatch(m, patch)
+		m.Base = base
 	}
 
 	// Auto-sort: tolerate out-of-order input by sorting to canonical order.

@@ -412,3 +412,33 @@ func TestDecodeMetadataOnlyPatch(t *testing.T) {
 		t.Error("C4 ID should be preserved for metadata-only change")
 	}
 }
+
+// TestDecodeExternalBaseDefersAllCheckpoints is the regression test
+// for the deferral bug found by the libc4 conformance port: after a
+// first-line external base reference, EVERY checkpoint's verification
+// defers to the fetching resolver — including checkpoints after the
+// first patch application — and the base reference survives decoding.
+func TestDecodeExternalBaseDefersAllCheckpoints(t *testing.T) {
+	base := c4.Identify(strings.NewReader("the external base"))
+	// Two patch sections with boundary IDs that could never match a
+	// base-less fold of the patch entries (they are the appended-diff
+	// shape: resolved-state IDs of a state we cannot reconstruct here).
+	boundary1 := c4.Identify(strings.NewReader("resolved state one"))
+	boundary2 := c4.Identify(strings.NewReader("resolved state two"))
+	input := base.String() + "\n" +
+		"-rw-r--r-- 2026-03-06T12:00:00Z 100 a.txt " + c4.Identify(strings.NewReader("aaa")).String() + "\n" +
+		boundary1.String() + "\n" +
+		"-rw-r--r-- 2026-03-06T12:00:00Z 200 b.txt " + c4.Identify(strings.NewReader("bbb")).String() + "\n" +
+		boundary2.String() + "\n"
+
+	m, err := Unmarshal([]byte(input))
+	if err != nil {
+		t.Fatalf("external-base chain must decode with verification deferred: %v", err)
+	}
+	if m.Base != base {
+		t.Fatal("the external base reference must survive patch application")
+	}
+	if len(m.Entries) != 2 {
+		t.Fatalf("expected 2 folded entries, got %d", len(m.Entries))
+	}
+}
