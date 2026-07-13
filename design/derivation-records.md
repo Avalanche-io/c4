@@ -89,3 +89,41 @@ Requirements doc after the v8 build + testimony-record shape freeze;
 the elide disposal class belongs to a future gc design round; tier-1
 prototype (text diff over store objects) is a natural first
 measurement.
+
+## Generalization: the dependency graph itself (2026-07-13, Joshua)
+
+The predicate generalizes past compression into a full derivation DAG:
+
+- **Having A and computing A are fungible.** Materialized bytes, an
+  exact delta route, and a recompute route are interchangeable ways to
+  resolve one ID, chosen per context by cost (the resolver's decision
+  record, now over N routes instead of fetch-vs-rebuild).
+- **Removal is priced against reconstruction.** The gc bill can state,
+  per condemned object, whether a derivation route survives and its
+  estimated cost — so the ladder of loss is explicit: materialized →
+  elided (exact route pinned) → droppable-but-rerunnable (validated /
+  volatile route) → unrecoverable. Deletion decisions become economic,
+  not binary.
+- **One predicate spans tool classes.** There is no structural
+  difference between "Render_V002.0001.exr = binary-image-diff applied
+  to Render_V001.0001.exr" and "Render_V002.0001.exr = render(scene-v2,
+  frame 1)" — two edges to the same target ID, different processes,
+  different determinism classes. And the inputs recurse: scene-v2 is
+  itself patch(scene-v1, scene-diff). The DAG extends arbitrarily deep.
+- **Any subset is supersedable.** Because identity is intrinsic (the
+  target ID verifies the result regardless of route), edges are
+  competing *testimonies about routes*, not load-bearing structure. A
+  new direct edge (one combined patch; one render op) can shortcut a
+  thousand-edge chain; old edges simply lose the cost race and their
+  exclusive inputs become condemnable through normal retention. This
+  is the inversion that Bazel/Nix/Ray cannot make: their action graph
+  IS the truth inside one tool's lifetime; here bytes are the truth
+  and routes are open, falsifiable, cross-tool, and durable.
+
+Honest edge from the resolver lab, restated: renders are rarely
+bit-exact (x264 lesson), so frame-from-scene edges are usually
+`validated`/`volatile` — good for reconstruction-with-acceptance,
+never for elision. The binary-diff edge to the same frame is `exact`
+and can license elision. Both classes coexisting on one target is the
+system working, not a conflict; the class travels with the edge and
+the economics stay honest.
