@@ -16,7 +16,7 @@ func runDiff(args []string) {
 	quiet := fs.boolFlag("quiet", 'q', false, "Suppress output (useful with -s)")
 	reverseFlag := fs.boolFlag("reverse", 'r', false, "Reverse: diff against pre-patch state from a changeset")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form")
-	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directories: s/m/f")
+	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directories: s/m/f/c")
 	fs.parse(args)
 
 	if len(fs.args) != 2 {

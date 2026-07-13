@@ -25,7 +25,7 @@ func runID(args []string) {
 	seqFlag := fs.boolFlag("sequence", 'S', false, "Detect and fold file sequences")
 	excludeFlags := fs.stringArrayFlag("exclude", "Glob pattern to exclude (repeatable)")
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
-	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s/1=structure, m/2=metadata, f/3=full")
+	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s=structure, m=metadata, f=full, c=content (machine-independent)")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Continue from existing c4m (use as guide)")
 	fs.parse(args)
 

@@ -24,7 +24,7 @@ func runPatch(args []string) {
 	dryRun := fs.boolFlag("dry-run", 0, false, "Show plan without making changes")
 	sourceFlags := fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
 	noStore := fs.boolFlag("no-store", 0, false, "Skip prior-state capture and content storage")
-	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f")
+	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f/c")
 	fs.parse(args)
 
 	if len(fs.args) == 0 {

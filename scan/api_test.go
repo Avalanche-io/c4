@@ -187,7 +187,10 @@ func TestParseScanMode(t *testing.T) {
 		{"S", ModeStructure, false}, // case insensitive
 		{"FULL", ModeFull, false},
 		{"invalid", ModeFull, true},
-		{"4", ModeFull, true},
+		{"c", ModeContent, false},
+		{"4", ModeContent, false},
+		{"content", ModeContent, false},
+		{"5", ModeFull, true},
 	}
 
 	for _, tt := range tests {

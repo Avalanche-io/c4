@@ -23,13 +23,21 @@ const (
 	ModeStructure ScanMode = iota // names and hierarchy only
 	ModeMetadata                  // structure + permissions, timestamps, sizes
 	ModeFull                      // structure + metadata + C4 IDs
+	// ModeContent is the content-only projection (decided 2026-07-09,
+	// permanent): names, sizes, symlink targets, and C4 IDs real; mode
+	// and timestamp null at EVERY level, directory entries included.
+	// Two trees with byte-identical content produce equal IDs on any
+	// machine, clock, or umask. An ID does not self-describe its
+	// projection; comparisons must be like-mode.
+	ModeContent
 )
 
 // defaultConcurrencyCap caps the worker pool regardless of GOMAXPROCS so we
 // don't oversubscribe storage with hundreds of concurrent readdir calls.
 const defaultConcurrencyCap = 16
 
-// ParseScanMode parses a mode string: "s"/"1" → structure, "m"/"2" → metadata, "f"/"3" → full.
+// ParseScanMode parses a mode string: "s"/"1" → structure, "m"/"2" →
+// metadata, "f"/"3" → full, "c"/"4" → content (metadata-independent).
 func ParseScanMode(s string) (ScanMode, error) {
 	switch strings.ToLower(s) {
 	case "s", "1", "structure":
@@ -38,8 +46,10 @@ func ParseScanMode(s string) (ScanMode, error) {
 		return ModeMetadata, nil
 	case "f", "3", "full", "":
 		return ModeFull, nil
+	case "c", "4", "content":
+		return ModeContent, nil
 	default:
-		return ModeFull, fmt.Errorf("unknown scan mode %q (use s/m/f or 1/2/3)", s)
+		return ModeFull, fmt.Errorf("unknown scan mode %q (use s/m/f/c or 1/2/3/4)", s)
 	}
 }
 
@@ -504,7 +514,7 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 					target, err := os.Readlink(fullPath)
 					if err == nil {
 						bmd.SetTarget(filepath.ToSlash(target))
-						if g.mode == ModeFull {
+						if g.computesIDs() {
 							id := g.computeSymlinkTargetC4ID(fullPath, target)
 							bmd.SetID(id)
 						}
@@ -619,7 +629,7 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 	}
 
 	if dirEntry != nil {
-		if g.mode == ModeFull {
+		if g.computesIDs() {
 			// Resolve this directory's null Size/Timestamp from its direct
 			// children — subdirectory children were already resolved by
 			// their own generateDir calls, so [self, children...] is all
@@ -711,7 +721,24 @@ func (g *Generator) generateEntry(path string, info os.FileInfo, depth int) (*En
 		entry.Name = entry.Name[:len(entry.Name)-1]
 	}
 
+	// Content projection: mode and timestamp are null at every level —
+	// names, sizes, symlink targets, and IDs stay real. The nulling is
+	// what makes directory roll-up IDs metadata-independent: canonical
+	// entry lines render "-" for both fields, so the one-level listing
+	// a directory ID hashes carries no machine-specific state.
+	if g.mode == ModeContent {
+		entry.Mode = 0
+		entry.Timestamp = c4m.NullTimestamp()
+	}
+
 	return entry, nil
+}
+
+// computesIDs reports whether this scan mode hashes content (files,
+// symlink targets, directory roll-ups). Full and content modes hash;
+// they differ only in which metadata fields the entries carry.
+func (g *Generator) computesIDs() bool {
+	return g.mode == ModeFull || g.mode == ModeContent
 }
 
 // generateMetadata creates metadata from file info
@@ -722,7 +749,7 @@ func (g *Generator) generateMetadata(path string, info os.FileInfo, depth int) F
 
 	md := NewFileMetadata(path, info, depth)
 
-	if g.mode == ModeFull && info.Mode().IsRegular() {
+	if g.computesIDs() && info.Mode().IsRegular() {
 		id, err := g.computeFileC4ID(path)
 		if err == nil {
 			md.SetID(id)
