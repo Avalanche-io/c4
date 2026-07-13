@@ -20,7 +20,7 @@ import (
 func runID(args []string) {
 	fs := newFlags("id")
 	storeFlag := fs.boolFlag("store", 's', false, "Store content in the configured store")
-	quiet := fs.boolFlag("quiet", 'q', false, "Suppress output (useful with -s)")
+	quiet := fs.boolFlag("quiet", 'q', false, "Print one bare ID line per path (THE identity; byte-pure)")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form c4m")
 	seqFlag := fs.boolFlag("sequence", 'S', false, "Detect and fold file sequences")
 	excludeFlags := fs.stringArrayFlag("exclude", "Glob pattern to exclude (repeatable)")
@@ -48,8 +48,8 @@ func runID(args []string) {
 	}
 
 	shouldStore := *storeFlag
-	// Storing only makes sense in full mode.
-	if mode != scan.ModeFull {
+	// Storing only makes sense in modes that hash content.
+	if mode != scan.ModeFull && mode != scan.ModeContent {
 		shouldStore = false
 	}
 
@@ -76,19 +76,33 @@ func runID(args []string) {
 	}
 
 	// Collect results — multiple paths produce one combined manifest.
+	// Under -q the contract is: exactly one bare ID line per path that
+	// SUCCEEDS (a failed path prints nothing and the exit code is 1),
+	// so scripts capture THE identity without parsing prose.
 	combined := c4m.NewManifest()
+	failed := false
 
 	for _, p := range paths {
 		info, err := os.Lstat(p)
 		if err != nil {
+			if *quiet {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				failed = true
+				continue
+			}
 			fatalf("Error: %v", err)
 		}
 
 		if info.IsDir() {
 			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide)
-			if !*quiet {
-				outputManifest(m, *ergonomic)
+			if *quiet {
+				// THE ID of a directory scan is the identity of its
+				// description: the manifest's canonical-text ID — the
+				// same ID `stored:` reports and self-capture stores.
+				fmt.Println(m.ComputeC4ID())
+				continue
 			}
+			outputManifest(m, *ergonomic)
 			return
 		}
 
@@ -96,6 +110,11 @@ func runID(args []string) {
 			// c4m input → normalize to canonical (or ergonomic) form
 			m, err := loadManifest(p)
 			if err != nil {
+				if *quiet {
+					fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", p, err)
+					failed = true
+					continue
+				}
 				fatalf("Error loading %s: %v", p, err)
 			}
 			// Store canonical c4m content if -s is set.
@@ -107,18 +126,30 @@ func runID(args []string) {
 					reportStored(id)
 				}
 			}
-			if !*quiet {
-				outputManifest(m, *ergonomic)
+			if *quiet {
+				// THE ID of a description is the ID of its canonical
+				// text at its own knowledge level.
+				fmt.Println(m.ComputeC4ID())
+				continue
 			}
+			outputManifest(m, *ergonomic)
 			return
 		}
 
 		// Regular file → single-entry c4m
 		entry := identifyFile(p, info, mode, shouldStore)
 		combined.AddEntry(entry)
+		if *quiet {
+			if entry.C4ID.IsNil() {
+				fmt.Fprintf(os.Stderr, "Error: no ID for %s (mode %q does not hash)\n", p, *modeFlag)
+				failed = true
+				continue
+			}
+			fmt.Println(entry.C4ID)
+		}
 	}
 
-	if shouldStore {
+	if shouldStore && len(combined.Entries) > 0 {
 		if s := getOrSetupStore(); s != nil {
 			id := storeManifestSelf(s, combined)
 			syncStore(s)
@@ -128,6 +159,9 @@ func runID(args []string) {
 
 	if !*quiet {
 		outputManifest(combined, *ergonomic)
+	}
+	if failed {
+		os.Exit(1)
 	}
 }
 

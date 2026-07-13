@@ -60,12 +60,12 @@ type Generator struct {
 	includeHidden   bool
 	detectSequences bool
 	excludePatterns []string
-	excludeFile     string // explicit exclude file path
-	excludeFileName string // filename to look for in scanned dirs (from env)
+	excludeFile     string          // explicit exclude file path
+	excludeFileName string          // filename to look for in scanned dirs (from env)
 	guide           map[string]bool // paths from guide c4m (nil = no guide)
 	scanRoot        string
-	progress        *progress // nil = no progress reporting (zero-cost path)
-	maxConcurrency  int       // 0 = auto, 1 = sequential, n > 1 = bounded parallel
+	progress        *progress     // nil = no progress reporting (zero-cost path)
+	maxConcurrency  int           // 0 = auto, 1 = sequential, n > 1 = bounded parallel
 	sem             chan struct{} // worker-pool slots; nil for sequential
 
 	ctx      context.Context        // cancellation; nil means no cancellation
@@ -160,9 +160,11 @@ func WithProgress(cb func(ScanStats)) GeneratorOption {
 }
 
 // WithMaxConcurrency caps the number of concurrent subdirectory walks.
-//   n =  0: auto (min(GOMAXPROCS, 16))
-//   n =  1: purely sequential (preserves pre-parallelism behavior)
-//   n >  1: explicit cap
+//
+//	n =  0: auto (min(GOMAXPROCS, 16))
+//	n =  1: purely sequential (preserves pre-parallelism behavior)
+//	n >  1: explicit cap
+//
 // Output is byte-identical regardless of n — children of each parent are
 // stitched back in their post-sort order.
 func WithMaxConcurrency(n int) GeneratorOption {
@@ -460,9 +462,9 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 		path string
 	}
 	type slot struct {
-		direct   *Entry   // non-nil for files/symlinks scanned inline
+		direct     *Entry   // non-nil for files/symlinks scanned inline
 		subEntries []*Entry // non-nil once a subdir walk completes
-		sub      *subdir  // non-nil for subdirectories pending walk
+		sub        *subdir  // non-nil for subdirectories pending walk
 	}
 	slots := make([]slot, 0, len(dirEntries))
 
