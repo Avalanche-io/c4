@@ -28,7 +28,8 @@ func runID(args []string) {
 	excludeFlags := fs.stringArrayFlag("exclude", "Glob pattern to exclude (repeatable)")
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s=structure, m=metadata, f=full, c=content (machine-independent)")
-	continueFlag := fs.stringFlag("continue", 'c', "", "Continue from existing c4m (use as guide)")
+	continueFlag := fs.stringFlag("continue", 'c', "", "Reuse guide: trust unchanged size+mtime from this c4m (racy-safe)")
+	verifyFlag := fs.boolFlag("verify", 0, false, "Re-hash everything; with -c, report changes hidden under unchanged metadata")
 	fs.parse(args)
 
 	paths := fs.args
@@ -68,13 +69,18 @@ func runID(args []string) {
 	scanExcludes = append(scanExcludes, *excludeFlags...)
 	excludeFile := *excludeFileFlag
 
-	// Load continue guide if specified.
+	// Load the reuse guide if specified. Its scan start anchors the
+	// racy rule: the journal's claim for the guide's root ID carries
+	// the true scan start; the guide file's own mtime is the
+	// conservative stand-in (never earlier than the scan it recorded).
 	var guide *c4m.Manifest
+	var guideStart time.Time
 	if *continueFlag != "" {
 		guide, err = loadManifest(*continueFlag)
 		if err != nil {
 			fatalf("Error loading guide %s: %v", *continueFlag, err)
 		}
+		guideStart = resolveGuideScanStart(*continueFlag, guide)
 	}
 
 	// Collect results — multiple paths produce one combined manifest.
@@ -96,7 +102,7 @@ func runID(args []string) {
 		}
 
 		if info.IsDir() {
-			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide)
+			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide, guideStart, *verifyFlag)
 			if *quiet {
 				// THE ID of a directory scan is the identity of its
 				// description: the manifest's canonical-text ID — the
@@ -208,7 +214,7 @@ func doStdin(storeFlag bool) {
 	fmt.Println(id)
 }
 
-func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool, excludes []string, excludeFile string, guide *c4m.Manifest) *c4m.Manifest {
+func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool, excludes []string, excludeFile string, guide *c4m.Manifest, guideStart time.Time, verify bool) *c4m.Manifest {
 	opts := []scan.GeneratorOption{scan.WithMode(mode)}
 	if seqFlag {
 		opts = append(opts, scan.WithSequenceDetection(true))
@@ -219,8 +225,8 @@ func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool
 	if excludeFile != "" {
 		opts = append(opts, scan.WithExcludeFile(excludeFile))
 	}
-	if guide != nil {
-		opts = append(opts, scan.WithGuide(guide))
+	if guide != nil && !verify {
+		opts = append(opts, scan.WithReuseGuide(guide, guideStart))
 	}
 	gen := scan.NewGeneratorWithOptions(opts...)
 	scanStart := time.Now().UTC()
@@ -229,11 +235,91 @@ func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool
 		fatalf("Error scanning %s: %v", dirPath, err)
 	}
 
+	if guide != nil && !verify {
+		r, h := gen.ReuseStats()
+		fmt.Fprintf(os.Stderr, "reuse: %d reused, %d rehashed\n", r, h)
+	}
+	if guide != nil && verify {
+		reportObfuscated(manifest, guide)
+	}
+
 	if shouldStore {
 		storeManifestContent(manifest, dirPath, scanStart)
 	}
 
 	return manifest
+}
+
+// resolveGuideScanStart finds the guide's true scan start: the
+// journal claim for the guide's root ID if the configured store has
+// one, else the guide file's own mtime (conservative — never earlier
+// than the scan it recorded).
+func resolveGuideScanStart(guidePath string, guide *c4m.Manifest) time.Time {
+	rootID := guide.ComputeC4ID()
+	if s, _ := store.OpenStore(); s != nil {
+		if r, ok := s.(interface{ Root() string }); ok {
+			if claims, err := c4m.OpenJournal(r.Root()).Claims(); err == nil {
+				var found time.Time
+				for _, c := range claims {
+					if c.ID == rootID {
+						found = c.ScanStart // latest match wins
+					}
+				}
+				if !found.IsZero() {
+					return found
+				}
+			}
+		}
+	}
+	if info, err := os.Stat(guidePath); err == nil {
+		return info.ModTime().UTC()
+	}
+	return time.Time{} // zero: reuse disabled by the racy rule
+}
+
+// reportObfuscated compares a fully re-hashed scan against the guide
+// and reports every file whose bytes changed while size and mtime
+// stayed identical — the change class the default re-scan trust is
+// documented not to see.
+func reportObfuscated(m, guide *c4m.Manifest) {
+	type meta struct {
+		size int64
+		ts   time.Time
+		id   string
+	}
+	build := func(mm *c4m.Manifest) map[string]meta {
+		out := make(map[string]meta)
+		var stack []string
+		for _, e := range mm.Entries {
+			if e.Depth < len(stack) {
+				stack = stack[:e.Depth]
+			}
+			if e.IsDir() {
+				for len(stack) <= e.Depth {
+					stack = append(stack, "")
+				}
+				stack[e.Depth] = strings.TrimSuffix(e.Name, "/") + "/"
+				continue
+			}
+			if e.C4ID.IsNil() || e.Depth > len(stack) {
+				continue
+			}
+			p := strings.Join(stack[:e.Depth], "") + e.Name
+			out[p] = meta{e.Size, e.Timestamp.UTC().Truncate(time.Second), e.C4ID.String()}
+		}
+		return out
+	}
+	got := build(m)
+	want := build(guide)
+	for p, g := range got {
+		w, ok := want[p]
+		if !ok {
+			continue
+		}
+		if g.size == w.size && g.ts.Equal(w.ts) && g.id != w.id {
+			fmt.Fprintf(os.Stderr, "verify: content changed under unchanged metadata: %s\n", p)
+		}
+	}
 }
 
 func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore bool) *c4m.Entry {

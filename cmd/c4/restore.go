@@ -118,7 +118,7 @@ func runRestore(args []string) {
 	preStart := time.Now().UTC()
 	var preManifest *c4m.Manifest
 	if destExists {
-		preManifest = scanDirectory(destArg, scan.ModeFull, false, false, nil, "", nil)
+		preManifest = scanDirectory(destArg, scan.ModeFull, false, false, nil, "", nil, time.Time{}, false)
 	} else {
 		preManifest = c4m.NewManifest()
 		if err := os.MkdirAll(destArg, 0755); err != nil {
@@ -148,7 +148,7 @@ func runRestore(args []string) {
 	// Verify at the target's knowledge level: the as-built tree must
 	// recompute to the target's own root ID. Line 2 prints only when
 	// recomputation reproduces it.
-	built := scanDirectory(destArg, level, false, false, nil, "", nil)
+	built := scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
 	builtID := built.ComputeC4ID()
 	targetID := target.ComputeC4ID()
 	if builtID != targetID {

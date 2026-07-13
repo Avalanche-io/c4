@@ -79,7 +79,7 @@ func runPatchSingle(path string, mode scan.ScanMode, n int, ergonomic, noStore b
 	if isDirectory(path) {
 		// Directory: scan, store, output c4m.
 		shouldStore := !noStore && mode == scan.ModeFull
-		m := scanDirectory(path, mode, false, shouldStore, nil, "", nil)
+		m := scanDirectory(path, mode, false, shouldStore, nil, "", nil, time.Time{}, false)
 		outputManifest(m, ergonomic)
 		return
 	}
@@ -224,7 +224,7 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 // runPatchDirToC4m scans a directory, stores content, and writes a c4m file.
 func runPatchDirToC4m(dirPath, destPath string, mode scan.ScanMode, noStore bool) {
 	shouldStore := !noStore && mode == scan.ModeFull
-	m := scanDirectory(dirPath, mode, false, shouldStore, nil, "", nil)
+	m := scanDirectory(dirPath, mode, false, shouldStore, nil, "", nil, time.Time{}, false)
 
 	f, err := os.Create(destPath)
 	if err != nil {
@@ -244,7 +244,7 @@ func runPatchDirToC4m(dirPath, destPath string, mode scan.ScanMode, noStore bool
 // Outputs the computed diff to stdout.
 func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet bool, sources []string) {
 	shouldStore := !noStore && mode == scan.ModeFull
-	targetManifest := scanDirectory(srcDir, mode, false, shouldStore, nil, "", nil)
+	targetManifest := scanDirectory(srcDir, mode, false, shouldStore, nil, "", nil, time.Time{}, false)
 
 	// Scan dest for diff output and content source.
 	var destManifest *c4m.Manifest

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -78,6 +80,18 @@ type Generator struct {
 	// content mode hashing null-stat entry lines): install a different
 	// function, nothing else in the walk changes.
 	dirIdentity func(children []*c4m.Entry) c4.ID
+
+	// Metadata-trusted re-scan (design/snapshot-loop v8 Amendment 1):
+	// a file's prior ID is reused iff its path exists in the reuse
+	// guide, size and mtime match at stored precision, AND its mtime is
+	// strictly older than the guide's own scan start (the racy rule —
+	// no invented constants; correctness never depends on timestamp
+	// granularity). Reuse extends trust only to the DESCRIPTION of the
+	// live tree; it never causes an unverified byte to enter a store.
+	reuseGuide     map[string]*c4m.Entry // root-relative file path → guide entry
+	reuseScanStart time.Time             // guide's scan start, second precision
+	reused         int64                 // atomic
+	rehashed       int64                 // atomic
 }
 
 // NewGenerator creates a new manifest generator
@@ -210,6 +224,83 @@ func WithGuide(m *Manifest) GeneratorOption {
 	return func(g *Generator) {
 		g.guide = buildGuideSet(m)
 	}
+}
+
+// WithReuseGuide enables the metadata-trusted re-scan: files whose
+// path, size, and mtime match the guide — and whose mtime is strictly
+// older than the guide's scan start — reuse the guide's recorded ID
+// without re-reading their bytes. Everything else (new, changed, or
+// racy) is re-hashed. The guide must be full-fidelity (recorded sizes
+// and mtimes); a content-projection guide reuses nothing.
+func WithReuseGuide(m *Manifest, scanStart time.Time) GeneratorOption {
+	return func(g *Generator) {
+		g.reuseGuide = buildReuseMap(m)
+		g.reuseScanStart = scanStart.UTC().Truncate(time.Second)
+	}
+}
+
+// buildReuseMap maps root-relative file paths to guide entries that
+// are trustable: regular files with real IDs, sizes, and timestamps.
+func buildReuseMap(m *Manifest) map[string]*c4m.Entry {
+	out := make(map[string]*c4m.Entry)
+	var dirStack []string
+	for _, e := range m.Entries {
+		if e.Depth < len(dirStack) {
+			dirStack = dirStack[:e.Depth]
+		}
+		if e.IsDir() {
+			for len(dirStack) <= e.Depth {
+				dirStack = append(dirStack, "")
+			}
+			name := e.Name
+			if !strings.HasSuffix(name, "/") {
+				name += "/"
+			}
+			dirStack[e.Depth] = name
+			continue
+		}
+		if e.IsSequence || e.Target != "" || e.C4ID.IsNil() ||
+			e.Size < 0 || e.Timestamp.Equal(c4m.NullTimestamp()) {
+			continue
+		}
+		out[strings.Join(dirStack[:min(e.Depth, len(dirStack))], "")+e.Name] = e
+	}
+	return out
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// reuseID applies the trust rule for one regular file.
+func (g *Generator) reuseID(path string, info os.FileInfo) (c4.ID, bool) {
+	if g.reuseGuide == nil {
+		return c4.ID{}, false
+	}
+	e, ok := g.reuseGuide[relFromRoot(g.scanRoot, path)]
+	if !ok || e.Size != info.Size() {
+		return c4.ID{}, false
+	}
+	mtime := info.ModTime().UTC().Truncate(time.Second)
+	if !mtime.Equal(e.Timestamp.UTC().Truncate(time.Second)) {
+		return c4.ID{}, false
+	}
+	// The racy rule: a file whose mtime is not strictly older than the
+	// guide's scan start could have been written during or after that
+	// scan within timestamp granularity — re-hash it regardless.
+	if g.reuseScanStart.IsZero() || !mtime.Before(g.reuseScanStart) {
+		return c4.ID{}, false
+	}
+	return e.C4ID, true
+}
+
+// ReuseStats reports how many files reused guide IDs versus re-hashed
+// during the last scan. Zero values when no reuse guide was set.
+func (g *Generator) ReuseStats() (reused, rehashed int64) {
+	return atomic.LoadInt64(&g.reused), atomic.LoadInt64(&g.rehashed)
 }
 
 // buildGuideSet extracts all paths from a manifest into a lookup set.
@@ -752,9 +843,17 @@ func (g *Generator) generateMetadata(path string, info os.FileInfo, depth int) F
 	md := NewFileMetadata(path, info, depth)
 
 	if g.computesIDs() && info.Mode().IsRegular() {
-		id, err := g.computeFileC4ID(path)
-		if err == nil {
+		if id, ok := g.reuseID(path, info); ok {
 			md.SetID(id)
+			atomic.AddInt64(&g.reused, 1)
+		} else {
+			id, err := g.computeFileC4ID(path)
+			if err == nil {
+				md.SetID(id)
+			}
+			if g.reuseGuide != nil {
+				atomic.AddInt64(&g.rehashed, 1)
+			}
 		}
 	}
 
