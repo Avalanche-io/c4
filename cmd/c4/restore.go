@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -230,4 +231,62 @@ func restoreReconciler(s store.Store, current *c4m.Manifest, dest string) *recon
 		reconcile.WithSource(reconcile.NewDirSource(current, dest)),
 		reconcile.WithSource(s),
 	)
+}
+
+// validateRevertTarget refuses a target whose description is
+// incomplete: a directory entry with content (a non-empty ID) but no
+// children after expansion means its record is missing from the store —
+// reconciling toward it would silently delete that directory's contents.
+func validateRevertTarget(m *c4m.Manifest) {
+	empty := c4.Identify(bytes.NewReader(nil))
+	for _, e := range m.Entries {
+		if !e.IsDir() || e.C4ID.IsNil() || e.C4ID == empty {
+			continue
+		}
+		if len(m.Children(e)) == 0 {
+			fatalf("Error: target incomplete: no stored record for directory %s (%s)", e.Name, e.C4ID)
+		}
+	}
+}
+
+// manifestFromStore loads and decodes a description stored by a
+// snapshot (c4 id -s) or a restore pre-image.
+func manifestFromStore(s store.Store, id c4.ID) *c4m.Manifest {
+	if !s.Has(id) {
+		fatalf("Error: description %s not found in store", id)
+	}
+	rc, err := s.Open(id)
+	if err != nil {
+		fatalf("Error loading description: %v", err)
+	}
+	defer rc.Close()
+	m, err := c4m.NewDecoder(rc).Decode()
+	if err != nil {
+		fatalf("Error decoding description: %v", err)
+	}
+	return m
+}
+
+// opName returns a human-readable name for a reconcile operation type.
+func opName(op reconcile.Op) string {
+	switch op {
+	case reconcile.OpMkdir:
+		return "mkdir"
+	case reconcile.OpCreate:
+		return "create"
+	case reconcile.OpMove:
+		return "move"
+	case reconcile.OpSymlink:
+		return "symlink"
+	case reconcile.OpChmod:
+		return "chmod"
+	case reconcile.OpChtimes:
+		return "chtimes"
+	case reconcile.OpRemove:
+		return "remove"
+	case reconcile.OpRmdir:
+		return "rmdir"
+	default:
+		return "unknown"
+	}
 }

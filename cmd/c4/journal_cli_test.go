@@ -98,42 +98,5 @@ func TestLogNoArgsListsJournal(t *testing.T) {
 	}
 }
 
-// TestPatchPreImageJournaled pins that a reconcile's pre-state capture
-// is journaled before the destructive apply: the revert ID printed on
-// stderr must be a journaled claim.
-func TestPatchPreImageJournaled(t *testing.T) {
-	bin := buildC4(t)
-	dir := t.TempDir()
-	src := filepath.Join(dir, "src")
-	dst := filepath.Join(dir, "dst")
-	writeTree(t, src, map[string]string{"a.txt": "target state"})
-	writeTree(t, dst, map[string]string{"a.txt": "prior state", "b.txt": "doomed"})
-	storeDir := filepath.Join(dir, "store")
-
-	_, stderr, code := runC4WithEnv(t, bin,
-		map[string]string{"C4_STORE": storeDir}, "patch", src, dst)
-	if code != 0 {
-		t.Fatalf("patch exit %d: %s", code, stderr)
-	}
-	if !strings.Contains(stderr, "prior state stored:") {
-		t.Fatalf("no pre-state report in stderr: %s", stderr)
-	}
-
-	claims, err := c4m.OpenJournal(storeDir).Claims()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(claims) == 0 {
-		t.Fatal("no journal claims after reconcile with pre-state capture")
-	}
-	// The pre-image claim names the destination.
-	found := false
-	for _, c := range claims {
-		if c.Name == "dst.c4m" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("no dst.c4m pre-image claim in journal: %+v", claims)
-	}
-}
+// Restore's pre-image journaling is pinned by TestRestorePreImageJournaled
+// in restore_test.go — patch no longer touches directories.
