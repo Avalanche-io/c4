@@ -264,8 +264,8 @@ func manifestFromStdin() *c4m.Manifest {
 	if err != nil {
 		fatalf("Error reading stdin: %v", err)
 	}
-	if sections, err := c4m.DecodePatchChain(bytes.NewReader(data)); err == nil && len(sections) > 0 {
-		return c4m.ResolvePatchChain(sections, 0)
+	if c4m.IsJournal(data) {
+		fatalf("Error: stdin is a store journal, not a description — list it with: c4 log <file>")
 	}
 	m, err := c4m.Unmarshal(data)
 	if err != nil {

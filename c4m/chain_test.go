@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -135,5 +136,39 @@ func TestResolvePatchChainEmpty(t *testing.T) {
 	m := ResolvePatchChain(nil, 0)
 	if len(m.Entries) != 0 {
 		t.Fatalf("expected 0 entries for empty chain, got %d", len(m.Entries))
+	}
+}
+
+// TestChainVectorConformance pins the cross-implementation fixture
+// (testdata/chain-vector): the one chain every implementation in the
+// suite must resolve identically, and the two mismatches every
+// resolving decoder must reject. See the fixture README.
+func TestChainVectorConformance(t *testing.T) {
+	dir := "testdata/chain-vector/"
+
+	data, err := os.ReadFile(dir + "vector.c4m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Unmarshal(data)
+	if err != nil {
+		t.Fatalf("vector must be accepted: %v", err)
+	}
+	want, err := os.ReadFile(dir + "resolved-root-id.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.ComputeC4ID().String(); got != strings.TrimSpace(string(want)) {
+		t.Fatalf("vector resolved to %s, want %s", got, strings.TrimSpace(string(want)))
+	}
+
+	for _, bad := range []string{"bad-validator.c4m", "bad-checkpoint.c4m"} {
+		data, err := os.ReadFile(dir + bad)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Unmarshal(data); err == nil {
+			t.Fatalf("%s must be rejected", bad)
+		}
 	}
 }

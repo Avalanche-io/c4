@@ -65,31 +65,13 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 	outputManifest(manifest, ergonomic)
 }
 
-// resolveC4m loads a c4m file and resolves any patch chain to a final manifest.
+// resolveC4m loads a c4m file through the one verifying loader:
+// chains resolve to their final state, checkpoints and the closing
+// validator are verified (grammar erratum, draft-v9 §4).
 func resolveC4m(path string) *c4m.Manifest {
-	data, err := os.ReadFile(path)
+	m, err := loadManifest(path)
 	if err != nil {
-		fatalf("Error reading %s: %v", path, err)
+		fatalf("Error loading %s: %v", path, err)
 	}
-
-	sections, err := c4m.DecodePatchChain(bytes.NewReader(data))
-	if err != nil {
-		// Not a patch chain -- try loading as plain manifest.
-		m, err2 := loadManifest(path)
-		if err2 != nil {
-			fatalf("Error loading %s: %v", path, err2)
-		}
-		return m
-	}
-
-	if len(sections) == 0 {
-		// No patch sections -- load as plain manifest.
-		m, err := loadManifest(path)
-		if err != nil {
-			fatalf("Error loading %s: %v", path, err)
-		}
-		return m
-	}
-
-	return c4m.ResolvePatchChain(sections, 0)
+	return m
 }

@@ -185,16 +185,28 @@ func TestDecodeInlinePatchModify(t *testing.T) {
 	}
 }
 
-func TestDecodeInlineBlockLink(t *testing.T) {
-	// A bare C4 ID is a block link — not verified against accumulated state.
-	// Any C4 ID is accepted as a block boundary.
-	input := "-rw-r--r-- 2026-03-06T12:00:00Z 100 a.txt\n" +
+func TestDecodeVerifiedCheckpoint(t *testing.T) {
+	// Grammar erratum (draft-v9 §4): a checkpoint names the accumulated
+	// manifest state and a resolving decoder MUST verify it. A wrong
+	// checkpoint is rejected; the correct one is accepted.
+	wrong := "-rw-r--r-- 2026-03-06T12:00:00Z 100 a.txt\n" +
 		c4.Identify(strings.NewReader("wrong")).String() + "\n" +
+		"-rw-r--r-- 2026-03-06T12:00:00Z 200 b.txt\n"
+	if _, err := Unmarshal([]byte(wrong)); err == nil {
+		t.Fatal("wrong checkpoint must be rejected (ErrPatchIDMismatch)")
+	}
+
+	baseOnly, err := Unmarshal([]byte("-rw-r--r-- 2026-03-06T12:00:00Z 100 a.txt\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := "-rw-r--r-- 2026-03-06T12:00:00Z 100 a.txt\n" +
+		baseOnly.ComputeC4ID().String() + "\n" +
 		"-rw-r--r-- 2026-03-06T12:00:00Z 200 b.txt\n"
 
 	m, err := Unmarshal([]byte(input))
 	if err != nil {
-		t.Fatalf("block link should be accepted: %v", err)
+		t.Fatalf("verified checkpoint should be accepted: %v", err)
 	}
 	// The patch (b.txt) should be applied to the base (a.txt).
 	// Since b.txt is new, the result should have both entries.
@@ -291,8 +303,9 @@ func TestEncodePatchRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDecodeEmptyPatchAtEOF(t *testing.T) {
-	// A bare C4 ID followed by nothing (empty patch) must be rejected.
+func TestDecodeClosingValidator(t *testing.T) {
+	// Grammar erratum: a bare C4 ID at EOF is the chain's closing
+	// validator — legal, and verified against the resolved manifest.
 	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
 	base := &Manifest{
 		Version: "1.0",
@@ -307,19 +320,25 @@ func TestDecodeEmptyPatchAtEOF(t *testing.T) {
 	baseText := baseBuf.String()
 	baseID := base.ComputeC4ID()
 
-	// Stream: base entries, then checkpoint with nothing after.
+	// Stream: base entries, then the closing validator.
 	input := baseText + baseID.String() + "\n"
 
-	_, err := Unmarshal([]byte(input))
-	if err == nil {
-		t.Fatal("expected ErrEmptyPatch, got nil")
+	m, err := Unmarshal([]byte(input))
+	if err != nil {
+		t.Fatalf("closing validator must be accepted: %v", err)
 	}
-	if !strings.Contains(err.Error(), "empty patch") {
-		t.Errorf("unexpected error: %v", err)
+	if m.ComputeC4ID() != baseID {
+		t.Fatal("validated chain must resolve to the validator's state")
+	}
+
+	// A WRONG trailing validator is rejected.
+	bad := baseText + c4.Identify(strings.NewReader("not the state")).String() + "\n"
+	if _, err := Unmarshal([]byte(bad)); err == nil {
+		t.Fatal("wrong closing validator must be rejected (ErrPatchIDMismatch)")
 	}
 }
 
-func TestDecodeEmptyPatchBetweenIDs(t *testing.T) {
+func TestDecodeConsecutiveCheckpoints(t *testing.T) {
 	// Two consecutive bare C4 IDs (empty patch section between them).
 	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
 	base := &Manifest{
@@ -335,17 +354,25 @@ func TestDecodeEmptyPatchBetweenIDs(t *testing.T) {
 	baseText := baseBuf.String()
 	baseID := base.ComputeC4ID()
 
-	// Stream: base entries, checkpoint, empty, checkpoint again.
+	// Consecutive checkpoints both name the same accumulated state:
+	// close-then-supersede — legal when equal, rejected when not.
 	input := baseText +
 		baseID.String() + "\n" +
 		baseID.String() + "\n"
 
-	_, err := Unmarshal([]byte(input))
-	if err == nil {
-		t.Fatal("expected ErrEmptyPatch, got nil")
+	m, err := Unmarshal([]byte(input))
+	if err != nil {
+		t.Fatalf("consecutive equal checkpoints must be accepted: %v", err)
 	}
-	if !strings.Contains(err.Error(), "empty patch") {
-		t.Errorf("unexpected error: %v", err)
+	if m.ComputeC4ID() != baseID {
+		t.Fatal("chain must resolve to the checkpointed state")
+	}
+
+	bad := baseText +
+		baseID.String() + "\n" +
+		c4.Identify(strings.NewReader("other")).String() + "\n"
+	if _, err := Unmarshal([]byte(bad)); err == nil {
+		t.Fatal("consecutive differing checkpoint must be rejected here (no fetch to re-anchor)")
 	}
 }
 

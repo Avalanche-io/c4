@@ -50,6 +50,9 @@ func runPaths(args []string) {
 		fatalf("Error reading input: %v", err)
 	}
 
+	if len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[0]), "@c4 journal") {
+		fatalf("Error: input is a store journal, not a description — list it with: c4 log <file>")
+	}
 	if isC4MInput(lines) {
 		c4mToPaths(lines)
 	} else {
@@ -71,7 +74,9 @@ func isC4MInput(lines []string) bool {
 		if trimmed == "" {
 			continue
 		}
-		return looksLikeC4MLine(trimmed)
+		// Entry lines, or a chain's leading bare C4 ID / boundary —
+		// chain files are descriptions and resolve before conversion.
+		return looksLikeC4MLine(trimmed) || looksLikeC4ID(trimmed)
 	}
 	return false
 }

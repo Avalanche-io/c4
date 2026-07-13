@@ -83,22 +83,31 @@ func (d *Decoder) Decode() (*Manifest, error) {
 				// First line of file: external base reference.
 				m.Base = id
 			} else {
-				// Reject empty patch sections.
-				if patchMode && len(section) == 0 {
-					return nil, fmt.Errorf("%w (line %d)", ErrEmptyPatch, d.lineNum)
-				}
-
-				// Bare C4 ID = block link to the previous section.
-				// Flush current section. The bare ID is the previous
-				// block's identity (O(1), no accumulated state check).
+				// Bare C4 ID = checkpoint: it names the accumulated
+				// manifest state (grammar erratum, draft-v9 §4). Flush
+				// the pending section, then verify. A checkpoint
+				// directly following another (consecutive boundaries)
+				// verifies the same accumulated state; at EOF the final
+				// checkpoint is the chain's closing validator.
 				if !patchMode {
 					m.Entries = append(m.Entries, section...)
-				} else {
+				} else if len(section) > 0 {
 					patch := &Manifest{Version: "1.0", Entries: section}
 					m = ApplyPatch(m, patch)
 				}
 				section = nil
 				patchMode = true
+
+				// A resolving decoder MUST verify checkpoints — except
+				// after an unresolved external base reference, where the
+				// accumulated state is unknowable here and verification
+				// defers to the resolver that fetches the base.
+				if m.Base.IsNil() {
+					if got := m.ComputeC4ID(); got != id {
+						return nil, fmt.Errorf("%w (line %d): accumulated %s, checkpoint %s",
+							ErrPatchIDMismatch, d.lineNum, got, id)
+					}
+				}
 			}
 			firstLine = false
 			continue
@@ -120,15 +129,15 @@ func (d *Decoder) Decode() (*Manifest, error) {
 		firstLine = false
 	}
 
-	// Flush remaining section.
+	// Flush remaining section. A stream may end without a closing
+	// validator (the final patch applies unverified — C4M-STANDARD
+	// §10.7); a stream whose last line was a bare C4 ID ended with its
+	// closing validator, already verified above.
 	if !patchMode {
 		m.Entries = append(m.Entries, section...)
 	} else if len(section) > 0 {
 		patch := &Manifest{Version: "1.0", Entries: section}
 		m = ApplyPatch(m, patch)
-	} else if patchMode {
-		// Patch mode was entered but no entries followed — empty patch.
-		return nil, fmt.Errorf("%w (at end of input)", ErrEmptyPatch)
 	}
 
 	// Auto-sort: tolerate out-of-order input by sorting to canonical order.

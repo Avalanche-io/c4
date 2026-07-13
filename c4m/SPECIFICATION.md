@@ -320,9 +320,11 @@ c4<90-char-id>
 -rw-r--r-- 2025-01-01T00:00:00Z 200 b.txt c4...
 ```
 
-A bare C4 ID appearing **after entries** is a block link. It is the C4 ID of the block immediately above it (the content between the previous boundary and this line). The decoder records it but does not verify it against accumulated state — verification is O(n) and does not scale to large directories.
+A bare C4 ID appearing **after entries** is a **checkpoint**: it names the accumulated manifest state at that point (all preceding entries and applied patches). A resolving decoder MUST verify it against the accumulated state and reject the stream with `ErrPatchIDMismatch` on mismatch; a non-resolving (shape-level) reader MAY record it unverified. Verification is one comparison per boundary — a resolving decoder is already folding the state, and the manifest ID hashes only the one-level canonical listing.
 
-Entries following the block link are interpreted as a patch against the accumulated state.
+> **ERRATUM (2026-07-13).** This paragraph previously defined the bare ID as a *block link* — the ID of the block immediately above, recorded unverified. That semantic was never emitted by any shipped tool (producers always wrote accumulated-state IDs) and contradicted the verification language elsewhere in this document and C4M-STANDARD Section 10.3. Checkpoints are accumulated-state, verified. The write-side locality the block link aimed at survives in the store journal, which is its own format (not c4m) with a per-line invariant.
+
+Entries following the checkpoint are interpreted as a patch against the accumulated state.
 
 ### Why the First-Line Rule Differs
 
@@ -342,9 +344,13 @@ Patch entries are matched against the current state **by name (and path)**:
 
 For directories, patch entries may contain children. The children are applied recursively using the same rules.
 
-### Empty Patch Rejection
+### The Closing Validator
 
-Every patch section must contain at least one entry. A bare C4 ID followed by nothing (EOF) or by another bare C4 ID (consecutive checkpoints) is rejected as `ErrEmptyPatch`.
+> **ERRATUM (2026-07-13).** This section previously rejected a bare
+> C4 ID at EOF and consecutive checkpoints as `ErrEmptyPatch`. Those
+> shapes are legal: shipped tools have always emitted them.
+
+A bare C4 ID at EOF is the chain's **closing validator**: it names the resolved manifest, and a resolving decoder MUST verify it (`ErrPatchIDMismatch` on mismatch). Consecutive checkpoints are checkpoint repetition — each names the same accumulated state; a resolving decoder verifies both. `ErrEmptyPatch` is retired; the identifier remains reserved.
 
 ### Multiple Patches
 
@@ -431,7 +437,7 @@ Parsers MUST:
 - Reject CR (carriage return) characters
 - Apply canonical transformation consistently
 - Verify bare C4 IDs match accumulated content (except first-line base reference)
-- Reject empty patch sections
+- Verify the closing validator (a bare C4 ID at EOF) against the resolved manifest
 - Accept null values as specified
 - Reject path traversal attempts (`../`, `./`, names containing `/` or `\`)
 - Reject duplicate paths within the same scope
@@ -459,4 +465,4 @@ Parsers MAY:
 | `ErrPathTraversal` | Path traversal attempt |
 | `ErrInvalidFlowTarget` | Malformed flow link target |
 | `ErrPatchIDMismatch` | Bare C4 ID does not match accumulated content |
-| `ErrEmptyPatch` | Patch section contains no entries |
+| `ErrEmptyPatch` | Retired (2026-07-13 erratum); identifier reserved |

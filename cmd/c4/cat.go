@@ -132,18 +132,22 @@ func storeDescend(s store.Store, id c4.ID, pathPart string) (c4.ID, bool) {
 	return id, assertListing
 }
 
-// catFile displays a c4m file from disk.
+// catFile displays a c4m file from disk: resolve or error loudly —
+// a FILE argument names a description, and echoing something that
+// failed to parse would garble silently (store objects, by contrast,
+// stay type-agnostic raw bytes).
 func catFile(path string, ergonomic, recursive bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		fatalf("Error reading %s: %v", path, err)
 	}
 
+	if c4m.IsJournal(data) {
+		fatalf("Error: %s is a store journal, not a description — list it with: c4 log %s", path, path)
+	}
 	m := tryParseC4m(data)
 	if m == nil {
-		// Not c4m — output raw bytes.
-		os.Stdout.Write(data)
-		return
+		fatalf("Error: %s does not parse as c4m", path)
 	}
 
 	if recursive {

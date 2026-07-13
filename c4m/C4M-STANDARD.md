@@ -697,12 +697,26 @@ This means a patch can modify files deep in a hierarchy by including only
 the changed path: the parent directory entries provide context, and the
 unchanged siblings are preserved from the base.
 
-### 10.5 Empty Patch Rejection
+### 10.5 Checkpoint Repetition and the Closing Validator
 
-Every patch section MUST contain at least one entry.
+> **ERRATUM (2026-07-13, snapshot-loop round 3).** This section
+> previously rejected a bare C4 ID at EOF and consecutive bare C4 IDs
+> as `ErrEmptyPatch`, contradicting the NOTE in Section 10.7 (which
+> RECOMMENDS a closing bare C4 ID) and the emitted output of shipped
+> tools. The rules below replace the rejection; `ErrEmptyPatch` is
+> retired (the error identifier remains reserved for API stability).
 
-- A bare C4 ID at EOF with no following entries: `ErrEmptyPatch`
-- Two consecutive bare C4 IDs (empty section between them): `ErrEmptyPatch`
+- A bare C4 ID at EOF is the chain's **closing validator**: it names
+  the resolved manifest state, and per Section 10.3 a resolving
+  decoder MUST verify it (`ErrPatchIDMismatch` on mismatch).
+- Two consecutive bare C4 IDs are **checkpoint repetition**: both name
+  the accumulated state at that point. A resolving decoder verifies
+  each; a shape-level (non-resolving) reader treats the second as
+  closing the (empty) section and superseding the first.
+- Checkpoint verification applies to self-contained streams. After an
+  unresolved external base reference (Section 10.2), the accumulated
+  state is unknowable to a non-fetching decoder; verification defers
+  to the resolver that fetches the base.
 
 ### 10.6 Multiple Patches
 
@@ -901,7 +915,7 @@ Decoders MUST reject streams containing:
 | Name contains path separator (`/` as non-trailing, `\`) | `ErrPathTraversal` |
 | Duplicate path within same scope | `ErrDuplicatePath` |
 | Bare C4 ID mismatch (non-first-line) | `ErrPatchIDMismatch` |
-| Empty patch section | `ErrEmptyPatch` |
+| Checkpoint/validator mismatch | `ErrPatchIDMismatch` |
 | Malformed flow target | `ErrInvalidFlowTarget` |
 
 ### 14.2 Accepted Variations
@@ -1013,7 +1027,7 @@ BASE58CHAR     = %x31-39 / %x41-48 / %x4A-4E / %x50-5A
 | Path traversal | `ErrPathTraversal` | Name contains `.`, `..`, or path separators |
 | Invalid flow target | `ErrInvalidFlowTarget` | Flow target does not match `location:path` pattern |
 | Patch ID mismatch | `ErrPatchIDMismatch` | Bare C4 ID does not match accumulated manifest state |
-| Empty patch | `ErrEmptyPatch` | Patch section contains zero entries |
+| Empty patch | `ErrEmptyPatch` | Retired by the 10.5 erratum; identifier reserved |
 
 ---
 
