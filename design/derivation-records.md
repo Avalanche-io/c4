@@ -127,3 +127,51 @@ never for elision. The binary-diff edge to the same frame is `exact`
 and can license elision. Both classes coexisting on one target is the
 system working, not a conflict; the class travels with the edge and
 the economics stay honest.
+
+## Integration path — bolting onto the existing store (2026-07-13)
+
+The store changes not at all at first; the system arrives in four
+additive layers, each independently shippable:
+
+**Layer 0 — nothing changes.** IDs, c4m grammar, store layout, ingest,
+cat, patch, restore: byte-identical behavior. A store containing zero
+derivation records is today's store. (Sidecar doctrine.)
+
+**Layer 1 — records only.** Derivation edges are testimony lines
+(shape A): `<A> produced-from <actor> process=<B> inputs=<C-list>
+class=exact`. Plain text, writable today by any tool, storable as
+ordinary objects. Deliverable: pin `produced-from` + the class
+vocabulary in the testimony freeze. Zero c4 code.
+
+**Layer 2 — read-side resolution (first behavior change, opt-in).**
+The resolution path (cat/restore), on a missing ID, may consult a
+configured derivation-record source for an `exact` route whose inputs
+resolve, execute the process, and serve the result — ALWAYS hashed
+against A first (store invariant; a lying record is caught by
+identity). Optionally cache the materialization back as a normal
+journaled ingest. Core executes only built-in, stdlib-only processes:
+c4m patch algebra, concatenate (chunk maps), flate. External processes
+(bsdiff, ffmpeg) belong to sidecar/zone executors, never core.
+Cost policy v1 is trivial (derive if local, else fetch); measurement
+refines it.
+
+**Layer 3 — write-side generation (opt-in porcelain).** Something must
+mint deltas: a `derive` porcelain (or ingest policy) that, when
+storing version N with a known predecessor, computes the patch object
+and appends the record. Never silently on the hot ingest path.
+This is docket #220's tier-1 prototype.
+
+**Layer 4 — space realization (`elide`, future gc round).** A new
+disposal class: pre-flight derives A via the claimed route and
+verifies the hash BEFORE any byte dies (never trust a record for a
+destructive act), keep-pins the inputs list in the retention record,
+drops A's object with a drop line carrying the route reference. The
+closure walk is unchanged (it walks the pinned inputs root normally);
+layer 2 makes A servable again on demand; the gc bill prints
+reconstruction cost per elided object.
+
+Invariants preserved throughout: no unverified bytes ever served or
+stored; presence-at-hash-name semantics untouched; links never pin
+(the elide warrant pins); no index on any destructive path (elide
+verifies by execution, not record trust); c4m grammar frozen; zero
+core dependencies (tier-1 processes are stdlib-only).
