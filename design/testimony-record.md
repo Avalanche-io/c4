@@ -165,3 +165,57 @@ Shape A's line grammar is adopted for the store's retention record
 so the two records converge by construction. The interchange record's
 own freeze remains open on this doc's track, with shape A leading and
 now field-tested by the retention record.
+
+## Assumptions deposited by the snapshot-loop rounds (2026-07-13, draft-v9)
+
+Round 3 (`snapshot-loop/round-3/draft-v9.md`) deferred four concerns
+to "the testimony layer" while stripping the journal to two fields
+(scan-start, claim ID). Those deferrals are ASSUMPTIONS about this
+design's future scope, recorded here so the testimony round inherits
+them explicitly instead of as conversation residue. None are
+commitments; each is a candidate requirement to accept or reject.
+
+**A1 — Claim provenance.** The journal dropped origin (`host:abs-path`)
+and the name label because roots are purely virtual and the journal
+travels with the location-independent store. Assumption: testimony is
+where "claim `<id>` was captured from `<host>:<path>` as `<name>`"
+lives, as a statement with an author — satisfying the reflog-usability
+and future workflows (re-snapshot same origin; restore to origin; c4d
+suggesting standing flows from observed capture patterns, which
+DEPENDS on provenance existing somewhere). Implied requirements:
+per-claim binding to journal claims (ID + scan-start suffice as the
+key); separable from the store or explicitly optional when stores
+travel (origins leak usernames and directory layouts — the privacy
+argument that evicted them from the journal applies to any record that
+travels by default).
+
+**A2 — Diagnostics.** Scan end / duration / counters were ruled
+narration (stderr), with testimony as the durable home IF ever needed.
+Assumption: per-claim metrics are testimony-shaped (statements about a
+claim), never journal-shaped.
+
+**A3 — Journal tamper-evidence.** CT-style hash chaining was noted and
+NOT adopted (trust boundary = the store directory; foreign edits are
+corruption). Assumption: if tamper-evidence is ever wanted, it arrives
+as testimony/integrity work — e.g. a signed statement over a journal
+prefix — never as journal grammar.
+
+**A4 — Human labels generally.** Wherever v9 removed a human-facing
+field from a root record, the standing answer was "labels are
+testimony." Assumption: a lightweight local label mechanism (possibly
+never shipped) is testimony's concern; root records stay minimal.
+
+**Boundary conditions the deferrals assumed (binding on this design):**
+
+- Testimony is NEVER release-gating: v1.1.0 and the whole snapshot
+  loop are complete without it; losing every testimony record loses
+  nothing recoverable (testimony never pins bytes, mirroring the
+  links-never-pin rule).
+- Testimony is non-authoritative by construction (R2 already says
+  this): the journal remains the sole authority on claims; retention
+  remains the sole authority on verdicts; testimony only ever adds
+  statements about IDs.
+- Shape A's line grammar remains the leading candidate (per the
+  2026-07-10 update); A1-A4 should be expressible as predicates within
+  the existing predicate budget or explicitly rejected, not grow a
+  second grammar.
