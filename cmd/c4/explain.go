@@ -101,7 +101,6 @@ func runExplainID(args []string) {
 // runExplainDiff shows a human-readable summary of changes between two states.
 func runExplainDiff(args []string) {
 	fs := newFlags("explain diff")
-	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directories: s/m/f")
 	fs.parse(args)
 
 	if len(fs.args) != 2 {
@@ -109,13 +108,8 @@ func runExplainDiff(args []string) {
 		os.Exit(1)
 	}
 
-	mode, err := scan.ParseScanMode(*modeFlag)
-	if err != nil {
-		fatalf("Error: %v", err)
-	}
-
 	oldArg, newArg := fs.args[0], fs.args[1]
-	oldManifest, newManifest := smartResolve(oldArg, newArg, mode)
+	oldManifest, newManifest := smartResolve(oldArg, newArg)
 
 	oldFiles, _, _ := manifestStats(oldManifest)
 	newFiles, _, _ := manifestStats(newManifest)

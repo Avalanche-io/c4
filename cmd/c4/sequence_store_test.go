@@ -37,13 +37,17 @@ func TestSequenceIngestStoresMembers(t *testing.T) {
 	}
 
 	storeDir := filepath.Join(dir, "store")
-	stdout, stderr, code := runC4WithEnv(t, bin,
+	_, stderr, code := runC4WithEnv(t, bin,
 		map[string]string{"C4_STORE": storeDir}, "id", "-S", "-s", tree)
 	if code != 0 {
 		t.Fatalf("c4 id -S -s exit %d: %s", code, stderr)
 	}
-	if !bytes.Contains([]byte(stdout), []byte("frame.[0001-0005].exr")) {
-		t.Fatalf("expected folded sequence entry in output:\n%s", stdout)
+	listing, _, code := runC4(t, bin, "id", "-m", "f", "-S", tree)
+	if code != 0 {
+		t.Fatal("id -m f -S failed")
+	}
+	if !bytes.Contains([]byte(listing), []byte("frame.[0001-0005].exr")) {
+		t.Fatalf("expected folded sequence entry in output:\n%s", listing)
 	}
 
 	s, err := store.NewTreeStore(storeDir)

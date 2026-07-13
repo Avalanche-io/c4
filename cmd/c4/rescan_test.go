@@ -31,7 +31,7 @@ func TestRescanReuseCounts(t *testing.T) {
 	snapID := strings.TrimSpace(stdout)
 
 	// Capture the guide c4m.
-	c4mText, _, code := runC4WithEnv(t, bin, env, "id", tree)
+	c4mText, _, code := runC4WithEnv(t, bin, env, "id", "-m", "f", tree)
 	if code != 0 {
 		t.Fatal("id failed")
 	}
@@ -41,7 +41,7 @@ func TestRescanReuseCounts(t *testing.T) {
 	}
 
 	// Re-scan with the guide: everything reuses, root ID identical.
-	stdout, stderr, code := runC4WithEnv(t, bin, env, "id", "-c", guidePath, "-q", tree)
+	stdout, stderr, code := runC4WithEnv(t, bin, env, "id", "-m", "f", "-c", guidePath, "-q", tree)
 	if code != 0 {
 		t.Fatalf("re-scan failed: %s", stderr)
 	}
@@ -56,7 +56,7 @@ func TestRescanReuseCounts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tree, "a.txt"), []byte("ALPHA2"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	stdout, stderr, code = runC4WithEnv(t, bin, env, "id", "-c", guidePath, "-q", tree)
+	stdout, stderr, code = runC4WithEnv(t, bin, env, "id", "-m", "f", "-c", guidePath, "-q", tree)
 	if code != 0 {
 		t.Fatalf("re-scan failed: %s", stderr)
 	}
@@ -88,7 +88,7 @@ func TestRescanVerifyCatchesObfuscation(t *testing.T) {
 	}
 	snapID := strings.TrimSpace(stdout)
 
-	c4mText, _, _ := runC4WithEnv(t, bin, env, "id", tree)
+	c4mText, _, _ := runC4WithEnv(t, bin, env, "id", "-m", "f", tree)
 	guidePath := filepath.Join(dir, "guide.c4m")
 	if err := os.WriteFile(guidePath, []byte(c4mText), 0644); err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestRescanVerifyCatchesObfuscation(t *testing.T) {
 	}
 
 	// Default re-scan: invisible by design — stale ID reused.
-	stdout, _, code = runC4WithEnv(t, bin, env, "id", "-c", guidePath, "-q", tree)
+	stdout, _, code = runC4WithEnv(t, bin, env, "id", "-m", "f", "-c", guidePath, "-q", tree)
 	if code != 0 {
 		t.Fatal("re-scan failed")
 	}
@@ -113,7 +113,7 @@ func TestRescanVerifyCatchesObfuscation(t *testing.T) {
 	}
 
 	// --verify: full re-hash, obfuscation named on stderr, true ID out.
-	stdout, stderr, code := runC4WithEnv(t, bin, env, "id", "-c", guidePath, "--verify", "-q", tree)
+	stdout, stderr, code := runC4WithEnv(t, bin, env, "id", "-m", "f", "-c", guidePath, "--verify", "-q", tree)
 	if code != 0 {
 		t.Fatalf("verify re-scan failed: %s", stderr)
 	}

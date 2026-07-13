@@ -1,161 +1,104 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"time"
+	"strings"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/scan"
 	"github.com/Avalanche-io/c4/store"
 )
 
+// runDiff compares two states — directories, c4m files, or store IDs —
+// and emits a c4m patch on stdout. Directories scan at content level,
+// or at the other side's level when that side is a description,
+// folding exactly what it folds.
 func runDiff(args []string) {
 	fs := newFlags("diff")
-	storeFlag := fs.boolFlag("store", 's', false, "Store content in the configured store")
-	quiet := fs.boolFlag("quiet", 'q', false, "Suppress output (useful with -s)")
-	reverseFlag := fs.boolFlag("reverse", 'r', false, "Reverse: diff against pre-patch state from a changeset")
-	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form")
-	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directories: s/m/f/c")
+	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Column-aligned output")
 	fs.parse(args)
 
 	if len(fs.args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 diff [-r] [-s] [-e] [-m mode] <old> <new>\n")
-		fmt.Fprintf(os.Stderr, "\nProduce a c4m diff (patch). Each argument can be a c4m file or directory.\n")
-		fmt.Fprintf(os.Stderr, "  -r  With a changeset as first arg: diff against the pre-patch state\n")
-		fmt.Fprintf(os.Stderr, "      With two manifests/dirs: swap old and new\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 diff [-e] <old> <new>\n")
+		fmt.Fprintf(os.Stderr, "\nProduce a c4m diff (patch). Sides: directories, c4m files, or store IDs.\n")
 		os.Exit(1)
 	}
 
-	mode, err := scan.ParseScanMode(*modeFlag)
-	if err != nil {
-		fatalf("Error: %v", err)
-	}
-
-	// Reverse mode with a changeset: extract OldID, load pre-patch manifest from store.
-	if *reverseFlag && !isDirectory(fs.args[0]) && isChangesetFile(fs.args[0]) {
-		runDiffReverse(fs.args[0], fs.args[1], mode, *ergonomic, *quiet)
-		return
-	}
-
 	oldArg, newArg := fs.args[0], fs.args[1]
-	if *reverseFlag {
-		oldArg, newArg = newArg, oldArg
-	}
+	oldManifest, newManifest := smartResolve(oldArg, newArg)
+	outputDiff(oldManifest, newManifest, *ergonomic)
+}
 
-	// Smart scan: when one side is a c4m and the other is a directory,
-	// use the c4m as a guide to avoid rehashing unchanged files.
-	// Only files with different size or timestamp get hashed.
-	oldManifest, newManifest := smartResolve(oldArg, newArg, mode)
-
-	// Store content from directory arguments if requested.
-	if *storeFlag && (mode == scan.ModeFull || mode == scan.ModeContent) {
-		for _, p := range fs.args {
-			if !isDirectory(p) {
-				continue
-			}
-			start := time.Now().UTC()
-			storeManifestContent(resolveManifestOrDir(p, mode), p, start)
+// resolveDiffSide loads a non-directory diff side: a store address or a
+// c4m file. Chains resolve to their final state.
+func resolveDiffSide(arg string) *c4m.Manifest {
+	if first := strings.SplitN(arg, "/", 2)[0]; looksLikeC4ID(first) {
+		if first != arg {
+			fatalf("Error: ID/path descent is not yet supported here; use the bare ID")
 		}
-	}
-
-	if !*quiet {
-		outputDiff(oldManifest, newManifest, *ergonomic)
-	}
-}
-
-// runDiffReverse handles `c4 diff -r changeset.c4m dir/`.
-// Loads the pre-patch manifest from the store and diffs the directory against it.
-func runDiffReverse(changesetPath, dirPath string, mode scan.ScanMode, ergonomic, quiet bool) {
-	// Read the changeset to extract OldID.
-	data, err := os.ReadFile(changesetPath)
-	if err != nil {
-		fatalf("Error reading %s: %v", changesetPath, err)
-	}
-	sections, err := c4m.DecodePatchChain(bytes.NewReader(data))
-	if err != nil {
-		fatalf("Error decoding %s: %v", changesetPath, err)
-	}
-	if len(sections) == 0 {
-		fatalf("Error: changeset is empty")
-	}
-
-	oldID := sections[0].BaseID
-	if oldID.IsNil() {
-		base := &c4m.Manifest{Version: "1.0", Entries: sections[0].Entries}
-		oldID = base.ComputeC4ID()
-	}
-
-	// Load pre-patch manifest from store.
-	s, _ := store.OpenStore()
-	if s == nil || !s.Has(oldID) {
-		fatalf("Error: pre-patch manifest %s not found in store\n"+
-			"Was the original patch run with -s?", oldID)
-	}
-
-	rc, err := s.Open(oldID)
-	if err != nil {
-		fatalf("Error loading pre-patch manifest: %v", err)
-	}
-	prePatchManifest, err := c4m.NewDecoder(rc).Decode()
-	rc.Close()
-	if err != nil {
-		fatalf("Error decoding pre-patch manifest: %v", err)
-	}
-
-	// Diff current state against pre-patch state.
-	currentManifest := resolveManifestOrDir(dirPath, mode)
-	if !quiet {
-		outputDiff(currentManifest, prePatchManifest, ergonomic)
-	}
-}
-
-// isChangesetFile returns true if the file starts with a bare C4 ID line
-// (indicating it's a changeset/patch file, not a plain manifest).
-func isChangesetFile(path string) bool {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	// Check if the first non-blank line is a bare C4 ID.
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		trimmed := bytes.TrimSpace(line)
-		if len(trimmed) == 0 {
-			continue
+		id, err := c4.Parse(first)
+		if err != nil {
+			fatalf("Error: invalid C4 ID: %v", err)
 		}
-		return len(trimmed) == 90 && trimmed[0] == 'c' && trimmed[1] == '4'
+		s, _ := store.OpenStore()
+		if s == nil {
+			fatalf("Error: %s is a store address and no store is configured", arg)
+		}
+		m := manifestFromStore(s, id)
+		return expandIfRecord(m, s)
 	}
-	return false
+	return resolveC4m(arg)
 }
 
-// smartResolve loads both arguments, using one as a guide for the other
-// when possible. When a c4m file is diffed against a directory, the c4m
-// provides known C4 IDs — the directory only needs to hash files whose
-// size or timestamp differ from the c4m. This avoids a full rehash.
-func smartResolve(oldArg, newArg string, mode scan.ScanMode) (*c4m.Manifest, *c4m.Manifest) {
+// descLevel is the scan level a description implies for the directory
+// on the other side: content-form descriptions compare at content
+// level; anything else compares at full fidelity.
+func descLevel(m *c4m.Manifest) scan.ScanMode {
+	if isContentLevel(m) {
+		return scan.ModeContent
+	}
+	return scan.ModeFull
+}
+
+// smartResolve loads both sides. A directory scans at the other side's
+// level when that side is a description (using it as a guide so only
+// changed files rehash), at content level otherwise.
+func smartResolve(oldArg, newArg string) (*c4m.Manifest, *c4m.Manifest) {
 	oldIsDir := isDirectory(oldArg)
 	newIsDir := isDirectory(newArg)
 
-	// If neither or both are directories, no guide optimization possible.
-	if oldIsDir == newIsDir {
-		return resolveManifestOrDir(oldArg, mode), resolveManifestOrDir(newArg, mode)
+	// Both directories: compare at content level.
+	if oldIsDir && newIsDir {
+		return resolveManifestOrDir(oldArg, scan.ModeContent),
+			resolveManifestOrDir(newArg, scan.ModeContent)
 	}
 
-	// One is a c4m, the other is a directory. Use the c4m as a guide.
+	// Both descriptions: no scanning at all.
+	if !oldIsDir && !newIsDir {
+		return resolveDiffSide(oldArg), resolveDiffSide(newArg)
+	}
+
+	// One description, one directory: the description sets the level.
 	var ref *c4m.Manifest
 	var dirPath string
-
 	if oldIsDir {
-		ref = resolveManifestOrDir(newArg, mode) // c4m side
+		ref = resolveDiffSide(newArg)
 		dirPath = oldArg
 	} else {
-		ref = resolveManifestOrDir(oldArg, mode) // c4m side
+		ref = resolveDiffSide(oldArg)
 		dirPath = newArg
 	}
-
-	// Scan the directory using the reference as a guide.
-	dirManifest := guidedScan(dirPath, ref, mode)
+	// A full-form description guides the scan (unchanged size+mtime
+	// reuse its IDs); a content-form one records no timestamps to
+	// trust, so the directory hashes in full at content level.
+	var dirManifest *c4m.Manifest
+	if level := descLevel(ref); level == scan.ModeContent {
+		dirManifest = resolveManifestOrDir(dirPath, scan.ModeContent)
+	} else {
+		dirManifest = guidedScan(dirPath, ref, level)
+	}
 
 	if oldIsDir {
 		return dirManifest, ref

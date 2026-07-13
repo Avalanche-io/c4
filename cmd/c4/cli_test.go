@@ -484,7 +484,7 @@ func TestDiffDirectories(t *testing.T) {
 	}
 }
 
-func TestDiffReverse(t *testing.T) {
+func TestDiffDirectional(t *testing.T) {
 	bin := buildC4(t)
 	dir := t.TempDir()
 
@@ -495,21 +495,14 @@ func TestDiffReverse(t *testing.T) {
 	os.WriteFile(filepath.Join(dir1, "a.txt"), []byte("old"), 0644)
 	os.WriteFile(filepath.Join(dir2, "a.txt"), []byte("new"), 0644)
 
-	// Forward diff: v1 → v2
-	forward, _, _ := runC4(t, bin, "diff", dir1, dir2)
-	// Reverse diff: v2 → v1 (using -r flag)
-	reverse, _, code := runC4(t, bin, "diff", "-r", dir1, dir2)
+	// diff is directional: swapping the sides reverses the patch.
+	forward, _, code := runC4(t, bin, "diff", dir1, dir2)
 	if code != 0 {
-		t.Fatalf("diff -r exit %d", code)
+		t.Fatalf("diff exit %d", code)
 	}
-	// Explicit swap should match -r
 	swapped, _, _ := runC4(t, bin, "diff", dir2, dir1)
-	if reverse != swapped {
-		t.Fatalf("diff -r should equal swapped args\n  -r:      %s\n  swapped: %s", reverse, swapped)
-	}
-	// Forward and reverse should differ
-	if forward == reverse {
-		t.Fatal("forward and reverse diffs should not be identical")
+	if forward == swapped {
+		t.Fatal("forward and swapped diffs should not be identical")
 	}
 }
 
@@ -652,22 +645,22 @@ func TestC4mCanonicalStore(t *testing.T) {
 		t.Fatal("canonical and pretty should differ in formatting")
 	}
 
-	// Compute the canonical c4m's own C4 ID by piping it through c4 -x
-	// (which identifies the canonical bytes via c4m detection).
-	canonicalID, _, code := runC4WithStdin(t, bin, canonical, "-x")
+	// Compute the canonical c4m's own C4 ID by piping it through bare
+	// c4 (read-only; identifies the canonical bytes via c4m detection).
+	canonicalID, _, code := runC4WithStdin(t, bin, canonical)
 	if code != 0 {
 		t.Fatalf("stdin id exit %d", code)
 	}
 	canonicalID = strings.TrimSpace(canonicalID)
 
-	// Save pretty form and use bare `c4 <path>` to identify+store.
+	// Save pretty form and use `c4 -s <path>` to identify+store.
 	prettyPath := filepath.Join(dir, "pretty.c4m")
 	os.WriteFile(prettyPath, []byte(pretty), 0644)
 
-	// Bare form: `c4 pretty.c4m` → identify + store canonical form.
-	_, _, code = runC4WithEnv(t, bin, env, prettyPath)
+	// Snapshot shortcut: `c4 -s pretty.c4m` → store canonical form.
+	_, _, code = runC4WithEnv(t, bin, env, "-s", prettyPath)
 	if code != 0 {
-		t.Fatalf("bare c4 exit %d", code)
+		t.Fatalf("c4 -s exit %d", code)
 	}
 
 	// Cat the stored content using the canonical c4m's C4 ID.
@@ -747,10 +740,15 @@ func TestCatRecursiveExpand(t *testing.T) {
 
 	env := map[string]string{"C4_STORE": storeDir}
 
-	// Scan and store the full tree (stores file content and subdirectory c4m).
-	fullOut, _, code := runC4WithEnv(t, bin, env, "id", "-s", projectDir)
+	// Store the full tree, then capture its full-form listing
+	// separately (-s prints only the snapshot ID).
+	_, _, code := runC4WithEnv(t, bin, env, "id", "-s", projectDir)
 	if code != 0 {
 		t.Fatalf("id -s exit %d", code)
+	}
+	fullOut, _, code := runC4WithEnv(t, bin, env, "id", "-m", "f", projectDir)
+	if code != 0 {
+		t.Fatal("id -m f failed")
 	}
 
 	if !strings.Contains(fullOut, "sub/") {
@@ -808,8 +806,9 @@ func TestCatRecursiveErgonomic(t *testing.T) {
 
 	env := map[string]string{"C4_STORE": storeDir}
 
-	// Scan and store.
-	fullOut, _, _ := runC4WithEnv(t, bin, env, "id", "-s", projectDir)
+	// Scan and store; capture the full-form listing separately.
+	runC4WithEnv(t, bin, env, "id", "-s", projectDir)
+	fullOut, _, _ := runC4WithEnv(t, bin, env, "id", "-m", "f", projectDir)
 	// Store subdirectory c4m.
 	runC4WithEnv(t, bin, env, "id", "-s", subDir)
 

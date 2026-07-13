@@ -39,9 +39,17 @@ func TestIDStoreSelfCapture(t *testing.T) {
 		"sub/deep/c.md": "charlie",
 	})
 
-	manifest, stderr, code := runC4WithEnv(t, bin, env, "id", "-s", tree)
+	// The full-form description; -s itself prints only the ID (implies -q).
+	manifest, _, code := runC4WithEnv(t, bin, env, "id", "-m", "f", tree)
+	if code != 0 {
+		t.Fatal("id -m f failed")
+	}
+	stdout, stderr, code := runC4WithEnv(t, bin, env, "id", "-s", tree)
 	if code != 0 {
 		t.Fatalf("id -s exit %d: %s", code, stderr)
+	}
+	if strings.TrimSpace(stdout) != storedID(t, stderr) {
+		t.Fatalf("-s stdout %q != stored: line %q", strings.TrimSpace(stdout), storedID(t, stderr))
 	}
 	id := storedID(t, stderr)
 

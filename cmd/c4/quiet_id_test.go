@@ -105,8 +105,14 @@ func TestQuietContentMode(t *testing.T) {
 		t.Fatalf("content IDs differ:\n%s%s", idA, idB)
 	}
 
-	idFullA, _, _ := runC4(t, bin, "id", "-q", a)
-	idFullB, _, _ := runC4(t, bin, "id", "-q", b)
+	// The default level is content: bare -q equals -q -m c.
+	idDefA, _, _ := runC4(t, bin, "id", "-q", a)
+	if idDefA != idA {
+		t.Fatalf("default -q should be content level:\n%s%s", idDefA, idA)
+	}
+
+	idFullA, _, _ := runC4(t, bin, "id", "-q", "-m", "f", a)
+	idFullB, _, _ := runC4(t, bin, "id", "-q", "-m", "f", b)
 	if idFullA == idFullB {
 		t.Fatal("full-fidelity IDs should differ (mode changed)")
 	}

@@ -49,13 +49,14 @@ func main() {
 		}
 	}
 
-	// Check for -x flag (exclude from store) in bare args.
-	excludeStore := false
+	// Check for -s (snapshot) in bare args. Nothing is written anywhere
+	// without -s: the bare forms are read-only.
+	snapshot := false
 	var bareArgs []string
 	if len(os.Args) > 1 {
 		for _, arg := range os.Args[1:] {
-			if arg == "-x" || arg == "--exclude-store" {
-				excludeStore = true
+			if arg == "-s" || arg == "--store" {
+				snapshot = true
 			} else {
 				bareArgs = append(bareArgs, arg)
 			}
@@ -63,24 +64,24 @@ func main() {
 	}
 
 	// If a non-flag arg looks like a path, treat as c4 id [-s].
-	// The bare form stores content by default; -x skips storage.
 	if len(bareArgs) > 0 {
 		for _, arg := range bareArgs {
 			if _, err := os.Stat(arg); err == nil {
-				if excludeStore {
-					runID(bareArgs)
-				} else {
+				if snapshot {
 					runID(append([]string{"-s"}, bareArgs...))
+				} else {
+					runID(bareArgs)
 				}
 				return
 			}
 		}
 	}
 
-	// Bare c4 with piped stdin → identify + store (unless -x).
+	// Piped stdin: ...|c4 prints the ID of stdin (nothing stored);
+	// ...|c4 -s stores stdin and prints its ID.
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		doStdin(!excludeStore)
+		doStdin(snapshot)
 		return
 	}
 

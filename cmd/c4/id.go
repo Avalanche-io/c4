@@ -21,16 +21,24 @@ import (
 
 func runID(args []string) {
 	fs := newFlags("id")
-	storeFlag := fs.boolFlag("store", 's', false, "Store content in the configured store")
+	storeFlag := fs.boolFlag("store", 's', false, "Snapshot into the store; print the snapshot ID (implies -q; always full detail)")
 	quiet := fs.boolFlag("quiet", 'q', false, "Print one bare ID line per path (THE identity; byte-pure)")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form c4m")
 	seqFlag := fs.boolFlag("sequence", 'S', false, "Detect and fold file sequences")
 	excludeFlags := fs.stringArrayFlag("exclude", "Glob pattern to exclude (repeatable)")
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
-	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s=structure, m=metadata, f=full, c=content (machine-independent)")
+	modeFlag := fs.stringFlag("mode", 'm', "", "Scan detail: s=structure, c=content (default), m=metadata, f=full")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Reuse guide: trust unchanged size+mtime from this c4m (racy-safe)")
 	verifyFlag := fs.boolFlag("verify", 0, false, "Re-hash everything; with -c, report changes hidden under unchanged metadata")
 	fs.parse(args)
+
+	// -s snapshots at full detail, always, and prints THE snapshot ID.
+	if *storeFlag {
+		if *modeFlag != "" {
+			fatalf("Error: -s always snapshots at full detail; -m conflicts with -s")
+		}
+		*quiet = true
+	}
 
 	paths := fs.args
 
@@ -45,17 +53,24 @@ func runID(args []string) {
 		os.Exit(1)
 	}
 
-	mode, err := scan.ParseScanMode(*modeFlag)
+	modeStr := *modeFlag
+	switch {
+	case *storeFlag:
+		modeStr = "f"
+	case modeStr == "":
+		modeStr = "c"
+	}
+	mode, err := scan.ParseScanMode(modeStr)
 	if err != nil {
 		fatalf("Error: %v", err)
 	}
 
-	shouldStore := *storeFlag
-	// Storing only makes sense in modes that hash content.
-	if mode != scan.ModeFull && mode != scan.ModeContent {
-		shouldStore = false
+	// -q prints THE identity, which only ID-bearing levels carry.
+	if *quiet && mode != scan.ModeFull && mode != scan.ModeContent {
+		fatalf("Error: -q needs an ID-bearing level: the default c, or f")
 	}
 
+	shouldStore := *storeFlag
 	// If -s is requested, ensure the store is configured before scanning.
 	// This prompts the user immediately rather than after a long scan.
 	if shouldStore {
@@ -91,6 +106,33 @@ func runID(args []string) {
 	failed := false
 
 	for _, p := range paths {
+		if p == "-" {
+			// Parse stdin as a c4m description.
+			m := manifestFromStdin()
+			if shouldStore {
+				if s := getOrSetupStore(); s != nil {
+					start := time.Now().UTC()
+					id, size := storeManifestSelf(s, m)
+					syncStore(s)
+					journalClaim(s, id, size, "stdin.c4m", "", start)
+					reportStored(id)
+				}
+			}
+			if *quiet {
+				fmt.Println(m.ComputeC4ID())
+				continue
+			}
+			outputManifest(m, *ergonomic)
+			return
+		}
+
+		// An argument whose first slash-separated component is
+		// syntactically a C4 ID is a store address — and id never reads
+		// the store (prefix ./ to force a filesystem path).
+		if first := strings.SplitN(p, "/", 2)[0]; looksLikeC4ID(first) {
+			fatalf("Error: %s is a store address and id never reads the store — use: c4 cat -r %s | c4 id -q -", p, first)
+		}
+
 		info, err := os.Lstat(p)
 		if err != nil {
 			if *quiet {
@@ -146,26 +188,26 @@ func runID(args []string) {
 			return
 		}
 
-		// Regular file → single-entry c4m
+		// Regular file → single-entry c4m. A FILE argument's claim is
+		// its bytes: stored, barriered, and journaled per path — the ID
+		// prints only after its claim is durable.
+		start := time.Now().UTC()
 		entry := identifyFile(p, info, mode, shouldStore)
 		combined.AddEntry(entry)
-		if *quiet {
-			if entry.C4ID.IsNil() {
-				fmt.Fprintf(os.Stderr, "Error: no ID for %s (mode %q does not hash)\n", p, *modeFlag)
+		if entry.C4ID.IsNil() {
+			if *quiet {
+				fmt.Fprintf(os.Stderr, "Error: no ID for %s (level %q does not hash)\n", p, modeStr)
 				failed = true
 				continue
 			}
-			fmt.Println(entry.C4ID)
+		} else if shouldStore {
+			if s := getOrSetupStore(); s != nil {
+				syncStore(s)
+				journalClaim(s, entry.C4ID, entry.Size, claimName(p, false), claimOrigin(p), start)
+			}
 		}
-	}
-
-	if shouldStore && len(combined.Entries) > 0 {
-		if s := getOrSetupStore(); s != nil {
-			start := time.Now().UTC()
-			id, size := storeManifestSelf(s, combined)
-			syncStore(s)
-			journalClaim(s, id, size, claimName(paths[0], true), claimOrigin(paths[0]), start)
-			reportStored(id)
+		if *quiet && !entry.C4ID.IsNil() {
+			fmt.Println(entry.C4ID)
 		}
 	}
 
@@ -175,6 +217,23 @@ func runID(args []string) {
 	if failed {
 		os.Exit(1)
 	}
+}
+
+// manifestFromStdin parses stdin as a c4m description (the `c4 id -`
+// form); patch chains resolve to their final state.
+func manifestFromStdin() *c4m.Manifest {
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fatalf("Error reading stdin: %v", err)
+	}
+	if sections, err := c4m.DecodePatchChain(bytes.NewReader(data)); err == nil && len(sections) > 0 {
+		return c4m.ResolvePatchChain(sections, 0)
+	}
+	m, err := c4m.Unmarshal(data)
+	if err != nil {
+		fatalf("Error parsing stdin as c4m: %v", err)
+	}
+	return m
 }
 
 func doStdin(storeFlag bool) {
@@ -327,16 +386,22 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 		Name: filepath.Base(path),
 	}
 
-	if mode >= scan.ModeMetadata {
+	switch mode {
+	case scan.ModeContent:
+		// The content projection: mode and timestamp null entirely;
+		// size is the byte count read and hashed.
+		entry.Size = info.Size()
+		entry.Timestamp = c4m.NullTimestamp()
+	case scan.ModeMetadata, scan.ModeFull:
 		entry.Mode = info.Mode()
 		entry.Timestamp = info.ModTime().UTC()
 		entry.Size = info.Size()
-	} else {
+	default:
 		entry.Size = -1
 		entry.Timestamp = c4m.NullTimestamp() // null renders as "-"
 	}
 
-	if mode == scan.ModeFull {
+	if mode == scan.ModeFull || mode == scan.ModeContent {
 		if shouldStore {
 			s := getOrSetupStore()
 			if s != nil {

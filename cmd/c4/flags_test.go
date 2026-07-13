@@ -150,22 +150,14 @@ func TestComposedShortFlags(t *testing.T) {
 	os.WriteFile(filepath.Join(dir1, "a.txt"), []byte("old"), 0644)
 	os.WriteFile(filepath.Join(dir2, "a.txt"), []byte("new"), 0644)
 
-	// -re composes reverse + ergonomic on diff
-	c4m1, _, _ := runC4(t, bin, "id", dir1)
-	c4m2, _, _ := runC4(t, bin, "id", dir2)
-	p1 := filepath.Join(dir, "v1.c4m")
-	p2 := filepath.Join(dir, "v2.c4m")
-	os.WriteFile(p1, []byte(c4m1), 0644)
-	os.WriteFile(p2, []byte(c4m2), 0644)
-
-	// -re should equal -r -e
-	out1, _, _ := runC4(t, bin, "diff", "-r", "-e", p1, p2)
-	out2, _, code := runC4(t, bin, "diff", "-re", p1, p2)
+	// -qS composes quiet + sequence on id
+	out1, _, _ := runC4(t, bin, "id", "-q", "-S", dir1)
+	out2, _, code := runC4(t, bin, "id", "-qS", dir1)
 	if code != 0 {
-		t.Fatalf("diff -re exit %d", code)
+		t.Fatalf("id -qS exit %d", code)
 	}
 	if out1 != out2 {
-		t.Fatalf("-re and -r -e should produce identical output")
+		t.Fatalf("-qS and -q -S should produce identical output")
 	}
 
 	// -eS composes ergonomic + sequence on id
