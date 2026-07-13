@@ -22,6 +22,9 @@ func main() {
 		case "patch":
 			runPatch(os.Args[2:])
 			return
+		case "restore":
+			runRestore(os.Args[2:])
+			return
 		case "merge":
 			runMerge(os.Args[2:])
 			return
