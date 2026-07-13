@@ -256,20 +256,84 @@ func storeC4mAware(s store.Store, path string) c4.ID {
 // storeContentC4mAware stores content from a reader in the store with c4m
 // canonicalization. Reads all content into memory first to detect c4m.
 // Returns the C4 ID.
-func storeContentC4mAware(s store.Store, r io.Reader) (c4.ID, error) {
+func storeContentC4mAware(s store.Store, r io.Reader) (c4.ID, int64, bool, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return c4.ID{}, err
+		return c4.ID{}, 0, false, err
 	}
 
 	if looksLikeC4m(data) {
 		canonical, _ := canonicalizeC4mBytes(data)
 		if canonical != nil {
-			return s.Put(bytes.NewReader(canonical))
+			id, err := s.Put(bytes.NewReader(canonical))
+			return id, int64(len(canonical)), true, err
 		}
 	}
 
-	return s.Put(bytes.NewReader(data))
+	id, err := s.Put(bytes.NewReader(data))
+	return id, int64(len(data)), false, err
+}
+
+// journalClaim appends a claim for a stored description to the store's
+// journal and returns only when the append is durable. This is the
+// print barrier's final leg: callers may report the ID only after this
+// returns; if the journal append fails, the run dies WITHOUT reporting
+// the ID, so anything printed is always journaled and recoverable.
+// Stores without a local root (e.g. pure remote stores) are not
+// journaled — the journal is a local-store contract.
+func journalClaim(s store.Store, id c4.ID, size int64, name, origin string, scanStart time.Time) {
+	if id.IsNil() {
+		return
+	}
+	type rooted interface{ Root() string }
+	r, ok := s.(rooted)
+	if !ok {
+		return
+	}
+	j := c4m.OpenJournal(r.Root())
+	err := j.Append(c4m.Claim{
+		ScanStart: scanStart,
+		Size:      size,
+		Name:      name,
+		Origin:    origin,
+		ID:        id,
+	})
+	if err != nil {
+		fatalf("Error: journal append failed; ID not reported: %v", err)
+	}
+}
+
+// claimName derives a claim's journal name from the argument path: the
+// final path component, with ".c4m" appended for descriptions that
+// lack it. The filesystem root journals as "root.c4m".
+func claimName(path string, isDescription bool) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	base := filepath.Base(abs)
+	if base == "/" || base == "." || base == string(filepath.Separator) {
+		base = "root"
+	}
+	if isDescription && !strings.HasSuffix(base, ".c4m") {
+		base += ".c4m"
+	}
+	return base
+}
+
+// claimOrigin renders the journal origin link "<host>:<abs-path>" for
+// the argument as given (symlinks deliberately not resolved: the
+// origin records what was typed; the operation acted on what it named).
+func claimOrigin(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "localhost"
+	}
+	return host + ":" + abs
 }
 
 // fatalf prints to stderr and exits.

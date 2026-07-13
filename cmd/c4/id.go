@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -121,8 +123,10 @@ func runID(args []string) {
 			if shouldStore {
 				s := getOrSetupStore()
 				if s != nil {
-					id := storeManifestSelf(s, m)
+					start := time.Now().UTC()
+					id, size := storeManifestSelf(s, m)
 					syncStore(s)
+					journalClaim(s, id, size, claimName(p, true), claimOrigin(p), start)
 					reportStored(id)
 				}
 			}
@@ -151,8 +155,10 @@ func runID(args []string) {
 
 	if shouldStore && len(combined.Entries) > 0 {
 		if s := getOrSetupStore(); s != nil {
-			id := storeManifestSelf(s, combined)
+			start := time.Now().UTC()
+			id, size := storeManifestSelf(s, combined)
 			syncStore(s)
+			journalClaim(s, id, size, claimName(paths[0], true), claimOrigin(paths[0]), start)
 			reportStored(id)
 		}
 	}
@@ -169,11 +175,17 @@ func doStdin(storeFlag bool) {
 	if storeFlag {
 		s := getOrSetupStore()
 		if s != nil {
-			id, err := storeContentC4mAware(s, os.Stdin)
+			start := time.Now().UTC()
+			id, size, isDesc, err := storeContentC4mAware(s, os.Stdin)
 			if err != nil {
 				fatalf("Error storing: %v", err)
 			}
 			syncStore(s)
+			name := "stdin"
+			if isDesc {
+				name = "stdin.c4m"
+			}
+			journalClaim(s, id, size, name, "", start)
 			fmt.Println(id)
 			return
 		}
@@ -211,13 +223,14 @@ func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool
 		opts = append(opts, scan.WithGuide(guide))
 	}
 	gen := scan.NewGeneratorWithOptions(opts...)
+	scanStart := time.Now().UTC()
 	manifest, err := gen.GenerateFromPath(dirPath)
 	if err != nil {
 		fatalf("Error scanning %s: %v", dirPath, err)
 	}
 
 	if shouldStore {
-		storeManifestContent(manifest, dirPath)
+		storeManifestContent(manifest, dirPath, scanStart)
 	}
 
 	return manifest
@@ -255,7 +268,7 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 	return entry
 }
 
-func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
+func storeManifestContent(manifest *c4m.Manifest, baseDir string, scanStart time.Time) {
 	s := getOrSetupStore()
 	if s == nil {
 		return
@@ -268,7 +281,6 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		full  string
 	}
 	var files []fileItem
-	var dirs []*c4m.Entry
 	var dirStack []string
 	for _, entry := range manifest.Entries {
 		if entry.Depth < len(dirStack) {
@@ -279,11 +291,8 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 				dirStack = append(dirStack, "")
 			}
 			dirStack[entry.Depth] = entry.Name
-
-			// The directory's c4m is stored as content (enables c4 cat -r).
-			if !entry.C4ID.IsNil() && !s.Has(entry.C4ID) {
-				dirs = append(dirs, entry)
-			}
+			// Directory records are stored by storeManifestSelf after
+			// all file entry IDs are final.
 			continue
 		}
 		if entry.IsSequence {
@@ -333,48 +342,60 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 	}
 	wg.Wait()
 
-	// Store directory c4m objects after all file entry IDs are final.
-	for _, entry := range dirs {
-		storeDirectoryC4m(manifest, entry, s)
-	}
+	// The snapshot captures itself: directory records (deepest first)
+	// plus the root record — stored by storeManifestSelf after all
+	// file entry IDs are final. THE snapshot ID is the root ID.
+	id, size := storeManifestSelf(s, manifest)
 
-	// The snapshot captures itself: manifest text + root record.
-	id := storeManifestSelf(s, manifest)
-
-	// Batch barrier: the whole ingest becomes durable in one flush.
+	// Batch barrier: the whole ingest becomes durable in one flush,
+	// then the claim is journaled durably. Only after both may the ID
+	// be reported — the print barrier.
 	syncStore(s)
+	journalClaim(s, id, size, claimName(baseDir, true), claimOrigin(baseDir), scanStart)
 	reportStored(id)
 }
 
-// storeManifestSelf stores a manifest's own description: its canonical
-// text (retrievable by the manifest's C4 ID) and the scan root's
-// one-level directory record (retrievable by the root directory's
-// C4 ID, i.e. ComputeC4ID). Together with the per-directory records
-// this makes a snapshot self-contained — content, structure, and the
-// description itself all live in the store. Returns the manifest's ID.
-func storeManifestSelf(s store.Store, m *c4m.Manifest) c4.ID {
-	data, err := c4m.Marshal(m)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to encode manifest: %v\n", err)
-		return c4.ID{}
+// storeManifestSelf stores a snapshot's self-description: the root's
+// one-level canonical record — whose stored bytes hash to the ROOT ID
+// (ComputeC4ID), THE snapshot identity — plus a one-level record for
+// every directory, deepest first, so the whole tree expands from the
+// store alone (`c4 cat -r`, `c4 patch -r`). One description, one ID:
+// the same value `-q` prints, the journal claims, and `stored:`
+// reports. Returns the root ID and the root record's byte size.
+func storeManifestSelf(s store.Store, m *c4m.Manifest) (c4.ID, int64) {
+	// Directory records, deepest first so parents reference stored
+	// children. Idempotent: existing records are skipped by ID.
+	var dirs []*c4m.Entry
+	for _, e := range m.Entries {
+		if e.IsDir() {
+			dirs = append(dirs, e)
+		}
 	}
-	id, err := s.Put(bytes.NewReader(data))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store manifest: %v\n", err)
-		return c4.ID{}
+	sort.SliceStable(dirs, func(i, j int) bool { return dirs[i].Depth > dirs[j].Depth })
+	for _, e := range dirs {
+		if !e.C4ID.IsNil() && s.Has(e.C4ID) {
+			continue
+		}
+		if id := storeDirectoryC4m(m, e, s); e.C4ID.IsNil() {
+			e.C4ID = id
+		}
 	}
 
 	// Root record: the canonical top-level view. Mirrors ComputeC4ID
 	// (copy, canonicalize, canonical text) so the stored bytes hash to
-	// the root directory's ID.
+	// the root ID.
 	record := m.Copy()
 	record.Canonicalize()
-	if text := record.Canonical(); text != "" {
-		if _, err := s.Put(strings.NewReader(text)); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to store root record: %v\n", err)
-		}
+	text := record.Canonical()
+	if text == "" {
+		return c4.Identify(bytes.NewReader(nil)), 0
 	}
-	return id
+	id, err := s.Put(strings.NewReader(text))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to store root record: %v\n", err)
+		return c4.ID{}, 0
+	}
+	return id, int64(len(text))
 }
 
 // reportStored prints the stored-manifest line to stderr. Called after

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -598,8 +599,12 @@ func capturePreState(s store.Store, current, target *c4m.Manifest, dirPath strin
 		}
 	}
 
-	id := storeManifestSelf(s, current)
+	id, size := storeManifestSelf(s, current)
 	syncStore(s)
+	// The pre-image is journaled durably before the first destructive
+	// operation — its printed revert ID must be recoverable from the
+	// store alone, always.
+	journalClaim(s, id, size, claimName(dirPath, true), claimOrigin(dirPath), time.Now().UTC())
 	return id
 }
 

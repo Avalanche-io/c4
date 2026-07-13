@@ -87,10 +87,16 @@ func TestIDStoreSelfCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Recover the manifest from the store, byte-identical.
-	recovered, stderr, code := runC4WithEnv(t, bin, env, "cat", id)
+	// THE snapshot ID is the root ID: stored:, -q, and ComputeC4ID agree.
+	if id != rootID.String() {
+		t.Fatalf("stored: ID %s != root ID %s", id, rootID)
+	}
+
+	// cat <id> returns the root record (one-level); cat -r expands the
+	// full tree from the store alone, reproducing the original listing.
+	recovered, stderr, code := runC4WithEnv(t, bin, env, "cat", "-r", id)
 	if code != 0 {
-		t.Fatalf("cat %s exit %d: %s", id, code, stderr)
+		t.Fatalf("cat -r %s exit %d: %s", id, code, stderr)
 	}
 	if recovered != manifest {
 		t.Fatalf("recovered manifest differs from original:\n--- original\n%s--- recovered\n%s", manifest, recovered)

@@ -6,13 +6,38 @@ import (
 	"os"
 
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/store"
 )
 
 func runLog(args []string) {
+	// No arguments: the store's own history — the journal. One line
+	// per claim, byte-pure data on stdout.
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 log <file.c4m>...\n")
-		fmt.Fprintf(os.Stderr, "\nList patches in a c4m chain.\n")
-		os.Exit(1)
+		s, _ := store.OpenStore()
+		if s == nil {
+			fmt.Fprintf(os.Stderr, "Usage: c4 log [<file.c4m>...]\n")
+			fmt.Fprintf(os.Stderr, "\nWith no arguments, lists the configured store's journal.\n")
+			fmt.Fprintf(os.Stderr, "No store is configured (set C4_STORE or ~/.c4/config).\n")
+			os.Exit(1)
+		}
+		r, ok := s.(interface{ Root() string })
+		if !ok {
+			fatalf("Error: the configured store has no local journal.")
+		}
+		claims, err := c4m.OpenJournal(r.Root()).Claims()
+		if err != nil {
+			fatalf("Error reading journal: %v", err)
+		}
+		for _, c := range claims {
+			origin := ""
+			if c.Origin != "" {
+				origin = " <- " + c.Origin
+			}
+			fmt.Printf("%s %d %s%s %s\n",
+				c.ScanStart.UTC().Format("2006-01-02T15:04:05Z"),
+				c.Size, c.Name, origin, c.ID)
+		}
+		return
 	}
 
 	// Collect all sections across all files.

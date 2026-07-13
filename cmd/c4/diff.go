@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/scan"
@@ -49,12 +50,13 @@ func runDiff(args []string) {
 	oldManifest, newManifest := smartResolve(oldArg, newArg, mode)
 
 	// Store content from directory arguments if requested.
-	if *storeFlag && mode == scan.ModeFull {
+	if *storeFlag && (mode == scan.ModeFull || mode == scan.ModeContent) {
 		for _, p := range fs.args {
 			if !isDirectory(p) {
 				continue
 			}
-			storeManifestContent(resolveManifestOrDir(p, mode), p)
+			start := time.Now().UTC()
+			storeManifestContent(resolveManifestOrDir(p, mode), p, start)
 		}
 	}
 

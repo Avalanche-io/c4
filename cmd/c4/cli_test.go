@@ -774,13 +774,11 @@ func TestCatRecursiveExpand(t *testing.T) {
 	}
 
 	// Also test cat -r from store by piping canonical c4m to get its ID.
-	canonicalID, _, _ := runC4WithStdin(t, bin, fullOut, "-x")
+	// THE ID of a description is its root ID — what -q prints and what
+	// id -s stores as the root record.
+	canonicalID, _, _ := runC4WithEnv(t, bin, env, "id", "-q", c4mPath)
 	canonicalID = strings.TrimSpace(canonicalID)
 
-	// The manifest should already be stored (storeManifestContent stores it).
-	// But it was stored under storeManifestAsContent's Put ID.
-	// For cat -r from store to work, we need the manifest stored.
-	// Use c4 id -s on the c4m file to ensure it's stored.
 	_, _, code = runC4WithEnv(t, bin, env, "id", "-s", c4mPath)
 	if code != 0 {
 		t.Fatalf("store c4m exit %d", code)
