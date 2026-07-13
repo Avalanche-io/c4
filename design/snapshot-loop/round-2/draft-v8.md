@@ -151,3 +151,14 @@ stale by definition. `c4 retain adopt` and `c4 gc --empty-trash`
 perform this cleanup as a side effect, reporting the count on their
 summary line. No standalone verb; until gc ships, crashed-ingest temps
 leak (small, rare) and the interim fresh-store recipe clears them.
+
+## Status (2026-07-13)
+
+Build order complete on `feature/snapshot-loop-v8`: content projection,
+journal + print barrier, restore, re-scan trust (Amendment 1), surface
+deletions (patch demoted to text algebra, bare forms read-only, content
+default, `-s` implies `-q`), ID/path store descent with verified reads,
+help/man rewrite (`--help` per verb carries the reference pages, updated
+for Amendments 1–2), partial-scan exit 2, journal-form `c4 log` lines.
+Crash-verified: `kill9-crucible.sh` — 40 kill -9s at uniform offsets,
+single- and multi-path; zero invariant violations.
