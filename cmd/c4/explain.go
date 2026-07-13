@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,8 @@ func runExplain(args []string) {
 		runExplainDiff(args[1:])
 	case "patch":
 		runExplainPatch(args[1:])
+	case "restore":
+		runExplainRestore(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "c4 explain: unknown command %q\n", args[0])
 		explainUsage()
@@ -34,9 +37,10 @@ func explainUsage() {
 	fmt.Print(`c4 explain — see what a command would do, in plain language
 
 Usage:
-  c4 explain id <path>               What does this directory or c4m file contain?
-  c4 explain diff <old> <new>         What changed between two states?
-  c4 explain patch <target> [<dest>]  What would reconciliation do?
+  c4 explain id <path>                  What does this directory or c4m file contain?
+  c4 explain diff <old> <new>           What changed between two states?
+  c4 explain patch <chain.c4m>...       What state does this chain resolve to?
+  c4 explain restore <target> [<dest>]  What would a restore change?
 
 The explain command never modifies any files. It is always safe to run.
 `)
@@ -196,34 +200,71 @@ func runExplainDiff(args []string) {
 	}
 }
 
-// runExplainPatch shows a human-readable reconciliation plan.
+// runExplainPatch narrates what patch is: text algebra over chains.
 func runExplainPatch(args []string) {
 	fs := newFlags("explain patch")
-	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f")
-	_ = fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
 	fs.parse(args)
 
-	if len(fs.args) == 0 || len(fs.args) > 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 explain patch <target> [<dest>]\n")
+	if len(fs.args) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: c4 explain patch <chain.c4m>...\n")
 		os.Exit(1)
 	}
 
-	mode, err := scan.ParseScanMode(*modeFlag)
-	if err != nil {
-		fatalf("Error: %v", err)
+	total := 0
+	for _, p := range fs.args {
+		if isDirectory(p) {
+			fmt.Printf("%s is a directory. patch composes descriptions and never touches\n", p)
+			fmt.Println("directories; to change a directory, use restore:")
+			fmt.Printf("  c4 explain restore <target> %s\n", p)
+			return
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			fatalf("Error reading %s: %v", p, err)
+		}
+		sections, err := c4m.DecodePatchChain(bytes.NewReader(data))
+		if err != nil {
+			fatalf("Error decoding %s: %v", p, err)
+		}
+		fmt.Printf("%s: %s\n", p, pluralize(len(sections), "section"))
+		total += len(sections)
+	}
+
+	final := resolveC4m(fs.args[0])
+	if len(fs.args) > 1 {
+		fmt.Printf("\nThe %d files concatenate into one chain of %s.\n",
+			len(fs.args), pluralize(total, "section"))
+	}
+	files, _, size := manifestStats(final)
+	fmt.Printf("\nResolved to the final state, the chain describes %s (%s).\n",
+		pluralize(files, "file"), formatBytes(size))
+	fmt.Println()
+	fmt.Println("c4 patch writes that state as c4m text to stdout — it never touches")
+	fmt.Println("directories (-n N picks an earlier section). To make a directory")
+	fmt.Println("match it: c4 restore <target> <dir>")
+}
+
+// runExplainRestore shows a human-readable restore plan.
+func runExplainRestore(args []string) {
+	fs := newFlags("explain restore")
+	fs.parse(args)
+
+	if len(fs.args) == 0 || len(fs.args) > 2 {
+		fmt.Fprintf(os.Stderr, "Usage: c4 explain restore <target> [<dest>]\n")
+		os.Exit(1)
 	}
 
 	targetArg := fs.args[0]
-	targetManifest := resolveManifestOrDir(targetArg, mode)
+	targetManifest := resolveManifestOrDir(targetArg, scan.ModeFull)
 	targetFiles, _, targetSize := manifestStats(targetManifest)
 
-	// Single arg: describe the manifest without reconciliation.
+	// Single arg: describe the target without a plan.
 	if len(fs.args) == 1 {
 		fmt.Printf("Target: %s (%s, %s)\n", targetArg,
 			pluralize(targetFiles, "file"), formatBytes(targetSize))
 		fmt.Println()
-		fmt.Println("Provide a destination directory to see the reconciliation plan:")
-		fmt.Printf("  c4 explain patch %s ./dest/\n", targetArg)
+		fmt.Println("Provide a destination directory to see the restore plan:")
+		fmt.Printf("  c4 explain restore %s ./dest/\n", targetArg)
 		return
 	}
 
@@ -237,7 +278,7 @@ func runExplainPatch(args []string) {
 		destManifest = c4m.NewManifest()
 	}
 
-	fmt.Printf("Reconciling %s to match %s:\n", destArg, targetArg)
+	fmt.Printf("Restoring %s to match %s:\n", destArg, targetArg)
 
 	// Compare using entry maps — this works regardless of store availability.
 	targetMap := make(map[string]*c4m.Entry)
@@ -336,7 +377,9 @@ func runExplainPatch(args []string) {
 
 	if createCount > 0 || updateCount > 0 || removeCount > 0 {
 		fmt.Println()
-		fmt.Println("Run without 'explain' to apply.")
+		fmt.Printf("Dry run (prints the plan):  c4 restore %s %s\n", targetArg, destArg)
+		fmt.Printf("Apply (undo-safely):        c4 restore --force %s %s\n", targetArg, destArg)
+		fmt.Println("--force snapshots the destination first; stdout line 1 is the undo handle.")
 	}
 }
 
