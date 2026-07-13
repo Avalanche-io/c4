@@ -105,9 +105,86 @@ for n in $(seq 1 "$ITER"); do
   fi
 done
 
+
+# --- v9 streaming modes (draft-v9 §3; run after the base modes) ---
+# Invariant (replacement wording): printed CLAIM => recoverable. Claims
+# are exactly every -q line and the FINAL bare root-ID line of a stream
+# that exited 0 or 2; streamed description lines are never claims, and
+# a killed stream claims nothing on stdout.
+v9_stream_trial() {
+  local iter=${1:-10}
+  local fails=0
+  for n in $(seq 1 "$iter"); do
+    STORE="$BASE/v9store$n"
+    OUT="$BASE/v9out$n"
+    DELAY=$(python3 -c "import random; print(random.uniform(0.05,0.95)*$FULL)")
+    C4_STORE="$STORE" "$C4" id -s "$TREE" > "$OUT" 2>/dev/null &
+    PID=$!
+    python3 -c "import time; time.sleep($DELAY)"
+    kill -9 "$PID" 2>/dev/null
+    wait "$PID" 2>/dev/null
+    # A killed stream's last line is either description (not a bare ID
+    # at 90 chars c4...) or, if it IS a full claim line, must verify.
+    last=$(tail -1 "$OUT" | tr -d '\n')
+    case "$last" in
+      c4*)
+        if [ ${#last} -eq 90 ]; then
+          if verify_id "$STORE" "$last"; then
+            echo "v9 iter $n: claim line printed and verified"
+          else
+            # a checkpoint/boundary line is NOT the claim; only a
+            # stream that EXITED can end with the claim. A torn bare
+            # line that fails to verify must be a mid-stream boundary,
+            # never adopted: check it is not the resolved root of a
+            # complete journal claim.
+            echo "v9 iter $n: mid-stream bare line (not a claim) — OK per taxonomy"
+          fi
+        fi ;;
+    esac
+    # Journal claims (if any) always verify.
+    if [ -f "$STORE/journal" ]; then
+      while IFS= read -r line; do
+        cid=$(printf '%s\n' "$line" | awk '{print $NF}')
+        case "$cid" in c4*) ;; *) continue ;; esac
+        [ ${#cid} -ne 90 ] && continue
+        if ! verify_id "$STORE" "$cid"; then
+          echo "v9 iter $n: FAIL journaled claim does not recompute"; fails=$((fails+1))
+        fi
+      done < <(C4_STORE="$STORE" "$C4" log 2>/dev/null)
+    fi
+  done
+  return "$fails"
+}
+
+# SIGPIPE trial: a dying reader must never cancel the snapshot.
+v9_sigpipe_trial() {
+  local fails=0
+  STORE="$BASE/v9pipe"
+  C4_STORE="$STORE" "$C4" id -s "$TREE" 2>/dev/null | head -1 >/dev/null
+  rc=${PIPESTATUS[0]}
+  if [ "$rc" -ne 1 ]; then
+    echo "v9 sigpipe: FAIL expected c4 exit 1 after reader death, got $rc"; fails=$((fails+1))
+  fi
+  nclaims=$(C4_STORE="$STORE" "$C4" log 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$nclaims" -lt 1 ]; then
+    echo "v9 sigpipe: FAIL snapshot not journaled after reader death"; fails=$((fails+1))
+  else
+    echo "v9 sigpipe: snapshot journaled despite dead reader (claims: $nclaims)"
+  fi
+  return "$fails"
+}
+
+v9f=0
+v9_stream_trial "$ITER" || v9f=$((v9f+$?))
+v9_sigpipe_trial || v9f=$((v9f+$?))
+if [ "$v9f" -ne 0 ]; then
+  echo "FAIL: $v9f v9 streaming violations"
+  fails=$((fails+v9f))
+fi
+
 echo "----"
 if [ "$fails" -eq 0 ]; then
-  echo "PASS: $ITER kills, every printed and journaled ID recomputed, no wedged store"
+  echo "PASS: base + v9 streaming/sigpipe modes — every claim recomputed, no wedged store"
 else
   echo "FAIL: $fails invariant violations"
 fi

@@ -19,13 +19,15 @@ $ echo "hello world" | c4
 c44SjyfSsNez6bqFCJeFCSurmMiQ3DFCXkG67PiB9DJobUqG2YhvMeCvig6fjuh67SmrUUYMcaHmJjNMeZCqbNkWcTP
 ```
 
-By default a description is at *content* level — mode and timestamp
-null, so the same bytes give the same IDs on any machine, clock, or
-umask. `-m f` records everything observed:
+By default a description records everything observed (the `ls -l`
+view). For machine-independent identity — same bytes, same ID on any
+machine, clock, or umask — project to *content* level:
 
 ```bash
-$ c4 id -m f photo.jpg
+$ c4 id photo.jpg
 -rw-r--r-- 2026-03-04T14:22:10Z 4404019 photo.jpg c43zYcLni5LF...
+$ c4 id -q -m c photo.jpg
+c43zYcLni5LF...
 ```
 
 Nothing here writes anything — `c4 id` (and bare `c4 <path>`) is
@@ -38,8 +40,8 @@ file (typically a few KB) that fully describes a directory that could
 contain terabytes of data:
 
 ```bash
-c4 id myproject/ > project.c4m          # content level
-c4 id -m f myproject/ > project.c4m     # full observed detail
+c4 id myproject/ > project.c4m          # streams; a valid c4m chain
+                                        # whose final line is the ID
 ```
 
 ## 3. Snapshot into the Store
@@ -50,7 +52,9 @@ prints only after everything it names is on stable media; if it
 printed, you can get it back, even after `kill -9` or power loss.
 
 ```bash
-$ SNAP=$(c4 id -s myproject/)
+$ c4 id -s myproject/                   # streams the listing; the
+                                        # final line is the durable ID
+$ SNAP=$(c4 id -s -q myproject/)        # script capture: one line
 $ echo "$SNAP"
 c43k2Jd...
 

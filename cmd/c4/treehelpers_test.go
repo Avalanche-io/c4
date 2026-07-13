@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Avalanche-io/c4"
@@ -40,4 +41,24 @@ func countObjects(t *testing.T, storeDir string) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// stripValidator removes the trailing bare root-ID line a listing
+// stream ends with (draft-v9: the final line of a listing-emitting id
+// invocation is the root ID), yielding the flat description text.
+func stripValidator(s string) string {
+	trimmed := strings.TrimRight(s, "\n")
+	cut := strings.LastIndexByte(trimmed, '\n')
+	last := trimmed
+	if cut >= 0 {
+		last = trimmed[cut+1:]
+	}
+	f := strings.TrimSpace(last)
+	if len(f) == 90 && strings.HasPrefix(f, "c4") {
+		if cut < 0 {
+			return ""
+		}
+		return trimmed[:cut+1]
+	}
+	return s
 }

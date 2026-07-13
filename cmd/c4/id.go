@@ -22,7 +22,7 @@ import (
 func runID(args []string) {
 	fs := newFlags("id")
 	fs.help(idHelp)
-	storeFlag := fs.boolFlag("store", 's', false, "Snapshot into the store; print the snapshot ID (implies -q; always full detail)")
+	storeFlag := fs.boolFlag("store", 's', false, "Snapshot into the store while streaming; the final line is the durable claim")
 	quiet := fs.boolFlag("quiet", 'q', false, "Print one bare ID line per path (THE identity; byte-pure)")
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Output ergonomic form c4m")
 	seqFlag := fs.boolFlag("sequence", 'S', false, "Detect and fold file sequences")
@@ -33,14 +33,13 @@ func runID(args []string) {
 	verifyFlag := fs.boolFlag("verify", 0, false, "Re-hash everything; with -c, report changes hidden under unchanged metadata")
 	fs.parse(args)
 
-	// -s snapshots at full detail, always, and prints THE snapshot ID.
-	if *storeFlag {
-		if *modeFlag != "" {
-			fatalf("Error: -s always snapshots at full detail; -m conflicts with -s\n" +
-				"For a durable content ID, snapshot first, then project the stored description:\n" +
-				"  c4 cat -r \"$SNAP\" | c4 id -q -m c -")
-		}
-		*quiet = true
+	// -s snapshots at full detail, always. Without -q it streams the
+	// listing and closes with the claim line; -s -q is the blessed
+	// one-line capture (draft-v9 §3).
+	if *storeFlag && *modeFlag != "" {
+		fatalf("Error: -s always snapshots at full detail; -m conflicts with -s\n" +
+			"For a durable content ID, snapshot first, then project the stored description:\n" +
+			"  c4 cat -r \"$SNAP\" | c4 id -q -m c -")
 	}
 
 	paths := fs.args
@@ -68,6 +67,13 @@ func runID(args []string) {
 	// -q prints THE identity, which only ID-bearing levels carry.
 	if *quiet && mode != scan.ModeFull && mode != scan.ModeContent {
 		fatalf("Error: -q needs an ID-bearing level: the default f, or c")
+	}
+
+	// One path per listing stream: without -q there is exactly one
+	// stream and its final line is that path's root ID; with -q, one
+	// bare line per succeeded path (pairing valid only on exit 0).
+	if !*quiet && len(paths) > 1 {
+		fatalf("Error: without -q, id takes one path per invocation — pass -q for one bare ID line per path")
 	}
 
 	shouldStore := *storeFlag
@@ -129,6 +135,7 @@ func runID(args []string) {
 				continue
 			}
 			outputManifest(m, *ergonomic)
+			fmt.Println(m.ComputeC4ID())
 			return
 		}
 
@@ -150,18 +157,48 @@ func runID(args []string) {
 		}
 
 		if info.IsDir() {
-			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide, guideStart, *verifyFlag)
+			scanStart := time.Now().UTC()
+			m := scanDirectory(p, mode, *seqFlag, false, scanExcludes, excludeFile, guide, guideStart, *verifyFlag)
 			if reportPartial(m, mode) {
 				partial = true
 			}
 			if *quiet {
 				// THE ID of a directory scan is the identity of its
-				// description: the manifest's canonical-text ID — the
-				// same ID `stored:` reports and self-capture stores.
+				// description — printed only after the claim is durable.
+				if shouldStore {
+					storeManifestContent(m, p, scanStart)
+				}
 				fmt.Println(m.ComputeC4ID())
 				continue
 			}
-			outputManifest(m, *ergonomic)
+			if *ergonomic {
+				// -e implies buffered: aligned flat entries closed by an
+				// unpadded root-ID line, printed after any claim is durable.
+				if shouldStore {
+					storeManifestContent(m, p, scanStart)
+				}
+				outputManifest(m, true)
+				fmt.Println(m.ComputeC4ID())
+			} else {
+				// The streaming chain shape: the body streams as
+				// description; the final bare root-ID line is the claim
+				// under -s and prints only after the store barrier and
+				// journal append. A dead stdout never cancels a
+				// snapshot: ingest and journal complete, exit 1.
+				bodyErr := c4m.WriteChainBody(os.Stdout, m)
+				if shouldStore {
+					storeManifestContent(m, p, scanStart)
+				}
+				if bodyErr != nil {
+					fmt.Fprintf(os.Stderr, "Error: stdout write failed: %v", bodyErr)
+					if shouldStore {
+						fmt.Fprintf(os.Stderr, " (the snapshot is claimed and journaled; c4 log holds the ID)")
+					}
+					fmt.Fprintln(os.Stderr)
+					os.Exit(1)
+				}
+				fmt.Println(m.ComputeC4ID())
+			}
 			if partial {
 				os.Exit(2)
 			}
@@ -201,7 +238,10 @@ func runID(args []string) {
 				fmt.Println(m.ComputeC4ID())
 				continue
 			}
+			// Resolved FLAT canonical text closed by the root-ID
+			// validator line — the sanctioned flattener.
 			outputManifest(m, *ergonomic)
+			fmt.Println(m.ComputeC4ID())
 			return
 		}
 

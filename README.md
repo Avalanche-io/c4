@@ -32,15 +32,20 @@ file and directory in a tree:
 
 ```bash
 $ c4 id ./project/
-- - 13 README.md c44iCq6un9W47x7ydjJSWp4arMJ...
-- - 66 src/ c44nbgL6nkBWsEBDCUCr4LufsjVhJt...
-  - - 66 main.go c43Q4j81SxGkV9FhbeW23YrMTj6...
+-rw-r--r-- 2026-03-18T22:22:57Z 13 README.md c44iCq6un9W47x7ydjJSWp4arMJ...
+drwxr-xr-x 2026-03-18T22:22:57Z - src/ -
+  -rw-r--r-- 2026-03-18T22:22:57Z 66 main.go c43Q4j81SxGkV9FhbeW23YrMTj6...
+drwxr-xr-x 2026-03-18T22:22:57Z 66 src/ c44nbgL6nkBWsEBDCUCr4LufsjVhJt...
+c45k2Jd...                                  ← the final line is the tree's ID
 ```
 
-By default the description is at *content* level — modes and
-timestamps null, so the same bytes give the same IDs on any machine,
-clock, or umask. `c4 id -m f` records everything observed (the
-`ls -l` view: permissions, timestamps, sizes, names, IDs).
+Each line looks like `ls -l` with a content ID at the end — and the
+output *streams*: file lines print the moment they're hashed
+(directory aggregates fill in via a refinement patch at the end,
+because a folder's ID is the fingerprint of its contents). The final
+line is always the whole tree's ID. Need machine-independent identity?
+`c4 id -q -m c` projects modes and timestamps away, so the same bytes
+give the same ID on any machine, clock, or umask.
 
 A c4m file is just text. Pipe it, grep it, diff it, email it. The
 format is designed to compose with `awk`, `sort`, `grep`, and the
@@ -102,7 +107,9 @@ only after everything it names is on stable media — if it printed,
 you can get it back, even after `kill -9` or power loss:
 
 ```bash
-SNAP=$(c4 id -s ./final/)            # snapshot; prints THE ID
+c4 id -s ./final/                    # snapshot; streams the listing,
+                                     # ends with the durable ID
+SNAP=$(c4 id -s -q ./final/)         # script capture: THE ID, one line
 c4 cat "$SNAP"                       # the root listing
 c4 cat "$SNAP"/src/parser.go         # extract one file, verified
 c4 log                               # every snapshot the store holds
@@ -150,7 +157,7 @@ scan — git's racy-index rule) keep their recorded IDs without being
 re-read:
 
 ```bash
-c4 id -m f ./project/ > full.c4m      # full description once
+c4 id ./project/ > full.c4m           # full description once
 c4 id -c full.c4m -q ./project/       # fast re-scan (trusted mtimes)
 c4 id --verify -c full.c4m ./project/ # audit: full re-hash, report
                                       # changes hidden under unchanged

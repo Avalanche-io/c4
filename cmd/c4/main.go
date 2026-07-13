@@ -3,11 +3,17 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 const version = "1.0.16"
 
 func main() {
+	// A dying stdout (EPIPE) must never kill the process mid-claim:
+	// with SIGPIPE ignored, writes return errors the verbs handle —
+	// under -s the snapshot completes and journals; readers exit 1.
+	signal.Ignore(syscall.SIGPIPE)
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--help", "-h", "help":

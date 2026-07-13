@@ -9,8 +9,10 @@ package main
 const topHelp = `c4 - content-addressed identification and preservation (SMPTE ST 2114)
 
 Usage:
-  c4 id [flags] <path>...              Describe files/directories/c4m files (c4m text to stdout)
-  c4 id -s <path>...                   Snapshot into the store; print one snapshot ID per path
+  c4 id [flags] <path>             Describe a file/directory/c4m file (streams c4m to stdout;
+                                       the final line is the root ID)
+  c4 id -s <path>                      Snapshot into the store; the stream's final line is THE
+                                       claim, printed only after it is durable ( -s -q = ID only)
   c4 id -s -c prior.c4m <path>         Fast re-snapshot: trust unchanged size+mtime (c4 id --help)
   c4 restore [--force] <target> <dir>  Make dir match a description (dry run by default;
                                        --force snapshots dir first, then applies)
@@ -53,16 +55,20 @@ from stderr, and never scrape an ID out of entry text or prose.
                                      its own undo handle
   c4 log | awk '{print $NF}'         every ID the installed journal lists, oldest first
   c4 cat -r "$ID" | c4 id -q -       recompute any claim instead of trusting it
-Exit codes: 0 ok; 1 error - lines already printed remain true claims; 2 completed with declared
-partiality on stderr; 3 (restore only) curable - cure, then re-run. In scripts, snapshot one
-path per invocation - a multi-path call prints one line per path that SUCCEEDED, so pairing
-lines to paths is guesswork unless exit is 0: one path, one line, one exit.
+With -s, entry lines stream as description, never claims; the claim is the final bare root-ID
+line, valid on exit 0 or 2 - scripts use -q.
+Exit codes: 0 ok; 1 error - bare -q ID lines already printed remain true claims; streamed
+description lines were never claims; 2 completed with declared partiality on stderr; 3 (restore
+only) curable - cure, then re-run. One path per listing stream: without -q, id refuses several
+paths; with -q, one line per path that SUCCEEDED - pairing is guesswork unless exit is 0: one
+path, one line, one exit.
 
 Nothing is written anywhere without -s (or restore --force), and -s writes only inside the store.
-A snapshot ID prints only after everything it stored is on stable media - a killed process
-(kill -9 included), a kernel panic, and power loss are one case, and a printed ID never dangles:
-if it printed, you can get it back. No c4 verb deletes store objects; the journal (c4 log)
-records every claim.
+A claim line - every -q line, and the final bare root-ID line of an -s stream that exits 0 or
+2 - prints only after everything it names is on stable media; kill -9, panic, and power loss
+are one case, and a printed claim never dangles: if the claim line printed, you can get it
+back. Lines above it are description, never claims. No c4 verb deletes store objects; the
+journal (c4 log) records every claim.
 
 Store: a plain directory of hash-named objects plus one journal file (default ~/.c4/store; set
 C4_STORE, or list stores in ~/.c4/config - reads consult stores in order; the first is written
@@ -77,20 +83,30 @@ SYNOPSIS
           [--exclude GLOB]... [--exclude-file FILE] <path>...
     c4 id [-q] [-m MODE] -            (parse stdin as a c4m description)
 DESCRIPTION
-    Writes a plain-text c4m description of each path to stdout. Without -s, id reads only;
-    nothing is written anywhere. The printed text is entries, not the identity: THE identity is
-    c4 id -q <path> - the C4 ID alone, one line; an ID scraped out of entry text is some entry's.
+    Writes a plain-text c4m description to stdout as a STREAMED CHAIN: entries in canonical
+    pre-order (directory lines carrying null ID and size - bottom-up aggregates, unknown when
+    the line passes), then one refinement patch filling the directory lines in, then the
+    resolved root ID on a bare final line. The final stdout line of every listing-emitting
+    invocation (a directory, a .c4m file, stdin) that exits 0 or 2 is the root ID; a single
+    regular-file argument emits one entry line and no trailing line. The stream is a valid c4m
+    chain resolving to the full description; a killed stream is a valid partial description -
+    partial data is data. Without -s, id reads only; nothing is written anywhere. THE identity
+    for scripts is c4 id -q <path> - the C4 ID alone, one line; an ID scraped out of entry text
+    is some entry's.
 
-    With -s, id stores a complete snapshot of each path: every file's bytes, every directory's
-    one-level listing (root included), the ID-list object of every folded entry (-S), and one
-    journal entry per path; a FILE argument stores and journals its bytes. -s writes only inside
-    the store - no .c4m file, nothing in the scanned tree or working directory. stdout is one
-    line per path that succeeded - the snapshot ID, argument order - each printed only after
-    everything that path stored is on stable media. Paths are claimed independently and all
-    attempted: earlier snapshots stand if a later path fails; a failed path prints no stdout
-    line, so match lines to paths only on exit 0 - in scripts, snapshot one path per invocation.
-    A stdout write failure never rolls back store work: the snapshot stays claimed and journaled
-    (c4 log holds the ID; a re-run reprints it).
+    With -s, id streams the same bytes while storing a complete snapshot: every file's bytes,
+    every directory's one-level listing (root included), the ID-list object of every folded
+    entry (-S), and one journal claim. -s writes only inside the store - no .c4m file, nothing
+    in the scanned tree or working directory. The final root-ID line is THE CLAIM: it prints
+    only after everything it names is on stable media and the journal append is durable. Entry
+    lines above it are description, never claims. -s -q prints the claim line alone - the
+    blessed capture: SNAP=$(c4 id -s -q dir/). A dying stdout (a closed pipe) never cancels a
+    snapshot: ingest, barrier, and journal complete; id exits 1; c4 log holds the claim.
+
+    Without -q, id takes ONE path per invocation (one stream, one final ID). With -q, several
+    paths print one bare line per path that SUCCEEDED, in argument order - pairing lines to
+    paths is guesswork unless exit is 0. tail -1 of a listing stream that exited 0 or 2 IS the
+    root ID - but a shell pipeline masks id's exit status, so scripts use -q.
 IDENTITY
     A file's content ID is the ID of its bytes (its two IDs coincide). A directory's ID is the
     ID of the one-level canonical listing of its direct children: stat fields null = content ID
@@ -219,8 +235,8 @@ PARTIAL SCANS
 FLAGS
     -q  bare ID only, one line per path (output form, never identity; needs an ID-bearing
         level: the default f, or c)
-    -s  snapshot into the store; print the snapshot ID (implies -q; always full detail -
-        conflicts with -m)
+    -s  snapshot into the store while streaming; the final line is the claim, printed after
+        it is durable (always full detail - conflicts with -m; with -q, one bare claim line only)
     -m  detail level: s structure (names) | m metadata (no IDs) | f full (default) | c content
         (a projection applied at evaluation - the scan itself always captures full fidelity)
     -c  reuse guide: trust unchanged size+mtime from this description (see RE-SCAN TRUST)

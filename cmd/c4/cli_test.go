@@ -669,9 +669,10 @@ func TestC4mCanonicalStore(t *testing.T) {
 		t.Fatalf("cat exit %d, stderr: %s", code, catErr)
 	}
 
-	// The stored content should match canonical form.
-	if catOut != canonical {
-		t.Fatalf("stored content should be canonical form:\n  stored:    %q\n  canonical: %q", catOut, canonical)
+	// The stored object is the flat description (the stream's
+	// validator line is transport, not description).
+	if catOut != stripValidator(canonical) {
+		t.Fatalf("stored content should be canonical form:\n  stored:    %q\n  canonical: %q", catOut, stripValidator(canonical))
 	}
 }
 
@@ -689,13 +690,14 @@ func TestCatC4mFile(t *testing.T) {
 	c4mPath := filepath.Join(dir, "project.c4m")
 	os.WriteFile(c4mPath, []byte(canonical), 0644)
 
-	// c4 cat <file.c4m> should output canonical form.
+	// c4 cat <file.c4m> displays the resolved flat description — the
+	// id capture is a stream whose final line is the validator.
 	catOut, _, code := runC4(t, bin, "cat", c4mPath)
 	if code != 0 {
 		t.Fatalf("cat exit %d", code)
 	}
-	if catOut != canonical {
-		t.Fatalf("cat output should match canonical:\n  cat: %q\n  expected: %q", catOut, canonical)
+	if catOut != stripValidator(canonical) {
+		t.Fatalf("cat output should match canonical:\n  cat: %q\n  expected: %q", catOut, stripValidator(canonical))
 	}
 }
 
@@ -715,13 +717,14 @@ func TestCatErgonomicFlag(t *testing.T) {
 	c4mPath := filepath.Join(dir, "project.c4m")
 	os.WriteFile(c4mPath, []byte(canonical), 0644)
 
-	// c4 cat -e <file.c4m> should output pretty form.
+	// c4 cat -e <file.c4m> displays the resolved pretty form (no
+	// validator — the id capture ends with one).
 	catOut, _, code := runC4(t, bin, "cat", "-e", c4mPath)
 	if code != 0 {
 		t.Fatalf("cat -e exit %d", code)
 	}
-	if catOut != pretty {
-		t.Fatalf("cat -e output should match pretty:\n  cat: %q\n  expected: %q", catOut, pretty)
+	if catOut != stripValidator(pretty) {
+		t.Fatalf("cat -e output should match pretty:\n  cat: %q\n  expected: %q", catOut, stripValidator(pretty))
 	}
 }
 

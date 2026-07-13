@@ -39,7 +39,8 @@ func TestIDStoreSelfCapture(t *testing.T) {
 		"sub/deep/c.md": "charlie",
 	})
 
-	// The full-form description; -s itself prints only the ID (implies -q).
+	// The full-form description (a chain stream). -s streams the same
+	// listing and closes with the claim line, echoed on stderr too.
 	manifest, _, code := runC4WithEnv(t, bin, env, "id", "-m", "f", tree)
 	if code != 0 {
 		t.Fatal("id -m f failed")
@@ -48,8 +49,9 @@ func TestIDStoreSelfCapture(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("id -s exit %d: %s", code, stderr)
 	}
-	if strings.TrimSpace(stdout) != storedID(t, stderr) {
-		t.Fatalf("-s stdout %q != stored: line %q", strings.TrimSpace(stdout), storedID(t, stderr))
+	outLines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	if outLines[len(outLines)-1] != storedID(t, stderr) {
+		t.Fatalf("-s final line %q != stored: line %q", outLines[len(outLines)-1], storedID(t, stderr))
 	}
 	id := storedID(t, stderr)
 
@@ -78,13 +80,23 @@ func TestIDStoreSelfCapture(t *testing.T) {
 	}
 
 	// cat <id> returns the root record (one-level); cat -r expands the
-	// full tree from the store alone, reproducing the original listing.
+	// full tree from the store alone, reproducing the original
+	// description. The id capture is a chain stream — resolve it to
+	// flat text (c4 patch is the text algebra) before comparing.
+	chainPath := filepath.Join(dir, "captured.c4m")
+	if err := os.WriteFile(chainPath, []byte(manifest), 0644); err != nil {
+		t.Fatal(err)
+	}
+	resolved, _, code := runC4WithEnv(t, bin, env, "patch", chainPath)
+	if code != 0 {
+		t.Fatal("patch resolve failed")
+	}
 	recovered, stderr, code := runC4WithEnv(t, bin, env, "cat", "-r", id)
 	if code != 0 {
 		t.Fatalf("cat -r %s exit %d: %s", id, code, stderr)
 	}
-	if recovered != manifest {
-		t.Fatalf("recovered manifest differs from original:\n--- original\n%s--- recovered\n%s", manifest, recovered)
+	if recovered != resolved {
+		t.Fatalf("recovered manifest differs from original:\n--- original (resolved)\n%s--- recovered\n%s", resolved, recovered)
 	}
 
 	// Materialize the tree from the store alone.

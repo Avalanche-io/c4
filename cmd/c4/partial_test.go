@@ -47,3 +47,39 @@ func TestPartialScanExitsTwo(t *testing.T) {
 		t.Fatalf("readable tree should exit 0, got %d", code)
 	}
 }
+
+// TestPartialScanUnreadableDirectory pins pin 18: an unreadable
+// DIRECTORY records with nulls (no children, null ID) and the scan
+// continues — exit 2, description still produced, claim still valid.
+func TestPartialScanUnreadableDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads everything")
+	}
+	bin := buildC4(t)
+	dir := t.TempDir()
+	tree := filepath.Join(dir, "tree")
+	writeTree(t, tree, map[string]string{
+		"locked/secret.txt": "hidden",
+		"open/ok.txt":       "readable",
+	})
+	if err := os.Chmod(filepath.Join(tree, "locked"), 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(filepath.Join(tree, "locked"), 0755)
+
+	stdout, stderr, code := runC4(t, bin, "id", "-q", tree)
+	if code != 2 {
+		t.Fatalf("expected exit 2, got %d (stderr: %s)", code, stderr)
+	}
+	if !strings.Contains(stderr, "locked/") {
+		t.Fatalf("unreadable directory not declared: %q", stderr)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		t.Fatal("partial scan should still print THE ID")
+	}
+	// The readable sibling was fully scanned.
+	full, _, _ := runC4(t, bin, "id", tree)
+	if !strings.Contains(full, "ok.txt") {
+		t.Fatal("scan did not continue past the unreadable directory")
+	}
+}

@@ -28,7 +28,7 @@ Nothing is written anywhere without `-s` (or `restore --force`), and
 
 | Command            | Purpose                                                  |
 |--------------------|----------------------------------------------------------|
-| `c4 id -s`         | Snapshot into the store; print the snapshot ID           |
+| `c4 id -s`         | Snapshot into the store; the stream ends with the claim  |
 | `c4 restore --force` | Make a directory match a description, undo-safely     |
 
 `c4 version` prints version info.
@@ -39,7 +39,8 @@ The CLI has zero external dependencies. It requires Go 1.16+.
 
 ```
 c4 id [flags] <path>...              Describe files/directories/c4m files (c4m text to stdout)
-c4 id -s <path>...                   Snapshot into the store; print one snapshot ID per path
+c4 id -s <path>                      Snapshot into the store; the stream's final line is THE
+                                     claim, printed after it is durable (-s -q = ID only)
 c4 restore [--force] <target> <dir>  Make dir match a description (dry run by default)
 c4 cat [-e] [-r] <id[/path]|f.c4m>   Retrieve a store object by ID or ID/path (verified)
 c4 diff [-e] <old> <new>             Produce a c4m diff; sides: dirs, c4m files, or IDs
@@ -68,8 +69,9 @@ byte-identical, on any machine, clock, or umask. This is the default
 level for `c4 id`; get the bare ID with `-q`.
 
 **Snapshot ID** — the ID of a full description: everything observed
-at a moment (modes, times, sizes, names, content). Printed by
-`c4 id -s`; the store alone returns all of it.
+at a moment (modes, times, sizes, names, content). Full is the
+default level for `c4 id` (bare ID with `-q`); the final line of a
+`c4 id -s` stream is the claim; the store alone returns all of it.
 
 An ID never says which kind it is: compare like with like. A
 store-resolved ID may take `/path` to descend by recorded entry name
@@ -82,8 +84,10 @@ stdout is data, byte-pure; stderr is narration. Parse nothing from
 stderr, and never scrape an ID out of entry text or prose.
 
 ```bash
-SNAP=$(c4 id -s dir/)              # THE snapshot ID: one line, nothing else
-CID=$(c4 id -q dir/)               # THE content ID of a file or directory
+SNAP=$(c4 id -s -q dir/)           # THE snapshot ID: one line, nothing else
+CID=$(c4 id -q -m c dir/)          # THE content ID (cross-machine; scanned alike)
+c4 id -q dir/                      # the tree's full ID — equals its -s snapshot
+                                   # ID while the tree is unchanged
 c4 cat "$ID" >/dev/null            # in the store? exit 0 = present AND byte-verified
 out=$(c4 restore --force "$T" d/)  # two lines: the undo handle, then the as-built ID
 c4 log | awk '{print $NF}'         # every ID the journal lists, oldest first
@@ -102,17 +106,21 @@ The core verb. Writes a plain-text c4m description of each path to
 stdout. Without `-s`, id reads only; nothing is written anywhere.
 
 ```bash
-# Directory → content-level c4m (machine-independent; the default)
+# Directory → streamed c4m chain: entries in canonical pre-order,
+# directory aggregates refined at the end, the root ID as the final
+# line. Full observed detail is the default.
 c4 id myproject/
 
-# Full observed detail: permissions, timestamps, sizes, names, IDs
-c4 id -m f myproject/
+# Machine-independent content projection (nulls modes/timestamps)
+c4 id -m c myproject/
 
 # THE identity, one bare line (content ID)
 c4 id -q myproject/
 
-# Snapshot into the store; prints THE snapshot ID (implies -q)
-SNAP=$(c4 id -s myproject/)
+# Snapshot into the store: streams the listing, ends with the claim
+c4 id -s myproject/
+# Script capture: the claim alone
+SNAP=$(c4 id -s -q myproject/)
 
 # c4m file → canonical form (normalizer); -q prints its own ID
 c4 id project.c4m
@@ -130,7 +138,7 @@ c4 cat -r "$SNAP" | c4 id -q -
 
 ### Snapshots are self-capturing
 
-`c4 id -s` stores a complete snapshot of each path: every file's
+`c4 id -s` stores a complete snapshot: every file's
 bytes, every directory's one-level listing (root included), and one
 journal entry per path. The snapshot ID prints only after everything
 it stored is on stable media — a killed process (`kill -9` included),
@@ -138,7 +146,7 @@ a kernel panic, and power loss are one case. If it printed, you can
 get it back:
 
 ```bash
-SNAP=$(c4 id -s ./project/)
+SNAP=$(c4 id -s -q ./project/)
 # ...lose the tree entirely...
 c4 restore --force "$SNAP" ./project/     # rebuilt from the store alone
 c4 cat -r "$SNAP" | c4 id -q -            # recompute: verifies the claim
@@ -146,7 +154,7 @@ c4 cat -r "$SNAP" | c4 id -q -            # recompute: verifies the claim
 
 `-s` writes only inside the store — no `.c4m` file, nothing in the
 scanned tree or working directory. To keep a description file, use
-the read-only form: `c4 id -m f ./project/ > project.c4m`.
+the read-only form: `c4 id ./project/ > project.c4m`.
 
 ### Flags
 
@@ -154,7 +162,7 @@ the read-only form: `c4 id -m f ./project/ > project.c4m`.
 |------|------------------|-------------------------------------------------------------------|
 | `-q` | `--quiet`        | Bare ID only, one line per path (needs an ID-bearing level: c or f) |
 | `-s` | `--store`        | Snapshot into the store; print the snapshot ID (implies `-q`; always full detail — conflicts with `-m`) |
-| `-m` | `--mode`         | Scan detail: `s` structure, `c` content (default), `m` metadata, `f` full |
+| `-m` | `--mode`         | Detail level: `s` structure, `m` metadata, `f` full (default), `c` content projection |
 | `-c` | `--continue`     | Reuse guide: trust unchanged size+mtime from this description     |
 |      | `--verify`       | Re-hash everything; with `-c`, report changes hidden under unchanged metadata |
 | `-e` | `--ergonomic`    | Column-aligned output                                             |
@@ -172,7 +180,7 @@ tunable window). Everything else re-hashes. The stderr summary counts
 the split: `reuse: R reused, H rehashed`.
 
 ```bash
-c4 id -m f ./project/ > full.c4m        # the guide
+c4 id ./project/ > full.c4m             # the guide (full is the default)
 c4 id -c full.c4m -q ./project/         # fast re-scan
 c4 id -s -c full.c4m ./project/         # fast re-snapshot into the store
 ```
@@ -319,7 +327,7 @@ cause a non-zero exit.
 
 ## `c4 log` — The Journal, and Chain Sections
 
-With no arguments, log lists the store journal `<store>/log.c4m` —
+With no arguments, log lists the store journal `<store>/journal` —
 an ordinary c4m patch chain in which the store records every claim it
 makes: each `c4 id -s` snapshot, each stdin blob, every pre-image
 taken by `restore --force`. One line per claim, append order, oldest
@@ -397,7 +405,7 @@ c4 intersect path monday.c4m friday.c4m
 ## Content Store
 
 The content store holds objects addressed by C4 ID, plus one journal
-file (`log.c4m`). Copy a store anywhere and every printed ID resolves
+file (`journal`). Copy a store anywhere and every printed ID resolves
 there identically; the history travels inside it. Configure via:
 
 1. `C4_STORE` environment variable — a path, `s3://` URI, or comma-separated list
@@ -436,11 +444,11 @@ The `-m` flag controls how much a description records:
 | `-m c`       | Content   | Sizes, names, IDs — mode and timestamp null            | Reads every byte        |
 | `-m f`       | Full      | Everything observed: modes, times, sizes, names, IDs   | Reads every byte        |
 
-Default is content (`-m c`): the machine-independent projection —
-same bytes, same IDs, on any machine, clock, or umask. Use `-m f`
-when observed metadata matters (it is what `-s` snapshots always
-record). `-m` projects downward only: a description computes at its
-own knowledge level.
+Default is full (`-m f`) — what `-s` snapshots always record. The
+content projection (`-m c`) is applied at evaluation time (the scan
+itself captures full fidelity): the machine-independent view — same
+bytes, same IDs, on any machine, clock, or umask. `-m` projects
+downward only: a description computes at its own knowledge level.
 
 ## Working with c4m as Text
 

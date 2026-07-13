@@ -2,9 +2,59 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
-The v8 snapshot-loop surface (`design/snapshot-loop`), crash-verified
-end-to-end (`design/snapshot-loop/kill9-crucible.sh`). Breaking
-changes are marked ⚠.
+The snapshot-loop surface (`design/snapshot-loop`, rounds 2–3),
+crash-verified end-to-end including streaming and SIGPIPE modes
+(`design/snapshot-loop/kill9-crucible.sh`). Breaking changes are
+marked ⚠. Round 3 (the crucible-litigated v9 amendment) reshaped the
+output surface after round 2; this entry describes the NET result.
+
+### ⚠ Streaming chain output; the final line is the root ID
+
+`c4 id` streams its description as a valid c4m chain: entries in
+canonical pre-order with directory lines carrying null ID/size
+(bottom-up aggregates, unknown as the line passes), one refinement
+patch filling them in, and the resolved root ID on a bare final line
+— the closing validator, consumer-verified. Every listing-emitting
+invocation (directory, `.c4m` file, stdin) that exits 0 or 2 ends
+with the root ID; a single regular-file argument emits one entry line
+and no trailing line. A killed scan leaves a valid partial
+description. `-e` implies buffered aligned output, still closed by an
+unpadded root-ID line. Without `-q`, id takes ONE path per invocation.
+
+### ⚠ `-s` streams; the claim is the final line
+
+`c4 id -s` streams the same bytes while snapshotting; the final
+root-ID line is THE CLAIM, printed only after content is durable and
+the journal append is fsynced. Entry lines above it are description,
+never claims ("a printed CLAIM never dangles"). The blessed script
+capture is `SNAP=$(c4 id -s -q dir/)` — one line, nothing else. A
+dying stdout (closed pipe) never cancels a snapshot: ingest and
+journal complete, id exits 1, `c4 log` holds the claim. Partial scans
+(unreadable entries, unreadable directories included) record nulls,
+continue, and exit 2 with the claim line printed and true.
+
+### ⚠ The store journal is its own format
+
+`<store>/journal` (no longer `log.c4m` — it is not c4m): the magic
+first line `@c4 journal 1` (rejected by every conforming c4m parser,
+so misinterpretation is structurally impossible), then one line per
+claim — scan-start and claim ID, nothing else. Names, sizes, and
+filesystem origins are gone from the root record: roots are purely
+virtual, and provenance is testimony-layer work. `c4 log` output is
+`index scan-start ID` (the ID remains the last field).
+
+### Chain-grammar erratum (all five implementations)
+
+Checkpoints officially name the ACCUMULATED manifest state and a
+resolving decoder MUST verify them; a bare C4 ID at EOF is the legal,
+mandatory-verified closing validator (`ErrPatchIDMismatch` on
+mismatch; `ErrEmptyPatch` retired). This reconciles SPECIFICATION.md
+with C4M-STANDARD §10.3/§10.7 and with what shipped tools have always
+emitted. The CLI unifies all c4m ingestion on one verifying loader;
+`c4 cat <file>` and `c4 paths` error loudly instead of echoing or
+garbling non-c4m input. The shared conformance fixture lives at
+`c4m/testdata/chain-vector/` — every sibling implementation must pass
+it before release.
 
 ### The print barrier and the journal
 
@@ -28,16 +78,17 @@ as-built ID. Line 1 feeds straight back as a restore target; the undo
 prints its own undo. Exit machine: 0 verified / 1 refused untouched /
 2 declared omissions / 3 curable.
 
-### ⚠ Identity: content level is the default
+### ⚠ Identity: full is the default; content is an eval-side projection
 
-`c4 id` now describes at *content* level — mode and timestamp null at
-every level (the exec bit included) — so equal bytes give equal IDs on
-any machine, clock, or umask. `-m f` records everything observed.
-`-q` prints THE identity, one bare line per succeeded path. `-s`
-snapshots at full detail, implies `-q` (stdout = the snapshot ID,
-nothing else), conflicts with `-m`, and stores per-directory records
-plus the root record — THE snapshot ID is the root ID. Partial scans
-declare unreadable entries on stderr and exit 2.
+`c4 id` describes at FULL fidelity by default (the `ls -l` view), and
+`-q` prints the full root ID — equal to the `-s` snapshot ID while
+the tree is unchanged. The content projection (`-m c`) — mode and
+timestamp null at every level, the exec bit included, so equal bytes
+give equal IDs on any machine, clock, or umask — is applied at
+EVALUATION time: the scanner always captures full knowledge, and a
+null in a saved record now always means genuinely unknown at scan
+time. The cross-machine contract line is `CID=$(c4 id -q -m c dir/)`.
+`-s` always snapshots at full detail and conflicts with `-m`.
 
 ### ⚠ Nothing writes without `-s`
 

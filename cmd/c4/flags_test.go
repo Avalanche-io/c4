@@ -36,8 +36,9 @@ func TestIDFlagLongMode(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	// Structure mode: C4 ID should be null
-	lines := strings.Split(strings.TrimSpace(out), "\n")
+	// Structure mode: entry lines carry null C4 IDs; the stream still
+	// closes with the description's own-level validator line.
+	lines := strings.Split(strings.TrimSpace(stripValidator(out)), "\n")
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		last := fields[len(fields)-1]
