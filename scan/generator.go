@@ -603,6 +603,13 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 				}
 				fileEntry := MetadataToEntry(md)
 				fileEntry.Name = name
+				// Content projection nulls mode and timestamp at EVERY
+				// level (D1, permanent) — symlinks included; the entry's
+				// symlink-ness travels in its target, not its mode.
+				if g.mode == ModeContent {
+					fileEntry.Mode = 0
+					fileEntry.Timestamp = c4m.NullTimestamp()
+				}
 				if err := g.emit(fileEntry); err != nil {
 					return out, err
 				}
@@ -772,7 +779,15 @@ func (g *Generator) canonicalDirID(children []*Entry) c4.ID {
 		}
 		children = c4m.DetectSequences(tmp).Entries
 	}
+	return canonicalListingID(children)
+}
 
+// canonicalListing renders the one-level canonical listing of the
+// given (already folded, fully resolved) direct children: files before
+// directories, natural sort, one canonical entry line each. An empty
+// listing is the empty string. The directory's ID is the hash of these
+// bytes; its size is their length.
+func canonicalListing(children []*Entry) []byte {
 	sorted := make([]*Entry, len(children))
 	copy(sorted, children)
 	sort.Slice(sorted, func(i, j int) bool {
@@ -789,7 +804,63 @@ func (g *Generator) canonicalDirID(children []*Entry) c4.ID {
 		buf.WriteString(e.Canonical())
 		buf.WriteByte('\n')
 	}
-	return c4.Identify(&buf)
+	return buf.Bytes()
+}
+
+// canonicalListingID hashes the one-level canonical listing.
+func canonicalListingID(children []*Entry) c4.ID {
+	return c4.Identify(bytes.NewReader(canonicalListing(children)))
+}
+
+// ProjectContent returns the content projection of a manifest: mode
+// and timestamp null at EVERY level (the exec bit included); names,
+// sizes, symlink targets, and file IDs unchanged; every directory ID
+// recomputed from the projected one-level listing of its direct
+// children. The projection happens at evaluation time — a saved
+// record keeps full knowledge, and a null in a SAVED record always
+// means genuinely unknown at scan time (draft-v9 §1). Projecting an
+// already-projected manifest is a no-op by construction.
+func ProjectContent(m *c4m.Manifest) *c4m.Manifest {
+	entries := make([]*c4m.Entry, len(m.Entries))
+	for i, e := range m.Entries {
+		cp := *e
+		cp.Mode = 0
+		cp.Timestamp = c4m.NullTimestamp()
+		entries[i] = &cp
+	}
+
+	// Directory IDs and sizes bottom-up: reverse pre-order guarantees
+	// a directory's children are already projected when it is reached.
+	// A directory's size is the byte length of the listing its ID
+	// names, so the projected size is the projected listing's length.
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if !e.IsDir() {
+			continue
+		}
+		var children []*c4m.Entry
+		for j := i + 1; j < len(entries) && entries[j].Depth > e.Depth; j++ {
+			if entries[j].Depth == e.Depth+1 {
+				children = append(children, entries[j])
+			}
+		}
+		listing := canonicalListing(children)
+		e.C4ID = c4.Identify(bytes.NewReader(listing))
+		// A directory's size rolls up its children's sizes plus its own
+		// listing's byte length (the object its ID names).
+		e.Size = int64(len(listing))
+		for _, c := range children {
+			if c.Size > 0 {
+				e.Size += c.Size
+			}
+		}
+	}
+
+	out := c4m.NewManifest()
+	for _, e := range entries {
+		out.AddEntry(e)
+	}
+	return out
 }
 
 // generateEntry creates an entry from file info

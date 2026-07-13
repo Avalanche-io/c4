@@ -28,17 +28,20 @@ Identity - two concepts:
   content ID    the ID of bytes alone: a file's contents; a directory's child listing with mode
                 and timestamp nulled entirely (the exec bit included). Scanned alike (same -S and
                 exclusion choices), equal exactly when contents are byte-identical - on any
-                machine, clock, or umask. The default level for c4 id; bare ID with -q.
+                machine, clock, or umask. The comparison projection: c4 id -q -m c.
   snapshot ID   the ID of a full description: everything observed at a moment (modes, times,
-                sizes, names, content). Printed by c4 id -s; the store alone returns all of it.
+                sizes, names, content). Full is the default level for c4 id (bare ID with -q);
+                c4 id -s prints it after storing; the store alone returns all of it.
   An ID never says which kind it is: compare like with like. A store-resolved ID may take /path
   to descend by recorded entry name (never following symlinks); store addresses are accepted by
   c4 cat, restore targets, and diff sides.
 
 Scripting - the machine contract. stdout is data, byte-pure; stderr is narration: parse nothing
 from stderr, and never scrape an ID out of entry text or prose.
-  SNAP=$(c4 id -s dir/)              THE snapshot ID: one line, nothing else
-  CID=$(c4 id -q dir/)               THE content ID of a file or directory
+  SNAP=$(c4 id -s -q dir/)           THE snapshot ID: one line, nothing else
+  CID=$(c4 id -q -m c dir/)          THE content ID: equal iff byte-identical (scanned alike)
+  c4 id -q dir/                      the tree's full ID - equals its -s snapshot ID while
+                                     the tree is unchanged
   c4 id -q saved.c4m                 a description's own ID, at its own detail level
   c4 cat "$ID" >/dev/null            in the store? exit 0 = present AND byte-verified (reads the
                                      whole object - a checked yes; nonzero is one answer: no
@@ -215,10 +218,11 @@ PARTIAL SCANS
     produced; id exits 2.
 FLAGS
     -q  bare ID only, one line per path (output form, never identity; needs an ID-bearing
-        level: the default c, or f)
+        level: the default f, or c)
     -s  snapshot into the store; print the snapshot ID (implies -q; always full detail -
         conflicts with -m)
-    -m  scan detail: s structure (names) | c content (default) | m metadata (no IDs) | f full
+    -m  detail level: s structure (names) | m metadata (no IDs) | f full (default) | c content
+        (a projection applied at evaluation - the scan itself always captures full fidelity)
     -c  reuse guide: trust unchanged size+mtime from this description (see RE-SCAN TRUST)
     --verify  re-hash everything; with -c, report changes hidden under unchanged metadata
     -e  column-aligned output    -S  fold sequences    --exclude, --exclude-file  see EXCLUSIONS

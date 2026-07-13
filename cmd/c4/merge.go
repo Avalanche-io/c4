@@ -68,10 +68,18 @@ func resolveManifestOrDir(path string, mode scan.ScanMode) *c4m.Manifest {
 	}
 
 	if info.IsDir() {
+		// Eval-side projection: content level scans full, then projects.
+		project := mode == scan.ModeContent
+		if project {
+			mode = scan.ModeFull
+		}
 		gen := scan.NewGeneratorWithOptions(scan.WithMode(mode))
 		m, err := gen.GenerateFromPath(path)
 		if err != nil {
 			fatalf("Error scanning %s: %v", path, err)
+		}
+		if project {
+			m = scan.ProjectContent(m)
 		}
 		return m
 	}

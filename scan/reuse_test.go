@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 // TestReuseGuideTrustRule pins the metadata-trusted re-scan: unchanged
@@ -164,5 +166,62 @@ func TestReuseGuideAcceptedRisk(t *testing.T) {
 	// The stale ID is the guide's — the documented accepted risk.
 	if m.Entries[0].C4ID != guide.Entries[0].C4ID {
 		t.Fatal("expected the stale guide ID under the posture")
+	}
+}
+
+// TestProjectContentMatchesGeneration pins eval-side projection: a
+// full scan projected with ProjectContent is byte-identical to a
+// generation-side ModeContent scan — same canonical text, same root
+// ID, on trees with nesting, symlinks, and empty directories.
+func TestProjectContentMatchesGeneration(t *testing.T) {
+	tree := t.TempDir()
+	write := func(rel, content string) {
+		p := filepath.Join(tree, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0640); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.txt", "alpha")
+	write("sub/b.txt", "bravo")
+	write("sub/deep/c.md", "charlie")
+	if err := os.MkdirAll(filepath.Join(tree, "emptydir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("a.txt", filepath.Join(tree, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	generated, err := Dir(tree, WithMode(ModeContent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := Dir(tree, WithMode(ModeFull))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := ProjectContent(full)
+
+	if got, want := projected.ComputeC4ID(), generated.ComputeC4ID(); got != want {
+		t.Fatalf("projection root ID %s != generation root ID %s", got, want)
+	}
+	gText := generated.Canonical()
+	pText := projected.Canonical()
+	if gText != pText {
+		t.Fatalf("projection differs from generation:\n--- generated\n%s--- projected\n%s", gText, pText)
+	}
+
+	// Idempotence: projecting a projection changes nothing.
+	again := ProjectContent(projected)
+	if again.ComputeC4ID() != projected.ComputeC4ID() {
+		t.Fatal("projection is not idempotent")
+	}
+
+	// The projection never mutates its input: the full manifest keeps
+	// its modes and timestamps.
+	if full.Entries[0].Mode == 0 && full.Entries[0].Timestamp.Equal(c4m.NullTimestamp()) {
+		t.Fatal("ProjectContent mutated its input")
 	}
 }

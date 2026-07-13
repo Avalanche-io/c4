@@ -28,7 +28,7 @@ func runID(args []string) {
 	seqFlag := fs.boolFlag("sequence", 'S', false, "Detect and fold file sequences")
 	excludeFlags := fs.stringArrayFlag("exclude", "Glob pattern to exclude (repeatable)")
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
-	modeFlag := fs.stringFlag("mode", 'm', "", "Scan detail: s=structure, c=content (default), m=metadata, f=full")
+	modeFlag := fs.stringFlag("mode", 'm', "", "Detail level: s=structure, m=metadata, f=full (default), c=content projection")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Reuse guide: trust unchanged size+mtime from this c4m (racy-safe)")
 	verifyFlag := fs.boolFlag("verify", 0, false, "Re-hash everything; with -c, report changes hidden under unchanged metadata")
 	fs.parse(args)
@@ -36,7 +36,9 @@ func runID(args []string) {
 	// -s snapshots at full detail, always, and prints THE snapshot ID.
 	if *storeFlag {
 		if *modeFlag != "" {
-			fatalf("Error: -s always snapshots at full detail; -m conflicts with -s")
+			fatalf("Error: -s always snapshots at full detail; -m conflicts with -s\n" +
+				"For a durable content ID, snapshot first, then project the stored description:\n" +
+				"  c4 cat -r \"$SNAP\" | c4 id -q -m c -")
 		}
 		*quiet = true
 	}
@@ -55,11 +57,8 @@ func runID(args []string) {
 	}
 
 	modeStr := *modeFlag
-	switch {
-	case *storeFlag:
+	if modeStr == "" || *storeFlag {
 		modeStr = "f"
-	case modeStr == "":
-		modeStr = "c"
 	}
 	mode, err := scan.ParseScanMode(modeStr)
 	if err != nil {
@@ -68,7 +67,7 @@ func runID(args []string) {
 
 	// -q prints THE identity, which only ID-bearing levels carry.
 	if *quiet && mode != scan.ModeFull && mode != scan.ModeContent {
-		fatalf("Error: -q needs an ID-bearing level: the default c, or f")
+		fatalf("Error: -q needs an ID-bearing level: the default f, or c")
 	}
 
 	shouldStore := *storeFlag
@@ -111,8 +110,11 @@ func runID(args []string) {
 
 	for _, p := range paths {
 		if p == "-" {
-			// Parse stdin as a c4m description.
+			// Parse stdin as a c4m description; -m projects downward.
 			m := manifestFromStdin()
+			if mode == scan.ModeContent {
+				m = scan.ProjectContent(m)
+			}
 			if shouldStore {
 				if s := getOrSetupStore(); s != nil {
 					start := time.Now().UTC()
@@ -167,7 +169,9 @@ func runID(args []string) {
 		}
 
 		if strings.HasSuffix(p, ".c4m") {
-			// c4m input → normalize to canonical (or ergonomic) form
+			// c4m input → normalize to canonical (or ergonomic) form;
+			// -m projects downward (a description computes at its own
+			// knowledge level; projection only ever removes knowledge).
 			m, err := loadManifest(p)
 			if err != nil {
 				if *quiet {
@@ -176,6 +180,9 @@ func runID(args []string) {
 					continue
 				}
 				fatalf("Error loading %s: %v", p, err)
+			}
+			if mode == scan.ModeContent {
+				m = scan.ProjectContent(m)
 			}
 			// Store canonical c4m content if -s is set.
 			if shouldStore {
@@ -301,6 +308,13 @@ func doStdin(storeFlag bool) {
 }
 
 func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool, excludes []string, excludeFile string, guide *c4m.Manifest, guideStart time.Time, verify bool) *c4m.Manifest {
+	// Eval-side projection (draft-v9 §1): the scanner always captures
+	// full fidelity when it hashes; the content level is a projection
+	// applied to the result, never a generation mode.
+	project := mode == scan.ModeContent
+	if project {
+		mode = scan.ModeFull
+	}
 	opts := []scan.GeneratorOption{scan.WithMode(mode)}
 	if seqFlag {
 		opts = append(opts, scan.WithSequenceDetection(true))
@@ -333,6 +347,9 @@ func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool
 		storeManifestContent(manifest, dirPath, scanStart)
 	}
 
+	if project {
+		manifest = scan.ProjectContent(manifest)
+	}
 	return manifest
 }
 
