@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 )
@@ -92,7 +93,10 @@ func TestQuietContentMode(t *testing.T) {
 	b := filepath.Join(dir, "b")
 	writeTree(t, a, map[string]string{"x.txt": "same bytes"})
 	writeTree(t, b, map[string]string{"x.txt": "same bytes"})
-	if err := os.Chmod(filepath.Join(b, "x.txt"), 0755); err != nil {
+	// Different observed metadata, portable across platforms (chmod is
+	// a no-op for mode strings on Windows): shift b's mtime.
+	past := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	if err := os.Chtimes(filepath.Join(b, "x.txt"), past, past); err != nil {
 		t.Fatal(err)
 	}
 

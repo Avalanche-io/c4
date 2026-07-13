@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -11,6 +12,9 @@ import (
 // unreadable entry is declared on stderr and recorded with nulls, the
 // description is still produced (with its ID), and id exits 2.
 func TestPartialScanExitsTwo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0 does not restrict reads on Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root reads everything; permission-based partiality untestable")
 	}
@@ -52,6 +56,9 @@ func TestPartialScanExitsTwo(t *testing.T) {
 // DIRECTORY records with nulls (no children, null ID) and the scan
 // continues — exit 2, description still produced, claim still valid.
 func TestPartialScanUnreadableDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0 does not restrict reads on Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root reads everything")
 	}
