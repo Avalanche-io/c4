@@ -64,7 +64,7 @@ records every claim.
 Store: a plain directory of hash-named objects plus one journal file (default ~/.c4/store; set
 C4_STORE, or list stores in ~/.c4/config - reads consult stores in order; the first is written
 and holds the journal). Copy a store anywhere and every printed ID resolves there identically;
-the history travels inside it (log.c4m). A git repository's .git is ordinary bytes here -
+the history travels inside it (the journal). A git repository's .git is ordinary bytes here -
 recorded and restored like any other data.
 `
 
@@ -354,52 +354,53 @@ EXAMPLES
     c4 cat -r "$SNAP" | c4 id -q -             # recompute: verifies SNAP
 `
 
-const logHelp = `C4-LOG(1) - list a patch chain's sections; default: the store journal
+const logHelp = `C4-LOG(1) - list the store journal, or a patch chain's sections
 SYNOPSIS
-    c4 log [<chain.c4m>...]
+    c4 log [<file>...]
 DESCRIPTION
-    With no arguments, log reads the store journal <store>/log.c4m - an ordinary c4m patch
-    chain in which the store records every claim it makes: each c4 id -s snapshot, each stdin
-    blob, every pre-image taken by restore --force. An absent journal is an empty history: log
-    lists nothing, exits 0. Chain arguments list those files the same way - a copied store's
-    journal included.
+    With no arguments, log reads the store journal <store>/journal - the store's own claims
+    record: one line per claim it has made (each c4 id -s snapshot, each stdin blob, every
+    pre-image taken by restore --force). An absent journal is an empty history: log lists
+    nothing, exits 0. A journal file passed as an argument (a copied store's journal included)
+    lists the same way; c4m chain arguments list their sections with summary statistics.
 OUTPUT
-    One line per section, append order, oldest first: the 1-based section index (what c4 split
-    takes), a single space, then the entry exactly as recorded - canonical c4m; fields never
-    contain unescaped spaces, so field extraction is safe. First field = the index; last field
-    = the ID. Byte-stable per journal file: a line, once printed from a given file, reprints
-    identically forever (split renumbers indexes; the entry text is immutable history).
+    One line per claim, append order, oldest first: the 1-based index, the claim's scan start,
+    then the claim ID. Fields never contain spaces, so field extraction is safe. First field =
+    the index; last field = the ID. Byte-stable per journal file: a line, once printed from a
+    given file, reprints identically forever.
         c4 log | tail -1              # the latest claim
         c4 log | awk '{print $NF}'    # the IDs - fields, never regex
-JOURNAL ENTRY
-    - <UTC time> <size> <name>[ <- <host>:<abs-path>] <c4id>
-    mode always null; time = RFC 3339 seconds at the SCAN START - the instant the claim's walk
-    began, not the append (provenance, never identity; the re-scan trust rule in c4-id(1)
-    measures against it); size = bytes of the object the ID names; name = final component of
-    the argument's path (.c4m appended when the ingest produced a description; stdin or
-    stdin.c4m for pipes, which record no origin); origin = the argument as given, symlinks
-    unresolved (parsers split at the first colon - a Windows drive colon belongs to the path).
-    Names are history, never resolved; equal names repeat freely.
+THE JOURNAL
+    The journal is NOT a c4m file. Its first line is the magic directive
+        @c4 journal 1
+    which every conforming c4m parser rejects outright - the file self-identifies to journal
+    readers and self-rejects to everything else. Each following line is one claim, two fields,
+    both load-bearing:
+        <scan-start> <c4id>
+    scan-start = RFC 3339 UTC seconds at the instant the claiming walk BEGAN, not the append
+    (the re-scan trust rule in c4-id(1) measures against it); the ID is the claim - the root.
+    Nothing else: no names, sizes, or origins. Roots are purely virtual - the journal travels
+    with the location-independent store, and where a claim came from is testimony, not root
+    record. Ordering is line position; equal claims repeat freely.
 
     Appends are serialized by an advisory lock that dies with its holder - an OS lock on the
     journal file, never a lockfile whose existence blocks - so a killed writer never wedges the
-    store. A writer truncates a torn tail before appending; readers parse complete sections and
-    warn once. The entry is flushed before the ID prints, so a torn tail can only belong to an
-    ingest that never printed, and after any interruption every complete line names a fully
-    durable snapshot - recompute any line's claim: c4 cat -r <ID> | c4 id -q -. A line proves
-    its claim, not its file's completeness: c4's tools are the only sanctioned writers inside a
+    store. A writer truncates a torn (unterminated) final line before appending; readers ignore
+    it. The line is flushed before the ID prints, so a torn tail can only belong to an ingest
+    that never printed, and after any interruption every complete line names a fully durable
+    snapshot - recompute any line's claim: c4 cat -r <ID> | c4 id -q -m f -. A line proves its
+    claim, not its file's completeness: c4's tools are the only sanctioned writers inside a
     store; foreign edits are corruption, and object reads rehash, so object corruption is loud.
     Growth is one short line per claim, not data; appends inspect only the tail; log streams.
 RETENTION
     Nothing expires. No c4 verb deletes store objects: every journaled ID and everything it
     names stays restorable for as long as the store directory exists, and nothing a journal
     line reaches will ever be collectable - a future collection verb (none ships) must take the
-    installed journal as its complete root set. To shorten the listing:
-        c4 split <store>/log.c4m <N> archive.c4m keep.c4m
-    and install keep.c4m as the journal with ingest activity stopped (a plain whole-file swap -
-    the one sanctioned by-hand operation inside a store; sections count from 1 again). Splitting
-    changes what c4 log lists, never what the store retains; the archive remains part of the
-    store's root record - keep it. Reclaiming space today means deleting a whole store yourself.
+    installed journal as its complete root set. To shorten the listing, archive a line-range
+    (the journal is plain lines - head/tail compose) and install the kept remainder with ingest
+    activity stopped, keeping the magic first line intact; the archive remains part of the
+    store's root record - keep it. Shortening changes what c4 log lists, never what the store
+    retains. Reclaiming space today means deleting a whole store yourself.
 `
 
 const diffHelp = `C4-DIFF(1) - compare two states; emit a c4m patch

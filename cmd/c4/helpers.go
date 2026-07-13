@@ -281,7 +281,7 @@ func storeContentC4mAware(s store.Store, r io.Reader) (c4.ID, int64, bool, error
 // the ID, so anything printed is always journaled and recoverable.
 // Stores without a local root (e.g. pure remote stores) are not
 // journaled — the journal is a local-store contract.
-func journalClaim(s store.Store, id c4.ID, size int64, name, origin string, scanStart time.Time) {
+func journalClaim(s store.Store, id c4.ID, scanStart time.Time) {
 	if id.IsNil() {
 		return
 	}
@@ -291,49 +291,9 @@ func journalClaim(s store.Store, id c4.ID, size int64, name, origin string, scan
 		return
 	}
 	j := c4m.OpenJournal(r.Root())
-	err := j.Append(c4m.Claim{
-		ScanStart: scanStart,
-		Size:      size,
-		Name:      name,
-		Origin:    origin,
-		ID:        id,
-	})
-	if err != nil {
+	if err := j.Append(c4m.Claim{ScanStart: scanStart, ID: id}); err != nil {
 		fatalf("Error: journal append failed; ID not reported: %v", err)
 	}
-}
-
-// claimName derives a claim's journal name from the argument path: the
-// final path component, with ".c4m" appended for descriptions that
-// lack it. The filesystem root journals as "root.c4m".
-func claimName(path string, isDescription bool) string {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		abs = path
-	}
-	base := filepath.Base(abs)
-	if base == "/" || base == "." || base == string(filepath.Separator) {
-		base = "root"
-	}
-	if isDescription && !strings.HasSuffix(base, ".c4m") {
-		base += ".c4m"
-	}
-	return base
-}
-
-// claimOrigin renders the journal origin link "<host>:<abs-path>" for
-// the argument as given (symlinks deliberately not resolved: the
-// origin records what was typed; the operation acted on what it named).
-func claimOrigin(path string) string {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		abs = path
-	}
-	host, err := os.Hostname()
-	if err != nil || host == "" {
-		host = "localhost"
-	}
-	return host + ":" + abs
 }
 
 // fatalf prints to stderr and exits.

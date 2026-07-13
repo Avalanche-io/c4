@@ -78,7 +78,7 @@ for n in $(seq 1 "$ITER"); do
   done < "$OUT"
 
   # Invariant 2: every journaled claim recomputes.
-  if [ -f "$STORE/log.c4m" ]; then
+  if [ -f "$STORE/journal" ]; then
     while IFS= read -r line; do
       cid=$(printf '%s\n' "$line" | awk '{print $NF}')
       case "$cid" in c4*) ;; *) continue ;; esac

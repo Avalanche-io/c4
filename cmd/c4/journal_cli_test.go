@@ -40,14 +40,20 @@ func TestIngestJournalsClaim(t *testing.T) {
 	if c.ID.String() != printedID {
 		t.Fatalf("journal claim %s != printed ID %s", c.ID, printedID)
 	}
-	if c.Name != "proj.c4m" {
-		t.Fatalf("claim name = %q, want proj.c4m", c.Name)
+	if c.ScanStart.IsZero() {
+		t.Fatal("claim scan start missing")
 	}
-	if !strings.Contains(c.Origin, ":") || !strings.HasSuffix(c.Origin, tree) {
-		t.Fatalf("claim origin = %q, want <host>:%s", c.Origin, tree)
+	// Roots are purely virtual: the journal carries scan-start and ID,
+	// nothing else — no names, sizes, or origins (draft-v9 §5).
+	data, err := os.ReadFile(filepath.Join(storeDir, "journal"))
+	if err != nil {
+		t.Fatalf("journal file not at <store>/journal: %v", err)
 	}
-	if c.Size <= 0 {
-		t.Fatalf("claim size = %d", c.Size)
+	if !strings.HasPrefix(string(data), "@c4 journal 1\n") {
+		t.Fatalf("journal missing magic header: %q", string(data)[:40])
+	}
+	if strings.Contains(string(data), tree) {
+		t.Fatal("journal must not record filesystem origins")
 	}
 
 	// A second snapshot after a change appends a second claim.
@@ -93,8 +99,10 @@ func TestLogNoArgsListsJournal(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("expected 1 journal line, got %d: %q", len(lines), stdout)
 	}
-	if !strings.Contains(lines[0], id) || !strings.Contains(lines[0], "proj.c4m") {
-		t.Fatalf("journal line missing claim data: %q", lines[0])
+	// index, scan-start, ID — the ID is the last field (awk $NF).
+	fields := strings.Fields(lines[0])
+	if len(fields) != 3 || fields[0] != "1" || fields[len(fields)-1] != id {
+		t.Fatalf("journal line should be 'index scan-start ID': %q", lines[0])
 	}
 }
 

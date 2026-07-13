@@ -116,9 +116,9 @@ func runID(args []string) {
 			if shouldStore {
 				if s := getOrSetupStore(); s != nil {
 					start := time.Now().UTC()
-					id, size := storeManifestSelf(s, m)
+					id, _ := storeManifestSelf(s, m)
 					syncStore(s)
-					journalClaim(s, id, size, "stdin.c4m", "", start)
+					journalClaim(s, id, start)
 					reportStored(id)
 				}
 			}
@@ -182,9 +182,9 @@ func runID(args []string) {
 				s := getOrSetupStore()
 				if s != nil {
 					start := time.Now().UTC()
-					id, size := storeManifestSelf(s, m)
+					id, _ := storeManifestSelf(s, m)
 					syncStore(s)
-					journalClaim(s, id, size, claimName(p, true), claimOrigin(p), start)
+					journalClaim(s, id, start)
 					reportStored(id)
 				}
 			}
@@ -213,7 +213,7 @@ func runID(args []string) {
 		} else if shouldStore {
 			if s := getOrSetupStore(); s != nil {
 				syncStore(s)
-				journalClaim(s, entry.C4ID, entry.Size, claimName(p, false), claimOrigin(p), start)
+				journalClaim(s, entry.C4ID, start)
 			}
 		}
 		if *quiet && !entry.C4ID.IsNil() {
@@ -272,16 +272,12 @@ func doStdin(storeFlag bool) {
 		s := getOrSetupStore()
 		if s != nil {
 			start := time.Now().UTC()
-			id, size, isDesc, err := storeContentC4mAware(s, os.Stdin)
+			id, _, _, err := storeContentC4mAware(s, os.Stdin)
 			if err != nil {
 				fatalf("Error storing: %v", err)
 			}
 			syncStore(s)
-			name := "stdin"
-			if isDesc {
-				name = "stdin.c4m"
-			}
-			journalClaim(s, id, size, name, "", start)
+			journalClaim(s, id, start)
 			fmt.Println(id)
 			return
 		}
@@ -527,13 +523,13 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string, scanStart time
 	// The snapshot captures itself: directory records (deepest first)
 	// plus the root record — stored by storeManifestSelf after all
 	// file entry IDs are final. THE snapshot ID is the root ID.
-	id, size := storeManifestSelf(s, manifest)
+	id, _ := storeManifestSelf(s, manifest)
 
 	// Batch barrier: the whole ingest becomes durable in one flush,
 	// then the claim is journaled durably. Only after both may the ID
 	// be reported — the print barrier.
 	syncStore(s)
-	journalClaim(s, id, size, claimName(baseDir, true), claimOrigin(baseDir), scanStart)
+	journalClaim(s, id, scanStart)
 	reportStored(id)
 }
 
