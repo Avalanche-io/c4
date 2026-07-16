@@ -312,18 +312,38 @@ unifies all five**, and located the moat precisely at (c) and (d).
   But it is a cache-KEY design essay: no first-class content-addressed
   store, no cross-tool graph, no determinism-class taxonomy, no side-
   effect suppression. The need is articulated; nobody has productized it.
-- **Research converging on (a)+(b) — reported, preprint-level (May–Jun
-  2026, not deep-verified).** "Portable Agent Memory" (BLAKE3
-  Merkle-DAG content-addressed + Ed25519 signed provenance edges) is the
-  closest published shape to C4's store + signed testimony; "From Agent
-  Loops to Deterministic Graphs" proposes identity-based replay over an
-  artifact DAG; PROV-AGENT/AgentTrace give typed derivation relations
-  with artifact-hash edges. All are descriptive provenance, not an
-  executable recompute route, and **all drop (c)(d)(e)**.
+- **Research converging on (a)+(b) — arXiv IDs verified; the closest
+  one read at full text (copies + verification in
+  `plans/gtm-2026-07/prior-art-papers/`).** "From Agent Loops to
+  Deterministic Graphs" (ThruWire, 2605.06365, May 2026) is the closest
+  published work: a DAG of artifact-producing nodes with identity-based
+  replay AND **selective recompute** (recompute only descendants of a
+  changed artifact, preserve unrelated branches). It genuinely validates
+  the (a)+(b)+incremental-recompute direction — so that foundation is
+  NOT ours alone. But (verified from full text) it treats
+  non-determinism as a *defect to structure away*, not a served-able
+  class (drops (c)); its replay-vs-recompute is *change-driven
+  incremental for the CURRENT value* — the axis-(d)-current half every
+  build system has — with no per-request recorded-intent choice (drops
+  the sharp half of (d)); it does not address side-effect suppression
+  (drops (e)); and "execution identity" is a runtime key inside their
+  framework, not a portable content-addressed byte store. "Portable
+  Agent Memory" (Microsoft, 2605.11032) is the closest to C4's
+  store+signed-testimony SHAPE (content-addressed Merkle-DAG + signed
+  provenance edges) but is a memory-transfer protocol, not a recompute
+  route (drops (c)(d)(e)). "From Agent Traces to Trust" (2606.04990) is
+  the best survey — descriptive provenance, not executable.
 
-**Reading.** (a) and (b) are validated-but-converging — the academic
-field is actively moving toward content-addressed agent provenance, so
-the substrate direction is right *and* not ours alone for long. The
+**Reading.** (a) and (b) and even *incremental recompute for the current
+value* are validated-and-converging — ThruWire has built and published
+the graph-of-identity-keyed-nodes-with-selective-recompute core, and the
+build-system lineage predates all of it. So that foundation is right and
+not ours alone. The unclaimed square is therefore NARROWER than "the
+whole derivation graph" and it holds precisely: **(c) labeling
+non-determinism as a served class + the RECORDED half of (d) (serve the
+historical byte-fact by intent, regardless of freshness) + (e)
+side-effect-suppressed replay — unified on a portable content-addressed
+byte substrate where bytes are the truth.** The
 durable differentiation is (c)+(d)+(e-done-as-choice): labeling
 non-determinism as a served-able class instead of a bug, and making
 freshness a per-request intent instead of the system's decision. Both
