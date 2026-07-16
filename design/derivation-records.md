@@ -128,6 +128,166 @@ and can license elision. Both classes coexisting on one target is the
 system working, not a conflict; the class travels with the edge and
 the economics stay honest.
 
+## Call-granularity derivation — memoized tool/MCP calls (2026-07-16, Joshua)
+
+Cross-ref: `receipt-record.md` "The two axes every edge carries" folds
+the two axes below into the receipt design at session granularity — a
+receipt edge is the coarse tier of this same graph. This section is the
+call-granularity refinement.
+
+The same predicate applies one level below the filesystem snapshot: a
+**single tool or MCP call is a derivation edge** — `output
+produced-from <tool> inputs=<arg+state closure> class=<...>`. If the
+call is `exact` and a prior run's edge with the same input-closure ID
+already has its output materialized, the resolver serves the cached
+output and **skips the call**. Have-vs-compute (the fungibility
+principle) at call granularity: re-running a workflow after a small
+change pays only for the calls whose inputs actually changed. This is
+the receipt design's tool-call edge (`receipt-record.md`) turned into
+an incremental-recompute cache; it is the resolver lab's have-vs-compute
+(the embedding-index "fetch the cached result" beat from the original
+demo) at tool granularity. Same records, queried forward
+(process+inputs → output) instead of backward (target → route).
+
+**Why it slots in with zero new machinery.** The memo key is
+`H(tool-object-ID, input-closure-ID)`; the memo value is the output ID;
+that key→value fact IS a derivation edge, stored and resolved by Layer
+2 exactly as written above. Cross-tool (any tool that declares its call
+shape), falsifiable (re-run and re-hash — the record is proven true or
+false), durable and portable (the cache is the store), and priced by
+the resolver. This is the Bazel/Nix/Unison capability without the
+single-tool lock-in the DAG section already contrasts — an action cache
+where bytes are the truth and routes are open, not one build system's
+internal graph.
+
+**The entire difficulty is the input closure, and it is not free.** A
+call is cacheable only as a PURE function of its *fully content-
+addressed* inputs. This is load-bearing and unforgiving:
+
+- **The closure must be complete.** `read_file(path)` is not a function
+  of `path` — it is a function of the file's content ID. `run_tests()`
+  is a function of the entire relevant source+test+dep+env closure, not
+  of nothing. Miss one input (an env var, a config byte, a clock read)
+  and the cache serves a stale result **silently**. This is the classic
+  underspecified-action / cache-poisoning failure of every build cache;
+  content addressing does not exempt us — it only makes a wrong hit
+  *catchable on verification*, never *prevented at declaration*.
+- **The class is testimony the tool makes, and C4 cannot infer it.**
+  `llm_call`, `web_search`, `bash("date")` are `volatile` — never
+  cacheable-as-exact (this is precisely why a session edge is volatile:
+  it contains an llm call). `bash("sort f")` is `exact` iff `f`'s
+  content is in the closure. A tool (or a thin wrapper) must declare its
+  input closure and class; a wrong `exact` is falsifiable but not
+  blocked. Invariant carried from elision: **eliding a call trades
+  re-execution for trust in the closure declaration** — so the resolver
+  must always retain the option to verify by re-execution, and any
+  platform/version sensitivity demotes `exact`→`validated` (which may
+  reconstruct-with-acceptance but never silently serve).
+- **`validated` is opt-in policy, never a default.** Serving a
+  `validated` cached result (a render, a flaky test's last green) is a
+  choice the user makes per context, not an automatic hit.
+
+**Interaction with the volatile-poisons-upward rule.** A session edge
+is `volatile` because it contains a `volatile` sub-call, exactly as a
+null descendant poisons a directory's rollup. But the `exact` sub-edges
+*under* a volatile parent remain individually reusable — you cannot
+re-derive the session, yet you can re-use its deterministic sub-steps
+when you replay it by hand. That is the incremental payoff and the
+honest limit in one sentence: **the graph memoizes the pure steps; the
+impure ones (the model, the network, the clock) always re-run.**
+
+## Resolution intent — the second axis (2026-07-16, Joshua)
+
+The determinism class is a property of the EDGE: "would a fresh run
+reproduce this output?" There is a second, orthogonal property that
+belongs to the REQUEST, not the edge: **what is the consumer actually
+asking for?** Every cache on the web conflates the two, and that
+conflation is the "Confirm Form Resubmission" horror — the browser
+refuses the recorded response and demands a re-POST because it assumes
+the only thing you could want is a *fresh* result. You did not. You
+wanted to see what the page said when you loaded it. Those are two
+different questions, and the recorded answer is an EXACT answer to the
+second one no matter how volatile the call was.
+
+Name the axis **freshness intent** on the request:
+
+- **`current`** (default) — "I want the value a fresh execution would
+  produce now." Honored by re-running, or by an `exact` cache hit whose
+  inputs are unchanged. A `volatile` call must re-run; a `validated`
+  hit is served only by opt-in.
+- **`recorded`** (a.k.a. `as-of`) — "I want the value this call
+  *produced*, as a historical fact." Served straight from the edge,
+  **class-independent** — because you are not asking for a fresh run,
+  you are asking for a byte-fact that already happened. A content-
+  addressed output is an exact answer to "what did it produce?" even
+  when it is a useless answer to "what would it produce now?"
+
+The truth table the whole thing collapses to:
+
+| intent | class | inputs | resolution |
+|---|---|---|---|
+| current | exact | unchanged | serve cache (equals fresh) |
+| current | exact | changed | MISS → re-derive (cheap) |
+| current | validated | unchanged | serve only on opt-in |
+| current | volatile | any | must re-run |
+| recorded | ANY | ANY | **serve the recorded output** |
+
+**Why `recorded` is always honest — and why the web's version is not.**
+The sin the browser commits is not caching; it is offering only
+"resubmit" or nothing, with no vocabulary for "show me the recording."
+And when systems *do* serve a cached thing they hide that it is cached,
+so a stale value masquerades as fresh. C4 does neither: a `recorded`
+result is served WITH its provenance edge — its inputs, its process,
+its timestamp, its class — so it is self-labeling as the T-recording,
+never a silent stale swap. Verification over assertion: the value
+carries the proof of exactly what it is. Disclosed recording is honest;
+undisclosed staleness is the lie. C4 can offer the first because the
+response is content-addressed and bound to its request by an edge —
+which is precisely the record HTTP never had.
+
+**`recorded` is frequently the CORRECT semantics, not merely the
+faster one — because of side effects.** The reason the browser insists
+on re-POSTing is that a POST *mutates server state*; effect-freedom is
+a third property, distinct from reproducibility (worth its own edge
+label: `pure` vs `effectful`). `send_email`, `charge_card`, `POST
+/order` are `volatile` AND `effectful`. When you undo an agent workflow
+and replay it, you almost never want those re-fired — you want the
+recorded outcome so the replay is *consistent* without re-committing
+the effect. So `recorded` intent means: serve the record, suppress
+re-execution, and therefore suppress its side effects. That is the safe
+default for replaying any effectful step, and it is the exact thing no
+build cache and no browser will do for you. (The agent-safety framing:
+replay-without-re-sending is a feature the entire field lacks.)
+
+**Which recording?** A volatile+effectful call may have many recorded
+outputs, each a journaled edge with a scan-start time. `recorded`
+therefore takes a selector — `latest` (default), `as-of <time>`, or a
+specific run/session ID — answered directly from the journal's per-edge
+timestamps. "Show me what the page said when I loaded it Tuesday" is a
+real, cheap query over the receipt graph.
+
+This axis is a request-side flag over the same records — **no new
+record machinery**, just the resolver honoring an intent it currently
+cannot express. It stays in the same platform-tail drawer as
+call-granularity memoization, but it is the cheaper, sharper half:
+serving a recorded byte-fact needs only Layer 1 (the edge exists) and a
+read path that discloses provenance; it does not even need the
+input-closure-declaration convention that gates `current`-intent
+memoization. It could ship first.
+
+## Scheduling and the wedge
+
+**Platform tail, not launch.** Call-granularity memoization needs Layer
+1 (records) + Layer 2 (read-side resolution) + a per-tool input-closure
+declaration convention that does not exist yet; `recorded`-intent
+serving needs only Layer 1 + a provenance-disclosing read path. Both are
+tier-3/4, drawer-resident until pulled — but they are the strongest
+evidence that the receipt wedge installs the right substrate: every user
+minting call-level edges is building a portable, cross-tool, falsifiable
+action cache — and a personal, timestamped record of "what every call
+actually returned" — without being told the word. The launch says none
+of this; the data it accretes is what makes this shippable later.
+
 ## Integration path — bolting onto the existing store (2026-07-13)
 
 The store changes not at all at first; the system arrives in four
