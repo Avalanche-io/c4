@@ -200,6 +200,18 @@ the side effect — **replay-without-re-sending**, the correct semantics
 for replaying any effectful step, which no build cache or browser
 offers.
 
+**The node's identity basis** (deeper than these axes — a property of
+each node, not the edge or request): a node is `content`-addressed
+(verified hash, the default), `assigned`/nominal (a namespace name, no
+verified bytes — cheap structural capture, external/un-hashable nodes,
+forward references), or `null` (no handle yet — the streaming rung).
+Three rungs: unknown → named → verified, promoted by a `resolves-to`
+binding. Load-bearing rule: no verified operation ever treats an
+assigned ID as content. A launch receipt is always `content`-addressed
+(the snapshots are hashed); the assigned regime is a platform-tail
+capability for when hashing is unavailable or undesired. Full model in
+`derivation-records.md` "The identity-basis axis."
+
 ### Why this is the receipt design's payoff, not a tangent
 
 The user's replay scenario — *do something, undo it, change some things

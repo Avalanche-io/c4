@@ -275,6 +275,118 @@ read path that discloses provenance; it does not even need the
 input-closure-declaration convention that gates `current`-intent
 memoization. It could ship first.
 
+## The identity-basis axis — assigned vs content IDs (2026-07-16, Joshua)
+
+A third first-class axis, deeper than the other two because it is a
+property not of the edge or the request but of **every node's identity
+itself**. So far every node is a *content* ID — the hash of its bytes,
+checkable by recomputation, universal, reproducible across machines.
+There is a real, honest regime where that is unavailable or undesired,
+and a node is identified instead by an **assigned** (nominal) ID — a
+name in some authority's namespace, not derived from content.
+
+**Three rungs of identity knowledge** (partial knowledge is a valid
+state, applied to identity):
+
+- `null` — no handle yet. Already shipped: the streaming chain emits
+  directory lines with null IDs, then binds them (draft-v9). "I do not
+  even have a name."
+- `assigned` / nominal — a name, but no verified bytes behind it. "Call
+  this node X; I have not (or cannot) hash its content."
+- `content` — the verified hash. "I have the bytes and they check."
+
+Unknown → named → verified. An assigned ID is the middle rung: more
+than null (it participates in the graph, carries edges, can be planned
+over) and less than content (it cannot be checked by recomputation).
+
+**Why this must be first-class AND labeled — the integrity boundary.**
+This looks like it contradicts C4's founding claim ("unlike a UUID,
+assigned arbitrarily, a C4 ID is discovered from the data itself"). It
+completes it. You can only *honestly* prefer content identity if the
+system can represent assigned identity explicitly and show exactly where
+it fell back to it. The whole aesthetic — verification over assertion,
+IDs never trusted only checked — survives on one rule: **no verified
+operation may ever treat an assigned ID as a content ID.** That requires
+the grammar to make them distinguishable (an assigned ID is visibly not
+a 90-char c4 ID — a namespace-qualified tag, e.g. `nom:<authority>/<name>`),
+and every read/verify path, on meeting an assigned ID, to either resolve
+it through its authority or report "asserted here, not verifiable,"
+never to fall through to a hash-mismatch. Labeled assignment is honest;
+silent assignment-as-content is the one lie the system must be
+structurally unable to tell.
+
+**Promotion — the "moving toward content-addressed" case.** An assigned
+node is *promoted* when its bytes are materialized and hashed, recorded
+by a **binding**: `nom:auth/x resolves-to <content-id>` — a shape-A
+testimony line, the same machinery as every other edge. A graph is
+therefore *partially content-addressed*, and becomes "more true" as
+nodes promote — identical in shape to the streaming refinement (null dir
+ID → real ID), one rung higher. The binding is testimony ("x was these
+bytes"), falsifiable only where enough was kept to re-check; promotion
+restores verification from that point forward.
+
+**Value in itself (not only a transitional state).**
+- **Cheap structural snapshots.** Capture the graph/workflow *shape* of
+  a terabyte working set now, at near-zero cost, by assigning IDs to the
+  big nodes and hashing lazily or never. You get the dependency
+  structure and the receipt immediately; content verification is
+  deferred or forgone — honestly labeled as unverified.
+- **Representing the un-hashable.** Running services, live streams,
+  remote resources behind an API, an effectful call's outcome you never
+  materialized — things with identity but no fixed local bytes. Assigned
+  IDs let the graph be *complete* (the user's word): it can represent
+  the whole workflow including its external, mutable, un-hashable parts,
+  instead of only the local-bytes subset.
+- **Forward references / build-graph-then-execute.** Name a node that
+  will be produced, wire the DAG, materialize later (the DAG-first
+  pattern ThruWire uses; a promise/future as a first-class node).
+- **Privacy stand-ins.** An assigned handle that *deliberately never
+  resolves* — "a node exists here and these edges touch it" without
+  holding or disclosing its content.
+- **Resolver planning.** Operate on structure (assigned) for routing and
+  cost estimates; force content-addressing only when verification is
+  actually demanded.
+
+**Honest constraints (the price of the regime).**
+- **Non-portable / non-federating.** A content ID resolves in any copy
+  of any store; an assigned ID is meaningful only relative to its
+  assigning authority. The "copy a store anywhere and every ID resolves,
+  roots are virtual" property is *forfeited* for the assigned subgraph
+  until promotion. Assigned IDs must carry their namespace or collide.
+- **Asserted, not verified.** No recomputation can catch a lie about an
+  assigned node — there is nothing to recompute against. Trust rests
+  entirely on the assigning authority's testimony. The only thing
+  keeping the system honest is the label.
+- **An edge is only as verifiable as its least-content-addressed node.**
+  An `exact` process whose inputs are assigned cannot be checked by
+  recomputation until those inputs promote — so the interesting cell is
+  `exact` process + assigned inputs = *deterministic but unverifiable
+  here*, upgradable to fully verifiable on promotion. The class still
+  describes the process; checkability tracks the node basis.
+
+**Orthogonality.** Node identity-basis (node property) is independent of
+reproducibility class (edge property) and freshness intent (request
+property). Every combination is meaningful: a `volatile` edge can have
+`content`-addressed nodes (we hashed the outputs though we cannot
+reproduce them — the launch receipt is exactly this); an `exact` edge
+can have `assigned` nodes (pure process, un-hashed inputs).
+
+**Prior art for the duality (brief).** Nix input-addressed vs
+content-addressed (CA) derivations is this exact axis — and
+`ca-derivations` is literally Nix "moving toward content." git separates
+assigned refs (mutable names) from content-addressed objects; IPFS
+separates IPNS (assigned, mutable) from CIDs. Each keeps the two poles
+cleanly distinct and resolves one to the other — the model to match.
+None treats the basis as a *labeled per-node honesty property that
+degrades and promotes*; that framing is the C4-native contribution.
+
+**Scheduling.** Platform-tail with the rest of the records substrate,
+but weightier: it touches the ID grammar (assigned IDs must be
+syntactically un-mistakable for content IDs), so its freeze belongs
+pinned at the records/testimony freeze, not bolted on later. The `null`
+rung already ships (streaming refinement); the `assigned` rung and the
+`resolves-to` binding are the new first-class citizens.
+
 ## Prior art and where the moat actually is (2026-07-16 landscape scan)
 
 The five properties that must co-occur: (a) content-addressed
