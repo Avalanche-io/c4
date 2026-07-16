@@ -468,6 +468,69 @@ is the unoccupied square. The window is real, not infinite. (Confidence:
 product claims solid/2025; arXiv items reported at abstract level; SEO
 explainer sources discarded.)
 
+## The graph IS winnable — as a standard, not as internals (2026-07-16, Joshua)
+
+Correction to the "not ours alone" reading above: it measured the wrong
+kind of winning. ThruWire's graph is *internal to ThruWire's runtime*;
+Bazel's is internal to Bazel; Temporal's event log is internal to
+Temporal; Nix's derivations are internal to Nix. **Every existing
+derivation/lineage graph is a single-system truth** — true inside one
+tool's lifetime and one tool's namespace (this doc's own DAG section
+says exactly that: "their action graph IS the truth inside one tool's
+lifetime; here bytes are the truth and routes are open, falsifiable,
+cross-tool, and durable"). A vendor's internal graph structurally cannot
+become the neutral interchange — it is a conflict of interest (Temporal
+will not adopt ThruWire's format; each is the internals of a product).
+
+The empty, defensible position is the one none of them can occupy: **an
+open, discoverable, plain-text, content-addressed derivation record that
+is the interchange BETWEEN the closed runtimes, not the internals of
+any one.** The thing every ThruWire/Bazel/Temporal/Claude-Code and every
+DIT's ingest tool *emits and reads*, the way ASC MHL is the thing every
+media ingest tool emits rather than any one vendor's internal hash log.
+The proliferation of graph-emitters (ThruWire, the agentic-caching
+cluster, the 2026 provenance preprints) is therefore the *precondition*
+for a neutral standard, not a threat to it — a standard needs multiple
+implementations to matter.
+
+**This is a repeatable, decade-proven play, not a hope — and it is
+literally C4's own play.** Media production learned, over a decade-plus,
+that both content identity AND asset relationships must be open
+standards, not tool internals, because the pipeline is irreducibly
+multi-vendor (camera → DIT → editorial → VFX houses → color → deliver →
+archive): content identity became a standard (C4 → SMPTE ST 2114; ASC
+MHL, which already carries C4 digests; Netflix-mandated MHL ingest), and
+the *derivation/relationship graph* is being standardized right now,
+vendor-neutral (MovieLabs 2030 Vision + the Ontology for Media Creation;
+C2PA content credentials; OpenTimelineIO for editorial structure). The
+agentic derivation graph is the same shape as the media derivation
+graph. The same primitive (content ID as an open standard) and, where it
+matters, the same author (the person who authored ST 2114) can win the
+agentic graph the same way the media graph is being won — as an open
+standard and a completely open discoverable system.
+
+**What this changes in the moat.** The durable moat is not only the
+narrow (c)+(d)+(e) combination — it is the **open cross-vendor,
+content-addressed, plain-text derivation standard itself**, which the
+closed-runtime builders cannot be. The (c)+(d)+(e) axes and the
+identity-basis axis are what make that standard *complete and honest*
+(it can represent non-determinism, recorded intent, side effects, and
+assigned-vs-content identity — the things a closed runtime hard-codes or
+omits); openness and standards-authority are what make it *win* and what
+defend it against platform absorption (a platform can ship a feature; it
+cannot author and cede a neutral standard — its version is, by
+construction, one more internal graph).
+
+**Launch discipline, unchanged.** Standards win by adoption, slowly, not
+by assertion — so "we are the standard" is never launch copy, exactly as
+the media wedge is date-gated. What a solo founder CAN do now is the
+thing C4 already does on cccc.io: author and publish the record grammar
+as an open, plain-text spec with a reference implementation in the OSS
+suite, so the graph is discoverable and emittable by anyone from day
+one. The receipt/derivation records ARE that spec extending ST 2114
+upward from identity to lineage. Publish open; let adoption earn the
+word "standard."
+
 ## Scheduling and the wedge
 
 **Platform tail, not launch.** Call-granularity memoization needs Layer
