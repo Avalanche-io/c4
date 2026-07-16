@@ -315,6 +315,20 @@ never to fall through to a hash-mismatch. Labeled assignment is honest;
 silent assignment-as-content is the one lie the system must be
 structurally unable to tell.
 
+**Containment rule (2026-07-16, binding) — assigned IDs never enter c4m
+entry fields.** The c4m grammar is frozen, and its ID field admits
+exactly two states: a content ID or null. An assigned ID (`nom:...`)
+may appear ONLY on edge/testimony lines — never inside a c4m entry. A
+`nom:` tag in a c4m is a parse ERROR in every implementation, not a
+third state to handle. Consequences, all load-bearing: (1) all six c4m
+parsers remain untouched by the assigned regime — the sidecar doctrine
+holds at the grammar level, not just in spirit; (2) the streaming/null
+rung already covers "no content ID yet" WITHIN a c4m, so nothing is
+lost; (3) a c4m is by definition a description of content — a node the
+graph knows only nominally has no c4m yet, and its place in the graph
+is held by the assigned ID on its edges until promotion. The graph may
+be partially nominal; a c4m file never is.
+
 **Promotion — the "moving toward content-addressed" case.** An assigned
 node is *promoted* when its bytes are materialized and hashed, recorded
 by a **binding**: `nom:auth/x resolves-to <content-id>` — a shape-A

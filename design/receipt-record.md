@@ -41,6 +41,7 @@ t0  SessionStart hook
 
 t1  UserPromptSubmit hook  (prompt 1: "remove parseLegacy from parser.go, fix callers")
       plugin stashes prompt-1 text → ingest → PR1  (prompt object, C4 ID)
+      same gap rule vs S0 (warm -c re-scan; usually S0' == S0 → no edge)
 
     ── agent works: edits parser.go, 2 callers; runs pytest (writes
        .pytest_cache/); a shell step accidentally leaves .env.bak;
@@ -63,6 +64,10 @@ t3  Stop hook  (turn 1 complete)
 
 t4  UserPromptSubmit hook  (prompt 2: "rename it parseModern everywhere, add a test")
       prompt-2 text → ingest → PR2
+      c4 id -s -c S1 proj/       → S1'  (warm re-scan; racy rule reuses unchanged)
+      if S1' == S1 : no edge (the common case — nothing moved between turns)
+      if S1' != S1 : append the USER-GAP EDGE, and turn 2 uses inputs=S1':
+          S1' produced-from user inputs=S1 class=volatile
 
     ── agent works: renames symbol across 3 files, adds tests/test_parse.py
 
@@ -113,6 +118,46 @@ greppable, line-local, diffable. Its own C4 ID (REC) is the signable
 subject — the hook for future signed receipts (testimony/signatures,
 post-launch).
 
+## The pasteable render — pinned (2026-07-16)
+
+The `/receipt` command's output is the acquisition artifact — it gets
+pasted into PRs, issues, and gists, and the 30-day metric counts those
+sightings. A pasted artifact whose shape drifts is unrecognizable and
+uncountable, so the shape is PINNED at launch, three parts:
+
+```
+@c4 receipt 1
+session claude-code SES started=<t0> baseline=<S0>
+<edge lines, verbatim from the receipt file>
+
+$ c4 diff <S0> <Sn>
+<the command's verbatim output — the c4m patch text>
+
+recomputable where the bytes live; not remote proof.
+undo: c4 restore --force <S0> .
+```
+
+- **Part 1 is the receipt record itself, verbatim** — the render never
+  paraphrases the record; it IS the record (magic line first).
+- **Part 2 is evidence, and evidence is shown as a recomputation**: the
+  literal `$ c4 diff <pre> <post>` command line followed by its
+  byte-for-byte output. Quote the command, show the output — the
+  bake-off discipline applied to every pasted receipt; any reader with
+  the bytes re-runs the line above the output. Evidence is never
+  *recorded* in the receipt file (testimony R2); the render may *show*
+  it because a render is presentation, not a record.
+- **Part 3 is the honest limit and the undo handle, always present,
+  always last.** No render option removes them.
+
+Pinning rules: the `@c4 receipt 1` magic line opens every paste, which
+makes pasted receipts machine-discoverable — the receipt-sightings
+metric is literally the GitHub search for `"@c4 receipt 1"`. IDs are
+verbatim and never truncated (a truncated ID is not an ID). Plain
+ASCII, no box drawing, no color, no timestamps added at render time
+(byte-stable render for identical inputs — determinism everywhere).
+The shape freezes with the receipt grammar (launch items 1 and 5);
+changing it post-launch breaks recognizability and the metric.
+
 ## Reconstructions — what each question costs
 
 Everything in the "shipped" column runs TODAY on v1.1.0 with zero new code.
@@ -150,6 +195,34 @@ saw. That is the whole pitch, and it is exactly determinism-class
    becoming the graph. Manual recovery actions record in the same
    grammar as agent actions. (Whether the plugin writes these at launch:
    open question O5.)
+
+## The user-gap edge — attributing inter-turn edits (2026-07-16)
+
+Between a turn's Stop snapshot (Sn) and the next UserPromptSubmit, the
+USER may edit the tree — fix a typo the agent left, revert something by
+hand, add a file. Without a snapshot at prompt time, those edits smear
+into the NEXT agent edge: `diff(Sn, Sn+1)` attributes the user's work
+to the agent. That is a receipt confabulating — the exact failure the
+receipt exists to kill, pointed the other way. Honest attribution
+requires closing the gap:
+
+- Every UserPromptSubmit runs a warm re-scan (`c4 id -s -c <prior
+  node>` — the racy-rule reuse path, so an unchanged tree costs the
+  warm number, not a cold scan).
+- If the result equals the prior node (the common case), no edge is
+  minted — the journal's duplicate claim is harmless.
+- If the tree moved, the plugin appends a **user-gap edge** —
+  `Sn' produced-from user inputs=Sn class=volatile` — and the coming
+  turn's agent edge takes `inputs=Sn'`. The agent's edges now bound
+  exactly what the agent did, nothing more.
+
+The user-gap edge is a creation edge in miniature: irreproducible
+because a person did it — `produced-from user` at launch, naturally
+`authored-by <user>` once that predicate ships (see
+derivation-records.md "Creation is a first-class edge"). It also
+partially answers O5: user actions must enter the graph anyway for
+agent attribution to be honest; whether `/undo` actions also mint edges
+stays open.
 
 ## Threat model — what a receipt defeats, by adversary tier (2026-07-16)
 
@@ -312,8 +385,12 @@ each node, not the edge or request): a node is `content`-addressed
 verified bytes — cheap structural capture, external/un-hashable nodes,
 forward references), or `null` (no handle yet — the streaming rung).
 Three rungs: unknown → named → verified, promoted by a `resolves-to`
-binding. Load-bearing rule: no verified operation ever treats an
-assigned ID as content. A launch receipt is always `content`-addressed
+binding. Load-bearing rules: no verified operation ever treats an
+assigned ID as content, and **assigned IDs never appear in c4m entry
+fields** — the frozen grammar's ID field admits content or null only;
+`nom:` handles live exclusively on edge/testimony lines, and a `nom:`
+tag inside a c4m is a parse ERROR, not a third state. A launch receipt
+is always `content`-addressed
 (the snapshots are hashed); the assigned regime is a platform-tail
 capability for when hashing is unavailable or undesired. Full model in
 `derivation-records.md` "The identity-basis axis."
@@ -355,9 +432,16 @@ Sorted by whether the launch needs it.
 3. **The plugin session-state file** — hooks are separate process
    invocations; something must carry {SES, S0, prior Sn, edges} across
    them. Plugin-local (`<store>/sessions/<SES>` or XDG state). 
-4. **Hook wiring** — SessionStart→S0, UserPromptSubmit→stash prompt,
-   Stop→Sn+edge, SessionEnd→finalize. Depends on Claude Code hook
-   payloads carrying prompt text + transcript path (verify availability).
+4. **Hook wiring** — SessionStart→S0, UserPromptSubmit→stash prompt +
+   user-gap re-scan, Stop→Sn+edge, SessionEnd→finalize. Depends on
+   Claude Code hook payloads carrying prompt text + transcript path
+   (verify availability). **Every snapshot after S0 is pinned to the
+   `-c` reuse path** (`c4 id -s -c <prior node>`): per-prompt viability
+   (plugin gate 4) is the warm racy-rule number, never the cold-scan
+   number, and the gate-4 measurement must measure exactly this path.
+   A hook that forgets `-c` silently turns every prompt into a cold
+   scan of the whole tree — the one implementation mistake that makes
+   the plugin feel unshippable while the design is fine.
 5. **`/receipt` command** — render the current session's receipt as one
    pasteable block (the acquisition artifact). Pure composition over
    `c4 log` + `c4 diff`.
@@ -413,9 +497,9 @@ is forgeable) applied to our own design. So the surface splits by trust:
 ### Hooks — the trust boundary (deterministic; the agent cannot invoke or suppress)
 | Hook | Action |
 |---|---|
-| SessionStart | `c4 id -s` → S0; open session state |
-| UserPromptSubmit | ingest prompt text → PRn; stash in session state |
-| Stop (turn end) | `c4 id -s` → Sn; ingest transcript → TRn; mint Pn; append edge |
+| SessionStart | `c4 id -s` → S0 (the only cold scan); open session state |
+| UserPromptSubmit | ingest prompt text → PRn; warm re-scan (`-c` vs prior node) → user-gap edge if the tree moved |
+| Stop (turn end) | `c4 id -s -c <prior>` → Sn; ingest transcript → TRn; mint Pn; append edge |
 | SessionEnd | finalize + ingest the receipt file → REC |
 
 This is the only surface that writes receipts. It runs as plugin code the
@@ -455,7 +539,11 @@ honest there even though a PR paste is not.
   reachability-from-REC must then be a guaranteed property.
 - **O5 — record manual undos as edges?** `/undo` as a `produced-from
   user process=undo` edge (reflog-as-graph, elegant) vs keep receipts
-  agent-only at launch (simpler pitch).
+  agent-only at launch (simpler pitch). *Partially answered 2026-07-16:
+  inter-turn user EDITS are recorded as user-gap edges regardless —
+  honest agent attribution requires them (see "The user-gap edge") —
+  so receipts are already not agent-only; whether `/undo` specifically
+  mints an edge stays open.*
 - **O6 — class vocabulary at freeze.** `volatile` (AI), `exact` (media/
   build), `validated` (renders). Freeze all three now, or only `volatile`
   for the launch and widen with the derivation round?
