@@ -531,6 +531,101 @@ one. The receipt/derivation records ARE that spec extending ST 2114
 upward from identity to lineage. Publish open; let adoption earn the
 word "standard."
 
+## Creation is a first-class edge — class is verification, never worth (2026-07-16, Joshua)
+
+A correction to how the class axis is READ, binding on every doc, UI,
+and launch sentence that touches it.
+
+**The mathematical definition stands; the valence goes.** `volatile`
+means exactly one thing: a fresh deterministic run would not reproduce
+this output. It is a statement about what a VERIFIER can recompute —
+and nothing else. Left uncorrected, the word quietly imports a defect
+reading ("couldn't be reproduced" ≈ "couldn't be trusted" ≈ "worth
+less"), and that reading is not merely wrong — it is backwards.
+
+**The value inversion.** An `exact` edge cannot create value. It
+transports and transforms deterministically; its output is already
+implied by its inputs — which is precisely WHY it is recomputable. A
+workflow built only of exact edges is a closed pipeline: correct,
+verifiable, and empty, because nothing ever entered it. Value enters
+the graph ONLY through edges that cannot be recomputed. The media
+conceptualization of C4 has always understood this: an artist creates
+an original (a creation point — an edge with no inputs at all), or
+performs transformative creation (inputs: the director's notes and the
+existing shot; irreproducible work done by the artist; output: the
+updated shot). These must not be dismissed as lesser nodes in any way —
+in most contexts they are the core value being expressed by inclusion
+in the workflow. Strip them and the workflow is soulless, valueless: an
+audit trail of transformations of nothing. Irreproducibility is not a
+missing guarantee on a creative edge; it is the SIGNATURE of creation.
+If a deterministic re-run could have produced it, it was transport, not
+authorship.
+
+The same holds in the AI-coding receipt: the volatile llm edge is not
+the receipt's weak point — it is the step the session existed to
+obtain. Everything `exact` downstream (the build, the tests, the
+packaging) is in service of the irreproducible step, never the reverse.
+
+**This completes the field position; it does not just adjust tone.**
+The landscape scan above located the moat at (c): the entire field
+treats non-determinism as a defect to structure away (ThruWire names
+"identical inputs may produce different outputs" a problem and
+engineers around it; Nix forbids it; the durable-execution vendors wrap
+it in apology). C4 already differed by SERVING it as a typed class. The
+creation reading completes the position: the irreproducible edge is not
+merely served, it is honored. The graph's purpose is to carry
+verifiable transport BETWEEN acts of creation — and to certify the
+creations themselves in the only way creation can be certified (below).
+
+**Flake and creation are the same math and different testimony.** A
+flaky network call and an artist's original are both `volatile` —
+non-recomputable — and only one is a creation point. The distinction is
+not mathematical (no re-run test separates them); it is ATTRIBUTIONAL:
+someone stands behind the work. That is testimony-shaped, so it lives
+in the testimony layer, never in the class axis or the edge grammar:
+
+- The class axis stays pure verification — `exact` / `validated` /
+  `volatile` — untouched.
+- A creation edge is a `volatile` edge with an **`authored-by`**
+  testimony line over it (or over its output node):
+  `<id> authored-by <author> [at=<time>]`. Volatile + authored = a
+  creation point. Unattributed volatility stays what it is — noise,
+  flake, entropy.
+- Sidecar doctrine, zero new concepts: attribution is exactly what
+  shape-A testimony was built for, and `authored-by` is one predicate
+  inside the existing budget (testimony-record.md).
+
+**Certification inverts across the classes — the anchoring corollary.**
+A derivation record can carry two mutually reinforcing certifications:
+(A) "this sequence produces this output," and (B) "this record was
+first known to exist at time T" (an anchor). Their weights invert
+across the class axis:
+
+- On an `exact` edge, (A) is a theorem — anyone re-runs and checks —
+  so (B) adds the least: a timestamp on something already self-proving.
+- On an authored edge, (A) is meaningless BY NATURE — creation has no
+  re-run — so (B) is the ONLY external certification a creation can
+  have, and it is precisely the one creators have always wanted:
+  **priority of creation** — this work, attributed to this author,
+  first known to exist at T. (The poor-man's-copyright ritual, done
+  with a recomputable ID instead of a sealed envelope.)
+
+The anchor matters most exactly where verification-by-rerun matters
+least. This is also why the media wedge is the natural first home for
+anchoring (per the anchoring litigation's gating): a media workflow's
+graph is DENSE with authored edges, and "anchored priority of creation,
+bound to exact content IDs" is the product sentence there — while in
+the dev wedge the same mechanism is a compliance afterthought and stays
+out of launch copy entirely.
+
+**Rendering doctrine (binding).** No UI, doc, or badge may present
+class as a quality tier. A receipt viewer that colors `exact` green and
+`volatile` yellow has inverted the value model of the very workflows it
+records. Prominence follows value: the authored edge is the headline of
+its graph; the exact edges are its provenance apparatus. Class renders
+as what it is — a verification mode ("recomputable" / "checkable" /
+"recorded testimony") — never as a grade.
+
 ## Scheduling and the wedge
 
 **Platform tail, not launch.** Call-granularity memoization needs Layer

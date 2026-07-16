@@ -219,3 +219,70 @@ never shipped) is testimony's concern; root records stay minimal.
   2026-07-10 update); A1-A4 should be expressible as predicates within
   the existing predicate budget or explicitly rejected, not grow a
   second grammar.
+
+## Amendments: the anchoring litigation + the creation reframe (2026-07-16)
+
+The anchoring litigation (pro/con xhigh briefs → judge; full ruling in
+the GTM record) and the same-day creation reframe (derivation-records.md
+"Creation is a first-class edge") amend this design as follows. None of
+it is journal grammar; all of it is testimony — consistent with A3's
+boundary. None of it is release-gating, exactly as the boundary
+conditions above require.
+
+**A3 extended — local vs external tamper-evidence.** LOCAL
+tamper-evidence arrives, as A3 already says, as a signed statement over
+a journal prefix — a statement whose text covers the journal head hash
+and the session's receipt ID. A same-machine key is forgeable by an
+adversary who holds the shell (receipt-record.md threat model, tier 3c),
+so these are always called "signed statements" — testimony — and are
+never marketed as anchoring. EXTERNAL tamper-evidence arrives as an
+`anchored` testimony line over that statement's C4 ID — never as
+journal grammar, never default-on.
+
+**Reserved predicate — `anchored`.** One predicate of the budget:
+
+    <subject-id> anchored <witness> proof=<c4id-of-proof-blob> at=<rfc3339>
+
+Subject is normally the C4 ID of a signed journal-prefix statement (or
+a receipt ID directly); witness is a short registered token (`ots`,
+`rfc3161:<host>`, `rekor:<log>`, `obelus`); the proof blob (a `.ots`
+file, a DER token, an inclusion proof) is an ordinary content-addressed
+store object riding normal replication. Losing the proof loses the
+seal, never bytes — testimony never pins, and the original time T is
+not re-obtainable (re-anchoring seals only from now). Verification
+recomputes the subject ID from bytes, then verifies the proof against
+the witness — offline-capable, reporting pending vs final. The anchor
+is itself verified, never asserted.
+
+**Reserved predicate — `authored-by`.** One predicate of the budget:
+
+    <subject-id> authored-by <author> [at=<rfc3339>]
+
+Marks a creation edge: a `volatile` derivation whose irreproducibility
+is the signature of authorship, not a flake (full case in
+derivation-records.md). Attribution is testimony by construction — a
+statement with an author about an ID — and the class axis stays pure
+verification. `authored-by` + `anchored` on one subject is the
+creator's certificate: this work, this author, first known to exist at
+time T.
+
+**Naming discipline.** The word is "anchor", never "pin" —
+links-never-pin-bytes is about byte retention, a different concept, and
+the collision would be corrosive.
+
+**Absence semantics (R4 applied).** Anchor recall is three-valued:
+anchored / not anchored / no record covers this. An unanchored
+statement remains valid testimony — partial knowledge is a valid state.
+An anchoring GAP is a signal only where a policy declares the cadence.
+
+**Privacy boundary.** Every external witness learns the existence and
+timing of activity; per-session anchoring publishes development cadence.
+Anchoring is opt-in in any dev profile; a paid registry, if one ever
+exists (Obelus — gated on a signed media-wedge mandate), is
+private-log-with-published-roots, so it is verified, never trusted.
+
+**Predicate budget accounting (freeze planning).** Candidates now
+enumerated against the ≤6 budget: `origin`, `license`, `produced-from`,
+`resolves-to`, `anchored`, `authored-by` — the budget is exactly full.
+Any seventh predicate must evict one or raise the budget explicitly at
+the freeze; this is now a freeze decision, not a drawer item.

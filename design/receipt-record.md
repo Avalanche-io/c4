@@ -151,6 +151,105 @@ saw. That is the whole pitch, and it is exactly determinism-class
    grammar as agent actions. (Whether the plugin writes these at launch:
    open question O5.)
 
+## Threat model — what a receipt defeats, by adversary tier (2026-07-16)
+
+Amended from the anchoring litigation (pro/con xhigh briefs → judge;
+full ruling in the GTM record) plus Joshua's same-day class-grading and
+creation corrections. The tiers are claims about ADVERSARIES, not
+features; every launch sentence must trace to a tier this section
+actually closes.
+
+**Tier 1 — confabulation.** The agent misreports what it did (wrong,
+incomplete, or invented transcript claims). Defeated completely and
+locally: the receipt's diff is recomputed from bytes, never parsed from
+the chat.
+
+**Tier 2 — omission.** Changes outside the transcript's story (shell
+side effects, hook edits, the `.env.bak`). Defeated completely and
+locally: the snapshot is the whole tree; nothing is excluded by default.
+
+Anchoring adds nothing to tier-1/2 DETECTION — these defeats are already
+complete where the bytes live; a network witness adds only permanence
+there. Docs must never imply that anchoring strengthens tier-1/2
+detection.
+
+**Tier 3 splits into three, and the split is load-bearing:**
+
+- **3a — retroactive falsification.** After the session, someone — a
+  later agent run, or a human insider shifting blame onto the agent —
+  rewrites the record: edits the journal, re-mints a receipt, back-dates
+  a story. NOT defeated by local records alone (the store is writable by
+  its owner). Defeated PERMANENTLY by anchoring, the moment an anchor
+  exists: once the record's ID is witnessed externally, the past cannot
+  be quietly rewritten by anyone — agent, author, or vendor — without
+  detection.
+- **3b — live staging.** During the session, an adversary shapes
+  dishonest state that is then honestly recorded (plants files, stages
+  the pre-state). NOT defeated: the recorder faithfully records the lie.
+- **3c — recorder compromise.** The adversary holds the user's shell:
+  edits hooks, config, the c4 binary, or PATH; spawns processes that
+  outlive the session; or suppresses recording entirely. NOT defeated by
+  anything recorded on the same machine. **Privilege equivalence:**
+  hooks defeat an adversary acting through recorded tool calls (its Bash
+  actions land before the Stop-hook snapshot and are honestly captured);
+  there is no race to win when the adversary owns the racetrack. No doc
+  or launch sentence may ever claim a hook "fires before the agent can
+  react" as a security property, and none may ever claim anchoring
+  closes tier 3. Closing 3b/3c requires recording from a privilege
+  domain the agent cannot write — c4d on a separate user or host —
+  FIRST; anchoring then seals what that recorder saw. (Roadmap: the
+  out-of-domain recording design precedes any anchoring transport.)
+
+### The honest limit, graded by class
+
+The litigation's blanket sentence — "an anchor proves the bytes are old
+and unaltered, never that they were true" — is exactly right for
+unattributed volatile testimony and WRONG as a universal, because
+truth-by-recomputation is what the `exact` class already provides. A
+receipt carries two **mutually reinforcing certifications**: **(A)**
+"this sequence produces this output," and **(B)** "this record was first
+known to exist at time T" (the anchor). How much each proves is graded
+by the edge's class:
+
+| Edge class                                    | What (A) proves                                                                                        | What (A)+(B) seal together                                                                                                     |
+|-----------------------------------------------|--------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| `exact`, nodes content-resolved               | a THEOREM — re-run the process and the bytes match; a fabricated edge fails recomputation               | truth + time: "this true derivation was known at T" — a lie is unanchorable here because it is unrecomputable                     |
+| `validated`                                   | the validator re-passes (byte-identity may not)                                                          | validity + time                                                                                                                    |
+| `volatile`, unattributed                      | the endpoint trees exist, hash correctly, and the record is internally consistent; the process story is testimony | existence + time — the blanket sentence applies in full: the anchor seals testimony without truth-checking it                     |
+| `volatile` + `authored-by` (a creation edge)  | recomputation is meaningless BY NATURE — creation has no re-run                                          | authorship + priority: "this work, attributed to this author, first known to exist at T" — the only external certification a creation can have, and the one creators have always wanted |
+
+Both directions reinforce: (B) strengthens (A) by defeating back-dated
+rival derivations (nobody who later learns the output can fabricate
+priority); (A) strengthens (B) because on `exact` edges the anchored
+object is self-proving, so the seal certifies a theorem, not a story.
+And the anchor's value INVERTS down the table: it adds least where
+verification is strongest (`exact` — already self-proving) and most
+where verification is impossible in principle (authored — priority of
+creation IS the product). Every edge moved from volatile toward exact
+converts anchored testimony into anchored proof with no change to the
+anchor mechanism — capability arriving as a consequence of the design.
+
+Degradation rule: (A)'s recomputability requires the input bytes to
+RESOLVE. If bytes are lost, an `exact` edge's truth claim degrades to
+unverifiable-here — the anchor still proves the claim existed at T.
+Partial knowledge stays a valid state: verification degrades, the seal
+does not.
+
+### Rendering rules (binding on every UI, badge, and doc)
+
+- An anchor indicator renders what is proven — "sealed since T"
+  (pending vs final for OTS-class witnesses) — never "verified" or
+  "safe." The badge must not displace recomputation.
+- Reproducibility class must NEVER render as a quality tier. A viewer
+  that badges `exact` green and `volatile` yellow inverts the value
+  model of the workflows it records (derivation-records.md "Creation is
+  a first-class edge"): the authored volatile edge is usually the reason
+  the workflow exists.
+- Privacy: every external witness learns the existence and timing of
+  activity; per-session anchoring publishes development cadence —
+  competitive intelligence on unannounced work. Anchoring is opt-in in
+  the dev profile, always.
+
 ## The two axes every edge carries (the replay model)
 
 The session edge above is one granularity of the same record that
@@ -175,6 +274,13 @@ run reproduce the output?
   session, yet you can reuse its deterministic sub-steps when you replay
   it. The graph memoizes the pure steps; the model, the network, and the
   clock always re-run.
+
+  Class is a statement about VERIFICATION, never about worth — in most
+  workflows the irreproducible edges are where value enters the graph
+  at all (an authored creative act cannot be re-run BY NATURE; that is
+  its signature, not its defect). Creation is marked by `authored-by`
+  testimony over a volatile edge, never by a class of its own; the full
+  case is derivation-records.md "Creation is a first-class edge."
 
 **Axis 2 — freshness intent (property of the request):** do you even
 want a fresh run?
@@ -264,9 +370,13 @@ Sorted by whether the launch needs it.
 7. **A read-side edge index** — "which session introduced byte X" needs
    finding edges by node. Stays off every destructive path
    (store-index-and-links.md). Enables the DAG queries.
-8. **Signed receipts** — testimony signatures over REC's ID → the only
-   path to honest *remote* (maintainer-side) verification, which we
-   ruled out of the launch as dishonest today.
+8. **Signed receipts** — testimony signatures over REC's ID. Signing
+   and anchoring COMPOSE and answer different questions: a signature
+   says who stands behind the record; an anchor says when it existed
+   and that it is unaltered since. Neither claims remote byte-honesty —
+   honest *remote* (maintainer-side) verification needs both plus
+   recomputation where the bytes live, and stays ruled out of the
+   launch as dishonest today.
 9. **`elide`** — once edges exist, exact edges can license storage
    elision (derivation-records.md Layer 4). Volatile AI edges never
    elide; this rides `exact` media/build edges.
@@ -279,6 +389,18 @@ Sorted by whether the launch needs it.
     `recorded`-intent half is the cheaper blade (needs only Layer 1 +
     a provenance-disclosing read path — no input-closure convention)
     and could ship before `current`-intent memoization.
+11. **Anchor transport (opt-in, post-testimony-freeze)** — the same
+    Stop/SessionEnd hooks that mint receipts POST the session
+    statement's ID to configured witnesses (OTS calendar; optionally
+    one free RFC 3161 TSA), write proof blobs to the store as ordinary
+    objects, append the `anchored` testimony line
+    (testimony-record.md), and upgrade pending proofs on later runs.
+    Default OFF in the dev profile, forever. The launch ships NOTHING
+    executable here — only the threat-model section above and a
+    documentation recipe page, "External anchoring by composition"
+    (`ots stamp` / `rekor-cli upload` / `openssl ts -query` over the C4
+    ID of a signed journal-prefix statement). Full ruling: the
+    anchoring litigation, 2026-07-16 (GTM record).
 
 ## The UI surface — and the one principle that governs it
 
