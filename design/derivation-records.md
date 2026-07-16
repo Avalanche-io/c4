@@ -275,6 +275,67 @@ read path that discloses provenance; it does not even need the
 input-closure-declaration convention that gates `current`-intent
 memoization. It could ship first.
 
+## Prior art and where the moat actually is (2026-07-16 landscape scan)
+
+The five properties that must co-occur: (a) content-addressed
+materialized outputs; (b) a portable, cross-tool re-execution graph;
+(c) a determinism CLASS that *labels* non-determinism (exact/validated/
+volatile) rather than forbidding it; (d) a per-request choice between
+recompute-fresh and serve-recorded; (e) side-effect-suppressing replay.
+A dated scan (classics + 2024–2026 entrants) found **no system that
+unifies all five**, and located the moat precisely at (c) and (d).
+
+- **Durable-execution family — the (e) cluster, requires-not-labels
+  determinism.** Temporal, and 2025 newcomers DBOS, Restate, Inngest,
+  Resonate: a per-run journal replays recorded step results on recovery
+  so effectful steps don't re-fire (genuine (e), in production). All
+  drop (a)(b)(c)(d): the store is keyed by workflow/step ID in a DB not
+  a content hash; the journal is per-run not a portable artifact DAG;
+  they *require* determinism and make you wrap non-determinism in a
+  step (the anti-(c)); replay is recovery-only, never a user toggle
+  (Resonate's own docs frame determinism as a constraint to satisfy).
+- **Content-addressed ML builds — the (a) cluster.** Flox/Nix-for-ML
+  (2025): genuinely content-addressed weights ("same hash = same
+  weights"), partial (b) as a build-time dep graph. But Nix *enforces*
+  purity — it forbids non-determinism (anti-(c)) and side effects
+  (anti-(e)), and serves by hash with no recompute-vs-recorded toggle
+  (anti-(d)).
+- **Agent observability (LangSmith/Langfuse/Braintrust/Phoenix) and
+  LLM VCR libs (vcr-langchain, pytest-recording).** Record-only traces;
+  "replay" re-runs live (no (e) unless you mock); cassettes are
+  per-test YAML, not a durable content-addressed store. Records, not a
+  substrate.
+- **The one independent hit on (d).** AI21's 2025 essay "Reproducing
+  Variance: Caching in Agentic LLM Pipelines" argues explicitly that
+  agentic pipelines need BOTH serve-cached AND recompute, *selectable*
+  within one pipeline — axis (d) stated as a felt need by a serious lab.
+  But it is a cache-KEY design essay: no first-class content-addressed
+  store, no cross-tool graph, no determinism-class taxonomy, no side-
+  effect suppression. The need is articulated; nobody has productized it.
+- **Research converging on (a)+(b) — reported, preprint-level (May–Jun
+  2026, not deep-verified).** "Portable Agent Memory" (BLAKE3
+  Merkle-DAG content-addressed + Ed25519 signed provenance edges) is the
+  closest published shape to C4's store + signed testimony; "From Agent
+  Loops to Deterministic Graphs" proposes identity-based replay over an
+  artifact DAG; PROV-AGENT/AgentTrace give typed derivation relations
+  with artifact-hash edges. All are descriptive provenance, not an
+  executable recompute route, and **all drop (c)(d)(e)**.
+
+**Reading.** (a) and (b) are validated-but-converging — the academic
+field is actively moving toward content-addressed agent provenance, so
+the substrate direction is right *and* not ours alone for long. The
+durable differentiation is (c)+(d)+(e-done-as-choice): labeling
+non-determinism as a served-able class instead of a bug, and making
+freshness a per-request intent instead of the system's decision. Both
+are genuinely unclaimed; (d) has one dated external signal that the need
+is felt (AI21, 2025) and (e) is being assembled separately by the
+durable-exec vendors. The pieces are being built in isolation; the
+unification — one content-addressing scheme where bytes are the truth
+and routes/records/classes/intents are all first-class and cross-tool —
+is the unoccupied square. The window is real, not infinite. (Confidence:
+product claims solid/2025; arXiv items reported at abstract level; SEO
+explainer sources discarded.)
+
 ## Scheduling and the wedge
 
 **Platform tail, not launch.** Call-granularity memoization needs Layer
