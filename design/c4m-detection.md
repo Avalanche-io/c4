@@ -53,17 +53,46 @@ If the file has a `.c4m` extension, skip Phase 1 and go directly to Phase 2. Tru
 
 ## When to Apply
 
-c4m detection runs in every identification and storage path:
-- `c4 <file>` (bare identification)
-- `c4 id <file>`
-- `c4 id -s <dir>` (for each file in the directory)
-- `store.put()` in every language
-- `identify_file()`, `identifyBytes()`, `C4ID.identify()` etc.
+**Scoped 2026-07-25.** Detection runs on the **argument/description
+path only** — where a caller hands C4 something and asks what it *is*.
+It never runs on the file-storing path.
+
+Applies to:
+- `c4 <file>` (bare identification of an argument)
+- `c4 id <file>` (identification of an argument)
+- piped stdin being identified as a description
 
 ## When NOT to Apply
 
-- Piped stdin (`echo "data" | c4`) — stdin is identified as raw bytes unless the content passes the heuristic
-- Content already known to be non-c4m by context (e.g., content retrieved from store by a known non-c4m ID)
-- Actually: stdin SHOULD also be checked. Any content entering the C4 pipeline gets the detection treatment.
+- **Files inside a scanned tree — never.** `c4 id -s <dir>` stores
+  every file's exact bytes, whatever its name and whatever its content
+  parses as. This is what `help.go` promises verbatim (*"files inside
+  scanned trees are ALWAYS bytes, whatever their name"*) and what
+  c4py, c4ts, libc4 and c4-mcp already do.
+- `store.put()` — the store has no object types. What an ID names is
+  knowledge the caller brings (`snapshot-loop/round-1/draft-v7.md:66`).
+- Content already known to be non-c4m by context.
 
-The rule is universal: if C4 is computing an ID, it checks for c4m first.
+**The rule is scoped, not universal:** if C4 is being asked what an
+argument *is*, it checks for c4m. If C4 is storing a file, it stores
+bytes.
+
+### Why this changed
+
+The original list included `c4 id -s <dir>` (for each file in the
+directory), which authorized storing a transformed copy of any file
+that parsed as c4m. That destroyed the original bytes, made a single
+entry line record a size and an ID naming different bytes, and broke
+whole-tree restore on any tree containing a `.c4m` file
+([#43](https://github.com/Avalanche-io/c4/issues/43)). The goal that
+motivated it — formatting-independent identity for descriptions — is
+preserved by the argument path and by the recorded projection map; see
+`c4m-canonical-storage.md`.
+
+### Consequence for the heuristic's tolerance
+
+With detection confined to the argument path, the cost of a false
+positive drops sharply: a mis-detected *argument* yields a wrong answer
+to a question the caller asked and can re-ask, whereas a mis-detected
+*file* silently destroyed data. The conservative bias stated above
+remains correct, but it is no longer load-bearing for data safety.
