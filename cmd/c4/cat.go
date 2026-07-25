@@ -93,10 +93,18 @@ func catFromStore(s store.Store, id c4.ID, ergonomic, recursive bool) {
 		fatalf("Error reading content: %v", err)
 	}
 
-	// Try to parse as c4m for formatting flags.
+	// cat returns the stored bytes. Recognizing that an object parses as
+	// c4m is what enables -e and -r; it never licenses rewriting what
+	// was stored. Without a formatting flag the bytes go out verbatim,
+	// so an object retrieved by ID is the object that was put.
+	if !ergonomic && !recursive {
+		os.Stdout.Write(data)
+		return
+	}
+
 	m := tryParseC4m(data)
 	if m == nil {
-		// Not c4m — output raw bytes.
+		// Not c4m — the formatting flags have nothing to act on.
 		os.Stdout.Write(data)
 		return
 	}

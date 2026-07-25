@@ -232,7 +232,17 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 		entry *c4m.Entry
 		path  string // relative, for warnings
 		full  string
+		seq   int // index into seqs, or -1 when not a sequence member
+		pos   int // member position within that sequence, in range order
 	}
+	// Folded entries name an ID-list object built from their members'
+	// IDs in range order; that object must be stored too, so members
+	// are grouped by sequence and their IDs collected positionally.
+	type seqGroup struct {
+		entry   *c4m.Entry
+		members []c4.ID
+	}
+	var seqs []*seqGroup
 	var files []fileItem
 	var dirs []*c4m.Entry
 	var dirStack []string
@@ -263,9 +273,12 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 				continue
 			}
 			prefix := strings.Join(dirStack, "")
-			for _, m := range members {
+			g := &seqGroup{entry: entry, members: make([]c4.ID, len(members))}
+			seqs = append(seqs, g)
+			gi := len(seqs) - 1
+			for i, m := range members {
 				relPath := prefix + m
-				files = append(files, fileItem{nil, relPath, filepath.Join(baseDir, relPath)})
+				files = append(files, fileItem{nil, relPath, filepath.Join(baseDir, relPath), gi, i})
 			}
 			continue
 		}
@@ -273,7 +286,7 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 			continue
 		}
 		relPath := strings.Join(dirStack, "") + entry.Name
-		files = append(files, fileItem{entry, relPath, filepath.Join(baseDir, relPath)})
+		files = append(files, fileItem{entry, relPath, filepath.Join(baseDir, relPath), -1, 0})
 	}
 
 	// Store file content on a bounded worker pool — objects are
@@ -291,13 +304,23 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			if it.entry == nil {
-				storeSequenceMember(s, it.path, it.full)
+				// Distinct slots, one writer each — no lock needed.
+				seqs[it.seq].members[it.pos] = storeSequenceMember(s, it.path, it.full)
 				return
 			}
 			storeFileEntry(s, it.entry, it.path, it.full)
 		}(it)
 	}
 	wg.Wait()
+
+	// Every folded entry's ID-list object is stored after its members.
+	// Without it the stored listing names content that is not in the
+	// store and the description cannot resolve.
+	for _, g := range seqs {
+		if err := storeSequenceIDList(s, g.entry, g.members); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+		}
+	}
 
 	// Store directory c4m objects after all file entry IDs are final.
 	for _, entry := range dirs {
@@ -358,40 +381,73 @@ func reportStored(id c4.ID) {
 // canonicalization changed it.
 // storeSequenceMember stores one expanded member of a folded sequence
 // entry. Members are raw content — Put computes each member's own ID.
-func storeSequenceMember(s store.Store, relPath, fullPath string) {
+// storeSequenceMember stores one expanded member of a folded sequence
+// entry and returns the member's own ID. A nil ID means the member
+// could not be stored, which makes the folded entry's ID-list
+// unbuildable.
+func storeSequenceMember(s store.Store, relPath, fullPath string) c4.ID {
 	f, err := os.Open(fullPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: cannot read sequence member %s: %v\n", relPath, err)
-		return
+		return c4.ID{}
 	}
 	defer f.Close()
-	if _, err := s.Put(f); err != nil {
+	id, err := s.Put(f)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
+		return c4.ID{}
 	}
+	return id
 }
 
+// storeSequenceIDList stores the ID-list object a folded entry names.
+// A folded entry's C4ID is the ID of its members' ID list, so without
+// this object the stored listing references content that is not in the
+// store and the description cannot resolve.
+//
+// memberIDs must be in the folded range's order. The rebuilt object is
+// verified against the entry's own ID before it is trusted: a mismatch
+// means the scan and the store disagree about the sequence, which is
+// reported rather than silently stored under a different name.
+func storeSequenceIDList(s store.Store, entry *c4m.Entry, memberIDs []c4.ID) error {
+	for i, id := range memberIDs {
+		if id.IsNil() {
+			return fmt.Errorf("sequence %s: member %d was not stored", entry.Name, i+1)
+		}
+	}
+	data := c4m.IDListBytes(memberIDs)
+	if got := c4.Identify(bytes.NewReader(data)); got != entry.C4ID {
+		return fmt.Errorf("sequence %s: rebuilt ID list is %s, entry names %s", entry.Name, got, entry.C4ID)
+	}
+	if _, err := s.Put(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("sequence %s: failed to store ID list: %w", entry.Name, err)
+	}
+	return nil
+}
+
+// storeFileEntry stores one file's content. A file inside a scanned
+// tree is bytes, whatever its name and whatever its content parses as:
+// storing a transformed copy loses the original and leaves the entry
+// naming content that is not on disk.
 func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
-	data, err := os.ReadFile(fullPath)
+	f, err := os.Open(fullPath)
 	if err != nil {
 		return // skip files we can't open
 	}
-	var storeData []byte
-	if strings.HasSuffix(entry.Name, ".c4m") || looksLikeC4m(data) {
-		canonical, _ := canonicalizeC4mBytes(data)
-		if canonical != nil {
-			storeData = canonical
-		}
-	}
-	if storeData == nil {
-		storeData = data
-	}
-	newID, err := s.Put(bytes.NewReader(storeData))
+	defer f.Close()
+	newID, err := s.Put(f)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
 		return
 	}
 	if newID != entry.C4ID {
-		entry.C4ID = newID
+		// The scan hashed these bytes; the store hashed them again and
+		// disagreed, so the file changed under the scan. Record the
+		// entry unread rather than claiming an ID for bytes that are no
+		// longer there — rewriting it would silently describe a file
+		// the scan never saw.
+		fmt.Fprintf(os.Stderr, "Warning: %s changed during the scan, recorded with a null ID\n", relPath)
+		entry.C4ID = c4.ID{}
 	}
 }
 

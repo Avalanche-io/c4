@@ -978,6 +978,22 @@ func parseIDListFromString(s string) (*idList, error) {
 	return parseIDList(strings.NewReader(s))
 }
 
+// IDListBytes returns the canonical ID-list object for the given member
+// IDs, in the folded range's order. A folded entry's own C4 ID is the ID
+// of exactly these bytes, so a caller that stores a folded entry must
+// store this object too — otherwise the entry names content that is not
+// in the store and the description cannot resolve.
+//
+// The canonical form is the members' bare 90-character IDs concatenated
+// with no delimiter; it is self-framing.
+func IDListBytes(ids []c4.ID) []byte {
+	l := newIDList()
+	for _, id := range ids {
+		l.Add(id)
+	}
+	return l.Bytes()
+}
+
 // IsIDListContent checks if content appears to be a plain C4 ID list.
 // Returns true if every non-empty line matches the C4 ID pattern.
 func IsIDListContent(content []byte) bool {
