@@ -107,18 +107,34 @@ entirely, folding appears to be strictly information-preserving — the
 folded entry records the ID of the member ID-list, and the per-member
 mode/mtime it would otherwise collapse have already been nulled.
 
-If that holds, then **in content projection `-S` should not change the
-ID**, and today's behavior is a defect of the same family as
-[#41](https://github.com/Avalanche-io/c4/issues/41). Fixing it removes
-an entire class of silent false negatives and drops the out-of-band
-parameter count from three to two.
+**Status: REJECTED (2026-07-25). The premise was wrong.**
 
-(In *full* projection folding does lose information — shared mode,
-newest mtime — so identity may legitimately differ there, or folding
-should be refused in full projection. That is the design question.)
+Folding is lossy even under a nil projection. Verified: a folded entry
+records the **sum** of member sizes, not per-member sizes
+(`help.go`: *"its size is the sum of member sizes read and hashed"*),
+so expansion cannot restore them. Names and member content IDs are
+recoverable; sizes are not.
 
-**Status: proposed, not accepted.** Under adversarial review — the
-snapshot-loop rounds may have already settled this deliberately.
+Joshua's ruling follows from the same fact and goes further: **folding
+discards, expanding invents.** Expanding a folded entry would hand
+every frame the set's single metadata value — asserting per-frame facts
+never observed, which is precisely what "verification over assertion"
+forbids. So folded and unfolded are **two valid, different
+descriptions** of one sequence, at every projection, and the input form
+is authoritative once canonicalized.
+
+**Consequence:** folding stays part of tree identity, and the
+out-of-band parameter count stays at three. What changes is where the
+disambiguation lives — not in the ID (which remains a pure hash), but
+in the **projection- and folding-keyed map** recorded beside it. See
+`c4m-canonical-storage.md` "Folding — RULED."
+
+This also means Finding 1's false-negative scenario needs restating:
+comparing a folded ID against an unfolded ID is a **legitimate miss**,
+not a silent error — the descriptions really do differ. The genuine
+residue of Finding 1 is narrower and still stands: a bare directory ID
+does not say which projection, folding, or exclusion scope produced it,
+so a *recipient* cannot tell what question it answers.
 
 ---
 

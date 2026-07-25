@@ -105,24 +105,87 @@ sit in a project directory as an ordinary file, be stored byte-exact,
 and still be known to the store as a description of a tree it already
 has.
 
-### Two normalization questions this raises (open)
+### Folding — RULED (Joshua, 2026-07-25)
 
-1. **Sequence folding must not re-introduce the false negative.**
-   `-S` currently changes a directory's ID (verified: the same tree
-   scanned with and without folding yields different content IDs). If
-   the map keys on projections but not on folding, the same
-   "identical trees reported as differing" failure returns one level
-   up. Either fix a canonical folding choice for map keys, or record
-   folding as part of the key. **Recommendation: normalize — fold
-   state should not be part of tree identity at a projection**, which
-   is the same conclusion reached independently in
-   `v11-surface-review.md` Finding 1.
-2. **Exclusions produce a genuinely different tree**, so they deserve
-   a different entry — but a lookup must not let "I have this tree"
-   silently mean "I have this tree minus the logs." The scan scope
-   needs to be recoverable from the entry, which today's rule
-   ("the snapshot records what was scanned, never what was omitted")
-   does not provide.
+> "Folded frame ranges are the same as expanded ranges but with a
+> single metadata value for the set… Folded ranges deliberately discard
+> individual frame metadata; expanding a compacted range expression
+> does not restore anything — in fact it likely communicates
+> **incorrect** metadata for individual frames. So I say we use what is
+> input (folded or not) as the authority once canonicalized. It is
+> valid to have two different c4m files for the same frame sequence due
+> to retention or discard of the metadata."
+
+**The ruling: the input form is authoritative. Never expand a folded
+entry in order to compare.** Folding is a deliberate, lossy editorial
+choice about how much per-member detail a description retains, and a
+folded and an unfolded description of one sequence are **two valid,
+different descriptions** — not two spellings of one.
+
+The asymmetry that makes this correct: **folding discards; expanding
+invents.** Expansion would hand every frame the set's single metadata
+value, asserting per-frame facts that were never observed. A system
+whose rule is "verification over assertion" must not manufacture
+metadata to make a comparison succeed.
+
+#### One mechanical correction to the premise
+
+The ruling opens by treating folding as identity-neutral under a nil
+projection ("they will expand to identical values… just a nicely more
+compact format"). That holds for **names** and **member content IDs**,
+but not for **sizes** — verified 2026-07-25:
+
+```
+content projection, unfolded (20 lines):
+  - - 3  frame.0001.exr        c42BQmxv…
+  - - 3  frame.0002.exr        c435iLjR…      … per-member sizes
+
+content projection, folded (1 line):
+  - - 60 frame.[0001-0020].exr c44kEfNj…      … the SUM, and the ID
+                                                of the member ID-list
+```
+
+`help.go` states it: a folded entry's *"size is the sum of member sizes
+read and hashed."* Member names are recoverable from the range
+expression and member content IDs are recoverable in order from the
+ID-list — but **per-member sizes are not recoverable from a folded
+entry.** So folding remains lossy even with metadata nulled, and
+`c4 id -q -m c` legitimately differs between the two forms today
+(measured: `c44saa79UCrELV…` vs `c433C2Y6rJKHHR…`).
+
+This does not weaken the ruling — it **strengthens** it. Folded and
+unfolded really are different descriptions at every projection, so
+treating the input as authoritative is the only rule that does not
+require inventing data.
+
+#### Consequence for the map (binding)
+
+**Folding is part of the map key**, exactly as projection is. An
+existence check compares like with like, scanned alike — same
+projection *and* same folding choice. A folded lookup against an
+unfolded entry is a legitimate miss, not a false negative, because the
+two descriptions genuinely differ.
+
+This overrides the earlier recommendation in
+`v11-surface-review.md` Finding 1 to "normalize folding away." That
+recommendation assumed expansion was lossless; it is not.
+
+#### Still open
+
+Whether the map should additionally record a *relationship* between the
+two forms — a `fold` / `unfold` edge — so a caller who holds one can
+discover the other. It cannot be an `exact` derivation in the
+unfold direction (the process cannot reproduce per-member sizes), so
+the honest class is `validated` at best, and it may not be worth a
+record at all. **Not release-blocking; decide when the map is built.**
+
+### Exclusions (open)
+
+Exclusions produce a genuinely different tree, so they deserve a
+different entry — but a lookup must not let "I have this tree" silently
+mean "I have this tree minus the logs." The scan scope needs to be
+recoverable from the entry, which today's rule ("the snapshot records
+what was scanned, never what was omitted") does not provide.
 
 ### What this settles elsewhere
 
