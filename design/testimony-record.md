@@ -14,6 +14,85 @@ A plain-text sidecar in a delivery package that binds declarations
 everything checkable is checked from bytes and everything merely
 *stated* is visibly a statement with an author.
 
+## Founding principle (Joshua, 2026-07-25)
+
+> "Everything in c4 is content, but testimonial content is a known
+> parseable type."
+
+This is the unifying statement, and it retires a category error that
+had crept into these docs — the habit of speaking about "the testimony
+layer" as though it were a second storage mechanism beside content.
+**There is no second mechanism.** A testimony record is an ordinary
+object: raw bytes, a content ID, stored and replicated like any other.
+What distinguishes it is only that its bytes are *recognizable* — it
+declares its own type in its first token.
+
+### The rule this implies
+
+**Type is something you recognize, never something you apply.**
+Recognition may add capability (a verb can explain it, resolve it,
+expand it); recognition may never change what is stored or what an ID
+names. That single sentence is the correct form of the rule that
+2026-03-25 got wrong: the mistake was never *recognizing* c4m, it was
+*transforming* on recognition (`c4m-canonical-storage.md`,
+[#43](https://github.com/Avalanche-io/c4/issues/43)).
+
+It also reconciles with the round-1 pin — *"the store has no object
+types; what an ID names is knowledge the caller brings."* Both are
+true, at different altitudes: **the store is typeless; the caller and
+the verbs recognize types.** Recognition lives at the verb, never in
+the store.
+
+### What falls out for free
+
+Because testimony is content rather than a parallel layer, every
+ordinary verb already works on it, with no new machinery:
+
+- a record can be snapshotted, restored, diffed, patched, replicated,
+  and journaled like anything else;
+- a record has a content ID, so **testimony about testimony is free** —
+  a signature over a record's ID, an anchor over a statement's ID, and
+  the `resolves-to` and `anchored` predicates all compose without a
+  special case;
+- a record can sit inside a scanned tree as an ordinary file and still
+  be recognized when someone asks about it — which is exactly the
+  ergonomic case that motivated the c4m ruling.
+
+### Edge cases this principle has to survive
+
+1. **The journal is the one mutable artifact.** The store is
+   hash-named immutable objects **plus one append-only journal file**.
+   The journal is therefore not content in the same sense — it is the
+   log of claims *about* content, and it is the only thing in the
+   system that changes in place. The precise form of the principle is:
+   *everything in c4 is content, except the append-only log of claims;
+   and every prefix of that log is content* — which is exactly why A3's
+   tamper-evidence works by signing a journal **prefix**, and why an
+   `anchored` line takes that prefix statement's ID as its subject.
+2. **Recognition must never be load-bearing for correctness.** If a
+   known type is treated as plain bytes, nothing may break. This is
+   what makes false-positive detection harmless and keeps the store
+   typeless.
+3. **A known type must be evident from the content itself.** The
+   `@c4 <kind> <version>` first token is what makes a record
+   self-identifying and c4m-parser-rejecting. A type that can only be
+   known from a filename or a sidecar is not a known type.
+4. **"Known parseable type" must not become a schema registry.** The
+   philosophy forbids registries, and the count is already drifting
+   (c4m, journal, and the designed receipt/process/testimony kinds).
+   The bound this principle suggests is the one the surface review
+   arrived at independently: **two kinds — the positional grammar that
+   must be versioned (the journal) and the line-local one that must
+   not (records)** — see `v11-surface-review.md`.
+
+### What it does NOT change
+
+Testimony remains **non-authoritative by construction**: the journal is
+the sole authority on claims, retention on verdicts, and testimony only
+ever adds statements about IDs. Being content makes a record
+*addressable and verifiable*; it does not make it authoritative. Those
+are independent properties, and conflating them would undo R2.
+
 ## Positioning — beside, not instead
 
 | Plane                           | Owner                                                                           | This design's relationship                                                                       |

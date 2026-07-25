@@ -231,11 +231,18 @@ Questions to settle before anyone builds it:
    concept and a new conformance obligation across five
    implementations. It must earn that against *fewest concepts, fully
    load-bearing*.
-3. **Does it belong to capture or to testimony?** A record of "what
-   scope was used" is arguably a statement *about* a scan — which is
-   the testimony layer's job — and testimony never pins bytes. The
-   virtual parent takes the opposite approach and makes it content.
-   That is a real fork, not a detail.
+3. ~~**Does it belong to capture or to testimony?**~~ **RESOLVED
+   2026-07-25 (Joshua): the fork was false.** *"Everything in c4 is
+   content, but testimonial content is a known parseable type."* A
+   statement about a scan is content either way — the only question
+   left is the far smaller one of **where the file sits**: inside a
+   virtual parent (so the scan scope is hashed into the capture's own
+   ID) or beside the capture as an independent record (so the capture's
+   ID is unchanged and the scope is discoverable separately). Both are
+   content; both are recognizable by their first token. Choose on
+   whether scope should be *inside* the identity or *beside* it — which
+   is the same question as whether an ID should carry its own question.
+   See `testimony-record.md` "Founding principle."
 4. **Restore semantics.** Restoring a virtual parent must not
    materialize the wrapper, or it invents a directory that never
    existed.
