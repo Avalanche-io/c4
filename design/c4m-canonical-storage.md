@@ -187,6 +187,63 @@ mean "I have this tree minus the logs." The scan scope needs to be
 recoverable from the entry, which today's rule ("the snapshot records
 what was scanned, never what was omitted") does not provide.
 
+### FUTURE CONSIDERATION — the virtual parent (Joshua, 2026-07-25)
+
+**Not to act on. Recorded because it may be the general answer to the
+question above, and to a wider one.**
+
+> "A c4m can plausibly be created from a virtual directory *above* the
+> one being captured, and in that virtual parent include additional
+> information such as exclusions. This implies a special c4 file that
+> exists in this virtual parent."
+
+The shape: capture is described not as `tree/` but as a virtual parent
+containing `tree/` **plus a file recording the scan parameters** —
+exclusions, folding choice, projection, whatever else the scan chose.
+
+Why this is worth keeping: **it makes the scan's parameters part of the
+described content, so they are hashed in.** Today a directory ID is a
+function of out-of-band choices it does not record — the residue of
+`v11-surface-review.md` Finding 1, and the reason a recipient cannot
+tell what question an ID answers. Under a virtual parent, the ID covers
+both the tree *and* the scope under which it was read. The ID starts
+carrying its own question.
+
+Properties that make it in-idiom:
+
+- **No format change.** A virtual parent is an ordinary directory
+  containing an ordinary file. The frozen c4m grammar describes it
+  already. This is *capabilities from the outside* — the parameters
+  arrive as content, not as a decoration on the entry line.
+- **It composes with the map** rather than competing: the map answers
+  "do I have this?", the virtual parent answers "under what scope was
+  this taken?" Either could ship without the other.
+- **Self-describing, in the c4m idiom** — the description declares its
+  own scope the way a c4m already declares its own detail level.
+
+Questions to settle before anyone builds it:
+
+1. **What is the root ID then?** The wrapper's ID is not the tree's ID.
+   Two IDs now exist for one capture, and the surface must make clear
+   which is which — precisely the ambiguity this design is trying to
+   reduce, so it could backfire if done casually.
+2. **The special file needs a name and a grammar**, which is a new
+   concept and a new conformance obligation across five
+   implementations. It must earn that against *fewest concepts, fully
+   load-bearing*.
+3. **Does it belong to capture or to testimony?** A record of "what
+   scope was used" is arguably a statement *about* a scan — which is
+   the testimony layer's job — and testimony never pins bytes. The
+   virtual parent takes the opposite approach and makes it content.
+   That is a real fork, not a detail.
+4. **Restore semantics.** Restoring a virtual parent must not
+   materialize the wrapper, or it invents a directory that never
+   existed.
+
+Cross-reference when this is picked up: `testimony-record.md` A1
+(claim provenance was deferred to testimony on exactly these grounds),
+and `v11-surface-review.md` Finding 1.
+
 ### What this settles elsewhere
 
 This map is also the answer to `v11-surface-review.md` Finding 1. A
