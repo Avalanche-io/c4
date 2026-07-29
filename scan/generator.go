@@ -68,6 +68,10 @@ type Generator struct {
 	// content mode hashing null-stat entry lines): install a different
 	// function, nothing else in the walk changes.
 	dirIdentity func(children []*c4m.Entry) c4.ID
+
+	// Directories currently being resolved through a symbolic link, so a
+	// link naming one of its own ancestors is detected instead of recursing.
+	linkChain map[string]bool
 }
 
 // NewGenerator creates a new manifest generator
@@ -261,6 +265,14 @@ func (g *Generator) clone() *Generator {
 		ctx:             g.ctx,
 		dirIdentity:     g.dirIdentity,
 	}
+	// Carry the symlink resolution chain by value. A branch of the scan must
+	// see its own ancestors to detect a cycle, and must not see a sibling's.
+	if len(g.linkChain) > 0 {
+		clone.linkChain = make(map[string]bool, len(g.linkChain))
+		for k := range g.linkChain {
+			clone.linkChain[k] = true
+		}
+	}
 	if len(g.excludePatterns) > 0 {
 		clone.excludePatterns = make([]string, len(g.excludePatterns))
 		copy(clone.excludePatterns, g.excludePatterns)
@@ -333,6 +345,18 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	}
 
 	g.scanRoot = absPath
+
+	// The directory being scanned joins the symlink resolution chain, so a
+	// link naming it — or any directory already being resolved above it —
+	// is unidentifiable rather than infinitely recursive. `up -> ..` names a
+	// directory that contains the link itself, so no fixed point exists and
+	// every ID would be some arbitrary truncation. Nil is the honest answer
+	// and it is the one the standard already gives for a target that cannot
+	// be identified.
+	if g.linkChain == nil {
+		g.linkChain = make(map[string]bool, 1)
+	}
+	g.linkChain[filepath.Clean(absPath)] = true
 
 	// Initialize semaphore for the worker pool. Sub-scans (clone()) inherit
 	// this same semaphore so the cap is enforced across the entire walk.
@@ -760,7 +784,29 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 	}
 
 	if targetInfo.IsDir() {
+		// A symlink to a directory is resolved by scanning it, so a link that
+		// names one of its own ancestors recurses without bound. `up -> ..`
+		// is an entirely ordinary thing to find on a filesystem — `current`
+		// and `latest` links look exactly like it — and it crashed the
+		// scanner with a stack overflow while exiting 2, the code that means
+		// "partial description". A crash reported as a partial success is
+		// worse than either.
+		//
+		// A cycle yields a nil ID, which is the same answer the standard
+		// already gives for a link whose target cannot be identified.
+		key, err := filepath.Abs(targetPath)
+		if err != nil {
+			return c4.ID{}
+		}
+		key = filepath.Clean(key)
+		if g.linkChain[key] {
+			return c4.ID{}
+		}
 		subGen := g.clone()
+		if subGen.linkChain == nil {
+			subGen.linkChain = make(map[string]bool, 1)
+		}
+		subGen.linkChain[key] = true
 		manifest, err := subGen.GenerateFromPath(targetPath)
 		if err != nil {
 			return c4.ID{}
