@@ -2,6 +2,16 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### Restore never writes through a symbolic link in the destination
+
+`c4 restore --force` into a destination holding a symbolic link to a
+directory outside it (`dest/sub -> ../outside`) wrote the snapshot's
+`sub/payload.txt` through the link into `outside/`, then failed its own
+verification with exit 3. Every write is now checked to stay beneath the
+destination without passing through a link, and a link standing where
+the snapshot records a directory is replaced by the directory. Release
+1.0.x has had this since 2026-07-29 (56c4416); master never took it.
+
 ### A symlink to an ancestor no longer crashes the scan
 
 `c4 id` on a tree holding a link to one of its own ancestors or to its

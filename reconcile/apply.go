@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +22,10 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// The boundary every write is checked against. Set here because it is
+	// Apply's argument, not the Reconciler's configuration.
+	r.root = dirPath
 
 	res := &Result{}
 
@@ -115,10 +120,64 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	return res, nil
 }
 
+// beneath refuses any path that leaves the directory being reconciled, or
+// that reaches it through a symbolic link.
+//
+// Restore materialises whatever a description names, and a description is
+// supplied by whoever supplies the snapshot. Without this check a symbolic
+// link already sitting in the destination becomes a path the reconciler
+// writes *through*, landing content outside the directory it was told to
+// reconcile — the archive-extraction traversal, reachable by supplying two
+// ordinary snapshots in sequence. Only the final component may legitimately
+// be a link, so every component above it is checked.
+//
+// This closes the reachable hole. It is not a defence against an attacker
+// swapping a component between this check and the write; that needs openat
+// with O_NOFOLLOW per component and is tracked separately in
+// design/c4m-symlinks.md (R12).
+func (r *Reconciler) beneath(path string) error {
+	if r.root == "" {
+		return nil
+	}
+	rel, err := filepath.Rel(r.root, path)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("refusing to operate on %s: outside %s", path, r.root)
+	}
+	cur := r.root
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for _, p := range parts[:len(parts)-1] {
+		if p == "." || p == "" {
+			continue
+		}
+		cur = filepath.Join(cur, p)
+		fi, err := os.Lstat(cur)
+		if os.IsNotExist(err) {
+			return nil // nothing below it exists either
+		}
+		if err != nil {
+			return err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to write through symbolic link %s", cur)
+		}
+	}
+	return nil
+}
+
 // applyMkdir makes the directory; made reports whether it did (false
 // when it already existed or in a dry run).
 func (r *Reconciler) applyMkdir(op Operation, res *Result) (made bool, err error) {
-	info, err := os.Stat(op.Path)
+	if err := r.beneath(op.Path); err != nil {
+		return false, err
+	}
+	// Lstat, not Stat. Stat follows, so a symbolic link to a directory read
+	// as "already a directory" and was left in place — becoming the path
+	// every subsequent create wrote through. The target records a directory
+	// at this name, so a link here is stale and must be replaced.
+	info, err := os.Lstat(op.Path)
 	if err == nil && info.IsDir() {
 		res.Skipped++
 		return false, nil
@@ -126,6 +185,12 @@ func (r *Reconciler) applyMkdir(op Operation, res *Result) (made bool, err error
 	if r.dryRun {
 		res.Created++
 		return false, nil
+	}
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if rmErr := os.Remove(op.Path); rmErr != nil {
+			return false, fmt.Errorf("replacing symbolic link %s with a directory: %w",
+				op.Path, rmErr)
+		}
 	}
 	mode := os.FileMode(0755)
 	if op.Entry != nil && op.Entry.Mode != 0 {
@@ -179,6 +244,9 @@ func (r *Reconciler) applyCreates(ops []Operation, res *Result) {
 }
 
 func (r *Reconciler) applyCreate(op Operation, res *Result) error {
+	if err := r.beneath(op.Path); err != nil {
+		return err
+	}
 	// Idempotent: check if file already has correct content.
 	size := int64(-1)
 	if op.Entry != nil {
@@ -236,6 +304,9 @@ func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 }
 
 func (r *Reconciler) applyMove(op Operation, res *Result) error {
+	if err := r.beneath(op.Path); err != nil {
+		return err
+	}
 	// Idempotent: check if dest already correct.
 	size := int64(-1)
 	if op.Entry != nil {
@@ -277,6 +348,9 @@ func (r *Reconciler) applyMove(op Operation, res *Result) error {
 }
 
 func (r *Reconciler) applySymlink(op Operation, res *Result) error {
+	if err := r.beneath(op.Path); err != nil {
+		return err
+	}
 	if op.Entry == nil {
 		return nil
 	}
@@ -321,6 +395,9 @@ func (r *Reconciler) setLinkTimeOrRecord(path string, t time.Time, res *Result) 
 }
 
 func (r *Reconciler) applyChmod(op Operation, res *Result) error {
+	if err := r.beneath(op.Path); err != nil {
+		return err
+	}
 	if op.Entry == nil {
 		return nil
 	}
@@ -344,6 +421,9 @@ func (r *Reconciler) applyChmod(op Operation, res *Result) error {
 }
 
 func (r *Reconciler) applyChtimes(op Operation, res *Result) error {
+	if err := r.beneath(op.Path); err != nil {
+		return err
+	}
 	if op.Entry == nil {
 		return nil
 	}
@@ -370,6 +450,9 @@ func (r *Reconciler) applyChtimes(op Operation, res *Result) error {
 }
 
 func (r *Reconciler) applyRemove(op Operation, res *Result) error {
+	if err := r.beneath(op.Path); err != nil {
+		return err
+	}
 	info, err := os.Lstat(op.Path)
 	if os.IsNotExist(err) {
 		res.Skipped++
@@ -399,6 +482,9 @@ func (r *Reconciler) applyRemove(op Operation, res *Result) error {
 }
 
 func (r *Reconciler) applyRmdir(op Operation, res *Result) error {
+	if err := r.beneath(op.Path); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(op.Path)
 	if err != nil {
 		res.Skipped++

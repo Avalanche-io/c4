@@ -173,6 +173,7 @@ type Reconciler struct {
 	trustMetadata  bool                  // Plan may reuse target IDs on size+mtime match
 	known          map[string]*c4m.Entry // the caller's own hashed scan of the directory, by relative path
 	knownStart     time.Time             // when that scan started; files not strictly older are rehashed
+	root           string                // Apply's directory: no write may escape it
 }
 
 // Option configures a Reconciler.
