@@ -2,6 +2,15 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A symlink to an ancestor no longer crashes the scan
+
+`c4 id` on a tree holding a link to one of its own ancestors or to its
+own directory (`up -> ..`, `here -> .`) died with `fatal error: stack
+overflow` and exit 2: the scanner resolves a link to a directory by
+scanning it, and that scan met the link again. Release 1.0.x has had the
+guard since 2026-07-29 (9092fb1); master never took it. Such a link is
+recorded with its target and a nil ID, as on 1.0.x.
+
 ### A name holding a backslash is valid
 
 Only `/` separates paths in c4m. A backslash, a colon and every other
