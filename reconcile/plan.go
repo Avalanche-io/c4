@@ -190,8 +190,20 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	}
 
 	// 4. Identify removals: paths in current but not in target.
+	//
+	// A name the target records must never be removed, even when its TYPE
+	// differs from what is on disk. Directory paths carry a trailing slash
+	// and non-directories do not, so a name that is a directory in the
+	// target and a symlink in the destination lands under two different
+	// keys — and was planned as both a create and a remove. Restore then
+	// could not converge: the remove failed against the directory it had
+	// just correctly built, and reported the whole restore incomplete.
+	accounted := func(relPath string) bool {
+		base := strings.TrimSuffix(relPath, "/")
+		return targetAccountedFor[base] || targetAccountedFor[base+"/"]
+	}
 	for relPath, info := range currentFiles {
-		if targetAccountedFor[relPath] {
+		if accounted(relPath) {
 			continue
 		}
 		absPath := filepath.Join(dirPath, filepath.FromSlash(relPath))

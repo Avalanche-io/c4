@@ -165,6 +165,7 @@ type Reconciler struct {
 	wroteFiles     bool           // any create executed; gates the batch barrier
 	maxConcurrency int            // Apply worker cap: 0 = auto, 1 = sequential
 	trustMetadata  bool           // Plan may reuse target IDs on size+mtime match
+	root           string         // Apply's directory: no write may escape it
 }
 
 // Option configures a Reconciler.
