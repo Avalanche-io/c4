@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/store"
 )
 
 // patch is text algebra: c4m chains in, c4m text out. It never touches
@@ -59,6 +60,23 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 
 	if len(allSections) == 0 {
 		fatalf("Error: no content found")
+	}
+
+	// A first-line bare ID names a block outside these files. Backfill it
+	// from the store — transitively, so the newest block reconstructs every
+	// prior — and fail loudly if it cannot be read. Prepending it as a
+	// section keeps -n numbering relative to the file's own sections.
+	if base := allSections[0].BaseID; !base.IsNil() {
+		s, _ := store.OpenStore()
+		resolved, err := c4m.ResolveBaseID(base, s)
+		if err != nil {
+			fatalf("Error: %v\n"+
+				"The first line names a base block this chain refines; it must be in the store.", err)
+		}
+		allSections = append([]*c4m.PatchSection{{Entries: resolved.Entries}}, allSections...)
+		if n > 0 {
+			n++
+		}
 	}
 
 	manifest := c4m.ResolvePatchChain(allSections, n)

@@ -16,14 +16,35 @@ import (
 )
 
 // loadManifest reads and decodes a c4m file. The returned manifest has
-// any patch chain fully resolved.
+// any patch chain fully resolved. An external base reference is an error
+// here, not a silent omission — see loadManifestFromStore for the verbs
+// that can read one.
 func loadManifest(path string) (*c4m.Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return c4m.NewDecoder(f).Decode()
+	// Deliberately no content source: id never reads the store, so a
+	// description naming an external base fails here, naming the ID,
+	// rather than resolving to a manifest silently missing its base.
+	return c4m.DecodeResolved(f, nil)
+}
+
+// loadManifestFromStore loads a description and backfills an external base
+// reference from the configured store — for the verbs that already read it.
+// With no store configured it degrades to loadManifest's loud failure.
+func loadManifestFromStore(path string) (*c4m.Manifest, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	s, _ := store.OpenStore()
+	if s == nil {
+		return c4m.DecodeResolved(f, nil)
+	}
+	return c4m.DecodeResolved(f, s)
 }
 
 // filterBySubpath returns a manifest containing only entries under subPath.

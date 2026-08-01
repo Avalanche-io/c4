@@ -60,6 +60,43 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | `Resolver` | Resolves patch chains via content store. |
 | `ManifestCache` | Caches resolved manifests by C4 ID. |
 
+`ApplyPatch` clobbers by name, grafts additions, and treats a restated
+entry as a removal — **unless that entry carries children in the same
+section**, which makes it a deepening. Breadth-first discovery learns a
+directory's children before it learns anything about the directory
+itself, so its patches restate the parent line unchanged; without the
+narrowing, the most natural progressive-scan emission silently deleted
+the subtree it was declaring.
+
+### External base references (c4m/base.go)
+
+A first-line bare C4 ID names a block outside the file — the prior block
+this one refines. `Decoder.Decode` records it as `Manifest.Base` and
+defers checkpoint verification; it does not fetch.
+
+| Function | Description |
+|----------|-------------|
+| `ResolveBase(m, src)` | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. |
+| `ResolveBaseID(id, src)` | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID. |
+| `DecodeResolved(r, src)` | Decode plus `ResolveBase` in one step. |
+
+An unreadable base is `ErrUnresolvedBase`, never a manifest silently
+missing its base; a repeated ID is `ErrBaseCycle`. Nulls express partial
+knowledge *within* a description — an unresolvable base is ignorance
+*about* the description, so it is an error.
+
+`c4 patch` backfills from the configured store; `loadManifest` passes a
+nil source so `id` stays store-free and fails loudly instead.
+
+`ResolvePatchChain` builds the base tree **once** and applies every
+section into it, flattening and sorting once. Folding through
+`ApplyPatch` per section rebuilds a node and a map for every entry in
+the whole base on each fold, making resolution O(K·N) — a one-entry
+patch cost what a full restatement cost. Measured at 40k entries /
+128 sections: 33.7 ms vs 4.01 s, 47.7 MB vs 6.07 GB.
+`BenchmarkResolvePatchChain_SectionScaling` guards the shape; see
+`design/chain-resolution.md`.
+
 ### Other c4m types
 
 | Type | Description |
@@ -73,10 +110,12 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 
 ### Journal (c4m/journal.go)
 
-The store journal `<store>/log.c4m` — an ordinary c4m patch chain in
-which the store records every claim (one section per claim: entry line
-+ bare-ID boundary). The print-barrier leg between store durability and
-stdout.
+The store journal `<store>/journal` (`c4m.JournalName`) — **not** c4m and
+deliberately not wearing the extension. Line 1 is the magic `@c4 journal 1`,
+which every conforming c4m parser must reject, so the two formats cannot be
+mistaken for each other in either direction. One line per claim, two fields:
+`<scan-start RFC3339 UTC seconds> <claim-ID>`. The print-barrier leg between
+store durability and stdout.
 
 | Type | Description |
 |------|-------------|
@@ -337,6 +376,6 @@ c4 --> (stdlib only)
 - **Single-pass distribution**: `reconcile.Distribute` hashes + copies in one read pass
 - **Atomic writes**: `store.DurableWriter` writes to temp file then renames
 - **Batch durability barrier**: CLI ingest lands objects with cheap per-object fsyncs and issues one `F_FULLFSYNC` (`store.Syncer.Sync`) at completion — durable-at-completion instead of durable-per-object (`design/store-ingest-performance.md`)
-- **Print barrier**: content durable → store barrier → journal append fsynced → only then the ID prints ("printed ⇒ durable ⇒ recoverable"); the journal is an ordinary c4m patch chain inside the store
+- **Print barrier**: content durable → store barrier → journal append fsynced → only then the ID prints ("printed ⇒ durable ⇒ recoverable"); the journal is its own line-oriented format inside the store, not c4m
 - **Identity unification**: THE snapshot ID = the root directory's one-level canonical listing ID (`ComputeC4ID`); no full-text manifest object is stored — the tree recovers through per-directory records
 - **Safety defaults**: snapshots are self-capturing and journaled; restore is dry-run by default and `--force` journals the pre-image (the undo handle) before destroying anything; every store read is rehash-verified
