@@ -273,6 +273,25 @@ Closing it requires `Decode` to surface deferred checkpoints, which is a
 wider change than these three defects and is deliberately not bundled
 here.
 
+**`buildPatchTree` panics on malformed input.** `c4m/operations.go:231`
+does `parent := stack[e.Depth]` with no bounds check, so an entry whose
+depth jumps past its parent — a corrupt, truncated, or hand-edited c4m,
+or a producer bug — panics the process instead of returning an error:
+
+```
+panic: runtime error: index out of range [1] with length 1
+  c4m.buildPatchTree      operations.go:231
+  c4m.ResolvePatchChain   chain.go:136
+  c4m.ResolveBaseID       base.go:42
+```
+
+Found while building the first block-emitting consumer, by emitting a
+block whose entries were not walk-ordered. The producer bug is fixed on
+that side, but any consumer parsing c4m it did not write has the same
+exposure, and a parser that panics on bad input cannot be used on
+untrusted data. This is a defect in its own right and is deliberately
+NOT bundled into the three fixes above.
+
 ## 8. Open items
 
 - Whether B1's narrowing needs an erratum note in the round-3 chain
