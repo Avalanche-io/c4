@@ -338,11 +338,21 @@ Patch entries are matched against the current state **by name (and path)**:
 |-----------|---------------|
 | Name exists only in patch | **Addition** — entry is added |
 | Name exists in both, any metadata differs | **Modification** — patch entry replaces the original |
-| Name exists in both, all fields identical | **Removal** — entry is deleted |
+| Name exists in both, all fields identical, patch entry has **no children** | **Removal** — entry is deleted |
+| Name exists in both, all fields identical, patch entry **has children** | **Deepening** — entry is unchanged; children are applied recursively |
 
 "All fields identical" means: same name, mode, timestamp, size, C4 ID, and target. This enables removal by restating an entry exactly — there is no separate delete syntax.
 
 For directories, patch entries may contain children. The children are applied recursively using the same rules.
+
+> **ERRATUM (2026-07-31).** The removal rule previously had no children
+> condition, so restating a directory identically while declaring
+> children under it deleted the directory and those children. A section
+> that adds children is not removing their parent. This matters most for
+> progressive breadth-first scanning, where a directory's children are
+> discovered before anything about the directory itself is known, so the
+> parent line is necessarily restated unchanged. To remove a subtree,
+> restate the directory entry alone with no children.
 
 ### The Closing Validator
 

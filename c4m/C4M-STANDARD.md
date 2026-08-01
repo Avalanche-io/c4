@@ -663,7 +663,19 @@ state by **name** (within the same parent context for nested entries):
 |-----------|---------------|
 | Name does not exist in current state | **Addition** |
 | Name exists and entry differs in any compared field | **Modification** (patch entry replaces original) |
-| Name exists and all compared fields are identical | **Removal** (entry is deleted) |
+| Name exists, all compared fields are identical, and the patch entry has **no children** | **Removal** (entry is deleted) |
+| Name exists, all compared fields are identical, and the patch entry **has children** | **Deepening** (entry is unchanged; children are applied recursively) |
+
+> **ERRATUM (2026-07-31).** The removal row previously carried no
+> children condition, so a directory restated identically *while
+> declaring children under it* was deleted along with the children the
+> section had just declared — silently, with no diagnostic. A section
+> that adds children cannot be removing their parent. Progressive
+> breadth-first discovery makes this the common case rather than an
+> exotic one: a scan learns a directory's children before it learns
+> anything about the directory itself, so its patches necessarily
+> restate the parent line unchanged. Removal of a whole subtree is still
+> expressed by restating the directory entry alone, with no children.
 
 #### 10.4.1 Identity Comparison
 

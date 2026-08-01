@@ -247,7 +247,33 @@ vectors. Out of scope: the snapshot service itself, commit-interval
 policy, consolidation policy, and any scan-side change — those live with
 the consumer. No grammar change. No new dependency. No new verb or flag.
 
-## 7. Open items
+## 7. Found during implementation
+
+Two constraints the acceptance test surfaced, recorded because they bind
+any block-emitting consumer:
+
+**Blocks must be stored verbatim.** A block's ID is the handle its
+successor names and the resolver opens, so the stored bytes must be the
+block's own bytes. `c4 id -s <block>.c4m` is therefore *not* how to
+store one: it canonicalizes c4m content before storing, which would
+change the bytes and break the chain — and it cannot resolve the base
+anyway, since `id` never reads the store. A block writer uses
+`store.Put` on the raw bytes. This is a constraint, not a defect: `id`'s
+canonicalization and its store-free pin are both correct.
+
+**Deferred checkpoint verification is not yet performed.** `Decode`
+skips checkpoint verification for every boundary of a stream carrying an
+external base reference (`decoder.go:111`), deferring it "to the
+resolver that fetches the base" — but `Decode` discards the checkpoint
+IDs, so `ResolveBase` has nothing to verify against. A block closing
+with its own resolved root ID therefore has that validator parsed and
+ignored. This is a real gap in "verification over assertion": no
+incorrect result is produced, but a claim that could be checked is not.
+Closing it requires `Decode` to surface deferred checkpoints, which is a
+wider change than these three defects and is deliberately not bundled
+here.
+
+## 8. Open items
 
 - Whether B1's narrowing needs an erratum note in the round-3 chain
   grammar record, or is a plain defect fix against already-ratified
