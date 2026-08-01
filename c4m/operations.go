@@ -254,8 +254,13 @@ func applyPatchTree(base, patch *patchNode) {
 			continue
 		}
 
-		// Check if exact match (removal)
-		if entriesIdentical(bNode.entry, pNode.entry) {
+		// Check if exact match (removal). A restatement that declares
+		// children under it is deepening that directory, not removing it:
+		// breadth-first discovery learns a directory's children before it
+		// learns anything about the directory itself, so its parent line is
+		// necessarily unchanged. Falling through clobbers with an identical
+		// entry (a no-op) and recurses to merge the new children.
+		if len(pNode.children) == 0 && entriesIdentical(bNode.entry, pNode.entry) {
 			delete(base.children, name)
 			continue
 		}
