@@ -909,6 +909,80 @@ func TestApplyPatchEmptyPatch(t *testing.T) {
 	}
 }
 
+// A directory restated with children under it is deepening that directory,
+// never removing it. Breadth-first discovery learns a directory's children
+// before it learns anything about the directory itself, so its patches
+// restate the parent line unchanged and append children — the removal rule
+// must not fire on that shape (design/chain-resolution.md B1, B3).
+func TestApplyPatchDeepenIdenticalDirectory(t *testing.T) {
+	dirID := c4.Identify(strings.NewReader("dir"))
+
+	base := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeDir("docs/", dirID, 0),
+		makeFile("readme.md", "readme", 1),
+	}}
+
+	// The parent line is byte-identical to the base's; the section's
+	// meaning lives entirely in the child it declares.
+	patch := &Manifest{Entries: []*Entry{
+		makeDir("docs/", dirID, 0),
+		makeFile("guide.md", "guide", 1),
+	}}
+
+	result := ApplyPatch(base, patch)
+
+	names := entryNames(result)
+	for _, want := range []string{"a.txt", "docs/", "readme.md", "guide.md"} {
+		if !names[want] {
+			t.Errorf("%s missing after deepening docs/; got %v", want, names)
+		}
+	}
+	if len(result.Entries) != 4 {
+		t.Fatalf("expected 4 entries after deepening, got %d: %v",
+			len(result.Entries), names)
+	}
+}
+
+// Narrowing the removal rule must not disable it: a leaf restated
+// identically, with no children, still removes (B2).
+func TestApplyPatchIdenticalLeafStillRemoves(t *testing.T) {
+	base := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeFile("b.txt", "bbb", 0),
+	}}
+	patch := &Manifest{Entries: []*Entry{
+		makeFile("b.txt", "bbb", 0),
+	}}
+
+	result := ApplyPatch(base, patch)
+	if len(result.Entries) != 1 || result.Entries[0].Name != "a.txt" {
+		t.Fatalf("expected only a.txt to survive, got %v", entryNames(result))
+	}
+}
+
+
+
+// A directory restated identically with no children under it is still a
+// removal — that is how PatchDiff expresses deleting a whole subtree (B2).
+func TestApplyPatchIdenticalChildlessDirStillRemoves(t *testing.T) {
+	dirID := c4.Identify(strings.NewReader("dir"))
+
+	base := &Manifest{Entries: []*Entry{
+		makeFile("a.txt", "aaa", 0),
+		makeDir("docs/", dirID, 0),
+		makeFile("readme.md", "readme", 1),
+	}}
+	patch := &Manifest{Entries: []*Entry{
+		makeDir("docs/", dirID, 0),
+	}}
+
+	result := ApplyPatch(base, patch)
+	if len(result.Entries) != 1 || result.Entries[0].Name != "a.txt" {
+		t.Fatalf("expected docs/ subtree removed, got %v", entryNames(result))
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Resolver Tests (merged from resolver_test.go)
 // ----------------------------------------------------------------------------
