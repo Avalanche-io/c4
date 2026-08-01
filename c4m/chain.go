@@ -100,6 +100,18 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 
 // ResolvePatchChain resolves a series of patch sections into a final manifest.
 // If stopAt > 0, resolution stops after that many sections (1-based).
+//
+// The base tree is built once and every section is applied into it, then the
+// result is flattened and sorted once. Folding through ApplyPatch per section
+// instead would rebuild a node and a map for every entry in the whole base on
+// each fold — making resolution O(K*N) in sections times entries, so that a
+// one-entry patch costs what a full restatement costs. That shape is what made
+// a long chain unaffordable at scale; see design/chain-resolution.md.
+//
+// The intermediate flatten/sort ApplyPatch performs between sections is not
+// observable: applyPatchTree and flattenPatchTree never read Entry.Depth, and
+// Entry.IsDir depends only on Mode and Name, so the accumulated tree carries
+// the same (path -> entry) mapping either way.
 func ResolvePatchChain(sections []*PatchSection, stopAt int) *Manifest {
 	if len(sections) == 0 {
 		return NewManifest()
@@ -110,14 +122,25 @@ func ResolvePatchChain(sections []*PatchSection, stopAt int) *Manifest {
 		limit = stopAt
 	}
 
-	// First section is the base.
-	m := &Manifest{Version: "1.0", Entries: sections[0].Entries}
-
-	// Apply subsequent patches.
-	for i := 1; i < limit; i++ {
-		patch := &Manifest{Version: "1.0", Entries: sections[i].Entries}
-		m = ApplyPatch(m, patch)
+	// First section is the base. With nothing to apply, it is the answer
+	// as-is — matching the historical contract that a single-section chain
+	// resolves to its own entries, unsorted and uncopied.
+	base := &Manifest{Version: "1.0", Entries: sections[0].Entries}
+	if limit == 1 {
+		return base
 	}
 
-	return m
+	tree := buildPatchTree(base)
+	for i := 1; i < limit; i++ {
+		patch := &Manifest{Version: "1.0", Entries: sections[i].Entries}
+		applyPatchTree(tree, buildPatchTree(patch))
+	}
+
+	var entries []*Entry
+	flattenPatchTree(tree, 0, &entries)
+
+	result := NewManifest()
+	result.Entries = entries
+	result.SortEntries()
+	return result
 }
