@@ -21,6 +21,16 @@ testdata/
 *.c4m_bundle/
 *_bundle/
 
+# Cross-implementation conformance vectors are the contract, not fixtures:
+# every implementation in the suite is verified against these exact bytes.
+# They live under testdata/ and end in .c4m, so both rules above would drop
+# them silently — which has already happened once. Re-include them
+# explicitly. Git cannot re-include a path whose parent directory is
+# excluded, so the parent is negated first.
+!c4m/testdata/
+!c4m/testdata/*-vector/
+!c4m/testdata/*-vector/**
+
 # Build artifacts
 _obj
 _test

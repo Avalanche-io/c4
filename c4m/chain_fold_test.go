@@ -10,6 +10,66 @@ import (
 	"github.com/Avalanche-io/c4"
 )
 
+// TestDeepenVectorConformance runs the shared cross-implementation fixture
+// for the removal-rule narrowing. Both files restate the same directory line
+// byte-identically; they differ only in whether a child follows it, and must
+// therefore resolve to different manifests.
+func TestDeepenVectorConformance(t *testing.T) {
+	dir := "testdata/deepen-vector/"
+
+	cases := []struct {
+		file   string
+		idFile string
+		want   []string
+	}{
+		{"deepen.c4m", "deepen-root-id.txt", []string{"a.txt", "docs/", "readme.md", "guide.md"}},
+		{"remove.c4m", "remove-root-id.txt", []string{"a.txt"}},
+	}
+
+	ids := make(map[string]string)
+	for _, tc := range cases {
+		data, err := os.ReadFile(dir + tc.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := Unmarshal(data)
+		if err != nil {
+			t.Fatalf("%s must be accepted: %v", tc.file, err)
+		}
+
+		// Conformance is on the resolved entry set, not only on the error:
+		// a non-verifying chain reader carrying the old rule returns the
+		// wrong manifest without ever reporting a mismatch.
+		got := entryNames(m)
+		if len(got) != len(tc.want) {
+			t.Errorf("%s resolved to %d entries, want %d: %v",
+				tc.file, len(got), len(tc.want), got)
+		}
+		for _, w := range tc.want {
+			if !got[w] {
+				t.Errorf("%s: %s missing from resolved manifest: %v", tc.file, w, got)
+			}
+		}
+
+		wantID, err := os.ReadFile(dir + tc.idFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotID := m.ComputeC4ID().String()
+		if gotID != strings.TrimSpace(string(wantID)) {
+			t.Errorf("%s resolved to %s, want %s", tc.file, gotID, strings.TrimSpace(string(wantID)))
+		}
+		ids[tc.file] = gotID
+	}
+
+	// The contract in one line: the same restated directory means opposite
+	// things depending on whether children follow it.
+	if ids["deepen.c4m"] == ids["remove.c4m"] {
+		t.Errorf("deepen and remove resolved identically (%s) — the narrowing is not in effect",
+			ids["deepen.c4m"])
+	}
+}
+
 // resolveByRepeatedApplyPatch is the pre-2026-07-31 fold: one ApplyPatch per
 // section, each rebuilding the whole base tree and re-sorting the result.
 // Kept as the differential oracle for ResolvePatchChain — the fix must not
