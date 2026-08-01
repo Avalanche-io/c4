@@ -103,9 +103,39 @@ func runPatchSingle(path string, mode scan.ScanMode, n int, ergonomic, noStore b
 	if len(sections) == 0 {
 		fatalf("Error: no content found")
 	}
+	if backfilled := backfillBase(sections); len(backfilled) > len(sections) {
+		sections = backfilled
+		if n > 0 {
+			n++
+		}
+	}
 	var manifest *c4m.Manifest
 	fatalOnInvalidEntry("Error resolving "+path, func() { manifest = c4m.ResolvePatchChain(sections, n) })
 	outputManifest(manifest, ergonomic)
+}
+
+// backfillBase resolves a chain's external base. A first-line bare C4 ID
+// names a block outside the file: the prior block this chain refines.
+// Backfill it from the store, transitively (a fetched block may name its
+// own base), and fail loudly, naming the ID, if it cannot be read. Through
+// 1.0.26 the base was ignored and the file's own entries were presented as
+// the whole tree, exit 0. Returns sections unchanged when there is no base.
+func backfillBase(sections []*c4m.PatchSection) []*c4m.PatchSection {
+	if len(sections) == 0 || sections[0].BaseID.IsNil() {
+		return sections
+	}
+	base := sections[0].BaseID
+	s, _ := store.OpenStore()
+	var src store.Source
+	if s != nil {
+		src = s
+	}
+	resolved, err := c4m.ResolveBaseID(base, src)
+	if err != nil {
+		fatalf("Error: %v\n"+
+			"The first line names a base block this chain refines; it must be in the store.", err)
+	}
+	return append([]*c4m.PatchSection{{Entries: resolved.Entries}}, sections...)
 }
 
 // runPatchPair handles two-argument patch with dispatch based on argument types.
@@ -378,6 +408,15 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 		fatalf("Error: no content found")
 	}
 
+	// Prepending a backfilled base keeps -n numbering relative to the
+	// file's own sections.
+	if backfilled := backfillBase(allSections); len(backfilled) > len(allSections) {
+		allSections = backfilled
+		if n > 0 {
+			n++
+		}
+	}
+
 	var manifest *c4m.Manifest
 	fatalOnInvalidEntry("Error resolving chain", func() { manifest = c4m.ResolvePatchChain(allSections, n) })
 	outputManifest(manifest, ergonomic)
@@ -410,7 +449,7 @@ func resolveC4m(path string) *c4m.Manifest {
 	}
 
 	var m *c4m.Manifest
-	fatalOnInvalidEntry("Error resolving "+path, func() { m = c4m.ResolvePatchChain(sections, 0) })
+	fatalOnInvalidEntry("Error resolving "+path, func() { m = c4m.ResolvePatchChain(backfillBase(sections), 0) })
 	return m
 }
 

@@ -22,4 +22,14 @@ var (
 
 	// ErrEmptyPatch indicates a patch section contains no entries.
 	ErrEmptyPatch = errors.New("c4m: empty patch section")
+
+	// ErrUnresolvedBase indicates a first-line external base reference
+	// could not be fetched: no source was supplied, or the source does
+	// not hold that ID. A description whose base is unreadable is an
+	// error, never a manifest presented as complete.
+	ErrUnresolvedBase = errors.New("c4m: unresolved external base")
+
+	// ErrBaseCycle indicates a chain of external base references revisits
+	// an ID it already resolved.
+	ErrBaseCycle = errors.New("c4m: external base reference cycle")
 )

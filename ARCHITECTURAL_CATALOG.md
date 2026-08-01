@@ -61,6 +61,43 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | `Resolver` | Resolves patch chains via content store. |
 | `ManifestCache` | Caches resolved manifests by C4 ID. |
 
+`ApplyPatch` clobbers by name, grafts additions, and treats a restated
+entry as a removal — **unless that entry carries children in the same
+section**, which makes it a deepening. Breadth-first discovery learns a
+directory's children before it learns anything about the directory
+itself, so its patches restate the parent line unchanged; without the
+narrowing, the most natural progressive-scan emission silently deleted
+the subtree it was declaring.
+
+### External base references (c4m/base.go)
+
+A first-line bare C4 ID names a block outside the file — the prior block
+this one refines. `Decoder.Decode` records it as `Manifest.Base` and
+defers checkpoint verification; it does not fetch.
+
+| Function | Description |
+|----------|-------------|
+| `ResolveBase(m, src)` | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. |
+| `ResolveBaseID(id, src)` | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID. |
+| `DecodeResolved(r, src)` | Decode plus `ResolveBase` in one step. |
+
+An unreadable base is `ErrUnresolvedBase`, never a manifest silently
+missing its base; a repeated ID is `ErrBaseCycle`. Nulls express partial
+knowledge *within* a description — an unresolvable base is ignorance
+*about* the description, so it is an error.
+
+`c4 patch` backfills from the configured store; `loadManifest` passes a
+nil source so `id` stays store-free and fails loudly instead.
+
+`ResolvePatchChain` builds the base tree **once** and applies every
+section into it, flattening and sorting once. Folding through
+`ApplyPatch` per section rebuilds a node and a map for every entry in
+the whole base on each fold, making resolution O(K·N) — a one-entry
+patch cost what a full restatement cost. Measured at 40k entries /
+128 sections: 33.7 ms vs 4.01 s, 47.7 MB vs 6.07 GB.
+`BenchmarkResolvePatchChain_SectionScaling` guards the shape; see
+`design/chain-resolution.md`.
+
 ### Other c4m types
 
 | Type | Description |

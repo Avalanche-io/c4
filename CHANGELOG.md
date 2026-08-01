@@ -2,6 +2,18 @@
 
 ## Unreleased (1.0.27)
 
+### A c4m whose first line names a base is resolved from the store, or refused
+
+A bare C4 ID on a c4m's first line names an external base: the prior block
+the file refines (SPECIFICATION.md, "First-Line Bare C4 ID"). This line
+ignored it. `c4 patch FILE`, `c4 patch FILE OUT.c4m` and
+`c4 patch FILE DIR` presented the file's own entries as the whole tree,
+exit 0, so reconciling a directory to such a file deleted every file only
+the base names, and `c4 id FILE.c4m` printed the block alone. Now
+`c4 patch` backfills the base from the configured store, following a
+fetched block's own base in turn, and every other reader refuses the file,
+naming the base it cannot read. Master's 5f5a5d2.
+
 ### A file's C4 ID is its bytes on every path ⚠
 
 A file's C4 ID must summon exactly that file. A file whose bytes parsed as
