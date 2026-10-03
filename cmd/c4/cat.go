@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -80,8 +82,19 @@ func catFile(path string, ergonomic, recursive bool) {
 	outputManifest(m, ergonomic)
 }
 
-// catFromStore fetches content from the store and displays it.
+// catFromStore fetches content from the store, verifies it against the
+// requested ID, and displays it. Nothing is written on a failed
+// verification: exit 0 means the object is present and intact.
 func catFromStore(s store.Store, id c4.ID, ergonomic, recursive bool) {
+	// cat returns the stored bytes. Recognizing that an object parses as
+	// c4m is what enables -e and -r; it never licenses rewriting what
+	// was stored. Without a formatting flag the bytes go out verbatim,
+	// so an object retrieved by ID is the object that was put.
+	if !ergonomic && !recursive {
+		streamVerified(s, id)
+		return
+	}
+
 	rc, err := s.Open(id)
 	if err != nil {
 		fatalf("Error: content not found for %s", id)
@@ -92,14 +105,8 @@ func catFromStore(s store.Store, id c4.ID, ergonomic, recursive bool) {
 	if err != nil {
 		fatalf("Error reading content: %v", err)
 	}
-
-	// cat returns the stored bytes. Recognizing that an object parses as
-	// c4m is what enables -e and -r; it never licenses rewriting what
-	// was stored. Without a formatting flag the bytes go out verbatim,
-	// so an object retrieved by ID is the object that was put.
-	if !ergonomic && !recursive {
-		os.Stdout.Write(data)
-		return
+	if c4.Identify(bytes.NewReader(data)) != id {
+		fatalMismatch(id)
 	}
 
 	m := tryParseC4m(data)
@@ -114,6 +121,46 @@ func catFromStore(s store.Store, id c4.ID, ergonomic, recursive bool) {
 	}
 
 	outputManifest(m, ergonomic)
+}
+
+// streamVerified hashes a stored object on a first pass and streams it
+// to stdout on a second, so objects of any size are verified before a
+// single byte is written, without holding them in memory.
+func streamVerified(s store.Store, id c4.ID) {
+	rc, err := s.Open(id)
+	if err != nil {
+		fatalf("Error: content not found for %s", id)
+	}
+	defer func() { rc.Close() }()
+
+	h := sha512.New()
+	if _, err := io.Copy(h, rc); err != nil {
+		fatalf("Error reading content: %v", err)
+	}
+	var got c4.ID
+	copy(got[:], h.Sum(nil))
+	if got != id {
+		fatalMismatch(id)
+	}
+
+	// Rewind the same handle when possible (a local file), so the bytes
+	// streamed are the bytes hashed; otherwise open the object again.
+	if sk, ok := rc.(io.Seeker); ok {
+		_, err = sk.Seek(0, io.SeekStart)
+	} else {
+		rc.Close()
+		rc, err = s.Open(id)
+	}
+	if err != nil {
+		fatalf("Error reading content: %v", err)
+	}
+	if _, err := io.Copy(os.Stdout, rc); err != nil {
+		fatalf("Error reading content: %v", err)
+	}
+}
+
+func fatalMismatch(id c4.ID) {
+	fatalf("Error: stored content for %s does not match its ID (object is damaged or altered)", id)
 }
 
 // expandRecursive walks a manifest and expands directory entries that have
