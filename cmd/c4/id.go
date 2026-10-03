@@ -376,11 +376,6 @@ func reportStored(id c4.ID) {
 	fmt.Fprintf(os.Stderr, "stored: %s\n", id)
 }
 
-// storeFileEntry stores one file's content, c4m-aware: c4m files are
-// canonicalized before storing, and the entry's ID is updated when
-// canonicalization changed it.
-// storeSequenceMember stores one expanded member of a folded sequence
-// entry. Members are raw content — Put computes each member's own ID.
 // storeSequenceMember stores one expanded member of a folded sequence
 // entry and returns the member's own ID. A nil ID means the member
 // could not be stored, which makes the folded entry's ID-list
