@@ -1,5 +1,85 @@
 # Changelog
 
+## v1.0.18
+
+Verification patch: eight defects where c4 trusted metadata or stored
+names instead of rechecking bytes. All were found while dogfooding c4 to
+sync live state between two machines. IDs are unchanged: `c4 id` output
+for a stable tree is byte-identical to v1.0.17.
+
+### `c4 diff <c4m> <dir>` hashes the directory
+
+Diffing a c4m file against a directory used the c4m as a guide and
+trusted any file whose size and timestamp matched, so a corrupted copy
+(same size, same mtime, as `cp -p` and rsync preserve) reported no
+differences. The directory side is now always content-hashed in the
+default mode. Copy verification (`c4 diff card.c4m /mnt/shuttle/`) now
+catches silent corruption. The output also no longer lists unchanged
+entries, and its closing ID is now correct.
+
+### Scans settle racy files (git's racy rule)
+
+c4m timestamps have one-second precision, so a file rewritten at the same
+size within the second a scan saw it could be recorded with stale
+content, and `c4 patch` would trust it. Scans now re-check any file
+modified in the second the scan began, once that second has passed, and
+record the settled content. A file that never settles gets a null
+timestamp. Stable trees are unaffected. Expect up to ~1 s extra when files
+were written just before the scan.
+
+### `c4 patch` verifies what it writes
+
+Content copied out of the store or a `--source` directory is hashed in
+the same pass and must match its ID before it is renamed into place. A
+damaged or altered object is refused and the destination file is left
+untouched; previously the bad bytes were written. c4m records read from
+the store (`cat -r`, `patch` record expansion, `diff -r`) are verified
+before they are parsed.
+⚠ `c4 patch` now exits 1 when any operation fails. It previously
+reported failures and still exited 0.
+
+### `c4 cat <id>` verifies before it prints
+
+`c4 cat` checks that the stored bytes hash to the requested ID before
+writing anything. A mismatch exits 1 with nothing on stdout.
+
+### Stores copied from macOS read on Linux
+
+Shard directories are named from ID characters, and IDs are
+case-sensitive. On case-insensitive filesystems (default APFS), objects
+whose IDs differ only in case shared one directory, which Linux could not
+find (40% of one real store). Lookups now fall back to case-variant
+directories after an exact-case miss. The fast path is unchanged.
+
+### `c4 patch` restores nested directory times
+
+Directories whose files were replaced were left with the time of the
+write rather than the target's, so `c4 id` after a sync differed from the
+target even though every byte matched. Every parent of a write now gets
+its recorded time back, deepest first.
+
+### `c4 diff … | c4 paths` lists the changed paths
+
+`c4 paths` now recognizes a c4m patch stream and prints the paths it
+names; previously it escaped every line as a filename.
+
+### Malformed c4m is an error, not a crash
+
+An entry whose depth skips its parent panicked the process. The CLI now
+exits 1 naming the entry. Library callers of `ApplyPatch` and
+`ResolvePatchChain` still receive a panic, but its value is an error
+wrapping `c4m.ErrInvalidEntry`.
+
+### Known limitations (unchanged in this release)
+
+- `c4 patch` still trusts a destination file whose size and timestamp
+  match the target, so it does not heal a corrupted destination file.
+  Verify a materialized tree with `c4 id`.
+- Symbolic links' own timestamps are not restored (needs a dependency;
+  planned for v1.1).
+- A symlink's recorded ID is its target's, read through absolute paths
+  outside the scanned tree (changes IDs; v1.1).
+
 ## v1.0.17
 
 Correctness and safety patch. IDs are unchanged: `c4 id` output for any
