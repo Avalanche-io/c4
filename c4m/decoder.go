@@ -95,7 +95,7 @@ func (d *Decoder) Decode() (*Manifest, error) {
 					m.Entries = append(m.Entries, section...)
 				} else {
 					patch := &Manifest{Version: "1.0", Entries: section}
-					m, err = ApplyPatchChecked(m, patch)
+					m, err = applyPatchChecked(m, patch)
 					if err != nil {
 						return nil, err
 					}
@@ -129,7 +129,7 @@ func (d *Decoder) Decode() (*Manifest, error) {
 	} else if len(section) > 0 {
 		patch := &Manifest{Version: "1.0", Entries: section}
 		var err error
-		m, err = ApplyPatchChecked(m, patch)
+		m, err = applyPatchChecked(m, patch)
 		if err != nil {
 			return nil, err
 		}

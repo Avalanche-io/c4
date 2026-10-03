@@ -42,15 +42,11 @@ func runLog(args []string) {
 	var prev *c4m.Manifest
 	for i, sec := range allSections {
 		var current *c4m.Manifest
-		var err error
 		if i == 0 {
-			current, err = c4m.ResolvePatchChainChecked(allSections[:1], 1)
+			current = c4m.ResolvePatchChain(allSections[:1], 1)
 		} else {
 			patch := &c4m.Manifest{Version: "1.0", Entries: sec.Entries}
-			current, err = c4m.ApplyPatchChecked(prev, patch)
-		}
-		if err != nil {
-			fatalf("Error resolving patch %d: %v", i+1, err)
+			fatalOnInvalidEntry(fmt.Sprintf("Error resolving patch %d", i+1), func() { current = c4m.ApplyPatch(prev, patch) })
 		}
 		id := current.ComputeC4ID()
 

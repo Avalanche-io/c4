@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -270,6 +271,24 @@ func storeContentC4mAware(s store.Store, r io.Reader) (c4.ID, error) {
 	}
 
 	return s.Put(bytes.NewReader(data))
+}
+
+// fatalOnInvalidEntry runs fn, which calls a c4m patch operation, and
+// turns a panic whose value wraps c4m.ErrInvalidEntry (an entry whose
+// depth skips past its parent) into a fatal exit 1 with the error
+// message. Any other panic is re-raised.
+func fatalOnInvalidEntry(context string, fn func()) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		if err, ok := r.(error); ok && errors.Is(err, c4m.ErrInvalidEntry) {
+			fatalf("%s: %v", context, err)
+		}
+		panic(r)
+	}()
+	fn()
 }
 
 // fatalf prints to stderr and exits.

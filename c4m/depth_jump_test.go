@@ -61,11 +61,11 @@ func TestApplyPatchCheckedDepthJumpUnderFile(t *testing.T) {
 	// y.txt at depth 1 directly under a depth-0 file.
 	patch := djManifest(djFile("z.txt", 0), djFile("y.txt", 1))
 
-	_, err := ApplyPatchChecked(base, patch)
+	_, err := applyPatchChecked(base, patch)
 	assertDepthErr(t, err, "y.txt", "1")
 
 	// Malformed base is caught the same way.
-	_, err = ApplyPatchChecked(patch, base)
+	_, err = applyPatchChecked(patch, base)
 	assertDepthErr(t, err, "y.txt", "1")
 }
 
@@ -74,7 +74,7 @@ func TestApplyPatchCheckedDepthJumpUnderDir(t *testing.T) {
 	// deep.txt at depth 2 directly under a depth-0 directory.
 	patch := djManifest(djDir("d/", 0), djFile("deep.txt", 2))
 
-	_, err := ApplyPatchChecked(base, patch)
+	_, err := applyPatchChecked(base, patch)
 	assertDepthErr(t, err, "deep.txt", "2")
 }
 
@@ -82,7 +82,7 @@ func TestApplyPatchCheckedNegativeDepth(t *testing.T) {
 	base := djManifest(djFile("a.txt", 0))
 	patch := djManifest(djFile("neg.txt", -1))
 
-	_, err := ApplyPatchChecked(base, patch)
+	_, err := applyPatchChecked(base, patch)
 	assertDepthErr(t, err, "neg.txt", "-1")
 }
 
@@ -91,11 +91,11 @@ func TestResolvePatchChainCheckedDepthJump(t *testing.T) {
 		{Entries: []*Entry{djFile("a.txt", 0)}},
 		{Entries: []*Entry{djFile("z.txt", 0), djFile("y.txt", 1)}},
 	}
-	_, err := ResolvePatchChainChecked(sections, 0)
+	_, err := resolvePatchChainChecked(sections, 0)
 	assertDepthErr(t, err, "y.txt", "1")
 
 	// Stopping before the malformed section resolves cleanly.
-	m, err := ResolvePatchChainChecked(sections, 1)
+	m, err := resolvePatchChainChecked(sections, 1)
 	if err != nil {
 		t.Fatalf("stopAt=1 should not touch the malformed section: %v", err)
 	}
@@ -109,9 +109,9 @@ func TestCheckedMatchesUncheckedOnValidInput(t *testing.T) {
 	patch := djManifest(djFile("c.txt", 0), djDir("d/", 0), djFile("e.txt", 1))
 
 	want := ApplyPatch(base, patch)
-	got, err := ApplyPatchChecked(base, patch)
+	got, err := applyPatchChecked(base, patch)
 	if err != nil {
-		t.Fatalf("ApplyPatchChecked on valid input: %v", err)
+		t.Fatalf("applyPatchChecked on valid input: %v", err)
 	}
 	if got.Canonical() != want.Canonical() {
 		t.Fatalf("checked and unchecked results differ:\n%s\nvs\n%s", got.Canonical(), want.Canonical())
@@ -119,9 +119,9 @@ func TestCheckedMatchesUncheckedOnValidInput(t *testing.T) {
 
 	sections := []*PatchSection{{Entries: base.Entries}, {Entries: patch.Entries}}
 	wantChain := ResolvePatchChain(sections, 0)
-	gotChain, err := ResolvePatchChainChecked(sections, 0)
+	gotChain, err := resolvePatchChainChecked(sections, 0)
 	if err != nil {
-		t.Fatalf("ResolvePatchChainChecked on valid input: %v", err)
+		t.Fatalf("resolvePatchChainChecked on valid input: %v", err)
 	}
 	if gotChain.Canonical() != wantChain.Canonical() {
 		t.Fatalf("checked and unchecked chain results differ")
@@ -169,7 +169,7 @@ func TestDecodePatchSectionDepthJump(t *testing.T) {
 		t.Fatalf("DecodePatchChain: %v", err)
 	}
 	// ... and resolving them reports the malformed entry.
-	_, err = ResolvePatchChainChecked(sections, 0)
+	_, err = resolvePatchChainChecked(sections, 0)
 	assertDepthErr(t, err, "y.txt", "1")
 
 	// A malformed base followed by a patch is reported too.
@@ -193,4 +193,19 @@ func TestDecodeFlatDepthJumpUnchanged(t *testing.T) {
 	if len(m.Entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(m.Entries))
 	}
+}
+
+func TestResolvePatchChainUncheckedPanicsWithDescriptiveError(t *testing.T) {
+	defer func() {
+		r := recover()
+		err, ok := r.(error)
+		if !ok {
+			t.Fatalf("expected panic with an error value, got %#v", r)
+		}
+		assertDepthErr(t, err, "deep.txt", "2")
+	}()
+	ResolvePatchChain([]*PatchSection{
+		{Entries: []*Entry{djFile("a.txt", 0)}},
+		{Entries: []*Entry{djDir("d/", 0), djFile("deep.txt", 2)}},
+	}, 0)
 }

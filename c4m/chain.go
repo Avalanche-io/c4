@@ -101,24 +101,23 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 // ResolvePatchChain resolves a series of patch sections into a final manifest.
 // If stopAt > 0, resolution stops after that many sections (1-based).
 //
-// ResolvePatchChain panics with the error ResolvePatchChainChecked would
-// return if a section holds an entry whose depth skips past its parent
-// directory. Use ResolvePatchChainChecked for sections decoded from
-// untrusted input.
+// ResolvePatchChain panics with an error wrapping ErrInvalidEntry, naming
+// the entry, if a section it applies holds an entry whose depth skips past
+// its parent directory (a corrupt, truncated, or hand-edited c4m).
 func ResolvePatchChain(sections []*PatchSection, stopAt int) *Manifest {
-	m, err := ResolvePatchChainChecked(sections, stopAt)
+	m, err := resolvePatchChainChecked(sections, stopAt)
 	if err != nil {
 		panic(err)
 	}
 	return m
 }
 
-// ResolvePatchChainChecked is ResolvePatchChain, returning an error
+// resolvePatchChainChecked is ResolvePatchChain, returning an error
 // instead of panicking when a section applied as part of the chain holds
 // an entry whose depth skips past its parent directory. The error wraps
 // ErrInvalidEntry. On valid input the result is identical to
 // ResolvePatchChain.
-func ResolvePatchChainChecked(sections []*PatchSection, stopAt int) (*Manifest, error) {
+func resolvePatchChainChecked(sections []*PatchSection, stopAt int) (*Manifest, error) {
 	if len(sections) == 0 {
 		return NewManifest(), nil
 	}
@@ -135,7 +134,7 @@ func ResolvePatchChainChecked(sections []*PatchSection, stopAt int) (*Manifest, 
 	for i := 1; i < limit; i++ {
 		patch := &Manifest{Version: "1.0", Entries: sections[i].Entries}
 		var err error
-		m, err = ApplyPatchChecked(m, patch)
+		m, err = applyPatchChecked(m, patch)
 		if err != nil {
 			return nil, fmt.Errorf("patch section %d: %w", i+1, err)
 		}

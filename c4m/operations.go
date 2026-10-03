@@ -187,23 +187,24 @@ func diffUnionNames(a, b map[string]*Entry) []string {
 //   - Same path, different content → clobber (replace entry, recurse for dirs)
 //   - New path → addition
 //
-// ApplyPatch panics with the error ApplyPatchChecked would return if either
-// manifest holds an entry whose depth skips past its parent directory. Use
-// ApplyPatchChecked for entries that come from untrusted input.
+// ApplyPatch panics with an error wrapping ErrInvalidEntry, naming the
+// entry, if either manifest holds an entry whose depth skips past its
+// parent directory (a corrupt, truncated, or hand-edited c4m). Decoder
+// reports the same condition as an error.
 func ApplyPatch(base, patch *Manifest) *Manifest {
-	result, err := ApplyPatchChecked(base, patch)
+	result, err := applyPatchChecked(base, patch)
 	if err != nil {
 		panic(err)
 	}
 	return result
 }
 
-// ApplyPatchChecked is ApplyPatch, returning an error instead of
+// applyPatchChecked is ApplyPatch, returning an error instead of
 // panicking when base or patch holds an entry whose depth skips past its
 // parent directory (a corrupt, truncated, or hand-edited c4m). The error
 // wraps ErrInvalidEntry. On valid input the result is identical to
 // ApplyPatch.
-func ApplyPatchChecked(base, patch *Manifest) (*Manifest, error) {
+func applyPatchChecked(base, patch *Manifest) (*Manifest, error) {
 	baseTree, err := buildPatchTree(base)
 	if err != nil {
 		return nil, err

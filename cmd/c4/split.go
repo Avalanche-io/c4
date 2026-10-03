@@ -41,10 +41,8 @@ func runSplit(args []string) {
 	}
 
 	// Write before: resolve sections 1..N into a single manifest.
-	beforeManifest, err := c4m.ResolvePatchChainChecked(sections[:n], 0)
-	if err != nil {
-		fatalf("Error resolving %s: %v", inputPath, err)
-	}
+	var beforeManifest *c4m.Manifest
+	fatalOnInvalidEntry("Error resolving "+inputPath, func() { beforeManifest = c4m.ResolvePatchChain(sections[:n], 0) })
 	writeManifestFile(beforePath, beforeManifest)
 
 	// Write after: the remaining sections as raw patches.

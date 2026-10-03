@@ -95,10 +95,8 @@ func runPatchSingle(path string, mode scan.ScanMode, n int, ergonomic, noStore b
 	if len(sections) == 0 {
 		fatalf("Error: no content found")
 	}
-	manifest, err := c4m.ResolvePatchChainChecked(sections, n)
-	if err != nil {
-		fatalf("Error resolving %s: %v", path, err)
-	}
+	var manifest *c4m.Manifest
+	fatalOnInvalidEntry("Error resolving "+path, func() { manifest = c4m.ResolvePatchChain(sections, n) })
 	outputManifest(manifest, ergonomic)
 }
 
@@ -343,10 +341,8 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 		fatalf("Error: no content found")
 	}
 
-	manifest, err := c4m.ResolvePatchChainChecked(allSections, n)
-	if err != nil {
-		fatalf("Error resolving chain: %v", err)
-	}
+	var manifest *c4m.Manifest
+	fatalOnInvalidEntry("Error resolving chain", func() { manifest = c4m.ResolvePatchChain(allSections, n) })
 	outputManifest(manifest, ergonomic)
 }
 
@@ -376,10 +372,8 @@ func resolveC4m(path string) *c4m.Manifest {
 		return m
 	}
 
-	m, err := c4m.ResolvePatchChainChecked(sections, 0)
-	if err != nil {
-		fatalf("Error resolving %s: %v", path, err)
-	}
+	var m *c4m.Manifest
+	fatalOnInvalidEntry("Error resolving "+path, func() { m = c4m.ResolvePatchChain(sections, 0) })
 	return m
 }
 
@@ -464,10 +458,8 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 	// Drift check (changeset form only): has the directory changed since
 	// the forward patch? The changeset's NewID is the post-patch state.
 	if sections != nil {
-		changesetManifest, err := c4m.ResolvePatchChainChecked(sections, 0)
-		if err != nil {
-			fatalf("Error resolving %s: %v", source, err)
-		}
+		var changesetManifest *c4m.Manifest
+		fatalOnInvalidEntry("Error resolving "+source, func() { changesetManifest = c4m.ResolvePatchChain(sections, 0) })
 		if currentManifest.ComputeC4ID() != changesetManifest.ComputeC4ID() {
 			fmt.Fprintf(os.Stderr, "Warning: directory has changed since this patch was applied.\n")
 			fmt.Fprintf(os.Stderr, "Reverting will also undo changes made after the original patch.\n")
