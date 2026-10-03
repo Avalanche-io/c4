@@ -582,6 +582,64 @@ func TestDiffMixed(t *testing.T) {
 	}
 }
 
+// TestDiffDetectsSameSizeSameMtimeCorruption verifies that diffing a c4m
+// against a directory hashes content rather than trusting size+mtime. A
+// corrupted copy that kept its size and timestamp must still be reported.
+func TestDiffDetectsSameSizeSameMtimeCorruption(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+
+	card := filepath.Join(dir, "card")
+	os.MkdirAll(card, 0755)
+	orig := bytes.Repeat([]byte("frame-data-"), 1000)
+	os.WriteFile(filepath.Join(card, "A001.mov"), orig, 0644)
+	past := time.Now().Add(-10 * time.Second)
+	os.Chtimes(filepath.Join(card, "A001.mov"), past, past)
+	os.Chtimes(card, past, past)
+
+	c4mOut, _, code := runC4(t, bin, "id", card)
+	if code != 0 {
+		t.Fatalf("id exit %d", code)
+	}
+	c4mPath := filepath.Join(dir, "orig.c4m")
+	os.WriteFile(c4mPath, []byte(c4mOut), 0644)
+
+	// Shuttle copy: same name, same size, same mtimes, one byte flipped.
+	shuttle := filepath.Join(dir, "shuttle")
+	os.MkdirAll(shuttle, 0755)
+	bad := append([]byte(nil), orig...)
+	bad[5000] = 'X'
+	os.WriteFile(filepath.Join(shuttle, "A001.mov"), bad, 0644)
+	os.Chtimes(filepath.Join(shuttle, "A001.mov"), past, past)
+	os.Chtimes(shuttle, past, past)
+
+	cases := [][]string{
+		{"diff", c4mPath, shuttle},
+		{"diff", shuttle, c4mPath},
+		{"diff", c4mPath, shuttle + "/"},
+		{"diff", "-r", c4mPath, shuttle},
+		{"diff", "-r", shuttle, c4mPath},
+	}
+	for _, args := range cases {
+		out, stderr, code := runC4(t, bin, args...)
+		if code != 0 {
+			t.Fatalf("%v: exit %d: %s", args, code, stderr)
+		}
+		if !strings.Contains(out, "A001.mov") {
+			t.Fatalf("%v: corrupted A001.mov not reported, got:\n%s", args, out)
+		}
+	}
+
+	// The intact original must still diff clean against its c4m.
+	out, _, code := runC4(t, bin, "diff", c4mPath, card)
+	if code != 0 {
+		t.Fatalf("diff exit %d", code)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("diff of intact directory should be empty, got:\n%s", out)
+	}
+}
+
 // TestC4mCanonicalID verifies that a pretty-printed c4m file and its
 // canonical equivalent produce the same C4 ID when identified.
 func TestC4mCanonicalID(t *testing.T) {

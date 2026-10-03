@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/scan"
@@ -43,9 +44,8 @@ func runDiff(args []string) {
 		oldArg, newArg = newArg, oldArg
 	}
 
-	// Smart scan: when one side is a c4m and the other is a directory,
-	// use the c4m as a guide to avoid rehashing unchanged files.
-	// Only files with different size or timestamp get hashed.
+	// In the default full mode a directory argument is always content
+	// hashed; matching size and timestamp never stands in for its C4 ID.
 	oldManifest, newManifest := smartResolve(oldArg, newArg, mode)
 
 	// Store content from directory arguments if requested.
@@ -127,10 +127,12 @@ func isChangesetFile(path string) bool {
 	return false
 }
 
-// smartResolve loads both arguments, using one as a guide for the other
-// when possible. When a c4m file is diffed against a directory, the c4m
-// provides known C4 IDs — the directory only needs to hash files whose
-// size or timestamp differ from the c4m. This avoids a full rehash.
+// smartResolve loads both arguments. In full mode (the default) a
+// directory is always scanned with full content hashing, so a file that
+// was altered without changing its size or timestamp is still reported.
+// Only in the explicitly requested metadata/structure modes, which do not
+// hash, is a c4m side used as a guide that lends C4 IDs to files whose
+// size and timestamp match.
 func smartResolve(oldArg, newArg string, mode scan.ScanMode) (*c4m.Manifest, *c4m.Manifest) {
 	oldIsDir := isDirectory(oldArg)
 	newIsDir := isDirectory(newArg)
@@ -140,7 +142,7 @@ func smartResolve(oldArg, newArg string, mode scan.ScanMode) (*c4m.Manifest, *c4
 		return resolveManifestOrDir(oldArg, mode), resolveManifestOrDir(newArg, mode)
 	}
 
-	// One is a c4m, the other is a directory. Use the c4m as a guide.
+	// One is a c4m, the other is a directory.
 	var ref *c4m.Manifest
 	var dirPath string
 
@@ -152,8 +154,19 @@ func smartResolve(oldArg, newArg string, mode scan.ScanMode) (*c4m.Manifest, *c4
 		dirPath = newArg
 	}
 
-	// Scan the directory using the reference as a guide.
-	dirManifest := guidedScan(dirPath, ref, mode)
+	var dirManifest *c4m.Manifest
+	if mode == scan.ModeFull {
+		// Hash every file; never trust metadata. Timestamps are cut to
+		// the second precision a c4m file carries so that an unchanged
+		// file compares equal to its c4m entry.
+		dirManifest = resolveManifestOrDir(dirPath, mode)
+		for _, e := range dirManifest.Entries {
+			e.Timestamp = e.Timestamp.Truncate(time.Second)
+		}
+	} else {
+		// No hashing was requested: use the c4m as a guide.
+		dirManifest = guidedScan(dirPath, ref, mode)
+	}
 
 	if oldIsDir {
 		return dirManifest, ref
