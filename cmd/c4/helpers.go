@@ -177,6 +177,35 @@ func looksLikeC4m(data []byte) bool {
 	return false
 }
 
+// storeMismatchError reports a store object whose bytes do not hash to
+// the ID it is stored under.
+type storeMismatchError struct{ id c4.ID }
+
+func (e storeMismatchError) Error() string {
+	return fmt.Sprintf("store content for %s does not match its ID", e.id)
+}
+
+// readVerified reads the store object for id through store.Validating,
+// which hashes it as it is read, and refuses it unless its bytes hash to
+// id. The store is trusted to have an object, never to have the right
+// one: a damaged or tampered record is rejected before anything decodes
+// it.
+func readVerified(s store.Store, id c4.ID) ([]byte, error) {
+	rc, err := store.NewValidating(s).Open(id)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err == store.ErrInvalidID {
+		return nil, storeMismatchError{id}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // tryParseC4m attempts to parse data as a c4m file.
 // Returns the parsed manifest if successful, nil otherwise.
 func tryParseC4m(data []byte) *c4m.Manifest {

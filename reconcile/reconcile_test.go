@@ -646,7 +646,7 @@ func TestOpenContentSkipsFailedSources(t *testing.T) {
 
 	rec := New(WithSource(bad), WithSource(good))
 
-	rc, err := rec.openContent(id)
+	rc, _, err := rec.openContent(id)
 	if err != nil {
 		t.Fatalf("openContent should succeed from second source: %v", err)
 	}

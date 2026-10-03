@@ -68,6 +68,14 @@ func (w *DurableWriter) ReadFrom(r io.Reader) (int64, error) {
 	return w.tmp.ReadFrom(r)
 }
 
+// Abort discards the temp file without publishing it: the final path is
+// left exactly as it was. Use instead of Close when the written bytes
+// must not land, such as content that failed verification.
+func (w *DurableWriter) Abort() error {
+	w.tmp.Close()
+	return os.Remove(w.tmp.Name())
+}
+
 func (w *DurableWriter) Close() error {
 	if err := flushFile(w.tmp, w.sync); err != nil {
 		w.tmp.Close()

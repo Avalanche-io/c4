@@ -235,15 +235,16 @@ func New(opts ...Option) *Reconciler {
 	return r
 }
 
-// openContent searches all sources for the given C4 ID and returns a reader.
-func (r *Reconciler) openContent(id c4.ID) (io.ReadCloser, error) {
+// openContent searches all sources for the given C4 ID and returns a
+// reader and the source that supplied it.
+func (r *Reconciler) openContent(id c4.ID) (io.ReadCloser, ContentSource, error) {
 	for _, src := range r.sources {
 		rc, err := src.Open(id)
 		if err == nil {
-			return rc, nil
+			return rc, src, nil
 		}
 	}
-	return nil, os.ErrNotExist
+	return nil, nil, os.ErrNotExist
 }
 
 // localPath searches all sources for a local filesystem path holding the

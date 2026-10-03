@@ -193,7 +193,7 @@ Content-addressed storage. Depends only on root `c4`.
 | `RAM` | In-memory store (testing). |
 | `Validating` | Wrapper that verifies content hashes on read/write. |
 | `Logger` | Wrapper that logs all operations. |
-| `DurableWriter` | Atomic write-to-temp-then-rename; Close flushes per its `SyncMode`. `NewDurableWriter` flushes to stable storage on Close (`SyncEach`); `NewAtomicWriter` skips the flush (`SyncNone` — atomic but not crash-durable, for scratch writes re-materializable from a store); `TreeStore.Create` hands out writers following the store's mode. `ReadFrom` delegates to the temp file so io.Copy gets OS copy acceleration (copy_file_range on Linux). |
+| `DurableWriter` | Atomic write-to-temp-then-rename; Close flushes per its `SyncMode`. `NewDurableWriter` flushes to stable storage on Close (`SyncEach`); `NewAtomicWriter` skips the flush (`SyncNone` — atomic but not crash-durable, for scratch writes re-materializable from a store); `TreeStore.Create` hands out writers following the store's mode. `ReadFrom` delegates to the temp file so io.Copy gets OS copy acceleration (copy_file_range on Linux). `Abort` discards the temp file without touching the final path (content that failed verification). |
 
 Local-path access: `Folder`, `ShardedFolder`, `TreeStore`, and
 `MultiStore` implement `ContentPath(id) (string, bool)`, returning the
@@ -235,6 +235,11 @@ Apply runs consecutive create operations on a bounded worker pool,
 merging counters and errors in operation order (deterministic output).
 Creates prefer a `LocalSource` path — file-to-file copy with OS
 acceleration, falling back to streaming `Open` on any failure.
+Every source copy (store, `DirSource`, cross-device move) hashes the
+bytes as they stream (`copyVerified`) and publishes the temp file only
+if they match the requested ID; a mismatch aborts the temp file, leaves
+the destination untouched, and fails that operation. Same-device moves
+are a rename and are not re-hashed (the plan's ID is trusted).
 
 Distribution (single-pass multi-target):
 
@@ -280,6 +285,10 @@ Safety defaults (`design/safety-defaults.md`):
   (`manifestFromStore`); one-level records expand through stored
   directory records (`expandIfRecord` in `cat.go`) and incomplete
   expansions are refused (`validateRevertTarget`).
+- **Verified record reads** — every store object decoded as c4m
+  (`manifestFromStore`, `fetchManifestFromStore`, `diff -r`) is read
+  through `readVerified` (`helpers.go`, a `store.Validating` read): bytes
+  that do not hash to the requested ID are refused before decoding.
 
 Supporting files: `flags.go` (custom flag parser), `helpers.go` (shared utilities),
 `version.go`, `main.go` (dispatch + bare shortcuts).

@@ -211,14 +211,13 @@ func expandIfRecord(m *c4m.Manifest, s store.Store) *c4m.Manifest {
 }
 
 // fetchManifestFromStore fetches a C4 ID from the store and tries to parse
-// it as a c4m manifest. Returns nil if not found or not c4m.
+// it as a c4m manifest. Returns nil if not found or not c4m; exits if the
+// stored bytes do not hash to id.
 func fetchManifestFromStore(s store.Store, id c4.ID) *c4m.Manifest {
-	rc, err := s.Open(id)
-	if err != nil {
-		return nil
+	data, err := readVerified(s, id)
+	if _, ok := err.(storeMismatchError); ok {
+		fatalf("Error: %v", err)
 	}
-	defer rc.Close()
-	data, err := io.ReadAll(rc)
 	if err != nil {
 		return nil
 	}

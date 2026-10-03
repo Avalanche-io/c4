@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/store"
 )
@@ -253,14 +255,14 @@ func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 	// Local fast path: copy file-to-file from a LocalSource, falling back
 	// to streaming on any failure.
 	if src, ok := r.localPath(op.ContentID); ok {
-		if err := r.copyFile(src, op.Path); err == nil {
+		if err := r.copyFile(src, op.Path, op.ContentID, ""); err == nil {
 			r.setMetadata(op.Path, op.Entry)
 			res.Created++
 			return nil
 		}
 	}
 
-	rc, err := r.openContent(op.ContentID)
+	rc, src, err := r.openContent(op.ContentID)
 	if err != nil {
 		return err
 	}
@@ -270,10 +272,7 @@ func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(dw, rc); err != nil {
-		return err
-	}
-	if err := dw.Close(); err != nil {
+	if err := copyVerified(dw, rc, op.ContentID, sourceKind(src)); err != nil {
 		return err
 	}
 
@@ -310,7 +309,7 @@ func (r *Reconciler) applyMove(op Operation, res *Result) error {
 	if err != nil {
 		// Cross-device: fall back to copy + remove.
 		if isEXDEV(err) {
-			if err := r.copyFile(op.SrcPath, op.Path); err != nil {
+			if err := r.copyFile(op.SrcPath, op.Path, op.ContentID, "moved"); err != nil {
 				return err
 			}
 			if err := os.Remove(op.SrcPath); err != nil && !os.IsNotExist(err) {
@@ -473,12 +472,16 @@ func (r *Reconciler) setMetadata(path string, entry *c4m.Entry) {
 	}
 }
 
-// copyFile copies src to dst atomically, attempting a copy-on-write
-// clone first. The byte-copy fallback goes file-to-file so the OS can
-// accelerate it (see store.DurableWriter.ReadFrom).
-func (r *Reconciler) copyFile(src, dst string) error {
-	if err := cloneFile(src, dst); err == nil {
-		return nil
+// copyFile copies src to dst atomically, verifying the bytes against id
+// in the same pass (see copyVerified); from names the kind of source in
+// a mismatch error. A copy-on-write clone is only attempted when there
+// is no ID to verify against: a clone never reads the bytes, so it
+// cannot check them.
+func (r *Reconciler) copyFile(src, dst string, id c4.ID, from string) error {
+	if id.IsNil() {
+		if err := cloneFile(src, dst); err == nil {
+			return nil
+		}
 	}
 
 	sf, err := os.Open(src)
@@ -491,8 +494,51 @@ func (r *Reconciler) copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(dw, sf); err != nil {
+	return copyVerified(dw, sf, id, from)
+}
+
+// mismatchError reports content whose bytes do not hash to the ID it was
+// requested by. A source is trusted to have content, never to have the
+// right content.
+type mismatchError struct {
+	id   c4.ID
+	from string // "store", "source", "moved"
+}
+
+func (e *mismatchError) Error() string {
+	from := e.from
+	if from == "" {
+		from = "store"
+	}
+	return fmt.Sprintf("%s content for %s does not match its ID", from, e.id)
+}
+
+// sourceKind names a content source for error messages: directory
+// sources are files described by a scan; anything else is a store.
+func sourceKind(src ContentSource) string {
+	if _, ok := src.(*DirSource); ok {
+		return "source"
+	}
+	return "store"
+}
+
+// copyVerified streams src into dw, hashing the bytes as they pass, and
+// publishes dw only when they hash to id. On any failure the temp file
+// is discarded and the destination path is left untouched. A nil id
+// cannot be checked and is copied as-is.
+func copyVerified(dw *store.DurableWriter, src io.Reader, id c4.ID, from string) error {
+	h := sha512.New()
+	if _, err := io.Copy(dw, io.TeeReader(src, h)); err != nil {
+		dw.Abort()
 		return err
+	}
+	if !id.IsNil() {
+		var got c4.ID
+		copy(got[:], h.Sum(nil))
+		if got != id {
+			dw.Abort()
+			return &mismatchError{id: id, from: from}
+		}
 	}
 	return dw.Close()
 }

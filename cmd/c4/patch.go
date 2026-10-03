@@ -219,6 +219,7 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 
 	reportResult(dirPath, result)
 	reportPreState(preID, dirPath)
+	exitIfFailed(result)
 }
 
 // runPatchDirToC4m scans a directory, stores content, and writes a c4m file.
@@ -319,6 +320,7 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 
 	reportResult(destDir, result)
 	reportPreState(preID, destDir)
+	exitIfFailed(result)
 }
 
 // runPatchChain handles 3+ args: multi-file chain resolution (original behavior).
@@ -527,6 +529,7 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 
 	reportResult(dirPath, result)
 	reportPreState(preID, dirPath)
+	exitIfFailed(result)
 }
 
 // reconcileStore returns the store handle for a reconcile: the prompting
@@ -631,12 +634,11 @@ func manifestFromStore(s store.Store, id c4.ID) *c4m.Manifest {
 		fatalf("Error: prior state manifest %s not found in store\n"+
 			"Was the prior state stored? (default unless --no-store)", id)
 	}
-	rc, err := s.Open(id)
+	data, err := readVerified(s, id)
 	if err != nil {
 		fatalf("Error loading prior state manifest: %v", err)
 	}
-	defer rc.Close()
-	m, err := c4m.NewDecoder(rc).Decode()
+	m, err := c4m.NewDecoder(bytes.NewReader(data)).Decode()
 	if err != nil {
 		fatalf("Error decoding prior state manifest: %v", err)
 	}
@@ -649,6 +651,15 @@ func reportPreState(id c4.ID, dirPath string) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "prior state stored: %s (revert: c4 patch -r %s %s)\n", id, id, dirPath)
+}
+
+// exitIfFailed exits nonzero when any operation failed. The summary and
+// the revert hint print first: a partial apply is exactly when the
+// prior state matters.
+func exitIfFailed(result *reconcile.Result) {
+	if len(result.Errors) > 0 {
+		os.Exit(1)
+	}
 }
 
 // reportResult prints a reconciliation summary to stderr.

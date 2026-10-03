@@ -92,12 +92,11 @@ func runDiffReverse(changesetPath, dirPath string, mode scan.ScanMode, ergonomic
 			"Was the original patch run with -s?", oldID)
 	}
 
-	rc, err := s.Open(oldID)
+	data, err = readVerified(s, oldID)
 	if err != nil {
 		fatalf("Error loading pre-patch manifest: %v", err)
 	}
-	prePatchManifest, err := c4m.NewDecoder(rc).Decode()
-	rc.Close()
+	prePatchManifest, err := c4m.NewDecoder(bytes.NewReader(data)).Decode()
 	if err != nil {
 		fatalf("Error decoding pre-patch manifest: %v", err)
 	}

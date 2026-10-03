@@ -148,3 +148,35 @@ func TestContentPath(t *testing.T) {
 		})
 	}
 }
+
+// Abort leaves the final path exactly as it was and removes the temp file.
+func TestDurableWriterAbort(t *testing.T) {
+	dir := t.TempDir()
+	final := filepath.Join(dir, "out.txt")
+	if err := os.WriteFile(final, []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := NewDurableWriter(final)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("discarded")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Abort(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile(final)
+	if err != nil || string(got) != "original" {
+		t.Fatalf("final = %q, %v; want untouched", got, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want only the final file", len(entries))
+	}
+}
