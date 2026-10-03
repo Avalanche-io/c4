@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 )
 
@@ -50,7 +51,9 @@ func runPaths(args []string) {
 		fatalf("Error reading input: %v", err)
 	}
 
-	if isC4MInput(lines) {
+	if isC4MPatchInput(lines) {
+		c4mPatchToPaths(lines)
+	} else if isC4MInput(lines) {
 		c4mToPaths(lines)
 	} else {
 		pathsToC4M(lines)
@@ -74,6 +77,36 @@ func isC4MInput(lines []string) bool {
 		return looksLikeC4MLine(trimmed)
 	}
 	return false
+}
+
+// isC4MPatchInput returns true if the lines are a c4m patch stream, as
+// written by c4 diff: a leading bare C4 ID (the base reference), then
+// entry lines, optionally followed by further bare IDs (checkpoints, the
+// closing validator). The first line that is not a bare ID must be an
+// entry, so a plain list of ID-named files stays a path list.
+func isC4MPatchInput(lines []string) bool {
+	sawID := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if isBareC4IDLine(trimmed) {
+			sawID = true
+			continue
+		}
+		return sawID && looksLikeC4MLine(trimmed)
+	}
+	return false
+}
+
+// isBareC4IDLine reports whether a trimmed line is exactly one C4 ID.
+func isBareC4IDLine(line string) bool {
+	if len(line) != 90 || !strings.HasPrefix(line, "c4") {
+		return false
+	}
+	_, err := c4.Parse(line)
+	return err == nil
 }
 
 // looksLikeC4MLine checks if a trimmed line starts with a valid c4m mode field.
@@ -114,8 +147,29 @@ func c4mToPaths(lines []string) {
 		fatalf("Error parsing c4m: %v", err)
 	}
 
-	paths := c4m.EntryPaths(m.Entries)
+	printPaths(c4m.EntryPaths(m.Entries))
+}
 
+// c4mPatchToPaths parses a c4m patch stream and prints the path of every
+// entry the patch names (added, modified, or removed), one per line.
+func c4mPatchToPaths(lines []string) {
+	text := strings.Join(lines, "\n")
+	sections, err := c4m.DecodePatchChain(strings.NewReader(text))
+	if err != nil {
+		fatalf("Error parsing c4m: %v", err)
+	}
+
+	paths := make(map[string]*c4m.Entry)
+	for _, sec := range sections {
+		for p, e := range c4m.EntryPaths(sec.Entries) {
+			paths[p] = e
+		}
+	}
+	printPaths(paths)
+}
+
+// printPaths prints the keys of paths in sorted order, one per line.
+func printPaths(paths map[string]*c4m.Entry) {
 	// Sort paths for stable output.
 	sorted := make([]string, 0, len(paths))
 	for p := range paths {
