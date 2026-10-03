@@ -91,7 +91,7 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	// setting a child directory's timestamp doesn't reset its parent's.
 	if !r.dryRun {
 		sort.Slice(dirOps, func(i, j int) bool {
-			return len(dirOps[i].Path) > len(dirOps[j].Path) // deepest first
+			return depthOf(dirOps[i].Path) > depthOf(dirOps[j].Path) // deepest first
 		})
 		for _, op := range dirOps {
 			r.setMetadata(op.Path, op.Entry)

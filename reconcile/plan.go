@@ -291,7 +291,45 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 		return &Plan{Missing: missingIDs}, nil
 	}
 
-	// 7. Order operations.
+	// 7. Restore parent directory times. Every create, move, symlink,
+	//    remove and mkdir rewrites its parent directory, bumping its mtime
+	//    — including directories whose time already matched the target
+	//    and so drew no OpChtimes above. Schedule one for each such
+	//    parent so Apply's directory post-pass resets it after all writes.
+	scheduled := make(map[string]bool, len(chtimes)+len(mkdirs))
+	for _, op := range chtimes {
+		scheduled[op.Path] = true
+	}
+	for _, op := range mkdirs {
+		scheduled[op.Path] = true
+	}
+	touch := func(path string) {
+		parent := filepath.Dir(path)
+		if scheduled[parent] {
+			return
+		}
+		scheduled[parent] = true
+		rel, err := filepath.Rel(dirPath, parent)
+		if err != nil || rel == "." {
+			return
+		}
+		entry := targetPaths[filepath.ToSlash(rel)+"/"]
+		if entry == nil || !entry.IsDir() || entry.Timestamp.Equal(c4m.NullTimestamp()) {
+			return
+		}
+		chtimes = append(chtimes, Operation{Type: OpChtimes, Path: parent, Entry: entry})
+	}
+	for _, ops := range [][]Operation{mkdirs, creates, symlinks, removes, rmdirs} {
+		for _, op := range ops {
+			touch(op.Path)
+		}
+	}
+	for _, op := range moves {
+		touch(op.Path)
+		touch(op.SrcPath)
+	}
+
+	// 8. Order operations.
 	// Mkdirs: shallow first.
 	sort.Slice(mkdirs, func(i, j int) bool {
 		return depthOf(mkdirs[i].Path) < depthOf(mkdirs[j].Path)
