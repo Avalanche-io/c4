@@ -186,9 +186,32 @@ func diffUnionNames(a, b map[string]*Entry) []string {
 //   - Exact duplicate of a base entry → removal (entry and children deleted)
 //   - Same path, different content → clobber (replace entry, recurse for dirs)
 //   - New path → addition
+//
+// ApplyPatch panics with the error ApplyPatchChecked would return if either
+// manifest holds an entry whose depth skips past its parent directory. Use
+// ApplyPatchChecked for entries that come from untrusted input.
 func ApplyPatch(base, patch *Manifest) *Manifest {
-	baseTree := buildPatchTree(base)
-	patchTree := buildPatchTree(patch)
+	result, err := ApplyPatchChecked(base, patch)
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// ApplyPatchChecked is ApplyPatch, returning an error instead of
+// panicking when base or patch holds an entry whose depth skips past its
+// parent directory (a corrupt, truncated, or hand-edited c4m). The error
+// wraps ErrInvalidEntry. On valid input the result is identical to
+// ApplyPatch.
+func ApplyPatchChecked(base, patch *Manifest) (*Manifest, error) {
+	baseTree, err := buildPatchTree(base)
+	if err != nil {
+		return nil, err
+	}
+	patchTree, err := buildPatchTree(patch)
+	if err != nil {
+		return nil, err
+	}
 	applyPatchTree(baseTree, patchTree)
 
 	var entries []*Entry
@@ -209,7 +232,7 @@ func ApplyPatch(base, patch *Manifest) *Manifest {
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // patchNode is a tree node for patch application.
@@ -218,13 +241,21 @@ type patchNode struct {
 	children map[string]*patchNode
 }
 
-// buildPatchTree builds a tree from a manifest's flat entry list.
-func buildPatchTree(m *Manifest) *patchNode {
+// buildPatchTree builds a tree from a manifest's flat entry list. It
+// returns an error if an entry's depth skips past its parent directory.
+func buildPatchTree(m *Manifest) (*patchNode, error) {
 	root := &patchNode{children: make(map[string]*patchNode)}
 	stack := make([]*patchNode, 1)
 	stack[0] = root
 
 	for _, e := range m.Entries {
+		if e.Depth < 0 {
+			return nil, fmt.Errorf("%w: entry %q has negative depth %d", ErrInvalidEntry, e.Name, e.Depth)
+		}
+		if e.Depth >= len(stack) {
+			return nil, fmt.Errorf("%w: entry %q at depth %d has no parent directory at depth %d",
+				ErrInvalidEntry, e.Name, e.Depth, e.Depth-1)
+		}
 		if e.Depth+1 < len(stack) {
 			stack = stack[:e.Depth+1]
 		}
@@ -240,7 +271,7 @@ func buildPatchTree(m *Manifest) *patchNode {
 			stack[e.Depth+1] = node
 		}
 	}
-	return root
+	return root, nil
 }
 
 // applyPatchTree recursively applies patch changes to a base tree.

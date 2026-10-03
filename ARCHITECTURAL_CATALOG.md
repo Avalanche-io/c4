@@ -77,6 +77,10 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 - `ExtractSubtree(path)` — extract a directory and its children
 - `EntryPaths(entries)` — reconstruct full paths from depth-based entries
 - `Merge(a, b)` — combine two manifests, report conflicts
+- `ApplyPatchChecked(base, patch)`, `ResolvePatchChainChecked(sections, n)` —
+  apply patches, returning an `ErrInvalidEntry` error for an entry whose
+  depth skips past its parent. `ApplyPatch` / `ResolvePatchChain` wrap
+  them and panic with that error; use the checked forms on decoded input.
 - `ComputeC4ID(manifest)` — canonical identification (streams canonical
   bytes through `io.Pipe` into `c4.Identify`, no full-string allocation)
 - `Canonicalize(manifest)` — normalize to canonical form before identification

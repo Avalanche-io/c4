@@ -95,7 +95,10 @@ func runPatchSingle(path string, mode scan.ScanMode, n int, ergonomic, noStore b
 	if len(sections) == 0 {
 		fatalf("Error: no content found")
 	}
-	manifest := c4m.ResolvePatchChain(sections, n)
+	manifest, err := c4m.ResolvePatchChainChecked(sections, n)
+	if err != nil {
+		fatalf("Error resolving %s: %v", path, err)
+	}
 	outputManifest(manifest, ergonomic)
 }
 
@@ -340,7 +343,10 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 		fatalf("Error: no content found")
 	}
 
-	manifest := c4m.ResolvePatchChain(allSections, n)
+	manifest, err := c4m.ResolvePatchChainChecked(allSections, n)
+	if err != nil {
+		fatalf("Error resolving chain: %v", err)
+	}
 	outputManifest(manifest, ergonomic)
 }
 
@@ -370,7 +376,11 @@ func resolveC4m(path string) *c4m.Manifest {
 		return m
 	}
 
-	return c4m.ResolvePatchChain(sections, 0)
+	m, err := c4m.ResolvePatchChainChecked(sections, 0)
+	if err != nil {
+		fatalf("Error resolving %s: %v", path, err)
+	}
+	return m
 }
 
 // opName returns a human-readable name for a reconcile operation type.
@@ -454,7 +464,10 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 	// Drift check (changeset form only): has the directory changed since
 	// the forward patch? The changeset's NewID is the post-patch state.
 	if sections != nil {
-		changesetManifest := c4m.ResolvePatchChain(sections, 0)
+		changesetManifest, err := c4m.ResolvePatchChainChecked(sections, 0)
+		if err != nil {
+			fatalf("Error resolving %s: %v", source, err)
+		}
 		if currentManifest.ComputeC4ID() != changesetManifest.ComputeC4ID() {
 			fmt.Fprintf(os.Stderr, "Warning: directory has changed since this patch was applied.\n")
 			fmt.Fprintf(os.Stderr, "Reverting will also undo changes made after the original patch.\n")

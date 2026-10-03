@@ -95,7 +95,10 @@ func (d *Decoder) Decode() (*Manifest, error) {
 					m.Entries = append(m.Entries, section...)
 				} else {
 					patch := &Manifest{Version: "1.0", Entries: section}
-					m = ApplyPatch(m, patch)
+					m, err = ApplyPatchChecked(m, patch)
+					if err != nil {
+						return nil, err
+					}
 				}
 				section = nil
 				patchMode = true
@@ -125,7 +128,11 @@ func (d *Decoder) Decode() (*Manifest, error) {
 		m.Entries = append(m.Entries, section...)
 	} else if len(section) > 0 {
 		patch := &Manifest{Version: "1.0", Entries: section}
-		m = ApplyPatch(m, patch)
+		var err error
+		m, err = ApplyPatchChecked(m, patch)
+		if err != nil {
+			return nil, err
+		}
 	} else if patchMode {
 		// Patch mode was entered but no entries followed — empty patch.
 		return nil, fmt.Errorf("%w (at end of input)", ErrEmptyPatch)
