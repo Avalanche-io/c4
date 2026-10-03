@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A store made on a case-insensitive volume is readable on a case-sensitive one
+
+TreeStore shards objects into directories named from the ID's leading
+characters. On a case-insensitive volume (default APFS, NTFS) two shard
+names differing only in case land in one directory, so a store copied to
+a case-sensitive volume holds objects under a directory whose case does
+not match the lookup, and `c4 cat` said "content not found" for an
+object that was there. Lookups that miss at the exact path now search
+the shard path case-insensitively. Release 1.0.x has had this since
+2026-10-02 (9a40c14); master never took it.
+
 ### Restore never writes through a symbolic link in the destination
 
 `c4 restore --force` into a destination holding a symbolic link to a
