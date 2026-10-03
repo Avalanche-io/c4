@@ -11,9 +11,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/internal/racy"
 )
 
 // ScanMode controls how much information is gathered during a scan.
@@ -72,6 +74,19 @@ type Generator struct {
 	// Directories currently being resolved through a symbolic link, so a
 	// link naming one of its own ancestors is detected instead of recursing.
 	linkChain map[string]bool
+
+	// scanStart is the wall-clock second the scan began in. A regular file
+	// whose mtime second is at or after it is racy (see internal/racy): it
+	// is collected in racyFiles and settled after the walk.
+	scanStart time.Time
+	racyMu    sync.Mutex
+	racyFiles []racyFile
+}
+
+// racyFile is a regular file whose recorded observation may not be stable.
+type racyFile struct {
+	entry *Entry
+	path  string
 }
 
 // NewGenerator creates a new manifest generator
@@ -189,6 +204,11 @@ func WithContext(ctx context.Context) GeneratorOption {
 // Directory entries stream after their children (post-order): a directory's
 // Size, Timestamp, and C4 ID are resolved bottom-up from its children, so
 // emitting it afterwards means every streamed entry is fully resolved.
+//
+// A file modified in or after the second the scan began is re-observed
+// after the walk (see internal/racy); its streamed entry, and those of its
+// ancestor directories, are the walk's first observation, and the returned
+// manifest carries the settled one.
 func WithEntryStream(cb func(*c4m.Entry) error) GeneratorOption {
 	return func(g *Generator) {
 		g.streamCB = cb
@@ -264,6 +284,7 @@ func (g *Generator) clone() *Generator {
 		sem:             g.sem,
 		ctx:             g.ctx,
 		dirIdentity:     g.dirIdentity,
+		scanStart:       g.scanStart,
 	}
 	// Carry the symlink resolution chain by value. A branch of the scan must
 	// see its own ancestors to detect a cycle, and must not see a sibling's.
@@ -332,6 +353,16 @@ func (g *Generator) errReturn(m *Manifest, err error) (*Manifest, error) {
 
 // GenerateFromPath creates a manifest from a filesystem path
 func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
+	// A symlink-target sub-scan inherits the main scan's start; a top-level
+	// scan takes its own, and forgets it after so a reused Generator does
+	// not judge its next scan by this one's clock.
+	if g.scanStart.IsZero() {
+		g.scanStart = racy.Start()
+		defer func() {
+			g.scanStart = time.Time{}
+			g.racyFiles = nil
+		}()
+	}
 	manifest := NewManifest()
 
 	absPath, err := filepath.Abs(path)
@@ -390,6 +421,7 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		if entryErr != nil {
 			return g.errReturn(manifest, entryErr)
 		}
+		g.noteRacy(entry, absPath, info)
 		if emitErr := g.emit(entry); emitErr != nil {
 			manifest.AddEntry(entry)
 			return g.errReturn(manifest, emitErr)
@@ -403,6 +435,10 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	if g.progress != nil {
 		g.progress.final()
 	}
+
+	// Re-observe files that could still change within their mtime second,
+	// before the listing is sorted and finalized.
+	g.settleRacy(manifest.Entries)
 
 	// Sort entries hierarchically (files before directories at each level)
 	manifest.SortEntries()
@@ -557,6 +593,7 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 			return nil, err
 		}
 		fileEntry.Name = name
+		g.noteRacy(fileEntry, fullPath, info)
 		if err := g.emit(fileEntry); err != nil {
 			return out, err
 		}
@@ -644,26 +681,7 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 
 	if dirEntry != nil {
 		if g.mode == ModeFull {
-			// Resolve this directory's null Size/Timestamp from its direct
-			// children — subdirectory children were already resolved by
-			// their own generateDir calls, so [self, children...] is all
-			// the canonical c4m.PropagateMetadata needs; the final
-			// whole-manifest pass in GenerateFromPath then early-outs.
-			//
-			// ModeFull only: stat always yields real sizes there, so
-			// children are never null. In structure/metadata modes a child
-			// directory can carry a legitimately-null (nil-infected) Size,
-			// which this truncated scope — lacking the child's own
-			// descendants — would misread as an empty directory and wrongly
-			// resolve to 0. Those modes compute no C4 IDs, so they need no
-			// per-directory resolution; the whole-manifest pass handles
-			// them with full context, as before.
-			scope := make([]*Entry, 0, len(directChildren)+1)
-			scope = append(scope, dirEntry)
-			scope = append(scope, directChildren...)
-			c4m.PropagateMetadata(scope)
-
-			dirEntry.C4ID = g.dirID(directChildren)
+			g.resolveDir(dirEntry, directChildren)
 		}
 		if err := g.emit(dirEntry); err != nil {
 			return out, err
@@ -674,6 +692,31 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 	}
 
 	return out, nil
+}
+
+// resolveDir resolves a ModeFull directory entry from its fully-resolved
+// direct children: its null Size/Timestamp, then its C4 ID.
+func (g *Generator) resolveDir(dirEntry *Entry, directChildren []*Entry) {
+	// Resolve this directory's null Size/Timestamp from its direct
+	// children — subdirectory children were already resolved by
+	// their own generateDir calls, so [self, children...] is all
+	// the canonical c4m.PropagateMetadata needs; the final
+	// whole-manifest pass in GenerateFromPath then early-outs.
+	//
+	// ModeFull only: stat always yields real sizes there, so
+	// children are never null. In structure/metadata modes a child
+	// directory can carry a legitimately-null (nil-infected) Size,
+	// which this truncated scope — lacking the child's own
+	// descendants — would misread as an empty directory and wrongly
+	// resolve to 0. Those modes compute no C4 IDs, so they need no
+	// per-directory resolution; the whole-manifest pass handles
+	// them with full context, as before.
+	scope := make([]*Entry, 0, len(directChildren)+1)
+	scope = append(scope, dirEntry)
+	scope = append(scope, directChildren...)
+	c4m.PropagateMetadata(scope)
+
+	dirEntry.C4ID = g.dirID(directChildren)
 }
 
 // dirID derives a directory's C4 ID from its direct children. It dispatches

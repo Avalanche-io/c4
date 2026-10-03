@@ -10,9 +10,11 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/internal/racy"
 	"github.com/Avalanche-io/c4/scan"
 	"github.com/Avalanche-io/c4/store"
 )
@@ -77,6 +79,7 @@ func runID(args []string) {
 
 	// Collect results — multiple paths produce one combined manifest.
 	combined := c4m.NewManifest()
+	start := racy.Start() // before any file argument is observed
 
 	for _, p := range paths {
 		info, err := os.Lstat(p)
@@ -114,7 +117,7 @@ func runID(args []string) {
 		}
 
 		// Regular file → single-entry c4m
-		entry := identifyFile(p, info, mode, shouldStore)
+		entry := identifyFile(p, info, mode, shouldStore, start)
 		combined.AddEntry(entry)
 	}
 
@@ -189,11 +192,42 @@ func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool
 	return manifest
 }
 
-func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore bool) *c4m.Entry {
+// identifyFile describes one file argument. A regular file whose mtime
+// second is at or after start is racy (see internal/racy): it is waited
+// out and re-observed, and recorded with a null timestamp if it never
+// settles, exactly as a directory scan records its files.
+func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore bool, start time.Time) *c4m.Entry {
 	entry := &c4m.Entry{
 		Name: filepath.Base(path),
 	}
+	describeFile(entry, path, info, mode, shouldStore)
+	if mode < scan.ModeMetadata || !info.Mode().IsRegular() || !racy.Is(info.ModTime(), start) {
+		return entry
+	}
+	unsettled := racy.Settle(1,
+		func(int) time.Time { return entry.Timestamp },
+		func(int) (time.Time, bool) {
+			before, err := os.Lstat(path)
+			if err != nil || !before.Mode().IsRegular() {
+				entry.Timestamp = c4m.NullTimestamp()
+				return time.Time{}, true
+			}
+			describeFile(entry, path, before, mode, shouldStore)
+			after, err := os.Lstat(path)
+			if err != nil || !after.Mode().IsRegular() {
+				entry.Timestamp = c4m.NullTimestamp()
+				return time.Time{}, true
+			}
+			return after.ModTime(), after.Size() == before.Size() && after.ModTime().Equal(before.ModTime())
+		})
+	if len(unsettled) > 0 {
+		entry.Timestamp = c4m.NullTimestamp()
+	}
+	return entry
+}
 
+// describeFile records one observation of a file argument in entry.
+func describeFile(entry *c4m.Entry, path string, info os.FileInfo, mode scan.ScanMode, shouldStore bool) {
 	if mode >= scan.ModeMetadata {
 		entry.Mode = info.Mode()
 		entry.Timestamp = info.ModTime().UTC()
@@ -217,8 +251,6 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 			entry.C4ID = id
 		}
 	}
-
-	return entry
 }
 
 func storeManifestContent(manifest *c4m.Manifest, baseDir string) {

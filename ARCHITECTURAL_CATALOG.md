@@ -14,6 +14,7 @@ github.com/Avalanche-io/c4
   reconcile/       Filesystem reconciliation: Plan, Apply, Distribute
   cmd/c4/          CLI binary (10 commands)
     internal/scan/ Progressive CLI scanner (platform-specific)
+  internal/racy/   Racy-timestamp rule shared by scan and `c4 id <file>`
 ```
 
 ## Root Package (`c4`)
@@ -155,6 +156,23 @@ directory canonicalizations (e.g. a future content mode); the default is
 deliberately does not copy the guide (guide paths are root-relative).
 Directory entries stream post-order via `WithEntryStream` — fully
 resolved at emit time.
+
+Racy files (git's "racy git" rule, applied at the source): c4m
+timestamps have one-second precision and downstream trust
+(`reconcile.WithTrustedMetadata`, `guidedScan`) skips hashing on a
+size+mtime-second match, so a same-size rewrite inside the recorded
+second would be kept stale. `GenerateFromPath` records the second the
+scan began; a regular file whose mtime second is at or after it (and no
+more than `racy.Horizon` past now) is racy. After the walk,
+`internal/racy.Settle` waits until the clock is past the latest racy
+mtime second and re-observes each (stat, hash, stat), up to
+`racy.Rounds` rounds; a file still changing gets a null timestamp. In
+ModeFull the directories above a re-observed file are re-resolved with
+the walk's own `resolveDir`. Trees not modified during the scan are
+untouched (no wait, byte-identical output). `c4 id <file>` applies the
+same rule via `identifyFile`. Seams for tests: `racy.Now`, `racy.Sleep`,
+`racy.Recheck`. Entries streamed via `WithEntryStream` are the walk's
+first observation; the returned manifest carries the settled one.
 
 Streaming + cancellation: when `WithContext` or `WithEntryStream` is set,
 `Dir` / `GenerateFromPath` return the *partial* manifest alongside any
@@ -301,7 +319,7 @@ implementations (darwin, linux, windows).
 ```
 cmd/c4 --> scan, c4m, store, reconcile, c4
 reconcile --> c4m, store, c4
-scan --> c4m, c4
+scan --> c4m, c4, internal/racy
 c4m --> store, c4
 store --> c4
 c4 --> (stdlib only)
