@@ -37,6 +37,8 @@ type TreeStore struct {
 	// but can never leave a torn object at a valid name for a later
 	// run's write-skip to adopt.
 	pending map[c4.ID]string
+	// stat is a test seam for trie lookups; nil means os.Stat.
+	stat func(string) (os.FileInfo, error)
 }
 
 var _ Store = (*TreeStore)(nil)
@@ -86,8 +88,8 @@ func (s *TreeStore) Sync() error {
 		return err
 	}
 	for id, tmpName := range s.pending {
-		p := s.path(id)
-		if _, err := os.Stat(p); err == nil {
+		p, ok := s.locate(id)
+		if ok {
 			os.Remove(tmpName)
 			delete(s.pending, id)
 			continue
@@ -113,8 +115,8 @@ func (s *TreeStore) Has(id c4.ID) bool {
 	if ok {
 		return true
 	}
-	_, err := os.Stat(s.path(id))
-	return err == nil
+	_, ok = s.locate(id)
+	return ok
 }
 
 // Open opens the content for reading.
@@ -125,7 +127,14 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 	if ok {
 		return os.Open(tmpName)
 	}
-	return os.Open(s.path(id))
+	f, err := os.Open(s.path(id))
+	if err == nil || !os.IsNotExist(err) {
+		return f, err
+	}
+	if p, ok := s.foldFind(id); ok {
+		return os.Open(p)
+	}
+	return nil, err
 }
 
 // Create creates a new entry for writing. The caller must know the ID
@@ -195,7 +204,7 @@ func (w *pendingWriter) Close() error {
 		os.Remove(tmpName)
 		return nil
 	}
-	if _, err := os.Stat(w.s.path(w.id)); err == nil {
+	if _, ok := w.s.locate(w.id); ok {
 		os.Remove(tmpName)
 		return nil
 	}
@@ -247,8 +256,8 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	defer s.mu.Unlock()
 
 	// If content already exists, skip the rename.
-	p := s.path(id)
-	if _, err := os.Stat(p); err == nil {
+	p, ok := s.locate(id)
+	if ok {
 		return id, nil
 	}
 
@@ -294,8 +303,8 @@ func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
 	if ok {
 		return tmpName, true
 	}
-	p := s.path(id)
-	if _, err := os.Stat(p); err != nil {
+	p, ok := s.locate(id)
+	if !ok {
 		return "", false
 	}
 	return p, true
@@ -303,7 +312,14 @@ func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
 
 // Remove deletes the content for the given ID.
 func (s *TreeStore) Remove(id c4.ID) error {
-	return os.Remove(s.path(id))
+	err := os.Remove(s.path(id))
+	if err == nil || !os.IsNotExist(err) {
+		return err
+	}
+	if p, ok := s.foldFind(id); ok {
+		return os.Remove(p)
+	}
+	return err
 }
 
 // Walk enumerates every object in the store, calling fn with each object's
@@ -333,13 +349,94 @@ func (s *TreeStore) path(id c4.ID) string {
 	dir := s.root
 	for i := 0; i+2 <= len(str); i += 2 {
 		sub := filepath.Join(dir, str[i:i+2])
-		info, err := os.Stat(sub)
+		info, err := s.statPath(sub)
 		if err != nil || !info.IsDir() {
 			break
 		}
 		dir = sub
 	}
 	return filepath.Join(dir, str)
+}
+
+// locate returns the path of id's object file and true when it exists.
+// The exact-case trie path is checked first with a single stat, exactly
+// as before; only on a miss is foldFind consulted. On a miss the
+// exact-case path is returned as the write target.
+func (s *TreeStore) locate(id c4.ID) (string, bool) {
+	p := s.path(id)
+	if _, err := s.statPath(p); err == nil {
+		return p, true
+	}
+	if fp, ok := s.foldFind(id); ok {
+		return fp, true
+	}
+	return p, false
+}
+
+// foldFind searches for id's object file through shard directories whose
+// names equal the ID's segments under case folding. C4 IDs are base58
+// and case-sensitive, but a store built on a case-insensitive filesystem
+// (default macOS APFS) files IDs differing only in case at some level
+// under one shard directory named by whichever came first ("c4/1J"
+// holding "c41j..."). On a case-sensitive filesystem the exact-case
+// probe misses those objects; this finds them without moving anything.
+// Each level probes at most four case variants (exact first) by stat
+// rather than listing the directory, so a miss never reads a full leaf.
+func (s *TreeStore) foldFind(id c4.ID) (string, bool) {
+	return s.foldSearch(s.root, id.String(), 0)
+}
+
+func (s *TreeStore) foldSearch(dir, str string, i int) (string, bool) {
+	if i+2 <= len(str) {
+		var seen []os.FileInfo
+		for _, seg := range foldVariants(str[i : i+2]) {
+			info, err := s.statPath(filepath.Join(dir, seg))
+			if err != nil || !info.IsDir() || sameAsAny(info, seen) {
+				continue
+			}
+			seen = append(seen, info)
+			if p, ok := s.foldSearch(filepath.Join(dir, seg), str, i+2); ok {
+				return p, true
+			}
+		}
+		if len(seen) > 0 {
+			return "", false // interior node: objects live in the leaves
+		}
+	}
+	p := filepath.Join(dir, str)
+	if _, err := s.statPath(p); err != nil {
+		return "", false
+	}
+	return p, true
+}
+
+// sameAsAny reports whether info is the same directory as any in seen.
+// On a case-insensitive filesystem every case variant resolves to one
+// directory; this keeps the search from walking it more than once.
+func sameAsAny(info os.FileInfo, seen []os.FileInfo) bool {
+	for _, o := range seen {
+		if os.SameFile(info, o) {
+			return true
+		}
+	}
+	return false
+}
+
+// foldVariants returns every ASCII case variant of seg, seg itself first.
+func foldVariants(seg string) []string {
+	out := []string{seg}
+	for i := 0; i < len(seg); i++ {
+		c := seg[i]
+		if !('a' <= c && c <= 'z') && !('A' <= c && c <= 'Z') {
+			continue
+		}
+		for _, v := range out[:len(out):len(out)] {
+			b := []byte(v)
+			b[i] ^= 0x20
+			out = append(out, string(b))
+		}
+	}
+	return out
 }
 
 // noteAdd records one new file in a leaf directory and splits the leaf
@@ -444,4 +541,12 @@ func splitPath(p string) []string {
 // isTemp returns true for temp files created during ingestion.
 func isTemp(name string) bool {
 	return len(name) > 0 && name[0] == '.'
+}
+
+// statPath stats p through the test seam when one is set.
+func (s *TreeStore) statPath(p string) (os.FileInfo, error) {
+	if s.stat != nil {
+		return s.stat(p)
+	}
+	return os.Stat(p)
 }
