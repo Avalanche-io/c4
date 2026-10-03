@@ -281,3 +281,17 @@ the same rule already adopted for assigned/`nom:` IDs.
 - **stdout/stderr discipline** and the claim/description distinction.
 - **`c4 explain`** as a separate verb rather than prose mixed into
   machine output.
+
+---
+
+## Ruling (Joshua, 2026-10-03) — question 3: `c4 id -s <file>` prints the claim
+
+"It should always be the same." Every `-s` invocation ends with its claim
+line — a bare ID on the final line — whether the argument is a directory,
+a c4m file, stdin, or a single regular file. No documented exception. The
+single-file case repeats the ID already in its entry line; that redundancy
+is the price of a rule with no exception.
+
+Questions 1, 2, 4 and 5 are deliberately left open pending a big-picture
+philosophy review (Joshua: the v1.1 surface "smells of wrong fundamentals";
+settle that before deciding edge questions).
