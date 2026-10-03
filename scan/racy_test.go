@@ -3,6 +3,7 @@ package scan
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -227,6 +228,12 @@ func TestRacyStableTreeUnchanged(t *testing.T) {
 	}
 	if !fc.now.Equal(racyT) {
 		t.Fatalf("stable scan waited %v", fc.now.Sub(racyT))
+	}
+	// The golden listing below was produced by 1.0.17 on a Unix filesystem.
+	// Windows reports different permission bits, so directory IDs differ
+	// there for reasons unrelated to the racy rule.
+	if runtime.GOOS == "windows" {
+		return
 	}
 	// `c4 id <fixture>` output from c4 1.0.17.
 	const want = "-rw-r--r-- 2020-01-02T03:04:05Z 6 a.txt c42yayFpQ5CKfAPUUjuE1atmYkUQQNRnfbhD5ftJNwSECL2PwPDHerxHp5KnKxLbHxm4DTiJvnKDDhs19t5uHDUFCa\n" +
