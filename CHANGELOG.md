@@ -1,5 +1,47 @@
 # Changelog
 
+## v1.0.17
+
+Correctness and safety patch. IDs are unchanged: `c4 id` output for any
+tree is byte-identical to v1.0.16.
+
+### Stored bytes are the file's bytes (#43)
+
+`c4 id -s` re-serialized any file whose content parsed as c4m (or whose
+name ended in `.c4m`) before storing it. The store held different bytes
+than the disk, the entry line's size and ID named different bytes, and
+the original was unrecoverable: `c4 patch` restored a 342-byte
+`guide.c4m` as 269 bytes, at exit 0. Files inside a scanned tree are now
+stored exactly as read, and `c4 cat <id>` writes the stored bytes
+verbatim (`-e`/`-r` still format c4m output on request). **If you
+snapshotted trees containing c4m files with ≤ v1.0.16, those files'
+original bytes are not in your store; re-snapshot them.** A file that
+changes between hashing and storing is now recorded with a null ID and a
+warning, rather than under an ID the scan never saw.
+
+### Restore never writes through a symbolic link
+
+`c4 patch <c4m> <dir>` followed symbolic links already present in the
+destination, so a link from one snapshot followed by a directory of the
+same name in the next wrote files outside `<dir>`. Every write is now
+checked against the destination root and refused through a link, and a
+link where the target records a directory is replaced by the directory.
+
+### Scanning a symlink cycle no longer crashes
+
+A link naming one of its own ancestors (`up -> ..`, common as `current`
+or `latest`) recursed until a stack overflow, exiting 2 as if the
+description were partial. The cycle now yields a null ID for the link,
+the standard's answer for an unidentifiable target.
+
+### Sequences: the folded ID-list object is stored (#45)
+
+A folded entry's ID names the list of its members' IDs; `-S` snapshots
+now store that object too, so the description resolves from the store.
+`c4 patch` still cannot expand folded entries into member files; it
+reports them as missing content and changes nothing, as in v1.0.16,
+rather than writing the ID list under the range pattern's name.
+
 ## v1.0.16
 
 Correctness patch: three defects found by adversarial review of the
