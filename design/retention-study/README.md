@@ -178,3 +178,38 @@ One study agent wrote two 300,000-byte random test objects into the default
 store at 15:09 on 2026-10-03 (c4git 1.0.18 used the global store instead of
 the repo-local one). Nothing else under `~/.c4` changed. They are
 `~/.c4/store/c4/4E/c44eGrLa3D…` and `~/.c4/store/c4/4U/c44UaEHH6T…`.
+
+## Direction from Joshua (2026-10-14): cleanup policies are required for v1.1; removal as reduced durability
+
+Joshua, verbatim in substance: "We do need cleanup policies for v1.1 as we
+are already experiencing an issue with that in current development
+projects." And: we likely do not want attic or trash folders replicated
+across volumes; instead a system that applies rules to give "logical
+compliance to the concept of removal." Example: when an automatic choice
+was made between two versions but a human could plausibly have decided
+differently, the unchosen version should not be mirrored to all storage,
+but should not be lost until an explicit choice or policy removes it. So:
+migrate it to a zone where the choice can be made (if it is not already
+there) and reduce its durability. Concretely, for a fork created on a
+remote: both branches are retained only on the local machine and the
+unchosen one is removed from the remote. If the user reverts locally (the
+files are at hand to evaluate), the files are re-propagated; if the user
+confirms, there is one last place for the removal to be applied, and the
+removal becomes complete and certifiable.
+
+Reading against the study:
+- This is "trash as a state, not a place" (judge-fundamental's dissent),
+  with the state expressed as **how many stores hold the bytes**: full
+  replication → one decision zone → none. Removal is a ladder of durability
+  reductions, not a single act.
+- It uses what only c4 enables: many stores, descriptions that outlive the
+  data (both branches stay described while one loses copies), and
+  verification by recomputation (`c4 has` per store makes "complete" a
+  checkable claim: absent from every store you control).
+- It overrides the option of shipping v1.1 with no reclaim policy.
+- It matches the Ash sync's attic/merge design, where the attic is the
+  Mac-only zone.
+- Open: who decides a zone (a store with lower declared durability, or the
+  machine where the human is), how the pending choice is recorded (a c4m
+  naming both branches is enough to re-propagate), and the certification
+  step (removal is complete when no configured store returns the ID).
