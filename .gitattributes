@@ -1,3 +1,4 @@
 # The chain-vector fixtures are byte-stable cross-implementation
 # contracts: no EOL conversion, ever.
 c4m/testdata/chain-vector/* -text
+c4m/testdata/deepen-vector/* -text
