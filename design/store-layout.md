@@ -212,3 +212,23 @@ type are deleted (`Folder` is depth zero of the one rule).
    1-character levels deserve a study as a future writer option.
 6. Walk semantics for duplicates: report each ID once (proposed) versus
    exposing duplicates to a tidy verb.
+
+## Rulings (Joshua, 2026-10-14)
+
+- **FAT32 and exFAT stay targets, served by special strategies for special
+  environments.** The typical behavior must support the common case with
+  the least special handling. Consequence: the default split threshold is
+  chosen for APFS/ext4/NTFS/XFS/ZFS; a FAT/exFAT writer uses a lower one.
+  The threshold is writer-local either way (not in the format).
+- **Directory count is not a fixed acceptable range.** It is decided on
+  performance and utility, and it should be an evolving range driven by
+  local constraints and usage. Under any-depth validity a writer may move
+  objects deeper incrementally (a partial split) to keep each directory in
+  whatever band suits the volume, with no format consequence; "split" is a
+  policy, not an event.
+- **Low-level deletion is not in question.** A store must be able to
+  delete a file (remove by ID). What remains open is only whether v1.1
+  ships a policy that decides what to delete by reachability.
+- **Normalization:** Joshua asks why it should not be automatic. The lead's
+  answer (below) is that rename-only normalization is always safe and can
+  be automatic; only duplicate pruning must stay explicit.
