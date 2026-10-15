@@ -32,10 +32,17 @@ recorded side by side:
 
 ## What it means
 
-In an agent-undo or sync loop, "nothing expires" is unaffordable only
+A "state" here is one full description of the tree (the listing of all
+10,000 files, 1.35 MB of text). Holding 200 states as full listings costs
+289 MB of description. Holding the same 200 states as a stream (one full
+base listing plus 199 change sets) costs 1.55 MB, which is 14% more than
+holding only the current state. Content bytes are the same either way and
+are outside this comparison.
+
+So in an agent-undo or sync loop, "nothing expires" is unaffordable only
 because the store keeps each directory as a fresh full listing per
-snapshot. Stored as the stream the c4m grammar already defines, the
-knowledge of 200 states costs about as much as one state. The retention
+snapshot. Stored as the stream the c4m grammar already defines, retaining
+every state costs little more than retaining the latest one. The retention
 question then narrows to content, where a few large files hold most bytes
 (1% of objects held 77% of bytes in the default store).
 
