@@ -232,3 +232,35 @@ type are deleted (`Folder` is depth zero of the one rule).
 - **Normalization:** Joshua asks why it should not be automatic. The lead's
   answer (below) is that rename-only normalization is always safe and can
   be automatic; only duplicate pruning must stay explicit.
+
+## Amendment (Joshua, 2026-10-14): readers assert nothing about case
+
+Joshua: "Why can't we simply make no assertions about the correctness of
+directory capitalizations even on filesystems that support them? If we
+find 4E/ we also check its contents for ..4e.., if we find 4e/ we also
+check for ..4E.., and if we find both we check both. Later we can add
+self-migration where incorrectly placed objects are atomically moved to
+the correct placement on filesystems that support it... compatible but
+always migrating towards higher performance." The same applies to split
+policy (ruling 3 above).
+
+Adopted in place of the draft's "legacy fallback, Go-1.0.x only,
+retired later":
+
+- **Readers are case-agnostic, permanently.** At each level a reader
+  probes every case variant of the 2-character segment that exists
+  (deduplicated by same-file, since on a case-insensitive volume they are
+  one directory) and applies the full any-depth lookup inside each. This
+  is what 1.0.18's tolerant lookup already does on a miss; the only change
+  from the draft is that it is part of the shared reader rule and never
+  retired. Measured cost: unchanged on an exact hit; about 11–13 stats on a
+  miss at depth 2 where the variant exists, versus 4–6 without variants.
+- **Writers create lowercase names** and otherwise assert nothing: an
+  existing variant directory is used as found.
+- **Self-migration is opportunistic and rename-only:** on filesystems that
+  distinguish case, a tool that finds an object under a variant spelling
+  may move it atomically to the lowercase path; on filesystems that do not,
+  a case-only rename of the directory. No step deletes anything; duplicate
+  pruning remains explicit.
+- This deletes the "legacy layout" concept and the retirement condition.
+  The store is always valid; it only gets faster.
