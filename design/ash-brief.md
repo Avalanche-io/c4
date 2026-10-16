@@ -148,14 +148,18 @@ off on the document. It must cover:
 - **Access:** `ssh ash-cloud` (root) or `ssh ash-cloud-tn` (user ash) from
   Abyss: port 2222, key `~/.ssh/ash-cloud`. Never port 22; that is Tailscale
   SSH and hangs on re-auth after any Tailscale upgrade.
-- **Present (2026-10-14):** Ubuntu 24.04, 2 vCPU, 3 GB usable RAM, 40 GB
-  free; node 22; c4 1.0.17 at `/usr/local/bin/c4` (upgrade to 1.0.18 from
-  the c4toolkit release); Claude Code 2.1.288 for user `ash` via
+- **Present (verified 2026-10-15):** Ubuntu 24.04, 2 vCPU, 3 GB usable
+  RAM, 40 GB free; node 22; Go 1.26.9 at `/usr/local/go/bin/go` (not on
+  root's PATH); `gh` 2.45 installed but not logged in; c4 1.0.18 at
+  `/usr/local/bin/c4`; git identity set for user ash; Claude Code 2.1.288 for user `ash`
+  via
   `/home/ash/bin/claude` (pinned to the Ash account); the Mac mirror at
   `/Users/joshua/ws/active/software/c4` is a live git clone.
-- **Missing, needs Joshua's okay to install:** Go 1.26, `gh` or a
-  fine-grained GitHub token scoped to the Avalanche-io repos (no workflow
-  permission), git identity.
+- **Missing, needs Joshua's okay:** a GitHub login for `gh` or a
+  fine-grained token scoped to the Avalanche-io repos (no workflow
+  permission). Without it the VM can build and test but not push.
+- **As of 2026-10-15 no c4 work has run on the VM.** The mirror is at
+  `b35eefc` (this brief); no `fix/1019-*` branches, no `v11-rescope.md`.
 - **Capacity:** one or two agents at a time. Run them in-process (no
   named pane agents: those trigger a folder-trust dialog). Each fix on its
   own branch and worktree under `.worktrees/`; push often; coordinate with
