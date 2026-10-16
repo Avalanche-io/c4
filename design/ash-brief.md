@@ -142,6 +142,15 @@ off on the document. It must cover:
   #41, #42, #44, plus `restore` materializing what is held and declaring
   the rest (today it is all-or-nothing on one missing file).
 - Then docs, the cccc.io rewrite (it documents 1.0.x verbs), CI, release.
+- Reported 2026-10-15 by the session building `oss/c4-operator` (branch
+  `mvp`, local only, a Kubernetes materialization operator): it needs
+  `c4m.IsJournal`, `c4m.ResolveBase` and `scan.ModeContent`, which are on
+  master and in no release (verified), so it carries `replace ../c4` until
+  v1.1 ships; master's `c4 patch` no longer writes directories, so
+  c4-containers' `render-pipeline.yaml` and `materializer-job.yaml` break
+  at v1.1 and must move to `restore`; c4d `checkout` appears (code read,
+  not run) to write nested files flat; folder-record expansion and
+  open-store-by-URL are not importable, so the operator copies both.
 
 ## 6. Spinning up on ash-cloud
 
@@ -203,6 +212,8 @@ off on the document. It must cover:
 - `c4 patch` trusts a destination file whose size and mtime match; verify a
   materialized tree with `c4 id`.
 - Symlink timestamps are not restored (x/sys, v1.1).
+- c4-containers README says `S3_ENDPOINT`; c4 reads `C4_S3_ENDPOINT`
+  (verified in `store/config.go`). Docs-only; fits 1.0.19.
 
 ## 9. Open decisions (Joshua only)
 
