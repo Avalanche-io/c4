@@ -164,9 +164,12 @@ off on the document. It must cover:
   via
   `/home/ash/bin/claude` (pinned to the Ash account); the Mac mirror at
   `/Users/joshua/ws/active/software/c4` is a live git clone.
-- **Missing, needs Joshua's okay:** a GitHub login for `gh` or a
-  fine-grained token scoped to the Avalanche-io repos (no workflow
-  permission). Without it the VM can build and test but not push.
+- **Push access (added 2026-10-16, Joshua's instruction):** user `ash` has
+  one write deploy key per Avalanche-io repo (`~/.ssh/deploy-<repo>`) with
+  SSH aliases `github-<repo>` in `~/.ssh/config`; the clones under
+  `/home/ash/ws/c4/<repo>` have `origin` set to those aliases, so
+  `git push origin <branch>` works there. Deploy keys cannot use `gh`
+  (PRs, CI status): that still needs `gh auth login` in a browser.
 - **Correction (2026-10-15):** an earlier edit of this section said no c4
   work had run on the VM. That was wrong: it looked only at the Mac mirror.
   An unattended agent under user `ash` carried out all of work item A on
