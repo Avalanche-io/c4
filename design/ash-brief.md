@@ -130,11 +130,33 @@ off on the document. It must cover:
   pushed) and their ports to the other four languages.
 - **Symlink times via x/sys**; the symlink-ID rule (null unless the target
   is an in-tree regular file).
-- Answers to the July 25 questions still open: store bootstrap (lead
-  recommends: create `~/.c4/store` silently, never prompt), record-kind
-  freezing (freeze only the `@c4 <kind> <version>` header convention and
-  the unknown-version rule), the 797-word front door (cut duplicates, keep
-  the SCRIPTING contract), gc root-set rule (keep frozen).
+- Status of the July 25 surface-review findings, from a transcript review
+  on 2026-10-16 (three agents, all returned): **Finding 1 (directory IDs
+  carry no scan settings) was resolved by Joshua on 2026-07-25**: IDs stay
+  pure, the store keeps a projection- and folding-keyed map, folding is
+  authoritative ("folded ranges deliberately discard individual frame
+  metadata... use what is input as the authority once canonicalized").
+  Recorded in `c4m-canonical-storage.md` and the review itself. Residue:
+  a bare ID handed to a recipient does not carry its scan settings; parked
+  behind the virtual-parent/listings idea. **Finding 3 (format count)**
+  is answered by this re-scope: every record format leaves the core, so
+  the core has one format, c4m. **Finding 2 (`c4 id` carries many
+  concepts)** is unresolved apart from the claim-line ruling.
+- Still open from July 25, never answered by Joshua in any transcript:
+  store bootstrap (lead recommends: create `~/.c4/store` silently, never
+  prompt); what, if anything, about record headers is frozen at v1.1.0 now
+  that records leave the core (lead: only the `@c4 <kind> <version>`
+  convention and the unknown-version rule, in the toolbox); the 797-word
+  front door (cut duplicates, keep the SCRIPTING contract; still 797 words
+  on master). The gc root-set sentence ("nothing a journal line reaches
+  will ever be collectable", `cmd/c4/help.go`) is overtaken by ruling 5
+  and must not freeze; dropping it needs Joshua's explicit yes.
+- Joshua, 2026-07-29 (transcript, not yet in any design doc): symlinks
+  need "a way within the standard c4m file to intentionally record a
+  symbolic link... both having an ID and not having an ID should be
+  supported as well as fully collapsing the symlink", and "these are
+  issues that need to be resolved with priority". The re-scope must say
+  how this fits a frozen c4m grammar.
 - Port of every 1.0.17/1.0.18 fix to master (`DurableWriter.Abort`,
   verified reads, diff hashing, racy scan, cat verify, case-tolerant store,
   dir mtimes, panic fix), plus the two unmerged July branches
