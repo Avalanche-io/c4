@@ -283,6 +283,33 @@ filters by definition, and the repo store is private.
 authored "Joshua Kolden". Push as is, or reauthor as a bot identity?
 Recommendation: push as is; they are your project's commits on your VM.
 
+**7h. c4git smudge truncates pass-through content (new, verified
+2026-10-16).** `filter/filter.go` `Smudge` reads at most 256 bytes to
+sniff for a C4 ID and, when the input is not an ID, writes only those
+256 bytes and never the rest of the stream. Run on c4git 1.0.18 in an
+isolated store: a 1,000-byte and a 300,000-byte non-pointer file both
+come out as 256 bytes; 100 bytes passes intact. Git calls smudge on
+checkout for every blob matching the filter attribute, so any file
+committed before c4git was configured (or whose clean step was skipped)
+is truncated in the working tree on checkout. Data loss, no surface
+change to fix. Recommendation: 1.0.19 blocker; the fix is to copy the
+remainder of the reader after the sniffed bytes. Reported by the
+c4-operator session.
+
+**7i. A pre-release tag on master.** The operator now depends on master
+by Go pseudo-version `v1.0.17-0.20261016134402-db4c7bec2376`. That
+version sorts below v1.0.18, so any module that also requires c4
+v1.0.18 resolves to v1.0.18 and loses the three master-only APIs. Only
+a tag that sorts above v1.0.18 fixes that, e.g. `v1.1.0-alpha.1` on
+master. Against it: master's surface is what the re-scope changes, and
+the versioning policy says minor is the breaking tier; a tagged alpha is
+a promise that this surface exists under the v1.1 name. For it: an
+alpha tag is explicitly not a release, Go treats it as a pre-release,
+and it unblocks a public project. Recommendation: no tag until the
+re-scope document is signed; if the operator must ship before then, it
+vendors or keeps the `replace`. Your call, and the operator session
+will raise it with you directly.
+
 ---
 
 ## 8. One consistency check: attic versus "no replicated attic"
