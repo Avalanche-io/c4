@@ -168,8 +168,11 @@ off on the document. It must cover:
   one write deploy key per Avalanche-io repo (`~/.ssh/deploy-<repo>`) with
   SSH aliases `github-<repo>` in `~/.ssh/config`; the clones under
   `/home/ash/ws/c4/<repo>` have `origin` set to those aliases, so
-  `git push origin <branch>` works there. Deploy keys cannot use `gh`
-  (PRs, CI status): that still needs `gh auth login` in a browser.
+  `git push origin <branch>` works there. `gh` is logged in as mrjoshuak (device flow,
+  2026-10-16; scopes repo, read:org, gist; token in plain text at
+  `/home/ash/.config/gh/hosts.yml`), so PRs and CI status work there.
+  Joshua's ruling: the VM is the zone where all non-macOS-specific c4 work
+  is done.
 - **Correction (2026-10-15):** an earlier edit of this section said no c4
   work had run on the VM. That was wrong: it looked only at the Mac mirror.
   An unattended agent under user `ash` carried out all of work item A on
