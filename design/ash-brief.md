@@ -158,8 +158,16 @@ off on the document. It must cover:
 - **Missing, needs Joshua's okay:** a GitHub login for `gh` or a
   fine-grained token scoped to the Avalanche-io repos (no workflow
   permission). Without it the VM can build and test but not push.
-- **As of 2026-10-15 no c4 work has run on the VM.** The mirror is at
-  `b35eefc` (this brief); no `fix/1019-*` branches, no `v11-rescope.md`.
+- **Correction (2026-10-15):** an earlier edit of this section said no c4
+  work had run on the VM. That was wrong: it looked only at the Mac mirror.
+  An unattended agent under user `ash` carried out all of work item A on
+  2026-10-15 from `/home/ash/ws/c4/prompt-1.0.19.md`, in clones at
+  `/home/ash/ws/c4/<repo>` (not the Mac mirror). Its report is
+  `/home/ash/ws/c4/STATUS-1.0.19.md`; branches are listed there. The
+  branches were fetched to the laptop as `vm/fix/*` refs and run on macOS:
+  c4git, c4py and c4ts pass; c4 fails split vector S2 because the split
+  counter is keyed by directory spelling, so on a case-insensitive volume
+  one directory gets two counters and splits late. Nothing is pushed.
 - **Capacity:** one or two agents at a time. Run them in-process (no
   named pane agents: those trigger a folder-trust dialog). Each fix on its
   own branch and worktree under `.worktrees/`; push often; coordinate with
