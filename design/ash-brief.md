@@ -240,6 +240,13 @@ off on the document. It must cover:
 - `c4 patch` trusts a destination file whose size and mtime match; verify a
   materialized tree with `c4 id`.
 - Symlink timestamps are not restored (x/sys, v1.1).
+- **c4-containers: any push to `main` publishes the ghcr `latest` images**
+  from the `C4_VERSION` pinned in that branch's workflow and Dockerfiles.
+  `main` had been left at the 1.0.16 pin while 1.0.17 and 1.0.18 were
+  bumped only on `release/1.0.x`; a docs push on 2026-10-17 started
+  rebuilding `latest` at v1.0.16 (cancelled, `main` merged up to the
+  release line, rebuilt at v1.0.18). Rule: keep `main` at or ahead of
+  `release/1.0.x` in c4-containers, and check the pin before pushing.
 - c4-containers README says `S3_ENDPOINT`; c4 reads `C4_S3_ENDPOINT`
   (verified in `store/config.go`). Docs-only; fits 1.0.19.
 
