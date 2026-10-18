@@ -272,7 +272,10 @@ the zone as `CUT`, which the parser rejects; three tests fail under
 it is a correctness bug with no surface change.
 
 **7e. S3 README.** c4-containers' README says `S3_ENDPOINT`; c4 reads
-`C4_S3_ENDPOINT`. Docs only. Recommendation: fix in 1.0.19.
+`C4_S3_ENDPOINT`. Docs only. Recommendation: fix in 1.0.19. **Done
+2026-10-17** on c4-containers `main` (1df1f15) and `release/1.0.x`
+(cee8aab): README corrected; the s3worker script exports
+`C4_S3_ENDPOINT` from `S3_ENDPOINT`.
 
 **7f. c4git gc with `C4_STORE=s3://…`.** The filters fall back to the
 repo store, so gc follows them and collects it. Keep that, or refuse
@@ -294,7 +297,10 @@ committed before c4git was configured (or whose clean step was skipped)
 is truncated in the working tree on checkout. Data loss, no surface
 change to fix. Recommendation: 1.0.19 blocker; the fix is to copy the
 remainder of the reader after the sniffed bytes. Reported by the
-c4-operator session.
+c4-operator session. **Fixed 2026-10-17**: c4git commit d3b4965 on
+`release/1.0.x` and `main` (main fast-forwarded to the release line);
+new test fails on 1.0.18 and passes with the fix; suite green with race
+on macOS. Not yet in any tag: it ships with 1.0.19.
 
 **7i. A pre-release tag on master.** The operator now depends on master
 by Go pseudo-version `v1.0.17-0.20261016134402-db4c7bec2376`. That
