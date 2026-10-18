@@ -173,6 +173,20 @@ off on the document. It must cover:
   at v1.1 and must move to `restore`; c4d `checkout` appears (code read,
   not run) to write nested files flat; folder-record expansion and
   open-store-by-URL are not importable, so the operator copies both.
+  CORRECTION 2026-10-18 (from the operator's `REPORT-v2.md`): the operator
+  now pins the master pseudo-version `v1.0.17-0.20261016134402-db4c7bec2376`
+  instead of `replace`; its v2 no longer calls `c4m.ResolveBase`; what it
+  needs kept through the v1.1 re-scope is `c4m.IsJournal`, `scan.ModeContent`
+  and the parser accepting a closing checkpoint line (6c2b82d, which this
+  list omitted; on v1.0.18 three operator tests fail with "empty patch
+  section"). Its further c4 findings, none planned yet, are listed in
+  `c4-operator/PROGRESS.md` under "### c4": S3Store `Open` has no `Range`
+  and `Has` hides network errors; path-style only with a custom endpoint;
+  `objectKey` is prefix + ID with no separator; reconcile has no hardlink
+  mode; the content projection drops the executable bit; `c4 log` on a
+  chain whose first line is an external base lists patch IDs, not version
+  IDs. The c4git smudge fix and the `C4_S3_ENDPOINT` docs fix it asked for
+  landed 2026-10-17 (section 5 above).
 
 ## 6. Spinning up on ash-cloud
 
