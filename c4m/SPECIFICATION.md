@@ -212,10 +212,18 @@ Entries are sorted using natural ordering:
 1. Files sort before directories at the same depth level
 2. Within each group, split names into alternating text/numeric segments
 3. Compare segments left-to-right:
-   - Numeric segments: compare as integers
+   - Numeric segments: compare as integers of any length. Drop leading
+     zeros; a shorter remainder is the smaller value; equal lengths compare
+     digit by digit. Never parse into a fixed-width integer: a 20-digit run
+     overflows 64 bits and a 17-digit run loses precision in a double, and
+     either makes the order depend on the implementation or on input order.
    - Equal integers: shorter representation first (`1` < `01` < `001`)
    - Text segments: UTF-8 codepoint comparison
    - Mixed types: text sorts before numeric
+
+The conformance vectors are `testdata/natural_sort_vectors.json`: one
+list of names in canonical order, which every implementation must
+reproduce from any permutation.
 
 ### Examples
 ```
@@ -226,6 +234,8 @@ render.1.exr
 render.01.exr   # After render.1.exr (equal value, longer)
 render.2.exr
 render.10.exr
+take.99999999999999999999.exr     # 20 digits: by value, not by a wrapped int64
+take.100000000000000000000.exr
 ```
 
 ## Media File Sequences

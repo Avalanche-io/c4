@@ -8,6 +8,21 @@ crash-verified end-to-end including streaming and SIGPIPE modes
 marked ⚠. Round 3 (the crucible-litigated v9 amendment) reshaped the
 output surface after round 2; this entry describes the NET result.
 
+### Natural order compares digit runs of any length (IDs of rare trees change)
+
+`c4m.NaturalLess` parsed each digit run into an int64, so a run of 20 or
+more digits wrapped: two different runs could compare equal, and then
+the canonical order, and the tree's ID, depended on input order (one
+tree, several IDs across runs), or two runs compared in the wrong
+order. Runs now compare as integers of any length with no parse (drop
+leading zeros, shorter remainder first, then digit by digit, then the
+shorter spelling first). Names with runs of 18 digits or fewer sort
+exactly as before, so their IDs are unchanged; a tree with a longer run
+now has the one ID the specification always defined, which is the ID
+c4py already computed. Conformance vectors:
+`c4m/testdata/natural_sort_vectors.json`, shared with c4py and c4ts
+(whose double-precision parse lost digits past 16).
+
 ### ⚠ Streaming chain output; the final line is the root ID
 
 `c4 id` streams its description as a valid c4m chain: entries in
