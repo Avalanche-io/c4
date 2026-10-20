@@ -236,7 +236,8 @@ costs the grammar.
 ## 7. The 1.0.19 decisions from the VM agent's report
 
 These are patch-release calls; the agent's full reasoning is in
-`/home/ash/ws/c4/STATUS-1.0.19.md` on ash-cloud.
+`/home/ash/ws/c4/STATUS-1.0.19.md` on ash-cloud, copied to the Mac on
+2026-10-19 as `~/ws/active/software/c4/cloud-1.0.19/STATUS-1.0.19.md`.
 
 **7a. Ship without `c4 store normalize`.** The verb needs an `--apply`
 flag, and patches add no flags; in 1.0.x `c4 store` already means
@@ -244,6 +245,17 @@ flag, and patches add no flags; in 1.0.x `c4 store` already means
 Mac makes replica spellings diverge, which is the rsync shard-wipe state.
 With the case-agnostic reader every existing store is valid as it is.
 Recommendation: yes, ship without it; normalize is a v1.1 verb.
+**RULED 2026-10-19 (Joshua, relayed by the home-6e session): no
+normalize command at all, in 1.0.19 or v1.1.** His words: "No normalize
+command at all. I don't think that C4 should interact with this. The
+prescription right now is that C4 understands how to interact with any
+version of that folder system. And it has a recommendation for how it
+will build one if it needs to build one. So there's nothing to do. The
+user doesn't need to interact with it at all." So the recommendation's
+second half was wrong: the verb is dropped from the plan, not deferred.
+The reader stays case-agnostic and any-depth, new splits follow the
+layout rule, and the opportunistic rename-only migration (ash-brief §4
+item 3) is dropped with it. 7b, 7c and 7d remain open.
 
 **7b. Lowercase split directories are invisible to older readers on
 Linux shared stores.** New directories are created only by splits. A

@@ -90,8 +90,11 @@ Content, all verified defects:
    already has the fold lookup; keep it as the shared rule, not a legacy
    mode); `Remove` deletes at every level; `Walk` enumerates every
    directory spelling and reports each ID once; a flat root may split
-   straight into `c4/xx`; opportunistic rename-only migration (`c4 store
-   normalize`, dry-run default, SameFile guard before any prune).
+   straight into `c4/xx`. DROPPED 2026-10-19 (Joshua, relayed by
+   home-6e): no `c4 store normalize` and no opportunistic rename-only
+   migration, in 1.0.19 or v1.1; c4 reads any spelling of the store and
+   writes the rule when it creates directories, and the user never
+   interacts with the layout (v11-decisions §7a).
    Conformance vectors are drafted in `store-layout.md`.
 4. Port the same to `c4py` (`store.py`) and tell imgbin's owner
    (`~/ws/active/software/imgbin/Sources/ImgbinCore/Store.swift`); `c4ts`'s
