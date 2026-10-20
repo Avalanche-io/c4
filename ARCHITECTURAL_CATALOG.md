@@ -316,6 +316,7 @@ reference pages live in `help.go` and print via each verb's `--help`):
 | `merge.go` | `c4 merge` | Observer (text out) |
 | `split.go` | `c4 split` | Writes its two named output files |
 | `version.go` | `c4 version` | Observer |
+| `external.go` | `c4 farm`, `c4 <name>` | Runs `c4-<name>` from PATH (`design/external-tools.md`); reserved names `farm`, `agent` win over paths, other names yield to an existing path |
 
 The print barrier (`design/snapshot-loop`): no ID reaches stdout before
 its content is durable, its journal entry appended and fsynced

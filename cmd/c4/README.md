@@ -14,6 +14,7 @@ C4 is a command line tool for identifying files, directories, and piped data usi
 | `c4 log` | List patches in a chain |
 | `c4 split` | Split a patch chain for branching |
 | `c4 version` | Print version |
+| `c4 farm`, `c4 <name>` | Run `c4-farm`, or any `c4-<name>` on PATH (`c4 help` lists them) |
 
 ## Quick Examples
 

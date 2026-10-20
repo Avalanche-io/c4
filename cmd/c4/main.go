@@ -18,6 +18,7 @@ func main() {
 		switch os.Args[1] {
 		case "--help", "-h", "help":
 			fmt.Printf("%s\nVersion: %s\n", topHelp, version)
+			printInstalledTools(os.Stdout)
 			return
 		case "id":
 			runID(os.Args[2:])
@@ -55,6 +56,20 @@ func main() {
 		case "version":
 			runVersion(os.Args[2:])
 			return
+		}
+	}
+
+	// External tools: c4 farm runs c4-farm (design/external-tools.md).
+	// A reserved name dispatches even when a path of that name exists;
+	// any other name only when no such path exists and the tool is on
+	// PATH, so the bare path shortcut below keeps its meaning.
+	if len(os.Args) > 1 {
+		name := os.Args[1]
+		if bin, reserved, run := externalTool(name); run {
+			os.Exit(runExternal(bin, os.Args[2:]))
+		} else if reserved {
+			fmt.Fprintf(os.Stderr, "c4: %s needs c4-%s on PATH: %s\n", name, name, toolInstallHint)
+			os.Exit(1)
 		}
 	}
 

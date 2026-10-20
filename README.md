@@ -54,11 +54,14 @@ provides some that are useful.
 
 ## Install
 
-### Homebrew (recommended — includes c4 and c4sh)
+### Homebrew (recommended: c4, c4sh, c4git, and the farm tools)
 
 ```bash
-brew install mrjoshuak/tap/c4
+brew install avalanche-io/tap/c4
 ```
+
+Suite 1.0.18 and earlier live in the old tap, `mrjoshuak/tap/c4`;
+`brew upgrade` follows the move.
 
 ### Binary downloads
 
@@ -81,6 +84,33 @@ npm install @avalanche-io/c4        # TypeScript / JavaScript
 
 See [c4toolkit](https://github.com/Avalanche-io/c4toolkit) for the
 full suite and version matrix.
+
+## Farms
+
+The install brings `c4-farm` (and `c4-agent` on macOS and Linux), and
+`c4 farm ...` runs it. Join a studio's farm from any machine with only
+c4 installed, with no Docker, kubectl or cluster credentials:
+
+```bash
+c4 farm login https://farm.studio.example   # sign in once
+c4 farm submit render shot010.c4m           # plan, estimate, submit
+c4 farm ls                                  # the queue, in run order
+c4 farm watch JOB                           # progress, deadline, slack
+c4 farm get JOB ./out/                      # the output, every ID checked
+```
+
+Or make a farm on this machine, which is the one command that needs
+Docker:
+
+```bash
+c4 farm up
+```
+
+`c4 <name>` runs any `c4-<name>` on PATH the way git finds its plugins;
+`c4 help` lists the tools installed. The farm itself is
+[c4-operator](https://github.com/Avalanche-io/c4-operator) and its
+console is [c4-hud](https://github.com/Avalanche-io/c4-hud); their
+READMEs take it from here.
 
 ## What can you do with it?
 

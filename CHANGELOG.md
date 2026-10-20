@@ -8,6 +8,18 @@ crash-verified end-to-end including streaming and SIGPIPE modes
 marked ⚠. Round 3 (the crucible-litigated v9 amendment) reshaped the
 output surface after round 2; this entry describes the NET result.
 
+### `c4 <name>` runs `c4-<name>`; `c4 farm` and `c4 agent` are reserved
+
+External tools dispatch like git plugins (`design/external-tools.md`):
+after the built-in verbs, `farm` and `agent` always run `c4-farm` and
+`c4-agent` from PATH (a directory of that name is scanned with `c4
+./farm`); any other first argument that names an existing file or
+directory keeps the bare shortcut; otherwise `c4 <name>` runs `c4-<name>`
+when it is installed. Arguments, stdin, stdout, stderr and the exit code
+pass through. `c4 help` lists the installed tools. The standard release
+ships `c4-farm` and `c4-agent` from c4-operator, so `brew install
+avalanche-io/tap/c4` ends with a working `c4 farm`.
+
 ### Natural order compares digit runs of any length (IDs of rare trees change)
 
 `c4m.NaturalLess` parsed each digit run into an int64, so a run of 20 or

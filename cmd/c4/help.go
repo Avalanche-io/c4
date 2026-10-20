@@ -24,6 +24,8 @@ Usage:
   c4 merge | paths | intersect | explain | version   (see c4 explain <verb>)
 
 Shortcuts:  c4 <path> = c4 id <path> (read-only);   c4 -s <path> = c4 id -s <path>
+  tools:  c4 farm ... runs c4-farm (always); c4 <name> runs c4-<name> from PATH when no such
+          path exists; args, stdin, stdout, stderr and the exit code pass through
   pipes:  ...|c4  ID of stdin (nothing stored);  ...|c4 -s  store stdin, print ID;  ...|c4 id -  parse
 
 Identity - two concepts:

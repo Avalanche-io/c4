@@ -33,6 +33,14 @@ Nothing is written anywhere without `-s` (or `restore --force`), and
 
 `c4 version` prints version info.
 
+**External tools**: `c4 <name>` runs `c4-<name>` from PATH with the
+arguments, stdin, stdout, stderr and exit code passed through, the way
+git finds its plugins. `c4 farm` and `c4 agent` always mean the tool,
+even if a directory of that name exists (scan it with `c4 ./farm`); any
+other name runs its tool only when no file or directory of that name
+exists. `c4 help` lists the tools installed. See
+`design/external-tools.md`.
+
 The CLI has zero external dependencies. It requires Go 1.16+.
 
 ## Synopsis
@@ -52,6 +60,7 @@ c4 explain <command> [args]          Human-readable command narration
 c4 paths [<file.c4m> | -]            Convert between c4m and path lists
 c4 intersect <id|path> <a> <b>       Find common entries between c4m files
 c4 version                           Print version
+c4 farm ...                          Run c4-farm (c4 <name> runs c4-<name> from PATH)
 
 c4 <path>                            Read-only shortcut for c4 id <path>
 c4 -s <path>                         Snapshot shortcut for c4 id -s <path>
