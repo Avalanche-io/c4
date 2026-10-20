@@ -328,6 +328,20 @@ re-scope document is signed; if the operator must ship before then, it
 vendors or keeps the `replace`. Your call, and the operator session
 will raise it with you directly.
 
+**7j. Natural order of long digit runs (new 2026-10-20, from the
+operator team).** `c4m.NaturalLess` parsed digit runs into an int64, so
+a 20-digit run wrapped: two different runs could compare equal, and a
+tree with such names got a different ID per run (a reviewer saw two
+IDs in six runs). Fixed on master (b7f9e63; c4py 2cec4de; c4ts 1bc9723)
+by comparing runs as integers of any length with no parse; shared
+vectors in `c4m/testdata/natural_sort_vectors.json`; the c4m spec says
+"of any length" now. Names with runs of 18 digits or fewer sort exactly
+as before, so their IDs do not change; longer runs get the one ID the
+spec defined, which c4py already produced. Question: cherry-pick into
+1.0.19? Recommendation: yes. It removes nondeterminism, adds no API and
+no flag, and the only IDs that move were never stable. The patch policy
+("safe to upgrade blind") is met for every tree that had one ID.
+
 ---
 
 ## 8. One consistency check: attic versus "no replicated attic"
