@@ -190,6 +190,15 @@ off on the document. It must cover:
 
 ## 6. Spinning up on ash-cloud
 
+- **Lead slot (Joshua, 2026-10-19):** the VM runs ONE Claude Code lead at a
+  time, gated by Ash. Hold the slot before any work there: from the Mac,
+  `cloud-slot status`, then `cloud-slot acquire --lead c4 --purpose "..."
+  --ttl 2h`, then push / start / exec / pull, `extend`, and `release` when
+  done. Work runs as the unprivileged user `lead` in a capped slice, never
+  as `ash` or root. Runbook: `~/ws/active/ash/ashin/docs/CLOUD-VM.md`, "The
+  lead slot". The clones, deploy keys and gh login described below were set
+  up under `/home/ash` and must be moved or recreated for `lead` before the
+  next c4 run on the VM.
 - **Access:** `ssh ash-cloud` (root) or `ssh ash-cloud-tn` (user ash) from
   Abyss: port 2222, key `~/.ssh/ash-cloud`. Never port 22; that is Tailscale
   SSH and hangs on re-auth after any Tailscale upgrade.
