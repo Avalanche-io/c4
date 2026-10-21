@@ -27,7 +27,7 @@ directory keeps the bare shortcut; otherwise `c4 <name>` runs `c4-<name>`
 when it is installed. Arguments, stdin, stdout, stderr and the exit code
 pass through. `c4 help` lists the installed tools. The standard release
 ships `c4-farm` and `c4-agent` from c4-operator, so `brew install
-avalanche-io/tap/c4` ends with a working `c4 farm`.
+mrjoshuak/tap/c4` ends with a working `c4 farm`.
 
 ### Natural order compares digit runs of any length (IDs of rare trees change)
 

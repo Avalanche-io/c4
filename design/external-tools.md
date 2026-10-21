@@ -13,7 +13,7 @@ directory called `farm`, or prints usage.
 
 c4-operator releases `c4-farm` (macOS, Linux, Windows) and `c4-agent`
 (macOS, Linux) with goreleaser, plus Homebrew formulas `c4-farm` and
-`c4-agent` in `Avalanche-io/homebrew-tap`. `c4-farm login HUD-URL` works
+`c4-agent` in `mrjoshuak/homebrew-tap`. `c4-farm login HUD-URL` works
 against any farm; only `c4-farm up` (a farm on this machine) needs Docker.
 
 ## The rule
@@ -90,11 +90,11 @@ same test runs on Windows) and checks:
 The standard release brings the tools. `releases.json` gains two
 components built from c4-operator at a pinned tag: `c4-farm` (all six
 platforms) and `c4-agent` (macOS and Linux). They land in the suite
-archives beside c4, c4sh and c4git. The Homebrew formula `c4` moves to
-`Avalanche-io/homebrew-tap` and depends on that tap's `c4-farm` and
-`c4-agent` formulas, which c4-operator's goreleaser publishes, so
-`brew install avalanche-io/tap/c4` installs all of it and `brew upgrade`
-follows each at its own cadence. The old tap gets a `tap_migrations.json`
-entry so existing installs follow the move. The pin between the suite
+archives beside c4, c4sh and c4git. The Homebrew formula `c4` stays in
+`mrjoshuak/homebrew-tap` (Joshua, 2026-10-21: the tap does not move to
+Avalanche-io until the service offering is tied in) and depends on that
+tap's `c4-farm` and `c4-agent` formulas, generated from each c4-operator
+release and pushed from the laptop, so `brew install mrjoshuak/tap/c4`
+installs all of it. The pin between the suite
 and c4-operator is recorded in `releases.json` and validated with the
 rest of the suite.

@@ -23,7 +23,7 @@ import (
 // script or a guide must not depend on the working directory.
 var reservedTools = []string{"farm", "agent"}
 
-const toolInstallHint = "install it with the c4 suite (brew install avalanche-io/tap/c4) or from https://github.com/Avalanche-io/c4-operator/releases"
+const toolInstallHint = "install it with the c4 suite (brew install mrjoshuak/tap/c4) or from https://github.com/Avalanche-io/c4-operator/releases"
 
 func isReservedTool(name string) bool {
 	for _, r := range reservedTools {

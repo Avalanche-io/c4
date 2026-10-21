@@ -355,7 +355,7 @@ no flag, and the only IDs that move were never stable. The patch policy
 
 **7k. Backport the `c4 farm` dispatch to a 1.0.20 patch? (new
 2026-10-21, from the c4-operator release).** Joshua's gate for c4-hud
-going public is `brew install avalanche-io/tap/c4` then `c4 farm
+going public is `brew install mrjoshuak/tap/c4` then `c4 farm
 agents` on a clean machine. The dispatch (`design/external-tools.md`)
 is on master only, and v1.1 waits on the re-scope. The patch policy
 allows strictly additive changes that break no script. The dispatch in
@@ -367,11 +367,17 @@ change what `c4 farm` does for a directory named `farm`, so they stay
 in v1.1. Recommendation: yes, 1.0.20 with the additive rule, cut right
 after c4-operator v0.1.0 publishes its formulas, carrying c4-farm,
 c4-agent and c4-unit from those release archives in the suite bundles
-and `c4.rb` depending on the two formulas in `Avalanche-io/homebrew-tap`.
+and `c4.rb` depending on the two formulas in `mrjoshuak/homebrew-tap`.
 Alternative: wait for v1.1.0 (no date). Your call. **RULED 2026-10-21
 (Joshua): "I agree with building 1.0.20."** The additive dispatch is on
 release/1.0.x; the suite cut waits for c4-operator v0.1.0's formulas and
 archives and the new tap.
+
+**Tap ruling (Joshua, 2026-10-21): the Homebrew tap stays
+`mrjoshuak/homebrew-tap` until Avalanche-io is tied into the service
+offering.** An `Avalanche-io/homebrew-tap` I had created that morning was
+deleted the same hour, and the old tap's migration file was removed
+before any install could follow it.
 
 **7l. c4-operator in the version group (Joshua, 2026-10-21: "we should
 be looking towards adding c4-operator to the version group").** What

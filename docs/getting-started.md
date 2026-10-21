@@ -6,7 +6,7 @@ into the store, comparing states, restoring, and versioning with patches.
 ## Install
 
 ```bash
-brew install avalanche-io/tap/c4                 # macOS and Linux: c4 and the farm tools
+brew install mrjoshuak/tap/c4                 # macOS and Linux: c4 and the farm tools
 go install github.com/Avalanche-io/c4/cmd/c4@latest   # or from source, c4 alone
 ```
 
