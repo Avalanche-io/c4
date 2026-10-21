@@ -19,6 +19,7 @@ func main() {
 		case "--help", "-h", "help":
 			fmt.Printf("%s\nVersion: %s\n", topHelp, version)
 			printInstalledTools(os.Stdout)
+			warnOtherC4s(os.Stderr)
 			return
 		case "id":
 			runID(os.Args[2:])

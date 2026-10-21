@@ -17,6 +17,13 @@ CI and reachable from Ctrl-C mid-scan. On cancel the monitor now only
 signals completion; every worker already leaves on the context.
 Regression test: `TestStopDuringStructureScanDoesNotPanic`.
 
+### `c4 version` and `c4 help` name any other c4 on PATH
+
+A dev build in `~/bin` ahead of Homebrew's c4 was invisible until `c4
+farm` did nothing. Both verbs now narrate on stderr every other `c4`
+executable on PATH, saying which comes first (and so runs when you type
+`c4`) and which comes later. Nothing when this binary is the only one.
+
 ### `c4 <name>` runs `c4-<name>`; `c4 farm` and `c4 agent` are reserved
 
 External tools dispatch like git plugins (`design/external-tools.md`):

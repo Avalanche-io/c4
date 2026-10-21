@@ -153,3 +153,63 @@ func printInstalledTools(w io.Writer) {
 		}
 	}
 }
+
+// otherC4s finds every other c4 executable on PATH: the ones before the
+// running binary (they win when the user types c4) and the ones after.
+// A dev build in ~/bin ahead of Homebrew's c4 was invisible until c4
+// farm did nothing.
+func otherC4s() (before, after []string) {
+	self, err := os.Executable()
+	if err != nil {
+		return nil, nil
+	}
+	if resolved, err := filepath.EvalSymlinks(self); err == nil {
+		self = resolved
+	}
+	name := "c4"
+	if runtime.GOOS == "windows" {
+		name = "c4.exe"
+	}
+	seenSelf := false
+	seen := map[string]bool{}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			dir = "."
+		}
+		candidate := filepath.Join(dir, name)
+		if !isExecutable(candidate) {
+			continue
+		}
+		resolved := candidate
+		if r, err := filepath.EvalSymlinks(candidate); err == nil {
+			resolved = r
+		}
+		if resolved == self {
+			seenSelf = true
+			continue
+		}
+		if seen[resolved] {
+			continue
+		}
+		seen[resolved] = true
+		if seenSelf {
+			after = append(after, candidate)
+		} else {
+			before = append(before, candidate)
+		}
+	}
+	return before, after
+}
+
+// warnOtherC4s narrates, on w, any other c4 on PATH. Called by c4 version
+// and c4 help; it prints nothing when this binary is the only c4.
+func warnOtherC4s(w io.Writer) {
+	before, after := otherC4s()
+	self, _ := os.Executable()
+	for _, p := range before {
+		fmt.Fprintf(w, "c4: another c4 comes first on PATH and runs when you type c4: %s (this is %s)\n", p, self)
+	}
+	for _, p := range after {
+		fmt.Fprintf(w, "c4: another c4 is later on PATH: %s\n", p)
+	}
+}
