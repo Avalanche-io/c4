@@ -199,6 +199,15 @@ off on the document. It must cover:
   and gc branches wait on 7b, 7c, 7d and are NOT in 1.0.19 unless Joshua
   says so. c4toolkit `releases.json` has the planned `1.0.19` entry.
 
+- **Suite 1.0.19 PUBLISHED 2026-10-21** (Joshua: "Yes, publish"): c4
+  d898efd, c4sh, c4git, c4py, c4ts, libc4 and c4-containers tagged
+  v1.0.19 from release/1.0.x, c4-swift from main; c4toolkit release
+  v1.0.19 (25 assets), formula in mrjoshuak/tap (the Avalanche-io tap
+  does not exist yet), PyPI c4py 1.0.19, Go proxy. Content: natural order
+  (digit runs of any length, whole text segments), scanner cancel panic,
+  c4git smudge truncation, containers C4_S3_ENDPOINT. npm needs Joshua's
+  2FA publish; ghcr images build on the tag.
+
 ## 6. Spinning up on ash-cloud
 
 - **Lead slot (Joshua, 2026-10-19):** the VM runs ONE Claude Code lead at a

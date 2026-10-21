@@ -235,6 +235,10 @@ costs the grammar.
 
 ## 7. The 1.0.19 decisions from the VM agent's report
 
+**Suite 1.0.19 shipped 2026-10-21** with 7e, 7h and 7j and the scanner
+cancel fix. 7b, 7c, 7d (the store-layout and gc branches) are still
+open and go into a later patch.
+
 These are patch-release calls; the agent's full reasoning is in
 `/home/ash/ws/c4/STATUS-1.0.19.md` on ash-cloud, copied to the Mac on
 2026-10-19 as `~/ws/active/software/c4/cloud-1.0.19/STATUS-1.0.19.md`.
