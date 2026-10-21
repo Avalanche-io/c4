@@ -337,8 +337,15 @@ by comparing runs as integers of any length with no parse; shared
 vectors in `c4m/testdata/natural_sort_vectors.json`; the c4m spec says
 "of any length" now. Names with runs of 18 digits or fewer sort exactly
 as before, so their IDs do not change; longer runs get the one ID the
-spec defined, which c4py already produced. Question: cherry-pick into
-1.0.19? Recommendation: yes. It removes nondeterminism, adds no API and
+spec defined, which c4py already produced. **Joshua, 2026-10-20: "We
+must fix any c4m errors in sorting asap."** Done the same day on every
+release line: c4 release/1.0.x e9f77e7, c4py 56f50b7, c4ts 1a6659a,
+libc4 release/1.0.x (text segments now compare whole: a1 < ab, which
+its character walk had backwards), c4-swift main ae2a696 (its Int64
+parse trapped at 20 digits, a crash, not only a wrong order). The
+1.0.19 suite entry is in c4toolkit releases.json, waiting on the
+release go. Earlier text, kept for the record: Question: cherry-pick
+into 1.0.19? Recommendation: yes. It removes nondeterminism, adds no API and
 no flag, and the only IDs that move were never stable. The patch policy
 ("safe to upgrade blind") is met for every tree that had one ID.
 

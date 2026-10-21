@@ -191,6 +191,14 @@ off on the document. It must cover:
   IDs. The c4git smudge fix and the `C4_S3_ENDPOINT` docs fix it asked for
   landed 2026-10-17 (section 5 above).
 
+- **2026-10-20, 1.0.19 content (Joshua: fix c4m sorting errors asap):**
+  the natural-order fix (digit runs of any length; whole text segments)
+  is on release/1.0.x of c4, c4py, c4ts and libc4, and on c4-swift main,
+  with shared vectors `c4m/testdata/natural_sort_vectors.json`; c4git
+  smudge and the containers endpoint fix are there too. The store-layout
+  and gc branches wait on 7b, 7c, 7d and are NOT in 1.0.19 unless Joshua
+  says so. c4toolkit `releases.json` has the planned `1.0.19` entry.
+
 ## 6. Spinning up on ash-cloud
 
 - **Lead slot (Joshua, 2026-10-19):** the VM runs ONE Claude Code lead at a
