@@ -353,6 +353,23 @@ into 1.0.19? Recommendation: yes. It removes nondeterminism, adds no API and
 no flag, and the only IDs that move were never stable. The patch policy
 ("safe to upgrade blind") is met for every tree that had one ID.
 
+**7k. Backport the `c4 farm` dispatch to a 1.0.20 patch? (new
+2026-10-21, from the c4-operator release).** Joshua's gate for c4-hud
+going public is `brew install avalanche-io/tap/c4` then `c4 farm
+agents` on a clean machine. The dispatch (`design/external-tools.md`)
+is on master only, and v1.1 waits on the re-scope. The patch policy
+allows strictly additive changes that break no script. The dispatch in
+its additive form qualifies: `c4 <name>` runs `c4-<name>` only when no
+file or directory of that name exists, so every invocation that works
+on 1.0.19 means the same on 1.0.20; `c4 help` lists the tools. The
+reserved names (`farm`, `agent` winning over a same-named directory)
+change what `c4 farm` does for a directory named `farm`, so they stay
+in v1.1. Recommendation: yes, 1.0.20 with the additive rule, cut right
+after c4-operator v0.1.0 publishes its formulas, carrying c4-farm,
+c4-agent and c4-unit from those release archives in the suite bundles
+and `c4.rb` depending on the two formulas in `Avalanche-io/homebrew-tap`.
+Alternative: wait for v1.1.0 (no date). Your call.
+
 ---
 
 ## 8. One consistency check: attic versus "no replicated attic"
