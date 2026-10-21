@@ -8,6 +8,15 @@ crash-verified end-to-end including streaming and SIGPIPE modes
 marked ⚠. Round 3 (the crucible-litigated v9 amendment) reshaped the
 output surface after round 2; this entry describes the NET result.
 
+### Cancelling a scan no longer panics
+
+The progressive scanner's completion monitor closed the work channels
+when the context was cancelled, while a structure worker could still be
+queueing a child directory: "send on closed channel", seen on Windows
+CI and reachable from Ctrl-C mid-scan. On cancel the monitor now only
+signals completion; every worker already leaves on the context.
+Regression test: `TestStopDuringStructureScanDoesNotPanic`.
+
 ### `c4 <name>` runs `c4-<name>`; `c4 farm` and `c4 agent` are reserved
 
 External tools dispatch like git plugins (`design/external-tools.md`):

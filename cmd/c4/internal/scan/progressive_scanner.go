@@ -431,15 +431,12 @@ func (ps *ProgressiveScanner) completionMonitor() {
 			}
 			
 		case <-ps.ctx.Done():
-			if !structureClosed {
-				close(ps.structureChan)
-			}
-			if !metadataClosed {
-				close(ps.metadataChan)
-			}
-			if !c4Closed {
-				close(ps.c4Chan)
-			}
+			// Cancelled. The work channels are NOT closed here: every
+			// worker leaves on ctx.Done on its own, and a structure
+			// worker may still be inside scanDirectory about to queue a
+			// child directory. Closing the channel under it was a
+			// "send on closed channel" panic (seen on Windows CI, where
+			// the cancel and the send raced within the same tick).
 			select {
 			case <-ps.done:
 				// Already closed
