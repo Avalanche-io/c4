@@ -2,14 +2,6 @@
 
 ## v1.0.19 (unreleased)
 
-## Unreleased — the snapshot loop (BREAKING)
-
-The snapshot-loop surface (`design/snapshot-loop`, rounds 2–3),
-crash-verified end-to-end including streaming and SIGPIPE modes
-(`design/snapshot-loop/kill9-crucible.sh`). Breaking changes are
-marked ⚠. Round 3 (the crucible-litigated v9 amendment) reshaped the
-output surface after round 2; this entry describes the NET result.
-
 ### Cancelling a scan no longer panics
 
 The progressive scanner's completion monitor closed the work channels
