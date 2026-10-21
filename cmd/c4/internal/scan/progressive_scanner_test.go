@@ -499,3 +499,28 @@ func createLargeTestStructure(t *testing.T, dir string, numFiles int) {
 		}
 	}
 }
+// Cancelling a scan while structure workers are still queueing child
+// directories must never panic. The completion monitor used to close the
+// work channels on cancel while a worker was mid-send ("send on closed
+// channel", Windows CI, 2026-10-18 and 2026-10-21).
+func TestStopDuringStructureScanDoesNotPanic(t *testing.T) {
+	testDir := t.TempDir()
+	var files []string
+	for d := 0; d < 40; d++ {
+		for f := 0; f < 3; f++ {
+			files = append(files, fmt.Sprintf("d%02d/sub%d/f%d.txt:x", d, f, f))
+		}
+	}
+	createTestFiles(t, testDir, files)
+
+	for i := 0; i < 60; i++ {
+		scanner := NewProgressiveScanner(testDir)
+		scanner.numWorkers = 4
+		scanner.slowMode = i%2 == 0
+		if err := scanner.Start(); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Duration(i%7) * time.Millisecond)
+		scanner.Stop()
+	}
+}

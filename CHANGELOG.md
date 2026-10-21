@@ -2,6 +2,23 @@
 
 ## v1.0.19 (unreleased)
 
+## Unreleased — the snapshot loop (BREAKING)
+
+The snapshot-loop surface (`design/snapshot-loop`, rounds 2–3),
+crash-verified end-to-end including streaming and SIGPIPE modes
+(`design/snapshot-loop/kill9-crucible.sh`). Breaking changes are
+marked ⚠. Round 3 (the crucible-litigated v9 amendment) reshaped the
+output surface after round 2; this entry describes the NET result.
+
+### Cancelling a scan no longer panics
+
+The progressive scanner's completion monitor closed the work channels
+when the context was cancelled, while a structure worker could still be
+queueing a child directory: "send on closed channel", seen on Windows
+CI and reachable from Ctrl-C mid-scan. On cancel the monitor now only
+signals completion; every worker already leaves on the context.
+Regression test: `TestStopDuringStructureScanDoesNotPanic`.
+
 ### Natural order compares digit runs of any length (IDs of rare trees change)
 
 `c4m.NaturalLess` parsed each digit run into an int64, so a run of 20 or
