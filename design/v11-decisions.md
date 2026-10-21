@@ -368,7 +368,29 @@ in v1.1. Recommendation: yes, 1.0.20 with the additive rule, cut right
 after c4-operator v0.1.0 publishes its formulas, carrying c4-farm,
 c4-agent and c4-unit from those release archives in the suite bundles
 and `c4.rb` depending on the two formulas in `Avalanche-io/homebrew-tap`.
-Alternative: wait for v1.1.0 (no date). Your call.
+Alternative: wait for v1.1.0 (no date). Your call. **RULED 2026-10-21
+(Joshua): "I agree with building 1.0.20."** The additive dispatch is on
+release/1.0.x; the suite cut waits for c4-operator v0.1.0's formulas and
+archives and the new tap.
+
+**7l. c4-operator in the version group (Joshua, 2026-10-21: "we should
+be looking towards adding c4-operator to the version group").** What
+joining means: a `releases.json` component with the suite's version,
+tagged `vX.Y.Z` with the rest and validated together, the way
+c4-containers already is. Two facts set the timing. (1) c4-operator
+needs library API that exists on master only (`c4m.IsJournal`,
+`scan.ModeContent`, the closing-checkpoint parse), and a patch release
+adds no exported API, so an operator pinned to c4 1.0.x cannot build:
+in the 1.0.x suites it can only be a dependency at its own version
+(0.1.0), which is what 1.0.20 does. (2) At v1.1.0 the APIs it needs are
+released, so it can pin `c4 v1.1.0` and take the suite version. The
+fork in the road is the first operator tag: `v0.1.0` now (its own
+cadence until v1.1) or no tag until v1.1.0, when its first release is
+`v1.1.0` beside the rest. Recommendation: tag v0.1.0 now, so 1.0.20 and
+the c4-hud launch do not wait on the re-scope, and make v1.1.0 the
+version at which c4-operator joins the group (its RELEASING.md,
+install.yaml URLs and goreleaser need nothing but the tag name). Also
+c4-hud, once it has a remote: same question, same answer.
 
 ---
 
