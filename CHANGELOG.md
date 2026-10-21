@@ -26,8 +26,6 @@ c4py already computed. Conformance vectors:
 `c4m/testdata/natural_sort_vectors.json`, shared with c4py and c4ts
 (whose double-precision parse lost digits past 16).
 
-### ⚠ Streaming chain output; the final line is the root ID
-
 ## v1.0.18
 
 Verification patch: eight defects where c4 trusted metadata or stored
