@@ -47,6 +47,7 @@ func main() {
 		case "help", "--help", "-h":
 			printUsage(os.Stdout)
 			printInstalledTools(os.Stdout)
+			warnOtherC4s(os.Stderr)
 			return
 		}
 

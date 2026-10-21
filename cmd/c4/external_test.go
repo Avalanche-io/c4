@@ -221,3 +221,55 @@ func TestHelpListsInstalledTools(t *testing.T) {
 		t.Errorf("help without c4-farm should hint at installing it:\n%s", r.stdout)
 	}
 }
+
+// c4 version and c4 help narrate, on stderr, any other c4 on PATH: the
+// ones that come first (and so run when the user types c4) and the ones
+// after. With one c4 on PATH they say nothing.
+func TestVersionWarnsAboutOtherC4OnPath(t *testing.T) {
+	c4bin := buildC4(t)
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	copyTo := func(dir string) string {
+		dst := filepath.Join(dir, "c4"+ext)
+		data, err := os.ReadFile(c4bin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, data, 0755); err != nil {
+			t.Fatal(err)
+		}
+		return dst
+	}
+	first := t.TempDir()
+	mine := t.TempDir()
+	later := t.TempDir()
+	shadow := copyTo(first)
+	me := copyTo(mine)
+	tail := copyTo(later)
+	work := t.TempDir()
+
+	// Only this c4 on PATH: no narration.
+	r := runWith(t, me, []string{mine, goBinDir(t)}, work, "", nil, "version")
+	if r.code != 0 || !strings.HasPrefix(r.stdout, "c4 ") || r.stderr != "" {
+		t.Errorf("alone: exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
+	}
+
+	// One before, one after.
+	for _, verb := range []string{"version", "help"} {
+		r = runWith(t, me, []string{first, mine, later, goBinDir(t)}, work, "", nil, verb)
+		if r.code != 0 {
+			t.Fatalf("%s: exit %d", verb, r.code)
+		}
+		if !strings.Contains(r.stderr, "comes first on PATH") || !strings.Contains(r.stderr, shadow) {
+			t.Errorf("%s: stderr should name the shadowing c4 %s: %q", verb, shadow, r.stderr)
+		}
+		if !strings.Contains(r.stderr, "later on PATH") || !strings.Contains(r.stderr, tail) {
+			t.Errorf("%s: stderr should name the later c4 %s: %q", verb, tail, r.stderr)
+		}
+		if strings.Contains(r.stdout, "PATH and runs") {
+			t.Errorf("%s: the narration leaked into stdout: %q", verb, r.stdout)
+		}
+	}
+}
