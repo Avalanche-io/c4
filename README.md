@@ -48,11 +48,9 @@ that are useful.
 ### Homebrew (recommended: c4, c4sh, c4git, and the farm tools)
 
 ```bash
-brew install avalanche-io/tap/c4
+brew install mrjoshuak/tap/c4
 ```
 
-Suite 1.0.19 and earlier live in the old tap, `mrjoshuak/tap/c4`;
-`brew upgrade` follows the move.
 
 ### Binary downloads
 

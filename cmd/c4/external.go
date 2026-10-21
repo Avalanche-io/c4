@@ -20,7 +20,7 @@ import (
 // directory; a patch release may not change what an existing invocation
 // does, so 1.0.x does not reserve anything.)
 
-const toolInstallHint = "install it with the c4 suite (brew install avalanche-io/tap/c4) or from https://github.com/Avalanche-io/c4-operator/releases"
+const toolInstallHint = "install it with the c4 suite (brew install mrjoshuak/tap/c4) or from https://github.com/Avalanche-io/c4-operator/releases"
 
 // externalTool decides whether `c4 <name>` runs an external tool: the
 // name is not a flag, has no path separator, names no existing file or

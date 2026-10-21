@@ -13,7 +13,7 @@ stdout, stderr and the exit code passed through. `c4 help` (also
 No existing invocation changes meaning (v1.1 reserves `farm` and
 `agent` so they win over a same-named directory; a patch does not). The
 suite now ships `c4-farm`, `c4-agent` and `c4-unit` from c4-operator,
-so `brew install avalanche-io/tap/c4` ends with a working `c4 farm`.
+so `brew install mrjoshuak/tap/c4` ends with a working `c4 farm`.
 
 ## v1.0.19
 
