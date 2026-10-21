@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.19 (unreleased)
+## v1.0.19
 
 ### Cancelling a scan no longer panics
 
