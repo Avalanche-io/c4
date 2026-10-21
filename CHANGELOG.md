@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.0.20 (unreleased)
+
+### `c4 <name>` runs `c4-<name>` from PATH; `c4 help`
+
+External tools dispatch like git plugins, in the additive form only:
+after the built-in verbs, a first argument that names an existing file
+or directory keeps the bare shortcut exactly as before; otherwise, when
+`c4-<name>` is on PATH, `c4 <name>` runs it with arguments, stdin,
+stdout, stderr and the exit code passed through. `c4 help` (also
+`--help`, `-h`) prints the usage on stdout, then the installed tools.
+No existing invocation changes meaning (v1.1 reserves `farm` and
+`agent` so they win over a same-named directory; a patch does not). The
+suite now ships `c4-farm`, `c4-agent` and `c4-unit` from c4-operator,
+so `brew install avalanche-io/tap/c4` ends with a working `c4 farm`.
+
 ## v1.0.19
 
 ### Cancelling a scan no longer panics

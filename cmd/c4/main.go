@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -43,6 +44,17 @@ func main() {
 		case "version":
 			runVersion(os.Args[2:])
 			return
+		case "help", "--help", "-h":
+			printUsage(os.Stdout)
+			printInstalledTools(os.Stdout)
+			return
+		}
+
+		// External tools: c4 farm runs c4-farm from PATH, only when no
+		// file or directory named farm exists (the bare path shortcut
+		// below keeps its meaning).
+		if bin, run := externalTool(os.Args[1]); run {
+			os.Exit(runExternal(bin, os.Args[2:]))
 		}
 	}
 
@@ -86,7 +98,11 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `c4 - Content-addressable identification using C4 IDs (SMPTE ST 2114)
+	printUsage(os.Stderr)
+}
+
+func printUsage(w io.Writer) {
+	fmt.Fprintf(w, `c4 - Content-addressable identification using C4 IDs (SMPTE ST 2114)
 
 Usage:
   c4 id [flags] <path>...         Identify files, directories, or c4m files
@@ -106,6 +122,10 @@ Usage:
   c4 <path> -x                   Identify only, skip store
   echo "data" | c4               Identify + store from stdin
   echo "data" | c4 -x            Identify only from stdin
+
+  c4 farm ...                    Run c4-farm; c4 <name> runs c4-<name> from PATH when no
+                                 file or directory <name> exists (c4 help lists the tools)
+  c4 help                        This page, then the installed tools
 
 Version: %s
 `, version)

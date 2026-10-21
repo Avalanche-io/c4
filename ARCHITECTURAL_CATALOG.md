@@ -309,7 +309,7 @@ Safety defaults (`design/safety-defaults.md`):
   that do not hash to the requested ID are refused before decoding.
 
 Supporting files: `flags.go` (custom flag parser), `helpers.go` (shared utilities),
-`version.go`, `main.go` (dispatch + bare shortcuts).
+`version.go`, `main.go` (dispatch + bare shortcuts), `external.go` (`c4 <name>` runs `c4-<name>` from PATH when no such path exists; `c4 help` lists the tools).
 
 `cmd/c4/internal/scan/` contains the progressive CLI scanner with platform-specific
 implementations (darwin, linux, windows).
