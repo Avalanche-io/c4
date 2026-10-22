@@ -281,3 +281,42 @@ func TestVersionWarnsAboutOtherC4OnPath(t *testing.T) {
 		}
 	}
 }
+
+// c4 -S on a tree whose sequence sits in a subdirectory must store every
+// frame. Through 1.0.19 it warned "cannot read sequence member" for each
+// frame and stored none, because the folded manifest listed the range
+// before its parent directory.
+func TestSnapshotStoresNestedSequenceFrames(t *testing.T) {
+	c4bin := buildC4(t)
+	work := t.TempDir()
+	plates := filepath.Join(work, "comp", "plates")
+	if err := os.MkdirAll(plates, 0755); err != nil {
+		t.Fatal(err)
+	}
+	var frames []string
+	for i := 1001; i <= 1004; i++ {
+		content := fmt.Sprintf("plate %d", i)
+		frames = append(frames, content)
+		if err := os.WriteFile(filepath.Join(plates, fmt.Sprintf("plate.%d.exr", i)), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := t.TempDir()
+	r := runWith(t, c4bin, []string{goBinDir(t)}, work, "", []string{"C4_STORE=" + store}, "-S", "comp/")
+	if r.code != 0 {
+		t.Fatalf("c4 -S: exit %d, stderr %q", r.code, r.stderr)
+	}
+	if strings.Contains(r.stderr, "cannot read sequence member") || strings.Contains(r.stderr, "was not stored") {
+		t.Fatalf("frames were not stored:\n%s", r.stderr)
+	}
+	if !strings.Contains(r.stdout, "plate.[1001-1004].exr") {
+		t.Fatalf("sequence was not folded:\n%s", r.stdout)
+	}
+	for _, content := range frames {
+		id := c4.Identify(strings.NewReader(content)).String()
+		got := runWith(t, c4bin, []string{goBinDir(t)}, work, "", []string{"C4_STORE=" + store}, "cat", id)
+		if got.code != 0 || got.stdout != content {
+			t.Errorf("frame %q not in the store: exit %d, stdout %q, stderr %q", content, got.code, got.stdout, got.stderr)
+		}
+	}
+}

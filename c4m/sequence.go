@@ -559,58 +559,54 @@ func expandSequenceEntry(entry *Entry, idList *idList) ([]*Entry, error) {
 // Sequence Detection
 // ----------------------------------------------------------------------------
 
-// DetectSequences finds and collapses sequences in a manifest
+// DetectSequences finds and collapses sequences in a manifest.
+//
+// The result keeps the input's entry order: a folded range takes the
+// place of its first frame and the other frames disappear, so a tree in
+// canonical order stays in canonical order, with every directory still
+// before its children. (Through 1.0.19 the folded entries, then the
+// directories, were appended in map order, so a nested sequence came
+// out before its parent directory and `c4 -S` stored none of its
+// frames: the path was built from a directory stack that was empty.)
 func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 	result := NewManifest()
 	result.Version = manifest.Version
 
-	// Group files by prefix/suffix pattern
-	groups := make(map[string]*fileGroup)
-	processedIndices := make(map[int]bool)
-
 	// Pattern to match frame numbers in filenames
 	framePattern := regexp.MustCompile(`^(.*?)(\d+)(.*)$`)
 
+	// Group numbered files by directory, prefix, suffix, padding and kind.
+	type membership struct {
+		key   string
+		frame int
+	}
+	groups := make(map[string]*fileGroup)
+	member := make(map[int]membership) // entry index -> its group and frame
+
 	for i, entry := range manifest.Entries {
-		// Skip directories and already processed entries
-		if entry.IsDir() || processedIndices[i] {
+		if entry.IsDir() {
 			continue
 		}
-
-		// Try to extract frame number from filename
 		basename := path.Base(entry.Name)
 		matches := framePattern.FindStringSubmatch(basename)
 		if matches == nil {
-			// Not a numbered file, add as-is
-			result.AddEntry(entry)
-			processedIndices[i] = true
 			continue
 		}
-
 		prefix := matches[1]
 		frameStr := matches[2]
 		suffix := matches[3]
 		frameNum, err := strconv.Atoi(frameStr)
 		if err != nil {
-			// Shouldn't happen given the regex, but handle it
-			result.AddEntry(entry)
-			processedIndices[i] = true
 			continue
 		}
-
-		// Get directory path
 		dir := path.Dir(entry.Name)
 		if dir == "." {
 			dir = ""
 		} else {
 			dir = dir + "/"
 		}
-
-		// Create group key — separate symlinks from regular files
 		isSymlink := entry.Mode&os.ModeSymlink != 0
 		groupKey := fmt.Sprintf("%s|%s|%s|%d|%v", dir, prefix, suffix, len(frameStr), isSymlink)
-
-		// Get or create group
 		group, exists := groups[groupKey]
 		if !exists {
 			group = &fileGroup{
@@ -621,140 +617,129 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 			}
 			groups[groupKey] = group
 		}
-
-		// Add entry to group
 		group.entries[frameNum] = entry
+		member[i] = membership{groupKey, frameNum}
 	}
 
-	// Process each group to detect sequences
-	for _, group := range groups {
+	// For each group, decide which frames fold. folded[key][start] is the
+	// entry that replaces the range starting at that frame; consumed[key]
+	// holds every frame inside a folded range.
+	folded := make(map[string]map[int]*Entry)
+	consumed := make(map[string]map[int]bool)
+	for key, group := range groups {
 		if len(group.entries) < sd.minSequenceLength {
-			// Not enough files for a sequence
-			for _, entry := range group.entries {
-				result.AddEntry(entry)
-			}
 			continue
 		}
-
-		// Extract and sort frame numbers
 		frames := make([]int, 0, len(group.entries))
 		for frame := range group.entries {
 			frames = append(frames, frame)
 		}
 		sort.Ints(frames)
 
-		// Find continuous ranges
-		ranges := sd.findRanges(frames)
+		for _, r := range sd.findRanges(frames) {
+			if r.count < sd.minSequenceLength {
+				continue
+			}
+			var pattern string
+			if r.start == r.end {
+				pattern = fmt.Sprintf("%s%0*d%s", group.prefix, group.padding, r.start, group.suffix)
+			} else {
+				pattern = fmt.Sprintf("%s[%0*d-%0*d]%s",
+					group.prefix, group.padding, r.start,
+					group.padding, r.end, group.suffix)
+			}
 
-		// Create sequence notation for continuous ranges
-		for _, r := range ranges {
-			if r.count >= sd.minSequenceLength {
-				// Create sequence entry
-				var pattern string
-				if r.start == r.end {
-					// Single frame (shouldn't happen with minLength check)
-					pattern = fmt.Sprintf("%s%0*d%s", group.prefix, group.padding, r.start, group.suffix)
-				} else {
-					pattern = fmt.Sprintf("%s[%0*d-%0*d]%s",
-						group.prefix, group.padding, r.start,
-						group.padding, r.end, group.suffix)
-				}
-
-				// Aggregate metadata from all entries in range
-				var totalSize int64
-				var latestTime time.Time
-				var mostRestrictiveMode os.FileMode = 0777 // Start with most permissive
-				var depth int
-				idList := newIDList()
-				hasNilID := false
-
-				for i := r.start; i <= r.end; i++ {
-					entry, ok := group.entries[i]
-					if !ok {
-						continue
-					}
-
-					totalSize += entry.Size
-
-					if entry.Timestamp.After(latestTime) {
-						latestTime = entry.Timestamp
-					}
-
-					// Most restrictive mode (lowest permission bits)
-					entryPerms := entry.Mode.Perm()
-					if entryPerms < mostRestrictiveMode.Perm() {
-						mostRestrictiveMode = entryPerms
-					}
-
-					if entry.C4ID.IsNil() && entry.Mode&os.ModeSymlink == 0 {
-						hasNilID = true
-					}
-					idList.Add(entry.C4ID)
-
-					if i == r.start {
-						depth = entry.Depth
-					}
-				}
-
-				// A range cannot be folded if any frame has a nil C4 ID.
-				// The range's identity IS the ordered list of frame identities.
-				if hasNilID {
-					for i := r.start; i <= r.end; i++ {
-						if entry, ok := group.entries[i]; ok {
-							result.AddEntry(entry)
-						}
-					}
+			// Aggregate metadata from all entries in range
+			var totalSize int64
+			var latestTime time.Time
+			var mostRestrictiveMode os.FileMode = 0777 // Start with most permissive
+			var depth int
+			idList := newIDList()
+			hasNilID := false
+			for i := r.start; i <= r.end; i++ {
+				entry, ok := group.entries[i]
+				if !ok {
 					continue
 				}
-
-				// Get file type from first entry
-				firstEntry := group.entries[r.start]
-				finalMode := (firstEntry.Mode & os.ModeType) | mostRestrictiveMode
-
-				// Sequence C4 ID = hash of bare C4 IDs concatenated in range order.
-				// No metadata (timestamps, sizes, modes) affects the sequence identity.
-				// Only the content identity of each frame matters.
-				seqC4ID := idList.ComputeC4ID()
-
-				seqEntry := &Entry{
-					Name:       pattern,
-					Mode:       finalMode,
-					Timestamp:  latestTime,
-					Size:       totalSize,
-					C4ID:       seqC4ID,
-					Depth:      depth,
-					IsSequence: true,
-					Pattern:    pattern,
+				totalSize += entry.Size
+				if entry.Timestamp.After(latestTime) {
+					latestTime = entry.Timestamp
 				}
-
-				// Fold symlink targets if this is a symlink sequence
-				if firstEntry.Mode&os.ModeSymlink != 0 {
-					seqEntry.Target = foldSymlinkTargets(group, r, group.padding)
+				entryPerms := entry.Mode.Perm()
+				if entryPerms < mostRestrictiveMode.Perm() {
+					mostRestrictiveMode = entryPerms
 				}
-
-				result.AddEntry(seqEntry)
-
-				// Store the ID list as inline range data
-				if result.RangeData == nil {
-					result.RangeData = make(map[c4.ID]string)
+				if entry.C4ID.IsNil() && entry.Mode&os.ModeSymlink == 0 {
+					hasNilID = true
 				}
-				result.RangeData[seqC4ID] = idList.Canonical()
-			} else {
-				// Add individual files for small ranges
-				for i := r.start; i <= r.end; i++ {
-					if entry, ok := group.entries[i]; ok {
-						result.AddEntry(entry)
-					}
+				idList.Add(entry.C4ID)
+				if i == r.start {
+					depth = entry.Depth
 				}
 			}
+
+			// A range cannot be folded if any frame has a nil C4 ID.
+			// The range's identity IS the ordered list of frame identities.
+			if hasNilID {
+				continue
+			}
+
+			firstEntry := group.entries[r.start]
+			finalMode := (firstEntry.Mode & os.ModeType) | mostRestrictiveMode
+
+			// Sequence C4 ID = hash of bare C4 IDs concatenated in range order.
+			// No metadata (timestamps, sizes, modes) affects the sequence identity.
+			// Only the content identity of each frame matters.
+			seqC4ID := idList.ComputeC4ID()
+
+			seqEntry := &Entry{
+				Name:       pattern,
+				Mode:       finalMode,
+				Timestamp:  latestTime,
+				Size:       totalSize,
+				C4ID:       seqC4ID,
+				Depth:      depth,
+				IsSequence: true,
+				Pattern:    pattern,
+			}
+			if firstEntry.Mode&os.ModeSymlink != 0 {
+				seqEntry.Target = foldSymlinkTargets(group, r, group.padding)
+			}
+
+			if folded[key] == nil {
+				folded[key] = make(map[int]*Entry)
+				consumed[key] = make(map[int]bool)
+			}
+			folded[key][r.start] = seqEntry
+			for i := r.start; i <= r.end; i++ {
+				consumed[key][i] = true
+			}
+
+			// Store the ID list as inline range data
+			if result.RangeData == nil {
+				result.RangeData = make(map[c4.ID]string)
+			}
+			result.RangeData[seqC4ID] = idList.Canonical()
 		}
 	}
 
-	// Add any remaining unprocessed entries (directories)
+	// Emit in the input's order: directories and unnumbered files as they
+	// are, a folded range in place of its first frame, nothing for the
+	// frames it absorbed.
 	for i, entry := range manifest.Entries {
-		if !processedIndices[i] && entry.IsDir() {
+		m, ok := member[i]
+		if !ok {
 			result.AddEntry(entry)
+			continue
 		}
+		if seq, ok := folded[m.key][m.frame]; ok {
+			result.AddEntry(seq)
+			continue
+		}
+		if consumed[m.key][m.frame] {
+			continue
+		}
+		result.AddEntry(entry)
 	}
 
 	return result
@@ -1011,4 +996,3 @@ func IsIDListContent(content []byte) bool {
 	}
 	return hasContent
 }
-
