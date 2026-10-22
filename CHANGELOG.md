@@ -15,6 +15,15 @@ No existing invocation changes meaning (v1.1 reserves `farm` and
 suite now ships `c4-farm`, `c4-agent` and `c4-unit` from c4-operator,
 so `brew install mrjoshuak/tap/c4` ends with a working `c4 farm`.
 
+### `c4 -S` stores the frames of a nested sequence
+
+Folding put each folded range, then the directories, at the end of the
+listing in map order, so a sequence inside a subdirectory came before
+its parent and `c4 -S` built the frame paths against the root: "cannot
+read sequence member", and no frame stored, while the snapshot printed
+`stored:`. Folding now keeps the tree in order (a range replaces its
+first frame) and its output is deterministic.
+
 ### `c4 version` and `c4 help` name any other c4 on PATH
 
 A dev build in `~/bin` ahead of Homebrew's c4 was invisible until `c4
