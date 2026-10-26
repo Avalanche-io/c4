@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.21
+
+Lockstep patch: no change to c4 itself. The suite archives and the
+Homebrew formula bring the farm tools from c4-operator v0.2.2, whose
+embedded HUD matches its server (on v0.2.1 every write from the browser
+was refused), whose `c4 farm up` keeps an existing farm and its ports,
+and whose `c4 farm down` no longer deletes c4-local by default.
+
 ## v1.0.20
 
 ### `c4 <name>` runs `c4-<name>` from PATH; `c4 help`
