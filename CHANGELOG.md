@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.20 (unreleased)
+## v1.0.20
 
 ### `c4 <name>` runs `c4-<name>` from PATH; `c4 help`
 
@@ -437,11 +437,11 @@ built via depth stack, plus a sort-each-group / depth-first emit phase.
 
 Pathological-chain bench (depth = N, one child each):
 
-| N | Old | New | Speedup |
-|---:|---:|---:|---:|
-| 1K | 553 µs | 153 µs | 3.6× |
-| 10K | 50.9 ms | 1.80 ms | 28× |
-| 100K | 10.9 s | 33.3 ms | **327×** |
+|    N |     Old |     New |  Speedup |
+| ---: | ------: | ------: | -------: |
+|   1K |  553 µs |  153 µs |     3.6× |
+|  10K | 50.9 ms | 1.80 ms |      28× |
+| 100K |  10.9 s | 33.3 ms | **327×** |
 
 Normal tree shapes (sqrt-fanout): unchanged ~`O(N log N)`. Dedup-keeps-last
 and tail-append-orphans semantics preserved.
