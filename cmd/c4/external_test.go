@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Avalanche-io/c4"
 )
 
 // A stand-in tool: prints its arguments and stdin on stdout, a line on
