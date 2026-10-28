@@ -285,7 +285,7 @@ func TestVersionWarnsAboutOtherC4OnPath(t *testing.T) {
 	}
 }
 
-// c4 -S on a tree whose sequence sits in a subdirectory must store every
+// c4 -s -S on a tree whose sequence sits in a subdirectory must store every
 // frame. Through 1.0.19 it warned "cannot read sequence member" for each
 // frame and stored none, because the folded manifest listed the range
 // before its parent directory.
@@ -305,7 +305,7 @@ func TestSnapshotStoresNestedSequenceFrames(t *testing.T) {
 		}
 	}
 	store := t.TempDir()
-	r := runWith(t, c4bin, []string{goBinDir(t)}, work, "", []string{"C4_STORE=" + store}, "-S", "comp/")
+	r := runWith(t, c4bin, []string{goBinDir(t)}, work, "", []string{"C4_STORE=" + store}, "-s", "-S", "comp/")
 	if r.code != 0 {
 		t.Fatalf("c4 -S: exit %d, stderr %q", r.code, r.stderr)
 	}
