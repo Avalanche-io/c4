@@ -207,3 +207,108 @@ func TestRestorePreImageJournaled(t *testing.T) {
 		t.Fatalf("pre-image %s not in journal:\n%s", preID, logOut)
 	}
 }
+
+// TestRestoreSwitchesViewsOfFilesTheFolderHolds: two views of the same
+// files, the folder in view A and the store empty. Every file B names is
+// already in the folder, so restore moves them into B with nothing from
+// the store, and its line 1 undoes it back to A. Content the folder holds
+// counts only by its ID, hashed: a file whose bytes changed is missing.
+func TestRestoreSwitchesViewsOfFilesTheFolderHolds(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+	storeDir := filepath.Join(dir, "store")
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"C4_STORE": storeDir, "HOME": filepath.Join(dir, "home")}
+
+	// view A: the shot's frames by department; view B: the same files by
+	// shot, renamed
+	a := map[string]string{
+		"comp/sh010_v001.exr":   "frame one",
+		"comp/sh020_v001.exr":   "frame two",
+		"lighting/key_rig.usda": "the key light",
+		"notes.txt":             "the notes",
+	}
+	b := map[string]string{
+		"sh010/comp.exr":         "frame one",
+		"sh020/comp.exr":         "frame two",
+		"shared/lights/key.usda": "the key light",
+		"README.txt":             "the notes",
+	}
+	describe := func(name string, files map[string]string) string {
+		tree := filepath.Join(dir, "describe-"+name)
+		writeTree(t, tree, files)
+		stdout, stderr, code := runC4WithEnv(t, bin, env, "id", tree)
+		if code != 0 {
+			t.Fatalf("c4 id %s: exit %d: %s", name, code, stderr)
+		}
+		p := filepath.Join(dir, name+".c4m")
+		if err := os.WriteFile(p, []byte(stdout), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		os.RemoveAll(tree)
+		return p
+	}
+	viewB := describe("b", b)
+
+	folder := filepath.Join(dir, "show")
+	writeTree(t, folder, a)
+	stdout, _, code := runC4WithEnv(t, bin, env, "id", "-q", folder)
+	if code != 0 {
+		t.Fatal("c4 id of the folder failed")
+	}
+	idA := strings.TrimSpace(stdout)
+
+	// the store holds none of it
+	if entries, _ := os.ReadDir(storeDir); len(entries) != 0 {
+		t.Fatalf("the store is not empty: %d entries", len(entries))
+	}
+
+	// the dry run plans moves, and refuses nothing
+	if _, stderr, code := runC4WithEnv(t, bin, env, "restore", viewB, folder); code != 0 || strings.Contains(stderr, "Missing content") {
+		t.Fatalf("dry run: exit %d: %s", code, stderr)
+	}
+
+	preID, builtID := restoreIDs(t, bin, env, viewB, folder)
+	if preID != idA {
+		t.Errorf("line 1 %s, want view A's %s", preID, idA)
+	}
+	for p, body := range b {
+		if data, err := os.ReadFile(filepath.Join(folder, filepath.FromSlash(p))); err != nil || string(data) != body {
+			t.Errorf("view B's %s: %q, %v", p, data, err)
+		}
+	}
+	for p := range a {
+		if _, err := os.Stat(filepath.Join(folder, filepath.FromSlash(p))); !os.IsNotExist(err) {
+			t.Errorf("view A's %s is still there", p)
+		}
+	}
+
+	// the undo, line 1, brings view A back
+	undoPre, undoBuilt := restoreIDs(t, bin, env, preID, folder)
+	if undoPre != builtID || undoBuilt != idA {
+		t.Errorf("undo: line 1 %s (want %s), line 2 %s (want %s)", undoPre, builtID, undoBuilt, idA)
+	}
+	for p, body := range a {
+		if data, err := os.ReadFile(filepath.Join(folder, filepath.FromSlash(p))); err != nil || string(data) != body {
+			t.Errorf("view A's %s after the undo: %q, %v", p, data, err)
+		}
+	}
+
+	// a file the folder holds under the right name but with other bytes
+	// is not the content B names: missing, and nothing is touched
+	empty := filepath.Join(dir, "store2")
+	os.MkdirAll(empty, 0o755)
+	env2 := map[string]string{"C4_STORE": empty, "HOME": filepath.Join(dir, "home")}
+	changed := filepath.Join(dir, "changed")
+	writeTree(t, changed, a)
+	os.WriteFile(filepath.Join(changed, "notes.txt"), []byte("the notes, edited"), 0o644)
+	_, stderr, code := runC4WithEnv(t, bin, env2, "restore", "--force", viewB, changed)
+	if code != 1 || !strings.Contains(stderr, "Missing content for 1 entries; nothing restored") {
+		t.Errorf("changed bytes: exit %d: %s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(changed, "comp", "sh010_v001.exr")); err != nil {
+		t.Errorf("the refusal touched the folder: %v", err)
+	}
+}

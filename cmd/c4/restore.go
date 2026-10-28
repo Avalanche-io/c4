@@ -59,9 +59,10 @@ func runRestore(args []string) {
 	}
 
 	// Pre-flight closure check: every content-bearing target entry must
-	// be servable from the store. Missing content lists and refuses —
-	// nothing is touched. Incomplete entries (null IDs) are declared;
-	// they will be kept as found and own exit 2.
+	// be servable from the store or from the destination itself, where
+	// the plan only moves it. Missing content lists and refuses — nothing
+	// is touched. Incomplete entries (null IDs) are declared; they will be
+	// kept as found and own exit 2.
 	var missing []c4.ID
 	var incomplete []string
 	seen := make(map[c4.ID]bool)
@@ -83,6 +84,27 @@ func runRestore(args []string) {
 		if !s.Has(e.C4ID) {
 			missing = append(missing, e.C4ID)
 		}
+	}
+	// Content the destination already holds counts, by its ID: every file
+	// is hashed here, never matched by size and time, since a move must
+	// carry exactly the bytes the target names. Under --force this scan is
+	// the pre-image, so the destination is hashed once.
+	var destScan *c4m.Manifest
+	if len(missing) > 0 && destExists {
+		destScan = scanDirectory(destArg, scan.ModeFull, false, false, nil, "", nil, time.Time{}, false)
+		held := make(map[c4.ID]bool)
+		for _, e := range destScan.Entries {
+			if !e.IsDir() && e.Target == "" && !e.C4ID.IsNil() {
+				held[e.C4ID] = true
+			}
+		}
+		kept := missing[:0]
+		for _, id := range missing {
+			if !held[id] {
+				kept = append(kept, id)
+			}
+		}
+		missing = kept
 	}
 	if len(missing) > 0 {
 		fmt.Fprintf(os.Stderr, "Missing content for %d entries; nothing restored:\n", len(missing))
@@ -136,15 +158,34 @@ func runRestore(args []string) {
 	// pre-image is the empty description constant.
 	preStart := time.Now().UTC()
 	var preManifest *c4m.Manifest
-	if destExists {
+	switch {
+	case destScan != nil:
+		preManifest = destScan
+	case destExists:
 		preManifest = scanDirectory(destArg, scan.ModeFull, false, false, nil, "", nil, time.Time{}, false)
-	} else {
+	default:
 		preManifest = c4m.NewManifest()
 		if err := os.MkdirAll(destArg, 0755); err != nil {
 			fatalf("Error creating %s: %v", destArg, err)
 		}
 	}
 	storeManifestContent(preManifest, destArg, preStart)
+	// The barrier stores what the destination held, so everything the
+	// target names is in the store now: confirmed here, still before the
+	// first destructive operation, so a store that could not take it
+	// refuses with nothing touched.
+	for id := range seen {
+		if !s.Has(id) {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(os.Stderr, "Missing content for %d entries after storing the pre-image; nothing restored:\n", len(missing))
+		for _, id := range missing {
+			fmt.Fprintf(os.Stderr, "  %s\n", id)
+		}
+		os.Exit(1)
+	}
 	preID := preManifest.ComputeC4ID()
 	fmt.Println(preID) // line 1: printed only after the journaled barrier above
 

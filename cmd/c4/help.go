@@ -279,8 +279,10 @@ DESCRIPTION
     target's knowledge level: line 1 is <dir>'s current ID at that level, one line per differing
     entry, then the target ID. Matching = no entry lines = equal boundary IDs.
 
-    With --force: (1) every ID the target names must resolve, else listed on stderr - exit 1,
-    <dir> untouched; (2) <dir>'s pre-image is snapshotted - a complete default scan, nothing
+    With --force: (1) every ID the target names must resolve, from the store or from bytes
+    already in <dir> (each file hashed, never matched by size and time), else listed on stderr -
+    exit 1, <dir> untouched; so a directory switches between two views of files it already holds
+    with an empty store; (2) <dir>'s pre-image is snapshotted - a complete default scan, nothing
     excluded, nothing folded - durable and journaled before the first destructive operation,
     printed as stdout line 1; (3) reconcile - entries the target does not record are removed,
     recorded entries materialize; (4) verify by recomputation, print line 2.
