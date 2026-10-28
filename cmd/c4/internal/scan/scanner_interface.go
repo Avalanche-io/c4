@@ -10,7 +10,7 @@ import (
 type Scanner interface {
 	// Scan performs the scanning operation
 	Scan(ctx context.Context) (*ScanResult, error)
-	
+
 	// SetProgressCallback sets a callback for progress updates
 	SetProgressCallback(func(current, total int64))
 }
@@ -18,10 +18,10 @@ type Scanner interface {
 // FilesystemScanner scans local filesystem paths
 type FilesystemScanner interface {
 	Scanner
-	
+
 	// SetPath sets the path to scan
 	SetPath(path string)
-	
+
 	// SetOptions configures scanning behavior
 	SetOptions(opts ScanOptions)
 }
@@ -39,7 +39,7 @@ type ScanOptions struct {
 // StreamingScanner can output results as they're discovered
 type StreamingScanner interface {
 	Scanner
-	
+
 	// SetOutputCallback sets a callback that receives metadata as it's discovered
 	// The callback should return an error to stop scanning
 	SetOutputCallback(func(FileMetadata) error)
@@ -65,31 +65,31 @@ func NewManifestBuilder(opts BuildOptions) *ManifestBuilder {
 // BuildFromScanResult creates a manifest from scan results
 func (mb *ManifestBuilder) BuildFromScanResult(result *ScanResult) *Manifest {
 	manifest := NewManifest()
-	
+
 	// Convert all metadata to entries
 	for _, md := range result.AllFiles {
 		entry := MetadataToEntry(md)
 		manifest.AddEntry(entry)
 	}
-	
+
 	// Sort if requested
 	if mb.options.SortEntries {
 		manifest.SortEntries()
 	}
-	
+
 	// Detect sequences if requested
 	if mb.options.DetectSequences {
 		// This would use the existing sequence detection logic
 		// For now, we'll leave it as a TODO
 	}
-	
+
 	return manifest
 }
 
 // WriterScanner can write results directly to an io.Writer
 type WriterScanner interface {
 	Scanner
-	
+
 	// ScanToWriter scans and writes the manifest directly to a writer
 	ScanToWriter(ctx context.Context, w io.Writer) error
 }
@@ -108,7 +108,7 @@ func (sf *ScannerFactory) NewFilesystemScanner(path string, opts ScanOptions) Fi
 		WithSequenceDetection(opts.DetectSequences),
 		WithExclude(opts.Exclude),
 	)
-	
+
 	return &generatorAdapter{
 		generator: gen,
 		path:      path,
@@ -126,14 +126,14 @@ func (ga *generatorAdapter) Scan(ctx context.Context) (*ScanResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert manifest entries back to metadata
 	var allFiles []FileMetadata
 	for _, entry := range manifest.Entries {
 		md := EntryToMetadata(entry)
 		allFiles = append(allFiles, md)
 	}
-	
+
 	return &ScanResult{
 		Root:     nil, // Could determine root from entries
 		AllFiles: allFiles,

@@ -12,13 +12,13 @@ import (
 
 // ProgressiveCLI provides a command-line interface for the progressive scanner
 type ProgressiveCLI struct {
-	scanner     *ProgressiveScanner
-	writer      io.Writer
-	errWriter   io.Writer
-	verbose     bool
+	scanner      *ProgressiveScanner
+	writer       io.Writer
+	errWriter    io.Writer
+	verbose      bool
 	showProgress bool
-	slowMode    bool // Add artificial delays for testing
-	wg          sync.WaitGroup // tracks background goroutines (e.g. progressReporter)
+	slowMode     bool           // Add artificial delays for testing
+	wg           sync.WaitGroup // tracks background goroutines (e.g. progressReporter)
 }
 
 // NewProgressiveCLI creates a new CLI interface
@@ -29,11 +29,11 @@ func NewProgressiveCLI(rootPath string, options ...CLIOption) *ProgressiveCLI {
 		errWriter:    os.Stderr,
 		showProgress: true,
 	}
-	
+
 	for _, opt := range options {
 		opt(cli)
 	}
-	
+
 	return cli
 }
 
@@ -97,7 +97,7 @@ func (pc *ProgressiveCLI) Run() error {
 	if pc.verbose {
 		fmt.Fprintln(pc.errWriter, "# Starting progressive filesystem scan")
 		fmt.Fprintln(pc.errWriter, "# Press Ctrl+C to stop and output results")
-		
+
 		// Platform-specific status instructions
 		if runtime.GOOS == "darwin" || runtime.GOOS == "freebsd" || runtime.GOOS == "openbsd" {
 			fmt.Fprintln(pc.errWriter, "# Press Ctrl+T for status update (or kill -USR1", os.Getpid(), ")")
@@ -106,12 +106,12 @@ func (pc *ProgressiveCLI) Run() error {
 		}
 		fmt.Fprintln(pc.errWriter, "#")
 	}
-	
+
 	// Start scanner
 	if err := pc.scanner.Start(); err != nil {
 		return err
 	}
-	
+
 	// Start progress reporter if enabled
 	if pc.showProgress {
 		pc.wg.Add(1)
@@ -134,12 +134,12 @@ func (pc *ProgressiveCLI) Run() error {
 				status.TotalFound, status.C4Computed)
 		}
 	}
-	
+
 	// Output final results
 	if pc.verbose {
 		fmt.Fprintln(pc.errWriter, "\n# Scan complete, outputting manifest")
 	}
-	
+
 	return pc.scanner.OutputCurrentState(pc.writer)
 }
 
@@ -147,20 +147,20 @@ func (pc *ProgressiveCLI) Run() error {
 func (pc *ProgressiveCLI) progressReporter() {
 	ticker := time.NewTicker(100 * time.Millisecond) // Update more frequently for responsiveness
 	defer ticker.Stop()
-	
+
 	startTime := time.Now()
 	lastStage := ScanStage(-1)
 	var stageStartTime time.Time
-	
+
 	// Track regular files that need C4 computation
 	var regularFileCount int64
-	
+
 	// Track stage start values for average rate calculation
 	var stageStartStructureCount, stageStartMetadataCount, stageStartC4Count int64
-	
+
 	// Initial stage
 	stageStartTime = time.Now()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -168,10 +168,10 @@ func (pc *ProgressiveCLI) progressReporter() {
 			if status == nil {
 				continue
 			}
-			
+
 			// Calculate overall elapsed time
 			elapsed := time.Since(startTime).Seconds()
-			
+
 			// Determine which stage to show based on what's actively happening
 			// Stages can overlap, so show the one with the most activity
 			currentStage := status.Stage
@@ -187,13 +187,13 @@ func (pc *ProgressiveCLI) progressReporter() {
 				// Doing C4 computation
 				currentStage = StageC4ID
 			}
-			
+
 			// Detect stage transitions (use currentStage not status.Stage)
 			if currentStage != lastStage {
 				// Print summary of completed stage
 				if lastStage == StageStructure && currentStage > StageStructure {
 					duration := time.Since(stageStartTime).Seconds()
-					avgRate := float64(status.TotalFound - stageStartStructureCount) / duration
+					avgRate := float64(status.TotalFound-stageStartStructureCount) / duration
 					fmt.Fprintf(pc.errWriter, "\n✓ Stage 1 complete: Found %d items in %.1fs (%.0f items/s)\n",
 						status.TotalFound, duration, avgRate)
 					// Only reset if we're actually starting Stage 2 fresh
@@ -206,7 +206,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 					regularFileCount = status.RegularFiles
 					duration := time.Since(stageStartTime).Seconds()
 					if duration > 0 && status.MetadataScanned > stageStartMetadataCount {
-						avgRate := float64(status.MetadataScanned - stageStartMetadataCount) / duration
+						avgRate := float64(status.MetadataScanned-stageStartMetadataCount) / duration
 						fmt.Fprintf(pc.errWriter, "\n✓ Stage 2 complete: Scanned metadata for %d items, found %d files in %.1fs (%.0f items/s)\n",
 							status.MetadataScanned, regularFileCount, duration, avgRate)
 					} else {
@@ -221,7 +221,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 				} else if lastStage == StageC4ID && currentStage > StageC4ID {
 					duration := time.Since(stageStartTime).Seconds()
 					if duration > 0 && status.C4Computed > stageStartC4Count {
-						avgRate := float64(status.C4Computed - stageStartC4Count) / duration
+						avgRate := float64(status.C4Computed-stageStartC4Count) / duration
 						fmt.Fprintf(pc.errWriter, "\n✓ Stage 3 complete: Computed %d C4 IDs in %.1fs (%.0f files/s)\n",
 							status.C4Computed, duration, avgRate)
 					} else {
@@ -229,34 +229,34 @@ func (pc *ProgressiveCLI) progressReporter() {
 							status.C4Computed)
 					}
 				}
-				
+
 				lastStage = currentStage
 				// Only reset start time if not already reset above
-				if lastStage == StageStructure || 
-				   (lastStage != StageMetadata && currentStage != StageMetadata) ||
-				   (lastStage != StageC4ID && currentStage != StageC4ID) {
+				if lastStage == StageStructure ||
+					(lastStage != StageMetadata && currentStage != StageMetadata) ||
+					(lastStage != StageC4ID && currentStage != StageC4ID) {
 					stageStartTime = time.Now()
 				}
 			}
-			
+
 			// Clear current line
 			fmt.Fprintf(pc.errWriter, "\r\033[K")
-			
+
 			switch currentStage {
 			case StageStructure:
 				// Stage 1: Structure scanning - use average rate since stage start
 				duration := time.Since(stageStartTime).Seconds()
 				if duration > 0.1 { // Only show rate after 100ms
-					avgRate := float64(status.TotalFound - stageStartStructureCount) / duration
-					fmt.Fprintf(pc.errWriter, 
+					avgRate := float64(status.TotalFound-stageStartStructureCount) / duration
+					fmt.Fprintf(pc.errWriter,
 						"Stage 1: Scanning structure... Found: %d items (%.0f/s avg)",
 						status.TotalFound, avgRate)
 				} else {
-					fmt.Fprintf(pc.errWriter, 
+					fmt.Fprintf(pc.errWriter,
 						"Stage 1: Scanning structure... Found: %d items",
 						status.TotalFound)
 				}
-					
+
 			case StageMetadata:
 				// Stage 2: Metadata collection - use average rate since stage start
 				duration := time.Since(stageStartTime).Seconds()
@@ -265,7 +265,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 					pct = float64(status.MetadataScanned) * 100.0 / float64(status.TotalFound)
 				}
 				if duration > 0 {
-					avgRate := float64(status.MetadataScanned - stageStartMetadataCount) / duration
+					avgRate := float64(status.MetadataScanned-stageStartMetadataCount) / duration
 					fmt.Fprintf(pc.errWriter,
 						"Stage 2: Reading metadata... %d/%d items (%.0f%%, %.0f/s avg)",
 						status.MetadataScanned, status.TotalFound, pct, avgRate)
@@ -274,21 +274,21 @@ func (pc *ProgressiveCLI) progressReporter() {
 						"Stage 2: Reading metadata... %d/%d items (%.0f%%)",
 						status.MetadataScanned, status.TotalFound, pct)
 				}
-					
+
 			case StageC4ID:
 				// Stage 3: C4 ID computation with progress bar - use average rate
 				duration := time.Since(stageStartTime).Seconds()
 				var avgRate float64
 				if duration > 0 {
-					avgRate = float64(status.C4Computed - stageStartC4Count) / duration
+					avgRate = float64(status.C4Computed-stageStartC4Count) / duration
 				}
-				
+
 				// Calculate progress - use actual regular file count
 				filesToProcess := status.RegularFiles
 				if filesToProcess == 0 && regularFileCount > 0 {
 					filesToProcess = regularFileCount
 				}
-				
+
 				pct := 0.0
 				if filesToProcess > 0 {
 					pct = float64(status.C4Computed) * 100.0 / float64(filesToProcess)
@@ -296,7 +296,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 						pct = 100
 					}
 				}
-				
+
 				// Calculate ETA based on average rate
 				etaStr := ""
 				if avgRate > 0 && filesToProcess > status.C4Computed {
@@ -308,12 +308,12 @@ func (pc *ProgressiveCLI) progressReporter() {
 						etaStr = fmt.Sprintf(" ETA: %.1fm", etaSecs/60)
 					}
 				}
-				
+
 				// Create progress bar
 				barWidth := 30
 				filled := int(pct * float64(barWidth) / 100.0)
 				bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-				
+
 				if duration > 0 {
 					fmt.Fprintf(pc.errWriter,
 						"Stage 3: Computing C4 IDs... [%s] %d/%d files (%.0f%%, %.0f/s avg)%s",
@@ -323,7 +323,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 						"Stage 3: Computing C4 IDs... [%s] %d/%d files (%.0f%%)%s",
 						bar, status.C4Computed, filesToProcess, pct, etaStr)
 				}
-					
+
 			case StageComplete:
 				// Only show complete when everything is truly done
 				if status.C4Computed >= status.RegularFiles {
@@ -333,7 +333,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 						regularFileCount = status.RegularFiles
 						duration := time.Since(stageStartTime).Seconds()
 						if duration > 0 {
-							avgRate := float64(status.MetadataScanned - stageStartMetadataCount) / duration
+							avgRate := float64(status.MetadataScanned-stageStartMetadataCount) / duration
 							fmt.Fprintf(pc.errWriter, "\n✓ Stage 2 complete: Scanned metadata for %d items, found %d files in %.1fs (%.0f items/s)\n",
 								status.MetadataScanned, regularFileCount, duration, avgRate)
 						}
@@ -341,7 +341,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 						// Stage 3 summary wasn't printed yet
 						duration := time.Since(stageStartTime).Seconds()
 						if duration > 0 {
-							avgRate := float64(status.C4Computed - stageStartC4Count) / duration
+							avgRate := float64(status.C4Computed-stageStartC4Count) / duration
 							fmt.Fprintf(pc.errWriter, "\n✓ Stage 3 complete: Computed %d C4 IDs in %.1fs (%.0f files/s)\n",
 								status.C4Computed, duration, avgRate)
 						}
@@ -352,7 +352,7 @@ func (pc *ProgressiveCLI) progressReporter() {
 				}
 				// Not really complete yet, continue to show progress
 			}
-			
+
 		case <-pc.scanner.ctx.Done():
 			// Clear progress line
 			fmt.Fprintf(pc.errWriter, "\r\033[K")
@@ -367,20 +367,20 @@ func (pc *ProgressiveCLI) RunWithTimeout(timeout time.Duration) error {
 	if err := pc.scanner.Start(); err != nil {
 		return err
 	}
-	
+
 	// Set up timeout
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
-	
+
 	done := make(chan struct{})
 	var scanErr error
-	
+
 	// Run scan in goroutine
 	go func() {
 		pc.scanner.Wait()
 		close(done)
 	}()
-	
+
 	// Start progress reporter if enabled
 	if pc.showProgress {
 		pc.wg.Add(1)
@@ -411,7 +411,7 @@ func (pc *ProgressiveCLI) RunWithTimeout(timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return scanErr
 }
 

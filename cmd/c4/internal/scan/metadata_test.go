@@ -314,9 +314,9 @@ func TestManifestCanonicalize(t *testing.T) {
 	// Add entry with null values
 	manifest.AddEntry(&Entry{
 		Name:      "file.txt",
-		Mode:      0,              // Null
+		Mode:      0,               // Null
 		Timestamp: time.Unix(0, 0), // Null
-		Size:      -1,             // Null
+		Size:      -1,              // Null
 	})
 
 	// Should have null values

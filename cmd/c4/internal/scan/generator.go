@@ -41,8 +41,8 @@ type Generator struct {
 	includeHidden   bool
 	detectSequences bool
 	excludePatterns []string
-	excludeFile     string // explicit exclude file path
-	excludeFileName string // filename to look for in scanned dirs (from env)
+	excludeFile     string          // explicit exclude file path
+	excludeFileName string          // filename to look for in scanned dirs (from env)
 	guide           map[string]bool // paths from guide c4m (nil = no guide)
 	scanRoot        string
 }
@@ -182,19 +182,19 @@ func (g *Generator) clone() *Generator {
 // GenerateFromPath creates a manifest from a filesystem path
 func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	manifest := NewManifest()
-	
+
 	// Get absolute path
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve path: %w", err)
 	}
-	
+
 	// Check if path exists
 	info, err := os.Lstat(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
-	
+
 	g.scanRoot = absPath
 
 	// Load exclude patterns from file if specified.
@@ -216,11 +216,11 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		}
 		manifest.AddEntry(entry)
 	}
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Sort entries hierarchically (files before directories at each level)
 	manifest.SortEntries()
 
@@ -233,7 +233,7 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 		collapsed := c4m.DetectSequences(manifest)
 		manifest.Entries = collapsed.Entries
 	}
-	
+
 	return manifest, nil
 }
 
@@ -244,10 +244,10 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %w", dirPath, err)
 	}
-	
+
 	// Determine the depth for children
 	childDepth := depth
-	
+
 	// Add directory entry itself if not root
 	if dirName != "" {
 		dirInfo, err := os.Lstat(dirPath)
@@ -259,7 +259,7 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 			return err
 		}
 		dirEntry.Name = dirName + "/"
-		
+
 		// For directories, compute C4 ID from their recursive manifest
 		if g.mode == ModeFull && dirInfo.IsDir() {
 			subGen := g.clone()
@@ -268,12 +268,12 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 				dirEntry.C4ID = subManifest.ComputeC4ID()
 			}
 		}
-		
+
 		manifest.AddEntry(dirEntry)
 		// Children of this directory are one level deeper
 		childDepth = depth + 1
 	}
-	
+
 	// Load exclude patterns from env-named file in subdirectories.
 	if g.excludeFileName != "" && dirName != "" {
 		g.loadExcludeFile(filepath.Join(dirPath, g.excludeFileName))
@@ -319,7 +319,7 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 		if err != nil {
 			return fmt.Errorf("failed to get info for %s: %w", fullPath, err)
 		}
-		
+
 		// Handle symlinks
 		if info.Mode()&os.ModeSymlink != 0 {
 			if g.followSymlinks {
@@ -331,13 +331,13 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 			} else {
 				// Create symlink metadata
 				md := g.generateMetadata(fullPath, info, childDepth)
-				
+
 				// Set symlink target (always forward slashes for c4m portability)
 				if bmd, ok := md.(*BasicFileMetadata); ok {
 					target, err := os.Readlink(fullPath)
 					if err == nil {
 						bmd.SetTarget(filepath.ToSlash(target))
-						
+
 						// Compute C4 ID of symlink target if enabled
 						if g.mode == ModeFull {
 							id := g.computeSymlinkTargetC4ID(fullPath, target)
@@ -345,7 +345,7 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 						}
 					}
 				}
-				
+
 				// Convert to entry and add
 				fileEntry := MetadataToEntry(md)
 				fileEntry.Name = name
@@ -353,7 +353,7 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 				continue
 			}
 		}
-		
+
 		// Recurse into directories
 		if info.IsDir() {
 			err = g.generateDir(manifest, fullPath, name, childDepth)
@@ -370,7 +370,7 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 			manifest.AddEntry(fileEntry)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -378,14 +378,14 @@ func (g *Generator) generateDir(manifest *Manifest, dirPath, dirName string, dep
 func (g *Generator) generateEntry(path string, info os.FileInfo, depth int) (*Entry, error) {
 	// Create metadata first
 	md := g.generateMetadata(path, info, depth)
-	
+
 	// Convert to Entry
 	entry := MetadataToEntry(md)
 	// MetadataToEntry adds trailing slash for directories, but we handle that elsewhere
 	if entry.IsDir() && strings.HasSuffix(entry.Name, "/") {
 		entry.Name = entry.Name[:len(entry.Name)-1]
 	}
-	
+
 	return entry, nil
 }
 
@@ -416,7 +416,7 @@ func (g *Generator) computeFileC4ID(path string) (c4.ID, error) {
 		return c4.ID{}, err
 	}
 	defer file.Close()
-	
+
 	return c4.Identify(file), nil
 }
 
@@ -427,19 +427,19 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 	if !filepath.IsAbs(target) {
 		targetPath = filepath.Join(filepath.Dir(symlinkPath), target)
 	}
-	
+
 	// Get target info
 	targetInfo, err := os.Lstat(targetPath)
 	if err != nil {
 		// Broken symlink or out-of-scope target
 		return c4.ID{}
 	}
-	
+
 	// If target is also a symlink, return empty ID (prevent infinite recursion)
 	if targetInfo.Mode()&os.ModeSymlink != 0 {
 		return c4.ID{}
 	}
-	
+
 	// If target is a directory, compute its manifest C4 ID
 	if targetInfo.IsDir() {
 		subGen := g.clone()
@@ -449,7 +449,7 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 		}
 		return manifest.ComputeC4ID()
 	}
-	
+
 	// For regular files, compute content C4 ID
 	if targetInfo.Mode().IsRegular() {
 		id, err := g.computeFileC4ID(targetPath)
@@ -458,7 +458,7 @@ func (g *Generator) computeSymlinkTargetC4ID(symlinkPath, target string) c4.ID {
 		}
 		return id
 	}
-	
+
 	// Other types (devices, pipes, etc.) get empty ID
 	return c4.ID{}
 }
@@ -503,4 +503,3 @@ func (g *Generator) loadExcludeFile(path string) {
 		g.excludePatterns = append(g.excludePatterns, line)
 	}
 }
-
