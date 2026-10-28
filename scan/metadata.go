@@ -94,11 +94,11 @@ func (m *BasicFileMetadata) Sys() interface{}   { return nil }
 
 // FileMetadata interface implementation
 
-func (m *BasicFileMetadata) ID() c4.ID           { return m.c4id }
-func (m *BasicFileMetadata) Path() string        { return m.path }
-func (m *BasicFileMetadata) Target() string      { return m.target }
-func (m *BasicFileMetadata) Depth() int          { return m.depth }
-func (m *BasicFileMetadata) SetID(id c4.ID)      { m.c4id = id }
+func (m *BasicFileMetadata) ID() c4.ID                { return m.c4id }
+func (m *BasicFileMetadata) Path() string             { return m.path }
+func (m *BasicFileMetadata) Target() string           { return m.target }
+func (m *BasicFileMetadata) Depth() int               { return m.depth }
+func (m *BasicFileMetadata) SetID(id c4.ID)           { m.c4id = id }
 func (m *BasicFileMetadata) Children() []FileMetadata { return m.children }
 
 // SetTarget sets the symlink target
@@ -144,7 +144,7 @@ func MetadataToEntry(md FileMetadata) *Entry {
 func EntryToMetadata(entry *Entry) FileMetadata {
 	name := entry.Name
 	isDir := entry.IsDir()
-	
+
 	// Remove trailing slash for internal representation
 	if isDir && len(name) > 0 && name[len(name)-1] == '/' {
 		name = name[:len(name)-1]
@@ -181,4 +181,3 @@ func (sr *ScanResult) ToManifest() *Manifest {
 
 	return manifest
 }
-

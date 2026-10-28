@@ -134,9 +134,9 @@ func BenchmarkHierarchicalSort(b *testing.B) {
 // BenchmarkDiff tests diff operation performance
 func BenchmarkDiff(b *testing.B) {
 	benchmarks := []struct {
-		name     string
-		size     int
-		changes  int // percentage of changes
+		name    string
+		size    int
+		changes int // percentage of changes
 	}{
 		{"Small-NoChanges", 100, 0},
 		{"Small-10%Changes", 100, 10},
@@ -354,7 +354,8 @@ func buildSyntheticManifest(n, dirFanout, fileFanout, maxDepth int) []*Entry {
 // regressed.
 //
 // Run:
-//   go test -run='^$' -bench=BenchmarkPropagateMetadata_Linear -benchtime=3x ./c4m
+//
+//	go test -run='^$' -bench=BenchmarkPropagateMetadata_Linear -benchtime=3x ./c4m
 func BenchmarkPropagateMetadata_Linear(b *testing.B) {
 	sizes := []int{10_000, 100_000, 1_000_000}
 	for _, n := range sizes {

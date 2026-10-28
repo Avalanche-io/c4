@@ -10,11 +10,11 @@ func TestExtractSubtree_RootLevel(t *testing.T) {
 	m := NewBuilder().
 		AddFile("readme.txt", WithC4ID(testID("readme")), WithTimestamp(ts)).
 		AddDir("shared", WithFlowSync("backup:collab/"), WithTimestamp(ts)).
-			AddFile("doc.txt", WithC4ID(testID("doc")), WithTimestamp(ts)).
-			AddFile("img.png", WithC4ID(testID("img")), WithTimestamp(ts)).
+		AddFile("doc.txt", WithC4ID(testID("doc")), WithTimestamp(ts)).
+		AddFile("img.png", WithC4ID(testID("img")), WithTimestamp(ts)).
 		End().
 		AddDir("src", WithTimestamp(ts)).
-			AddFile("main.go", WithC4ID(testID("main")), WithTimestamp(ts)).
+		AddFile("main.go", WithC4ID(testID("main")), WithTimestamp(ts)).
 		End().
 		MustBuild()
 
@@ -46,12 +46,12 @@ func TestExtractSubtree_Nested(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := NewBuilder().
 		AddDir("project", WithTimestamp(ts)).
-			AddDir("src", WithTimestamp(ts)).
-				AddDir("shared", WithFlowSync("backup:things/"), WithTimestamp(ts)).
-					AddFile("a.txt", WithC4ID(testID("a")), WithTimestamp(ts)).
-					AddFile("b.txt", WithC4ID(testID("b")), WithTimestamp(ts)).
-				EndDir().
-			EndDir().
+		AddDir("src", WithTimestamp(ts)).
+		AddDir("shared", WithFlowSync("backup:things/"), WithTimestamp(ts)).
+		AddFile("a.txt", WithC4ID(testID("a")), WithTimestamp(ts)).
+		AddFile("b.txt", WithC4ID(testID("b")), WithTimestamp(ts)).
+		EndDir().
+		EndDir().
 		End().
 		MustBuild()
 
@@ -112,10 +112,10 @@ func TestExtractSubtree_DeepNesting(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := NewBuilder().
 		AddDir("shared", WithFlowSync("backup:stuff/"), WithTimestamp(ts)).
-			AddFile("top.txt", WithC4ID(testID("top")), WithTimestamp(ts)).
-			AddDir("sub", WithTimestamp(ts)).
-				AddFile("deep.txt", WithC4ID(testID("deep")), WithTimestamp(ts)).
-			EndDir().
+		AddFile("top.txt", WithC4ID(testID("top")), WithTimestamp(ts)).
+		AddDir("sub", WithTimestamp(ts)).
+		AddFile("deep.txt", WithC4ID(testID("deep")), WithTimestamp(ts)).
+		EndDir().
 		End().
 		MustBuild()
 
@@ -157,10 +157,10 @@ func TestInjectSubtree_Replace(t *testing.T) {
 	m := NewBuilder().
 		AddFile("readme.txt", WithC4ID(testID("readme")), WithTimestamp(ts)).
 		AddDir("shared", WithFlowSync("backup:collab/"), WithTimestamp(ts)).
-			AddFile("old.txt", WithC4ID(testID("old")), WithTimestamp(ts)).
+		AddFile("old.txt", WithC4ID(testID("old")), WithTimestamp(ts)).
 		End().
 		AddDir("src", WithTimestamp(ts)).
-			AddFile("main.go", WithC4ID(testID("main")), WithTimestamp(ts)).
+		AddFile("main.go", WithC4ID(testID("main")), WithTimestamp(ts)).
 		End().
 		MustBuild()
 
@@ -227,7 +227,7 @@ func TestInjectSubtree_Empty(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := NewBuilder().
 		AddDir("shared", WithFlowSync("backup:collab/"), WithTimestamp(ts)).
-			AddFile("doc.txt", WithC4ID(testID("doc")), WithTimestamp(ts)).
+		AddFile("doc.txt", WithC4ID(testID("doc")), WithTimestamp(ts)).
 		End().
 		MustBuild()
 
@@ -249,7 +249,7 @@ func TestInjectSubtree_PreservesFlowLink(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := NewBuilder().
 		AddDir("data", WithFlowOutbound("backup:archive/"), WithTimestamp(ts)).
-			AddFile("old.txt", WithC4ID(testID("old")), WithTimestamp(ts)).
+		AddFile("old.txt", WithC4ID(testID("old")), WithTimestamp(ts)).
 		End().
 		MustBuild()
 
@@ -285,11 +285,11 @@ func TestExtractInject_RoundTrip(t *testing.T) {
 	m := NewBuilder().
 		AddFile("readme.txt", WithC4ID(testID("readme")), WithTimestamp(ts)).
 		AddDir("shared", WithFlowSync("backup:collab/"), WithTimestamp(ts)).
-			AddFile("doc.txt", WithC4ID(testID("doc")), WithTimestamp(ts)).
-			AddFile("img.png", WithC4ID(testID("img")), WithTimestamp(ts)).
+		AddFile("doc.txt", WithC4ID(testID("doc")), WithTimestamp(ts)).
+		AddFile("img.png", WithC4ID(testID("img")), WithTimestamp(ts)).
 		End().
 		AddDir("src", WithTimestamp(ts)).
-			AddFile("main.go", WithC4ID(testID("main")), WithTimestamp(ts)).
+		AddFile("main.go", WithC4ID(testID("main")), WithTimestamp(ts)).
 		End().
 		MustBuild()
 
@@ -320,11 +320,11 @@ func TestEntryTreePath(t *testing.T) {
 	ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := NewBuilder().
 		AddDir("project", WithTimestamp(ts)).
-			AddDir("src", WithTimestamp(ts)).
-				AddDir("shared", WithTimestamp(ts)).
-					AddFile("file.txt", WithC4ID(testID("f")), WithTimestamp(ts)).
-				EndDir().
-			EndDir().
+		AddDir("src", WithTimestamp(ts)).
+		AddDir("shared", WithTimestamp(ts)).
+		AddFile("file.txt", WithC4ID(testID("f")), WithTimestamp(ts)).
+		EndDir().
+		EndDir().
 		End().
 		MustBuild()
 

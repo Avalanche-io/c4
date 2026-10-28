@@ -33,47 +33,47 @@ func (e ValidationError) Error() string {
 
 // ValidationStats tracks statistics about the validated content
 type ValidationStats struct {
-	TotalEntries    int64
-	Files           int64
-	Directories     int64
-	Symlinks        int64
-	SpecialFiles    int64 // block/char devices, pipes, sockets
-	TotalSize       int64
-	OldestTime      time.Time
-	NewestTime      time.Time
-	NullTimes       int64 // Entries with null timestamps
-	NullSizes       int64 // Entries with null sizes
-	Chunks          int64 // Number of referenced chunks
-	MaxDepth        int   // Maximum directory depth
+	TotalEntries int64
+	Files        int64
+	Directories  int64
+	Symlinks     int64
+	SpecialFiles int64 // block/char devices, pipes, sockets
+	TotalSize    int64
+	OldestTime   time.Time
+	NewestTime   time.Time
+	NullTimes    int64 // Entries with null timestamps
+	NullSizes    int64 // Entries with null sizes
+	Chunks       int64 // Number of referenced chunks
+	MaxDepth     int   // Maximum directory depth
 }
 
 // Validator validates C4M manifests and bundles
 type Validator struct {
-	Strict       bool // Enforce all rules strictly
-	MaxErrors    int  // Stop after this many errors (0 = unlimited)
-	errors       []ValidationError
-	warnings     []ValidationError
-	lineNum      int
-	seenPaths    map[string]int // Track duplicate paths
-	lastDepth    int
-	depthStack   []string // Track parent directories
-	seenDirAtDepth map[int]bool // Track if we've seen a directory at each depth
-	stats        ValidationStats
-	isErgonomic  bool // Whether the file uses ergonomic format
-	formatDetected bool // Whether we've detected the format yet
-	currentPath  string // Current full path being processed
+	Strict          bool // Enforce all rules strictly
+	MaxErrors       int  // Stop after this many errors (0 = unlimited)
+	errors          []ValidationError
+	warnings        []ValidationError
+	lineNum         int
+	seenPaths       map[string]int // Track duplicate paths
+	lastDepth       int
+	depthStack      []string     // Track parent directories
+	seenDirAtDepth  map[int]bool // Track if we've seen a directory at each depth
+	stats           ValidationStats
+	isErgonomic     bool           // Whether the file uses ergonomic format
+	formatDetected  bool           // Whether we've detected the format yet
+	currentPath     string         // Current full path being processed
 	lastPathAtDepth map[int]string // Track last path at each depth for sorting validation
 }
 
 // NewValidator creates a new validator
 func NewValidator(strict bool) *Validator {
 	return &Validator{
-		Strict:    strict,
-		MaxErrors: 100000, // Increased to handle large files
-		seenPaths: make(map[string]int),
-		depthStack: []string{},
+		Strict:          strict,
+		MaxErrors:       100000, // Increased to handle large files
+		seenPaths:       make(map[string]int),
+		depthStack:      []string{},
 		lastPathAtDepth: make(map[int]string),
-		seenDirAtDepth: make(map[int]bool),
+		seenDirAtDepth:  make(map[int]bool),
 	}
 }
 
@@ -137,7 +137,7 @@ func (v *Validator) validateEntry(line string) {
 		v.addError(v.lineNum, 0, "encoding", "invalid UTF-8", false)
 		return
 	}
-	
+
 	// Check for control characters
 	for i, r := range line {
 		if r < 0x20 && r != '\t' {
@@ -145,7 +145,7 @@ func (v *Validator) validateEntry(line string) {
 			return
 		}
 	}
-	
+
 	// Calculate depth (must be multiples of 2 spaces)
 	depth := 0
 	for i := 0; i < len(line); i++ {
@@ -155,42 +155,42 @@ func (v *Validator) validateEntry(line string) {
 			break
 		}
 	}
-	
+
 	// Depth must be even (2 spaces per level)
 	if depth%2 != 0 {
 		v.addError(v.lineNum, depth, "indentation", "indentation must be multiples of 2 spaces", false)
 		return
 	}
 	depthLevel := depth / 2
-	
+
 	// Validate depth progression (can only increase by 1)
 	if depthLevel > v.lastDepth+1 {
 		v.addError(v.lineNum, 1, "depth", fmt.Sprintf("invalid depth jump from %d to %d", v.lastDepth, depthLevel), false)
 	}
-	
+
 	// Store original stack size for validation
 	originalStackSize := len(v.depthStack)
-	
+
 	// Check dedentation rules (can dedent by any amount)
 	if depthLevel < v.lastDepth {
 		// After dedenting, reset directory tracking for this level
 		v.seenDirAtDepth[depthLevel] = false
 		// Don't adjust stack yet - we need it for validation
 	}
-	
+
 	// Parse fields
 	trimmed := strings.TrimLeft(line, " ")
 	fields := strings.Fields(trimmed)
-	
+
 	if len(fields) < 4 {
 		v.addError(v.lineNum, 0, "fields", fmt.Sprintf("insufficient fields: need at least 4, got %d", len(fields)), false)
 		return
 	}
-	
+
 	mode := fields[0]
 	var timestamp, size string
 	var nameStart int
-	
+
 	// Handle different timestamp formats
 	if v.formatDetected && v.isErgonomic {
 		// Ergonomic format: mode Month Day Time Year TZ size name [c4id]
@@ -209,16 +209,16 @@ func (v *Validator) validateEntry(line string) {
 		size = fields[2]
 		nameStart = 3
 	}
-	
+
 	// Validate mode
 	v.validateMode(mode)
-	
+
 	// Validate timestamp
 	v.validateTimestamp(timestamp)
-	
+
 	// Validate size
 	v.validateSize(size)
-	
+
 	// Validate raw name field before parsing — catch path separators that
 	// parseNameAndRest would otherwise silently interpret.
 	rawName := strings.Join(fields[nameStart:], " ")
@@ -234,10 +234,10 @@ func (v *Validator) validateEntry(line string) {
 
 	// Extract name (handle quoted names)
 	name, symTarget, flowOp, flowTgt, c4id := v.parseNameAndRest(fields[nameStart:])
-	
+
 	// Update statistics
 	v.updateStats(depthLevel, mode, timestamp, size, name, c4id)
-	
+
 	// Check files-before-directories rule at same depth
 	isDir := strings.HasSuffix(name, "/")
 	if !isDir && v.seenDirAtDepth[depthLevel] {
@@ -246,10 +246,10 @@ func (v *Validator) validateEntry(line string) {
 	if isDir {
 		v.seenDirAtDepth[depthLevel] = true
 	}
-	
+
 	// Build the current path
 	v.currentPath = v.buildPath(name, depthLevel)
-	
+
 	// Check that non-directory entries at wrong depth relative to open directories
 	// A file should be at depth = len(depthStack) (inside the deepest directory)
 	// or at depth = 0 when no directories are open
@@ -258,12 +258,12 @@ func (v *Validator) validateEntry(line string) {
 		if depthLevel != expectedDepth {
 			if originalStackSize > 0 {
 				expectedPath := v.buildExpectedPath(name, expectedDepth)
-				v.addError(v.lineNum, 0, "indentation", fmt.Sprintf("file '%s' at depth %d but should be at depth %d (expected path: '%s')", 
+				v.addError(v.lineNum, 0, "indentation", fmt.Sprintf("file '%s' at depth %d but should be at depth %d (expected path: '%s')",
 					v.currentPath, depthLevel, expectedDepth, expectedPath), false)
 			}
 		}
 	}
-	
+
 	// Validate name
 	v.validateName(name, depthLevel)
 
@@ -285,7 +285,7 @@ func (v *Validator) validateEntry(line string) {
 	} else {
 		v.seenPaths[v.currentPath] = v.lineNum
 	}
-	
+
 	// Validate symlink target if present
 	if symTarget != "" && !strings.HasPrefix(mode, "l") {
 		v.addError(v.lineNum, 0, "symlink", "symlink target specified for non-symlink", false)
@@ -306,16 +306,16 @@ func (v *Validator) validateEntry(line string) {
 	if c4id != "" {
 		v.validateC4ID(c4id)
 	}
-	
+
 	// Update depth tracking
 	v.lastDepth = depthLevel
-	
-	// Track directory structure  
+
+	// Track directory structure
 	// First adjust stack for dedentation
 	if depthLevel < len(v.depthStack) {
 		v.depthStack = v.depthStack[:depthLevel]
 	}
-	
+
 	// Then add new directory if this is one
 	if strings.HasSuffix(name, "/") {
 		v.depthStack = append(v.depthStack, name)
@@ -326,18 +326,18 @@ func (v *Validator) validateMode(mode string) {
 	if mode == "-" || mode == "----------" {
 		return // Null mode ("-") or zero mode ("----------"), both valid
 	}
-	
+
 	if len(mode) != 10 {
 		v.addError(v.lineNum, 0, "mode", fmt.Sprintf("mode must be 10 characters, got %d", len(mode)), false)
 		return
 	}
-	
+
 	// Check first character (file type)
 	validTypes := "-dlbcps"
 	if !strings.ContainsRune(validTypes, rune(mode[0])) {
 		v.addError(v.lineNum, 0, "mode", fmt.Sprintf("invalid file type: %c", mode[0]), false)
 	}
-	
+
 	// Check permission characters
 	for i := 1; i < 10; i++ {
 		c := mode[i]
@@ -352,19 +352,19 @@ func (v *Validator) validateTimestamp(ts string) {
 	if ts == "-" || ts == "0" {
 		return // Null timestamp is valid
 	}
-	
+
 	// If we've detected ergonomic format, don't validate timestamp format
 	if v.isErgonomic {
 		// Could add validation for ergonomic format here if needed
 		return
 	}
-	
+
 	// For canonical format, check ISO 8601 with Z suffix
 	if !strings.HasSuffix(ts, "Z") {
 		v.addError(v.lineNum, 0, "timestamp", "timestamp must end with 'Z' for UTC in canonical format", false)
 		return
 	}
-	
+
 	// Try to parse canonical format
 	_, err := time.Parse(TimestampFormat, ts)
 	if err != nil {
@@ -376,17 +376,17 @@ func (v *Validator) validateSize(size string) {
 	if size == "-" {
 		return // Null size is valid
 	}
-	
+
 	// Remove comma separators if present (common in ergonomic form)
 	cleanSize := strings.ReplaceAll(size, ",", "")
-	
+
 	// Parse as integer
 	val, err := strconv.ParseInt(cleanSize, 10, 64)
 	if err != nil {
 		v.addError(v.lineNum, 0, "size", fmt.Sprintf("invalid size: %v", err), false)
 		return
 	}
-	
+
 	if val < -1 {
 		v.addError(v.lineNum, 0, "size", "size cannot be less than -1", false)
 	}
@@ -568,7 +568,6 @@ func (v *Validator) parseNameAndRest(fields []string) (name, symTarget, flowOp, 
 	return name, symTarget, flowOp, flowTgt, c4id
 }
 
-
 // flowLocationPattern matches a valid flow location label.
 var flowLocationPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
 
@@ -620,18 +619,18 @@ func (v *Validator) getResult() error {
 	if len(v.errors) == 0 {
 		return nil
 	}
-	
+
 	// Build error message
 	var msgs []string
 	for _, e := range v.errors {
 		msgs = append(msgs, e.Error())
 	}
-	
+
 	summary := fmt.Sprintf("validation failed with %d errors", len(v.errors))
 	if len(v.warnings) > 0 {
 		summary += fmt.Sprintf(" and %d warnings", len(v.warnings))
 	}
-	
+
 	return fmt.Errorf("%s:\n%s", summary, strings.Join(msgs, "\n"))
 }
 
@@ -655,7 +654,7 @@ func (v *Validator) buildPath(name string, depth int) string {
 	if depth == 0 {
 		return name
 	}
-	
+
 	// Build path from stack up to the specified depth
 	path := ""
 	for i := 0; i < depth && i < len(v.depthStack); i++ {
@@ -670,7 +669,7 @@ func (v *Validator) buildExpectedPath(name string, expectedDepth int) string {
 	if expectedDepth == 0 {
 		return name
 	}
-	
+
 	// Build path from stack up to the expected depth
 	path := ""
 	for i := 0; i < expectedDepth && i < len(v.depthStack); i++ {
@@ -688,19 +687,19 @@ func (v *Validator) GetCurrentPath() string {
 // detectFormat determines if the manifest uses canonical or ergonomic format
 func (v *Validator) detectFormat(line string) {
 	v.formatDetected = true
-	
+
 	// Look for timestamp pattern in the line
 	trimmed := strings.TrimSpace(line)
 	fields := strings.Fields(trimmed)
-	
+
 	if len(fields) < 3 {
 		return
 	}
-	
+
 	// Skip mode field, look at timestamp field (usually second field)
 	for i := 1; i < len(fields) && i < 4; i++ {
 		field := fields[i]
-		
+
 		// Check for canonical format (ISO 8601 with Z)
 		if strings.Contains(field, "T") && strings.HasSuffix(field, "Z") {
 			v.isErgonomic = false
@@ -726,7 +725,7 @@ func (v *Validator) updateStats(depth int, mode, timestamp, sizeStr, name, c4id 
 	if depth > v.stats.MaxDepth {
 		v.stats.MaxDepth = depth
 	}
-	
+
 	// Track entry type
 	if mode != "-" && mode != "----------" && len(mode) > 0 {
 		switch mode[0] {
@@ -744,7 +743,7 @@ func (v *Validator) updateStats(depth int, mode, timestamp, sizeStr, name, c4id 
 	} else {
 		v.stats.Files++
 	}
-	
+
 	// Track size
 	if sizeStr == "-" {
 		v.stats.NullSizes++
@@ -754,7 +753,7 @@ func (v *Validator) updateStats(depth int, mode, timestamp, sizeStr, name, c4id 
 			v.stats.TotalSize += size
 		}
 	}
-	
+
 	// Track timestamp
 	if timestamp == "-" || timestamp == "0" {
 		v.stats.NullTimes++
@@ -766,7 +765,7 @@ func (v *Validator) updateStats(depth int, mode, timestamp, sizeStr, name, c4id 
 			v.stats.NewestTime = t
 		}
 	}
-	
+
 	// Track chunks
 	if c4id != "" && strings.HasPrefix(c4id, "c4") {
 		v.stats.Chunks++

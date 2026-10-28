@@ -327,9 +327,9 @@ func TestValidateFile(t *testing.T) {
 
 func TestDetectFormat(t *testing.T) {
 	tests := []struct {
-		name        string
-		content     string
-		wantErgo    bool
+		name     string
+		content  string
+		wantErgo bool
 	}{
 		{
 			name: "canonical format",

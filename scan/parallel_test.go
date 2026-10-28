@@ -15,6 +15,7 @@ import (
 //   - 1 chain "deep/0/1/.../19" with 20 levels, a file at each level = ~40 entries
 //   - 5 mixed dirs each containing 100 files + 3 nested subdirs with 10 files each
 //     = 5 * (100 + 3 + 30) = 665 entries
+//
 // Total ~1215 entries.
 func buildParallelFixture(tb testing.TB, root string) {
 	tb.Helper()

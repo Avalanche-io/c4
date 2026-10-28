@@ -26,8 +26,8 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 
 	// 2. Scan current directory state.
 	currentFiles := make(map[string]os.FileInfo) // relative path -> info
-	currentIDs := make(map[string]c4.ID)          // relative path -> C4 ID
-	idToCurrentPaths := make(map[c4.ID][]string)  // C4 ID -> relative paths
+	currentIDs := make(map[string]c4.ID)         // relative path -> C4 ID
+	idToCurrentPaths := make(map[c4.ID][]string) // C4 ID -> relative paths
 
 	if info, err := os.Stat(dirPath); err == nil && info.IsDir() {
 		filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
@@ -142,8 +142,8 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 			if sameContent {
 				// Content matches; check metadata.
 				// Windows doesn't support Unix permissions; skip chmod there.
-			needChmod := runtime.GOOS != "windows" &&
-				entry.Mode != 0 && curInfo.Mode().Perm() != entry.Mode.Perm()
+				needChmod := runtime.GOOS != "windows" &&
+					entry.Mode != 0 && curInfo.Mode().Perm() != entry.Mode.Perm()
 				needChtimes := !entry.Timestamp.Equal(c4m.NullTimestamp()) &&
 					!curInfo.ModTime().UTC().Truncate(time.Second).Equal(entry.Timestamp.UTC().Truncate(time.Second))
 

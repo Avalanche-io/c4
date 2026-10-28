@@ -99,9 +99,9 @@ func TestExamplesAudit(t *testing.T) {
 	runExample(t, "03_directory_with_children", func() *Manifest {
 		return NewBuilder().
 			AddDir("project", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-				AddFile("main.go", WithSize(1024), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("main.go content"))).
-				AddFile("go.mod", WithSize(256), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("go.mod content"))).
-				AddFile("README.md", WithSize(512), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("readme content"))).
+			AddFile("main.go", WithSize(1024), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("main.go content"))).
+			AddFile("go.mod", WithSize(256), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("go.mod content"))).
+			AddFile("README.md", WithSize(512), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("readme content"))).
 			End().
 			MustBuild()
 	}())
@@ -110,15 +110,15 @@ func TestExamplesAudit(t *testing.T) {
 	runExample(t, "04_deeply_nested", func() *Manifest {
 		return NewBuilder().
 			AddDir("level1", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-				AddDir("level2", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-					AddDir("level3", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-						AddDir("level4", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-							AddDir("level5", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-								AddFile("deep.txt", WithSize(42), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("deep"))).
-							EndDir().
-						EndDir().
-					EndDir().
-				EndDir().
+			AddDir("level2", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
+			AddDir("level3", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
+			AddDir("level4", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
+			AddDir("level5", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
+			AddFile("deep.txt", WithSize(42), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("deep"))).
+			EndDir().
+			EndDir().
+			EndDir().
+			EndDir().
 			End().
 			MustBuild()
 	}())
@@ -132,10 +132,10 @@ func TestExamplesAudit(t *testing.T) {
 			AddFile("file2.txt", WithSize(40), WithMode(0644), WithTimestamp(ts)).
 			AddFile("file1.txt", WithSize(50), WithMode(0644), WithTimestamp(ts)).
 			AddDir("beta", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-				AddFile("inner.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
+			AddFile("inner.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
 			End().
 			AddDir("alpha_dir", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-				AddFile("inner.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
+			AddFile("inner.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
 			End().
 			MustBuild()
 	}())
@@ -149,10 +149,10 @@ func TestExamplesAudit(t *testing.T) {
 		m := NewManifest()
 		m.AddEntry(&Entry{
 			Name:      "unknown.dat",
-			Mode:      0,                      // null mode
-			Timestamp: time.Unix(0, 0).UTC(),  // null timestamp
-			Size:      -1,                     // null size
-			C4ID:      c4.ID{},                // null C4 ID
+			Mode:      0,                     // null mode
+			Timestamp: time.Unix(0, 0).UTC(), // null timestamp
+			Size:      -1,                    // null size
+			C4ID:      c4.ID{},               // null C4 ID
 			Depth:     0,
 		})
 		return m
@@ -500,10 +500,10 @@ func TestExamplesAudit(t *testing.T) {
 			AddFile("file_z.txt", WithSize(10), WithMode(0644), WithTimestamp(ts)).
 			AddFile("file_a.txt", WithSize(20), WithMode(0644), WithTimestamp(ts)).
 			AddDir("dir_z", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-				AddFile("child.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
+			AddFile("child.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
 			End().
 			AddDir("dir_a", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-				AddFile("child.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
+			AddFile("child.txt", WithSize(5), WithMode(0644), WithTimestamp(ts)).
 			End().
 			AddFile("file_m.txt", WithSize(30), WithMode(0644), WithTimestamp(ts)).
 			MustBuild()
@@ -520,7 +520,7 @@ func TestExamplesAudit(t *testing.T) {
 			AddFile("medium.txt", WithSize(1234567), WithMode(0644), WithTimestamp(ts2), WithC4ID(idOf("medium"))).
 			AddFile("large.txt", WithSize(9876543210), WithMode(0755), WithTimestamp(ts3), WithC4ID(idOf("large"))).
 			AddDir("subdir", WithTimestamp(ts), WithMode(os.ModeDir|0755), WithC4ID(idOf("subdir manifest"))).
-				AddFile("nested.txt", WithSize(100), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("nested"))).
+			AddFile("nested.txt", WithSize(100), WithMode(0644), WithTimestamp(ts), WithC4ID(idOf("nested"))).
 			End().
 			MustBuild()
 	}())
@@ -891,7 +891,7 @@ func TestExamplesAudit_EncoderOutputFormat(t *testing.T) {
 	t.Run("directory_trailing_slash", func(t *testing.T) {
 		m := NewBuilder().
 			AddDir("mydir", WithTimestamp(ts), WithMode(os.ModeDir|0755)).
-				AddFile("child.txt", WithSize(10), WithMode(0644), WithTimestamp(ts)).
+			AddFile("child.txt", WithSize(10), WithMode(0644), WithTimestamp(ts)).
 			End().
 			MustBuild()
 

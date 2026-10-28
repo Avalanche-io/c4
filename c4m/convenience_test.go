@@ -10,10 +10,10 @@ func TestGetEntry_FullPath(t *testing.T) {
 	m := NewBuilder().
 		AddFile("root.txt").
 		AddDir("src").
-			AddFile("main.go").
-			AddDir("internal").
-				AddFile("helper.go").
-			EndDir().
+		AddFile("main.go").
+		AddDir("internal").
+		AddFile("helper.go").
+		EndDir().
 		End().
 		MustBuild()
 
@@ -59,7 +59,7 @@ func TestGetEntryByName(t *testing.T) {
 	m := NewBuilder().
 		AddFile("root.txt").
 		AddDir("src").
-			AddFile("main.go").
+		AddFile("main.go").
 		End().
 		MustBuild()
 
@@ -80,10 +80,10 @@ func TestGetEntryByName(t *testing.T) {
 	// When multiple entries share a bare name, last one wins
 	m2 := NewBuilder().
 		AddDir("a").
-			AddFile("data.txt").
+		AddFile("data.txt").
 		End().
 		AddDir("b").
-			AddFile("data.txt").
+		AddFile("data.txt").
 		End().
 		MustBuild()
 
@@ -112,13 +112,13 @@ func TestEntryPath(t *testing.T) {
 	m := NewBuilder().
 		AddFile("root.txt").
 		AddDir("src").
-			AddFile("main.go").
-			AddDir("internal").
-				AddFile("helper.go").
-				AddDir("deep").
-					AddFile("nested.go").
-				EndDir().
-			EndDir().
+		AddFile("main.go").
+		AddDir("internal").
+		AddFile("helper.go").
+		AddDir("deep").
+		AddFile("nested.go").
+		EndDir().
+		EndDir().
 		End().
 		MustBuild()
 
@@ -165,11 +165,11 @@ func TestEntryPath(t *testing.T) {
 func TestEntryPath_MatchesEntryTreePath(t *testing.T) {
 	m := NewBuilder().
 		AddDir("project").
-			AddDir("src").
-				AddDir("shared").
-					AddFile("file.txt").
-				EndDir().
-			EndDir().
+		AddDir("src").
+		AddDir("shared").
+		AddFile("file.txt").
+		EndDir().
+		EndDir().
 		End().
 		MustBuild()
 
@@ -242,10 +242,10 @@ func TestMoveEntry_IntoDir(t *testing.T) {
 func TestMoveEntry_DirWithDescendants(t *testing.T) {
 	m := NewBuilder().
 		AddDir("src").
-			AddFile("main.go").
-			AddDir("internal").
-				AddFile("helper.go").
-			EndDir().
+		AddFile("main.go").
+		AddDir("internal").
+		AddFile("helper.go").
+		EndDir().
 		End().
 		AddDir("dest").
 		End().
@@ -282,7 +282,7 @@ func TestMoveEntry_DirWithDescendants(t *testing.T) {
 func TestMoveEntry_OutOfDir(t *testing.T) {
 	m := NewBuilder().
 		AddDir("src").
-			AddFile("main.go").
+		AddFile("main.go").
 		End().
 		MustBuild()
 
@@ -330,10 +330,10 @@ func TestMoveEntry_PreservesEntryCount(t *testing.T) {
 	m := NewBuilder().
 		AddFile("a.txt").
 		AddDir("d1").
-			AddFile("b.txt").
-			AddDir("d2").
-				AddFile("c.txt").
-			EndDir().
+		AddFile("b.txt").
+		AddDir("d2").
+		AddFile("c.txt").
+		EndDir().
 		End().
 		MustBuild()
 
@@ -357,11 +357,11 @@ func TestMoveEntry_PreservesEntryCount(t *testing.T) {
 func TestAncestors_Ordering(t *testing.T) {
 	m := NewBuilder().
 		AddDir("a").
-			AddDir("b").
-				AddDir("c").
-					AddFile("deep.txt").
-				EndDir().
-			EndDir().
+		AddDir("b").
+		AddDir("c").
+		AddFile("deep.txt").
+		EndDir().
+		EndDir().
 		End().
 		MustBuild()
 
@@ -393,8 +393,8 @@ func TestAncestors_Ordering(t *testing.T) {
 func TestGetEntry_DirectoryPaths(t *testing.T) {
 	m := NewBuilder().
 		AddDir("src").
-			AddDir("internal").
-			EndDir().
+		AddDir("internal").
+		EndDir().
 		End().
 		MustBuild()
 
@@ -415,17 +415,17 @@ func TestGetEntry_DirectoryPaths(t *testing.T) {
 func TestMoveEntry_Directory_DepthUpdates(t *testing.T) {
 	m := NewBuilder().
 		AddDir("top").
-			AddFile("f1.txt").
-			AddDir("mid").
-				AddFile("f2.txt").
-				AddDir("bot").
-					AddFile("f3.txt").
-				EndDir().
-			EndDir().
+		AddFile("f1.txt").
+		AddDir("mid").
+		AddFile("f2.txt").
+		AddDir("bot").
+		AddFile("f3.txt").
+		EndDir().
+		EndDir().
 		End().
 		AddDir("target").
-			AddDir("nested").
-			EndDir().
+		AddDir("nested").
+		EndDir().
 		End().
 		MustBuild()
 

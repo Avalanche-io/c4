@@ -553,7 +553,6 @@ func testNoStaleAPINamesInREADME(t *testing.T) {
 	}
 }
 
-
 // --- Hardening ---
 
 func testFuzzTestsExist(t *testing.T) {
@@ -608,4 +607,3 @@ func testCoverageThreshold(t *testing.T) {
 		t.Errorf("only %d test/fuzz functions found — need at least 50 for adequate coverage", testCount)
 	}
 }
-

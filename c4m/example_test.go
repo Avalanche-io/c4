@@ -142,11 +142,11 @@ func ExampleNewBuilder() {
 	m := c4m.NewBuilder().
 		AddFile("readme.txt", c4m.WithSize(100)).
 		AddDir("src").
-			AddFile("main.go", c4m.WithSize(500)).
-			AddDir("internal").
-				AddFile("helper.go", c4m.WithSize(200)).
-			EndDir().
-			AddFile("util.go", c4m.WithSize(150)).
+		AddFile("main.go", c4m.WithSize(500)).
+		AddDir("internal").
+		AddFile("helper.go", c4m.WithSize(200)).
+		EndDir().
+		AddFile("util.go", c4m.WithSize(150)).
 		End().
 		AddFile("go.mod", c4m.WithSize(50)).
 		MustBuild()
@@ -171,7 +171,7 @@ func ExampleManifest_Builder() {
 	m.Builder().
 		AddFile("new.txt", c4m.WithSize(50)).
 		AddDir("newdir").
-			AddFile("nested.txt", c4m.WithSize(25)).
+		AddFile("nested.txt", c4m.WithSize(25)).
 		End()
 
 	fmt.Printf("Total entries: %d\n", len(m.Entries))
@@ -183,11 +183,11 @@ func ExampleManifest_Children() {
 	// Navigate manifest hierarchy using tree methods
 	m := c4m.NewBuilder().
 		AddDir("project").
-			AddFile("README.md", c4m.WithSize(1000)).
-			AddFile("main.go", c4m.WithSize(2000)).
-			AddDir("pkg").
-				AddFile("lib.go", c4m.WithSize(500)).
-			EndDir().
+		AddFile("README.md", c4m.WithSize(1000)).
+		AddFile("main.go", c4m.WithSize(2000)).
+		AddDir("pkg").
+		AddFile("lib.go", c4m.WithSize(500)).
+		EndDir().
 		End().
 		MustBuild()
 
@@ -209,11 +209,11 @@ func ExampleManifest_Children() {
 func ExampleManifest_Ancestors() {
 	m := c4m.NewBuilder().
 		AddDir("a").
-			AddDir("b").
-				AddDir("c").
-					AddFile("deep.txt").
-				EndDir().
-			EndDir().
+		AddDir("b").
+		AddDir("c").
+		AddFile("deep.txt").
+		EndDir().
+		EndDir().
 		End().
 		MustBuild()
 
@@ -235,7 +235,7 @@ func ExampleManifest_Root() {
 	m := c4m.NewBuilder().
 		AddFile("root1.txt").
 		AddDir("dir").
-			AddFile("nested.txt").
+		AddFile("nested.txt").
 		End().
 		AddFile("root2.txt").
 		MustBuild()

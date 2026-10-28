@@ -95,19 +95,19 @@ func TestDecoder_parseEntry(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parser := NewDecoder(strings.NewReader(tt.input))
 
 			// Parse entry
 			got, err := parser.parseEntry()
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseEntry() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				// Compare key fields
 				if got.Mode != tt.want.Mode {
@@ -150,16 +150,16 @@ func TestParseMode(t *testing.T) {
 		{"invalid_length", "drwxr-xr", 0, true},
 		{"invalid_type", "xrwxr-xr-x", 0, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := parseMode(tt.input)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseMode() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr && got != tt.want {
 				t.Errorf("parseMode() = %v, want %v", got, tt.want)
 			}
@@ -430,4 +430,3 @@ func TestUnquotedSequenceStillDetected(t *testing.T) {
 		t.Error("Unquoted name with brackets should be flagged as sequence")
 	}
 }
-

@@ -33,12 +33,12 @@ func createTestManifest(names ...string) *Manifest {
 func TestManifestSource(t *testing.T) {
 	m := createTestManifest("file1.txt", "file2.txt")
 	ms := ManifestSource{Manifest: m}
-	
+
 	result, err := ms.ToManifest()
 	if err != nil {
 		t.Fatalf("ToManifest() error = %v", err)
 	}
-	
+
 	if result != m {
 		t.Error("ToManifest() should return the same manifest")
 	}
@@ -46,10 +46,10 @@ func TestManifestSource(t *testing.T) {
 
 func TestDiff(t *testing.T) {
 	tests := []struct {
-		name   string
-		left   *Manifest
-		right  *Manifest
-		want   []string // Expected file names in diff
+		name  string
+		left  *Manifest
+		right *Manifest
+		want  []string // Expected file names in diff
 	}{
 		{
 			name:  "identical manifests",
@@ -102,33 +102,33 @@ func TestDiff(t *testing.T) {
 			want: []string{"file1.txt"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ms1 := ManifestSource{Manifest: tt.left}
 			ms2 := ManifestSource{Manifest: tt.right}
-			
+
 			diff, err := Diff(&ms1, &ms2)
 			if err != nil {
 				t.Fatalf("Diff() error = %v", err)
 			}
-			
+
 			// Collect all changed entries (added, removed, modified)
 			var allChanges []*Entry
 			allChanges = append(allChanges, diff.Added.Entries...)
 			allChanges = append(allChanges, diff.Removed.Entries...)
 			allChanges = append(allChanges, diff.Modified.Entries...)
-			
+
 			if len(allChanges) != len(tt.want) {
 				t.Errorf("Diff returned %d changes, want %d", len(allChanges), len(tt.want))
 			}
-			
+
 			// Check that all expected files are in the diff
 			diffNames := make(map[string]bool)
 			for _, e := range allChanges {
 				diffNames[e.Name] = true
 			}
-			
+
 			for _, name := range tt.want {
 				if !diffNames[name] {
 					t.Errorf("Expected %q in diff, not found", name)
@@ -253,7 +253,7 @@ func TestDiffResultIsEmpty(t *testing.T) {
 			want: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.diff.IsEmpty(); got != tt.want {
@@ -364,20 +364,20 @@ func TestFilterByPrefix(t *testing.T) {
 			want:   []string{"file1.txt", "file2.txt", "file3.txt", "file4.txt", "other.txt"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			filtered := m.FilterByPrefix(tt.prefix)
-			
+
 			if len(filtered.Entries) != len(tt.want) {
 				t.Errorf("FilterByPrefix(%q) returned %d entries, want %d", tt.prefix, len(filtered.Entries), len(tt.want))
 			}
-			
+
 			filteredNames := make(map[string]bool)
 			for _, e := range filtered.Entries {
 				filteredNames[e.Name] = true
 			}
-			
+
 			for _, name := range tt.want {
 				if !filteredNames[name] {
 					t.Errorf("Expected %q in filtered result, not found", name)
@@ -390,7 +390,7 @@ func TestFilterByPrefix(t *testing.T) {
 func TestEntriesEqual(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	testID := c4.Identify(strings.NewReader("test"))
-	
+
 	tests := []struct {
 		name string
 		e1   *Entry
@@ -440,7 +440,7 @@ func TestEntriesEqual(t *testing.T) {
 			want: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := entriesEqual(tt.e1, tt.e2); got != tt.want {
@@ -960,8 +960,6 @@ func TestApplyPatchIdenticalLeafStillRemoves(t *testing.T) {
 		t.Fatalf("expected only a.txt to survive, got %v", entryNames(result))
 	}
 }
-
-
 
 // A directory restated identically with no children under it is still a
 // removal — that is how PatchDiff expresses deleting a whole subtree (B2).

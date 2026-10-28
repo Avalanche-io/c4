@@ -48,12 +48,12 @@ func TestWritePretty(t *testing.T) {
 				},
 			},
 			want: []string{
-				"-rw-r--r-- Jan 15",                                                 // Timestamp starts with month
-				"       100 a.txt",                                                  // Size padded
-				" 1,234,567 very_long_filename.txt",                                 // Size with commas
-				"drwxr-xr-x",                                                        // Directory mode
-				"     4,096 directory/",                                             // Directory size
-				"c41j3C6Jqga95PL",                                                   // C4 IDs aligned
+				"-rw-r--r-- Jan 15",                 // Timestamp starts with month
+				"       100 a.txt",                  // Size padded
+				" 1,234,567 very_long_filename.txt", // Size with commas
+				"drwxr-xr-x",                        // Directory mode
+				"     4,096 directory/",             // Directory size
+				"c41j3C6Jqga95PL",                   // C4 IDs aligned
 			},
 		},
 		{
@@ -91,8 +91,8 @@ func TestWritePretty(t *testing.T) {
 				},
 			},
 			want: []string{
-				"lrwxrwxrwx Jan 15",  // Timestamp starts with month
-				"0 link -> target.txt",  // Size and link
+				"lrwxrwxrwx Jan 15",    // Timestamp starts with month
+				"0 link -> target.txt", // Size and link
 			},
 		},
 	}

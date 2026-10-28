@@ -43,8 +43,8 @@ func TestManifestBuilder_WithDirectory(t *testing.T) {
 	m := NewBuilder().
 		AddFile("readme.txt").
 		AddDir("src").
-			AddFile("main.go", WithSize(500)).
-			AddFile("util.go", WithSize(200)).
+		AddFile("main.go", WithSize(500)).
+		AddFile("util.go", WithSize(200)).
 		End().
 		AddFile("go.mod").
 		MustBuild()
@@ -78,14 +78,14 @@ func TestManifestBuilder_WithDirectory(t *testing.T) {
 func TestManifestBuilder_NestedDirectories(t *testing.T) {
 	m := NewBuilder().
 		AddDir("src").
-			AddFile("main.go").
-			AddDir("internal").
-				AddFile("helper.go").
-				AddDir("deep").
-					AddFile("nested.go").
-				EndDir().
-			EndDir().
-			AddFile("util.go").
+		AddFile("main.go").
+		AddDir("internal").
+		AddFile("helper.go").
+		AddDir("deep").
+		AddFile("nested.go").
+		EndDir().
+		EndDir().
+		AddFile("util.go").
 		End().
 		MustBuild()
 
@@ -162,7 +162,7 @@ func TestManifestBuilder_DirTrailingSlash(t *testing.T) {
 	// Test that AddDir adds trailing slash automatically
 	m := NewBuilder().
 		AddDir("nodash").
-			AddFile("file.txt").
+		AddFile("file.txt").
 		End().
 		MustBuild()
 
@@ -184,7 +184,7 @@ func TestManifest_Builder(t *testing.T) {
 	m.Builder().
 		AddFile("new.txt").
 		AddDir("newdir").
-			AddFile("nested.txt").
+		AddFile("nested.txt").
 		End()
 
 	if len(m.Entries) != 4 {
@@ -213,7 +213,7 @@ func TestTreeNavigation_GetEntry(t *testing.T) {
 	m := NewBuilder().
 		AddFile("root.txt").
 		AddDir("dir").
-			AddFile("nested.txt").
+		AddFile("nested.txt").
 		End().
 		MustBuild()
 
@@ -234,11 +234,11 @@ func TestTreeNavigation_GetEntry(t *testing.T) {
 func TestTreeNavigation_Children(t *testing.T) {
 	m := NewBuilder().
 		AddDir("parent").
-			AddFile("child1.txt").
-			AddFile("child2.txt").
-			AddDir("subdir").
-				AddFile("grandchild.txt").
-			EndDir().
+		AddFile("child1.txt").
+		AddFile("child2.txt").
+		AddDir("subdir").
+		AddFile("grandchild.txt").
+		EndDir().
 		End().
 		MustBuild()
 
@@ -273,9 +273,9 @@ func TestTreeNavigation_Children(t *testing.T) {
 func TestTreeNavigation_Parent(t *testing.T) {
 	m := NewBuilder().
 		AddDir("level1").
-			AddDir("level2").
-				AddFile("deep.txt").
-			EndDir().
+		AddDir("level2").
+		AddFile("deep.txt").
+		EndDir().
 		End().
 		MustBuild()
 
@@ -307,8 +307,8 @@ func TestTreeNavigation_Siblings(t *testing.T) {
 		AddFile("file1.txt").
 		AddFile("file2.txt").
 		AddDir("dir").
-			AddFile("nested1.txt").
-			AddFile("nested2.txt").
+		AddFile("nested1.txt").
+		AddFile("nested2.txt").
 		End().
 		MustBuild()
 
@@ -338,11 +338,11 @@ func TestTreeNavigation_Siblings(t *testing.T) {
 func TestTreeNavigation_Ancestors(t *testing.T) {
 	m := NewBuilder().
 		AddDir("a").
-			AddDir("b").
-				AddDir("c").
-					AddFile("deep.txt").
-				EndDir().
-			EndDir().
+		AddDir("b").
+		AddDir("c").
+		AddFile("deep.txt").
+		EndDir().
+		EndDir().
 		End().
 		MustBuild()
 
@@ -379,11 +379,11 @@ func TestTreeNavigation_Ancestors(t *testing.T) {
 func TestTreeNavigation_Descendants(t *testing.T) {
 	m := NewBuilder().
 		AddDir("root").
-			AddFile("file1.txt").
-			AddDir("sub").
-				AddFile("file2.txt").
-				AddFile("file3.txt").
-			EndDir().
+		AddFile("file1.txt").
+		AddDir("sub").
+		AddFile("file2.txt").
+		AddFile("file3.txt").
+		EndDir().
 		End().
 		MustBuild()
 
@@ -410,7 +410,7 @@ func TestTreeNavigation_Root(t *testing.T) {
 	m := NewBuilder().
 		AddFile("root1.txt").
 		AddDir("dir").
-			AddFile("nested.txt").
+		AddFile("nested.txt").
 		End().
 		AddFile("root2.txt").
 		MustBuild()
@@ -493,7 +493,7 @@ func TestManifestBuilder_EndDirOnRootDir(t *testing.T) {
 	// Test EndDir() when called on a root-level directory (no parent)
 	m := NewBuilder().
 		AddDir("root").
-			AddFile("child.txt").
+		AddFile("child.txt").
 		EndDir(). // This calls EndDir() on root dir, should return self
 		End().
 		MustBuild()
@@ -507,7 +507,7 @@ func TestManifestBuilder_DirWithExistingSlash(t *testing.T) {
 	// Test that AddDir handles a name already with trailing slash
 	m := NewBuilder().
 		AddDir("withslash/"). // Already has slash
-			AddFile("child.txt").
+		AddFile("child.txt").
 		End().
 		MustBuild()
 
@@ -526,7 +526,7 @@ func TestManifestBuilder_Roundtrip(t *testing.T) {
 	m := NewBuilder().
 		AddFile("readme.txt", WithSize(100), WithMode(0644), WithTimestamp(ts)).
 		AddDir("src", WithTimestamp(ts)).
-			AddFile("main.go", WithSize(500), WithMode(0644), WithTimestamp(ts)).
+		AddFile("main.go", WithSize(500), WithMode(0644), WithTimestamp(ts)).
 		End().
 		MustBuild()
 
@@ -557,4 +557,3 @@ func TestManifestBuilder_Roundtrip(t *testing.T) {
 		t.Errorf("roundtrip data mismatch:\nOriginal:\n%s\nRoundtrip:\n%s", data, data2)
 	}
 }
-

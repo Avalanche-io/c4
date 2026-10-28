@@ -107,7 +107,7 @@ func TestNaturalSort(t *testing.T) {
 			want:  []string{"1file.txt", "2file.txt", "10file.txt"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := make([]string, len(tt.input))
@@ -115,12 +115,12 @@ func TestNaturalSort(t *testing.T) {
 			sort.Slice(got, func(i, j int) bool {
 				return NaturalLess(got[i], got[j])
 			})
-			
+
 			if len(got) != len(tt.want) {
 				t.Errorf("Length mismatch: got %d, want %d", len(got), len(tt.want))
 				return
 			}
-			
+
 			for i := range got {
 				if got[i] != tt.want[i] {
 					t.Errorf("Index %d: got %q, want %q", i, got[i], tt.want[i])
@@ -142,7 +142,7 @@ func TestNaturalLessDirect(t *testing.T) {
 		{"file2.txt", "file2.txt", false},
 		{"dir/", "file", true}, // directories first
 	}
-	
+
 	for _, tt := range tests {
 		got := NaturalLess(tt.a, tt.b)
 		if got != tt.want {
@@ -201,7 +201,7 @@ func TestNaturalCompare(t *testing.T) {
 			want: -1, // Capital letters come first in ASCII
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got int
@@ -212,7 +212,7 @@ func TestNaturalCompare(t *testing.T) {
 			} else {
 				got = 0
 			}
-			
+
 			if got != tt.want {
 				t.Errorf("NaturalLess comparison(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
 			}
@@ -278,7 +278,7 @@ func TestNaturalSortEdgeCases(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.input != nil {
@@ -303,7 +303,7 @@ func BenchmarkNaturalSort(b *testing.B) {
 		"version1.10.2", "version1.2.1", "version1.10.10",
 		"frame.0100.exr", "frame.0010.exr", "frame.0001.exr",
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		testData := make([]string, len(data))
@@ -322,7 +322,7 @@ func BenchmarkStandardSort(b *testing.B) {
 		"version1.10.2", "version1.2.1", "version1.10.10",
 		"frame.0100.exr", "frame.0010.exr", "frame.0001.exr",
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		testData := make([]string, len(data))

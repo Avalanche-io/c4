@@ -23,7 +23,7 @@ func NullTimestamp() time.Time { return nullTimestamp }
 // Manifest represents a complete C4M manifest
 type Manifest struct {
 	Version   string
-	Base      c4.ID            // External base manifest (from first-line bare C4 ID)
+	Base      c4.ID // External base manifest (from first-line bare C4 ID)
 	Entries   []*Entry
 	RangeData map[c4.ID]string // Inline ID lists keyed by sequence C4 ID (bare concatenation)
 	index     *treeIndex       // Lazily-built tree index for O(1) navigation
@@ -265,11 +265,11 @@ func (m *Manifest) GetEntriesAtDepth(depth int) []*Entry {
 func formatSizePretty(size, maxSize int64) string {
 	// Format with commas
 	sizeWithCommas := formatSizeWithCommas(size)
-	
+
 	// Calculate padding based on max size with commas
 	maxSizeStr := formatSizeWithCommas(maxSize)
 	padding := len(maxSizeStr) - len(sizeWithCommas)
-	
+
 	return strings.Repeat(" ", padding) + sizeWithCommas
 }
 
@@ -288,15 +288,15 @@ func formatSizeWithCommas(size int64) string {
 	if size == 0 {
 		return "0"
 	}
-	
+
 	sign := ""
 	if size < 0 {
 		sign = "-"
 		size = -size
 	}
-	
+
 	s := fmt.Sprintf("%d", size)
-	
+
 	// Add commas every 3 digits from the right
 	var result []byte
 	for i := len(s) - 1; i >= 0; i-- {
@@ -305,7 +305,7 @@ func formatSizeWithCommas(size int64) string {
 		}
 		result = append([]byte{s[i]}, result...)
 	}
-	
+
 	return sign + string(result)
 }
 
@@ -315,7 +315,7 @@ func (m *Manifest) Validate() error {
 	if m.Version == "" {
 		return fmt.Errorf("missing version")
 	}
-	
+
 	// Check for duplicate paths by computing full paths from the tree.
 	seen := make(map[string]bool)
 	var dirStack []string

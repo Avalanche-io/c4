@@ -158,38 +158,38 @@ func TestParserErgonomicForms(t *testing.T) {
 		checkSize   int64
 	}{
 		{
-			name: "size with commas",
-			input: `-rw-r--r-- 2024-01-15T10:30:00Z 1,234,567 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "size with commas",
+			input:       `-rw-r--r-- 2024-01-15T10:30:00Z 1,234,567 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   1234567,
 		},
 		{
-			name: "pretty timestamp with timezone",
-			input: `-rw-r--r-- Jan 15 10:30:00 2024 UTC 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "pretty timestamp with timezone",
+			input:       `-rw-r--r-- Jan 15 10:30:00 2024 UTC 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
-			name: "pretty timestamp with local timezone",
-			input: `-rw-r--r-- Sep  1 12:30:00 2024 CDT 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "pretty timestamp with local timezone",
+			input:       `-rw-r--r-- Sep  1 12:30:00 2024 CDT 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
-			name: "size with spaces (padding)",
-			input: `-rw-r--r-- 2024-01-15T10:30:00Z       100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "size with spaces (padding)",
+			input:       `-rw-r--r-- 2024-01-15T10:30:00Z       100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
-			name: "column-aligned C4 ID",
-			input: `-rw-r--r-- 2024-01-15T10:30:00Z 100 file.txt                                        c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "column-aligned C4 ID",
+			input:       `-rw-r--r-- 2024-01-15T10:30:00Z 100 file.txt                                        c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
 		},
 		{
-			name: "large number with commas",
-			input: `-rw-r--r-- 2024-01-15T10:30:00Z 10,485,760 bigfile.bin c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:        "large number with commas",
+			input:       `-rw-r--r-- 2024-01-15T10:30:00Z 10,485,760 bigfile.bin c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   10485760,
 		},
@@ -198,14 +198,14 @@ func TestParserErgonomicForms(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			manifest, err := NewDecoder(strings.NewReader(tt.input)).Decode()
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Error("Expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("NewDecoder() error = %v", err)
 			}
@@ -243,11 +243,11 @@ func TestParserErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewDecoder(strings.NewReader(tt.input)).Decode()
-			
+
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got none")
 			}
-			
+
 			if !tt.expectError && err != nil {
 				t.Errorf("Unexpected error: %v", err)
 			}

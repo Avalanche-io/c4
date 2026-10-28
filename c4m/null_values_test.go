@@ -19,56 +19,56 @@ func TestParseNullValues(t *testing.T) {
 		checkC4ID string // Use string for easier comparison
 	}{
 		{
-			name: "null mode",
-			input: `---------- 2024-01-01T00:00:00Z 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:      "null mode",
+			input:     `---------- 2024-01-01T00:00:00Z 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			checkMode: 0,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: 100,
 			checkC4ID: "c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
 		},
 		{
-			name: "null timestamp",
-			input: `-rw-r--r-- - 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:      "null timestamp",
+			input:     `-rw-r--r-- - 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			checkMode: 0644,
 			checkTime: time.Unix(0, 0).UTC(), // Unix epoch
 			checkSize: 100,
 			checkC4ID: "c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
 		},
 		{
-			name: "null size",
-			input: `-rw-r--r-- 2024-01-01T00:00:00Z - file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			name:      "null size",
+			input:     `-rw-r--r-- 2024-01-01T00:00:00Z - file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			checkMode: 0644,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: -1, // Null size indicator
 			checkC4ID: "c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
 		},
 		{
-			name: "null C4 ID",
-			input: `-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -`,
+			name:      "null C4 ID",
+			input:     `-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -`,
 			checkMode: 0644,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: 100,
 			checkC4ID: "", // Zero value
 		},
 		{
-			name: "all null values except name",
-			input: `---------- - - file.txt -`,
+			name:      "all null values except name",
+			input:     `---------- - - file.txt -`,
 			checkMode: 0,
 			checkTime: time.Unix(0, 0).UTC(),
 			checkSize: -1,
 			checkC4ID: "",
 		},
 		{
-			name: "single dash mode",
-			input: `- 2024-01-01T00:00:00Z 100 file.txt`,
+			name:      "single dash mode",
+			input:     `- 2024-01-01T00:00:00Z 100 file.txt`,
 			checkMode: 0,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: 100,
 			checkC4ID: "",
 		},
 		{
-			name: "zero timestamp",
-			input: `-rw-r--r-- 0 100 file.txt`,
+			name:      "zero timestamp",
+			input:     `-rw-r--r-- 0 100 file.txt`,
 			checkMode: 0644,
 			checkTime: time.Unix(0, 0).UTC(),
 			checkSize: 100,
@@ -168,7 +168,7 @@ func TestFormatNullValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			output := tt.entry.Format(0, false)
-			
+
 			for _, substr := range tt.contains {
 				if !strings.Contains(output, substr) {
 					t.Errorf("Output missing %q\nGot: %s", substr, output)
@@ -184,11 +184,11 @@ func TestNullValueRoundTrip(t *testing.T) {
 		Version: "1.0",
 		Entries: []*Entry{
 			{
-				Mode:      0,        // Null mode
+				Mode:      0,                     // Null mode
 				Timestamp: time.Unix(0, 0).UTC(), // Null timestamp
-				Size:      -1,       // Null size
+				Size:      -1,                    // Null size
 				Name:      "test.txt",
-				C4ID:      c4.ID{},  // Null C4 ID
+				C4ID:      c4.ID{}, // Null C4 ID
 				Depth:     0,
 			},
 			{
@@ -207,7 +207,7 @@ func TestNullValueRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
 	}
-	
+
 	t.Logf("Written manifest:\n%s", buf.String())
 
 	// Parse back
@@ -232,7 +232,7 @@ func TestNullValueRoundTrip(t *testing.T) {
 	if nullEntry == nil {
 		t.Fatal("Could not find test.txt in parsed entries")
 	}
-	
+
 	if nullEntry.Mode != 0 {
 		t.Errorf("Null mode not preserved: got %v", nullEntry.Mode)
 	}

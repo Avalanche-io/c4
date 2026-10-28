@@ -100,7 +100,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	// Format timestamp (handle null value)
 	var timeStr string
 	if e.Timestamp.Equal(NullTimestamp()) {
-		timeStr = "-"  // Null timestamp
+		timeStr = "-" // Null timestamp
 	} else {
 		// Canonical format MUST be UTC only
 		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
@@ -109,7 +109,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	// Format size (handle null value)
 	var sizeStr string
 	if e.Size < 0 {
-		sizeStr = "-"  // Null size
+		sizeStr = "-" // Null size
 	} else {
 		sizeStr = formatSize(e.Size, displayFormat)
 	}

@@ -27,17 +27,17 @@ func TestManifestAddEntry(t *testing.T) {
 	m := NewManifest()
 	e1 := &Entry{Name: "file1.txt"}
 	e2 := &Entry{Name: "file2.txt"}
-	
+
 	m.AddEntry(e1)
 	if len(m.Entries) != 1 {
 		t.Errorf("After first add: length = %d, want 1", len(m.Entries))
 	}
-	
+
 	m.AddEntry(e2)
 	if len(m.Entries) != 2 {
 		t.Errorf("After second add: length = %d, want 2", len(m.Entries))
 	}
-	
+
 	if m.Entries[0] != e1 || m.Entries[1] != e2 {
 		t.Error("Entries not added in correct order")
 	}
@@ -93,13 +93,13 @@ func TestManifestSortDeduplicatesNested(t *testing.T) {
 
 func TestManifestSort(t *testing.T) {
 	m := NewManifest()
-	
+
 	// Add entries in wrong order
 	m.AddEntry(&Entry{Name: "file10.txt"})
 	m.AddEntry(&Entry{Name: "file2.txt"})
 	m.AddEntry(&Entry{Name: "file1.txt"})
 	m.AddEntry(&Entry{Name: "dir1/", Mode: os.ModeDir})
-	
+
 	m.SortEntries()
 
 	// Check natural sort order - files before directories at same depth
@@ -157,7 +157,7 @@ func TestManifestCanonical(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	fileID, _ := c4.Parse("c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
 	dirID, _ := c4.Parse("c42j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
-	
+
 	tests := []struct {
 		name     string
 		manifest *Manifest
@@ -231,7 +231,7 @@ func TestManifestCanonical(t *testing.T) {
 			want: "",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tt.manifest.Canonical()
@@ -253,7 +253,7 @@ func TestManifestCanonical(t *testing.T) {
 func TestManifestComputeC4ID(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	fileID, _ := c4.Parse("c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB")
-	
+
 	m := &Manifest{
 		Entries: []*Entry{
 			{
@@ -266,18 +266,18 @@ func TestManifestComputeC4ID(t *testing.T) {
 			},
 		},
 	}
-	
+
 	id := m.ComputeC4ID()
 	if id.IsNil() {
 		t.Error("ComputeC4ID() returned nil ID")
 	}
-	
+
 	// Compute again to ensure consistency
 	id2 := m.ComputeC4ID()
 	if id.String() != id2.String() {
 		t.Errorf("ComputeC4ID() not consistent: %v != %v", id, id2)
 	}
-	
+
 	// The ID should be the C4 of the canonical form
 	canonical := m.Canonical()
 	expectedID := c4.Identify(strings.NewReader(canonical))
@@ -300,8 +300,8 @@ func TestManifestGetEntry(t *testing.T) {
 		want *Entry
 	}{
 		{"file1.txt", e1},
-		{"dir1/file2.txt", e2},  // full path for nested entry
-		{"file2.txt", nil},      // bare name doesn't work for nested entries
+		{"dir1/file2.txt", e2}, // full path for nested entry
+		{"file2.txt", nil},     // bare name doesn't work for nested entries
 		{"nonexistent.txt", nil},
 	}
 
@@ -337,7 +337,7 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 	m.AddEntry(e1b)
 	m.AddEntry(eSub)
 	m.AddEntry(e2)
-	
+
 	tests := []struct {
 		depth int
 		want  int
@@ -347,7 +347,7 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 		{2, 1}, // file5.txt
 		{3, 0},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(rune(tt.depth)), func(t *testing.T) {
 			entries := m.GetEntriesAtDepth(tt.depth)
@@ -360,12 +360,12 @@ func TestManifestGetEntriesAtDepth(t *testing.T) {
 
 func TestManifestValidate(t *testing.T) {
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-	
+
 	tests := []struct {
-		name    string
+		name     string
 		manifest *Manifest
-		wantErr bool
-		errMsg  string
+		wantErr  bool
+		errMsg   string
 	}{
 		{
 			name: "valid manifest",
@@ -455,7 +455,7 @@ func TestManifestValidate(t *testing.T) {
 			errMsg:  "path traversal",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.manifest.Validate()
@@ -625,6 +625,7 @@ func TestCanonicalize(t *testing.T) {
 		}
 	})
 }
+
 // ----------------------------------------------------------------------------
 // Propagate Tests (merged from propagate_test.go)
 // ----------------------------------------------------------------------------
@@ -836,4 +837,3 @@ func TestPropagateMetadata(t *testing.T) {
 		}
 	})
 }
-

@@ -272,7 +272,7 @@ func TestParseSequence(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseSequence(tt.pattern)
@@ -499,7 +499,7 @@ func TestSequenceExpand(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tt.sequence.Expand()
@@ -556,7 +556,7 @@ func TestSequenceCount(t *testing.T) {
 			want: 3,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tt.sequence.Count()
@@ -574,7 +574,7 @@ func TestSequenceContains(t *testing.T) {
 			{Start: 20, End: 30, Step: 2},
 		},
 	}
-	
+
 	tests := []struct {
 		frame int
 		want  bool
@@ -590,7 +590,7 @@ func TestSequenceContains(t *testing.T) {
 		{31, false}, // After all ranges
 		{0, false},  // Before all ranges
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(rune(tt.frame)), func(t *testing.T) {
 			got := sequence.Contains(tt.frame)
@@ -613,7 +613,7 @@ func TestIsSequence(t *testing.T) {
 		{"file_with_brackets[but_no_numbers].txt", false},
 		{"file[].txt", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.pattern, func(t *testing.T) {
 			got := IsSequence(tt.pattern)
@@ -811,7 +811,6 @@ func TestExpandSequenceEntryNilIDList(t *testing.T) {
 		}
 	}
 }
-
 
 // ----------------------------------------------------------------------------
 // Sequence Escaping Tests

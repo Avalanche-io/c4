@@ -10,4 +10,3 @@
 //
 // In ram C4 IDs are represented in a 64 byte "digest" format.
 package c4
-

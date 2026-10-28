@@ -8,11 +8,11 @@ import (
 
 func TestFlowLinkParsing(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		wantDir   FlowDirection
-		wantTgt   string
-		wantName  string
+		name     string
+		input    string
+		wantDir  FlowDirection
+		wantTgt  string
+		wantName string
 	}{
 		{
 			name:     "outbound flow to location root",
@@ -452,9 +452,9 @@ func TestFlowIsFlowTargetFunction(t *testing.T) {
 		{"-", false},
 		{"c4abc", false},
 		{"", false},
-		{"123:", false},       // must start with letter
-		{"_bad:", false},      // must start with letter
-		{"/absolute", false},  // starts with /
+		{"123:", false},      // must start with letter
+		{"_bad:", false},     // must start with letter
+		{"/absolute", false}, // starts with /
 	}
 
 	for _, tt := range tests {
@@ -588,7 +588,7 @@ func TestFlowEntryCanonical(t *testing.T) {
 			name: "outbound canonical",
 			entry: Entry{
 				Mode: os.ModeDir | 0755, Name: "footage/", Size: 0,
-				Timestamp: NullTimestamp(),
+				Timestamp:     NullTimestamp(),
 				FlowDirection: FlowOutbound, FlowTarget: "nas:raw/",
 			},
 			contains: "-> nas:raw/",
@@ -597,7 +597,7 @@ func TestFlowEntryCanonical(t *testing.T) {
 			name: "inbound canonical",
 			entry: Entry{
 				Mode: os.ModeDir | 0555, Name: "plates/", Size: 0,
-				Timestamp: NullTimestamp(),
+				Timestamp:     NullTimestamp(),
 				FlowDirection: FlowInbound, FlowTarget: "studio:plates/",
 			},
 			contains: "<- studio:plates/",
@@ -606,7 +606,7 @@ func TestFlowEntryCanonical(t *testing.T) {
 			name: "bidirectional canonical",
 			entry: Entry{
 				Mode: os.ModeDir | 0777, Name: "shared/", Size: 0,
-				Timestamp: NullTimestamp(),
+				Timestamp:     NullTimestamp(),
 				FlowDirection: FlowBidirectional, FlowTarget: "nas:project/shared/",
 			},
 			contains: "<> nas:project/shared/",

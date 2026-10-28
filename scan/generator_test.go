@@ -37,21 +37,21 @@ func TestGeneratorOptions(t *testing.T) {
 	if g1.mode == ModeFull {
 		t.Error("mode = true, want false")
 	}
-	
+
 	// Test WithSymlinks
 	g2 := NewGenerator()
 	WithSymlinks(true)(g2)
 	if !g2.followSymlinks {
 		t.Error("followSymlinks = false, want true")
 	}
-	
+
 	// Test WithHidden (disable — default is true)
 	g3 := NewGenerator()
 	WithHidden(false)(g3)
 	if g3.includeHidden {
 		t.Error("includeHidden = true after WithHidden(false)")
 	}
-	
+
 	// Test WithSequenceDetection
 	g4 := NewGenerator()
 	WithSequenceDetection(false)(g4)
@@ -67,7 +67,7 @@ func TestNewGeneratorWithOptions(t *testing.T) {
 		WithHidden(true),
 		WithSequenceDetection(false),
 	)
-	
+
 	if g.mode == ModeFull {
 		t.Error("mode should be false")
 	}
@@ -89,7 +89,7 @@ func TestGenerateFromPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdir)
-	
+
 	// Create test files
 	files := map[string]string{
 		"file1.txt":           "content1",
@@ -98,7 +98,7 @@ func TestGenerateFromPath(t *testing.T) {
 		"dir1/file3.txt":      "content3",
 		"dir1/dir2/file4.txt": "content4",
 	}
-	
+
 	for path, content := range files {
 		fullPath := filepath.Join(tmpdir, path)
 		dir := filepath.Dir(fullPath)
@@ -109,7 +109,7 @@ func TestGenerateFromPath(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	
+
 	tests := []struct {
 		name         string
 		generator    *Generator
@@ -144,31 +144,31 @@ func TestGenerateFromPath(t *testing.T) {
 			checkMissing: []string{".hidden"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			manifest, err := tt.generator.GenerateFromPath(tmpdir)
 			if err != nil {
 				t.Fatalf("GenerateFromPath() error = %v", err)
 			}
-			
+
 			// Build a map of entries by depth and name for verification
 			entryMap := make(map[string]bool)
 			for _, e := range manifest.Entries {
 				key := fmt.Sprintf("depth%d:%s", e.Depth, e.Name)
 				entryMap[key] = true
 			}
-			
+
 			// Expected entries with their depths
 			expected := map[string]int{
 				"file1.txt": 0,
 				"file2.txt": 0,
-				"dir1/": 0,
+				"dir1/":     0,
 				"file3.txt": 1,
-				"dir2/": 1,
+				"dir2/":     1,
 				"file4.txt": 2,
 			}
-			
+
 			if tt.name == "default settings (includes everything)" {
 				expected[".hidden"] = 0
 			}
@@ -199,14 +199,14 @@ func TestGenerateFromPathWithC4IDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdir)
-	
+
 	// Create test files with known content
 	testFile := filepath.Join(tmpdir, "test.txt")
 	content := "hello world"
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Create subdirectory with file
 	subdir := filepath.Join(tmpdir, "subdir")
 	if err := os.Mkdir(subdir, 0755); err != nil {
@@ -216,14 +216,14 @@ func TestGenerateFromPathWithC4IDs(t *testing.T) {
 	if err := os.WriteFile(subFile, []byte("sub content"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Test with C4 IDs enabled (default)
 	g1 := NewGenerator()
 	manifest1, err := g1.GenerateFromPath(tmpdir)
 	if err != nil {
 		t.Fatalf("GenerateFromPath() error = %v", err)
 	}
-	
+
 	// Check that C4 IDs were computed
 	fileEntry := manifest1.GetEntry("test.txt")
 	if fileEntry == nil {
@@ -232,7 +232,7 @@ func TestGenerateFromPathWithC4IDs(t *testing.T) {
 	if fileEntry.C4ID.IsNil() {
 		t.Error("File C4 ID was not computed")
 	}
-	
+
 	// Check that directory C4 ID was computed
 	dirEntry := manifest1.GetEntry("subdir/")
 	if dirEntry == nil {
@@ -241,14 +241,14 @@ func TestGenerateFromPathWithC4IDs(t *testing.T) {
 	if dirEntry.C4ID.IsNil() {
 		t.Error("Directory C4 ID was not computed")
 	}
-	
+
 	// Test with C4 IDs disabled
 	g2 := NewGeneratorWithOptions(WithC4IDs(false))
 	manifest2, err := g2.GenerateFromPath(tmpdir)
 	if err != nil {
 		t.Fatalf("GenerateFromPath() error = %v", err)
 	}
-	
+
 	fileEntry2 := manifest2.GetEntry("test.txt")
 	if fileEntry2 == nil {
 		t.Fatal("test.txt entry not found")
@@ -275,7 +275,7 @@ func TestGenerateFromPathErrors(t *testing.T) {
 			wantErr: false, // Will resolve to current directory
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewGenerator()
@@ -292,44 +292,44 @@ func TestGenerateFromPathSymlinks(t *testing.T) {
 	if os.Getenv("CI") != "" {
 		t.Skip("Skipping symlink test in CI environment")
 	}
-	
+
 	// Create test directory with symlinks
 	tmpdir, err := os.MkdirTemp("", "generator_symlink_test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdir)
-	
+
 	// Create a regular file
 	targetFile := filepath.Join(tmpdir, "target.txt")
 	if err := os.WriteFile(targetFile, []byte("target content"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Create a symlink to the file
 	linkFile := filepath.Join(tmpdir, "link.txt")
 	if err := os.Symlink("target.txt", linkFile); err != nil {
 		t.Skip("Cannot create symlinks on this system")
 	}
-	
+
 	// Create a directory
 	targetDir := filepath.Join(tmpdir, "targetdir")
 	if err := os.Mkdir(targetDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Create a symlink to the directory
 	linkDir := filepath.Join(tmpdir, "linkdir")
 	if err := os.Symlink("targetdir", linkDir); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	g := NewGenerator()
 	manifest, err := g.GenerateFromPath(tmpdir)
 	if err != nil {
 		t.Fatalf("GenerateFromPath() error = %v", err)
 	}
-	
+
 	// Check symlink to file
 	linkEntry := manifest.GetEntry("link.txt")
 	if linkEntry == nil {
@@ -341,7 +341,7 @@ func TestGenerateFromPathSymlinks(t *testing.T) {
 	if linkEntry.Target != "target.txt" {
 		t.Errorf("link.txt target = %q, want %q", linkEntry.Target, "target.txt")
 	}
-	
+
 	// Check symlink to directory
 	linkDirEntry := manifest.GetEntry("linkdir")
 	if linkDirEntry == nil {
@@ -362,24 +362,24 @@ func TestGenerateFromPathSingleFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdir)
-	
+
 	testFile := filepath.Join(tmpdir, "single.txt")
 	if err := os.WriteFile(testFile, []byte("content"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Generate manifest from single file
 	g := NewGenerator()
 	manifest, err := g.GenerateFromPath(testFile)
 	if err != nil {
 		t.Fatalf("GenerateFromPath() error = %v", err)
 	}
-	
+
 	// Should have exactly one entry with just the filename
 	if len(manifest.Entries) != 1 {
 		t.Errorf("Expected 1 entry, got %d", len(manifest.Entries))
 	}
-	
+
 	// The entry name should be just the basename
 	entry := manifest.Entries[0]
 	if entry.Name != "single.txt" {
@@ -401,14 +401,14 @@ func TestGroupSequences(t *testing.T) {
 			wantName: "frame[001-003].exr",
 		},
 		{
-			name:     "non-sequential files",
-			files:    []string{"file1.txt", "other.txt", "readme.md"},
-			wantSeq:  false,
+			name:    "non-sequential files",
+			files:   []string{"file1.txt", "other.txt", "readme.md"},
+			wantSeq: false,
 		},
 		{
-			name:     "single file",
-			files:    []string{"single.txt"},
-			wantSeq:  false,
+			name:    "single file",
+			files:   []string{"single.txt"},
+			wantSeq: false,
 		},
 	}
 
@@ -526,9 +526,9 @@ func TestSymlinkC4IDs(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		entryName  string
-		checkC4ID  func(t *testing.T, entry *Entry)
+		name      string
+		entryName string
+		checkC4ID func(t *testing.T, entry *Entry)
 	}{
 		{
 			name:      "symlink to file has target's C4 ID",
