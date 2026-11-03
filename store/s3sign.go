@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -11,24 +12,39 @@ import (
 	"time"
 )
 
-// signingKeyCache caches the derived signing key for a given date so that
-// the four-step HMAC chain is computed at most once per calendar day.
+// signingKeyCache caches the derived signing key for a given date and
+// access key so that the four-step HMAC chain is computed at most once
+// per calendar day per key (temporary keys rotate).
 type signingKeyCache struct {
 	mu   sync.Mutex
 	date string
+	akid string
 	key  []byte
 }
 
-// signRequest adds AWS Signature V4 authorization headers to req.
-// payloadHash must be the hex-encoded SHA-256 of the request body,
-// or "UNSIGNED-PAYLOAD" for requests with no meaningful body.
-func (s *S3Store) signRequest(req *http.Request, payloadHash string) {
+// signRequest adds AWS Signature V4 authorization headers to req, with
+// the keys the store's credential source gives for this request.
+// Temporary keys carry a session token, sent as X-Amz-Security-Token
+// and signed with the other headers; a request re-signed without one
+// drops a stale token. payloadHash must be the hex-encoded SHA-256 of
+// the request body, or "UNSIGNED-PAYLOAD" for requests with no
+// meaningful body.
+func (s *S3Store) signRequest(req *http.Request, payloadHash string) error {
+	creds, err := s.creds.Retrieve(req.Context())
+	if err != nil {
+		return fmt.Errorf("s3 credentials: %w", err)
+	}
 	now := time.Now().UTC()
 	dateStamp := now.Format("20060102")
 	amzDate := now.Format("20060102T150405Z")
 
 	req.Header.Set("x-amz-date", amzDate)
 	req.Header.Set("x-amz-content-sha256", payloadHash)
+	if creds.SessionToken != "" {
+		req.Header.Set("x-amz-security-token", creds.SessionToken)
+	} else {
+		req.Header.Del("x-amz-security-token")
+	}
 
 	// Ensure Host header is set (some HTTP clients omit it from Header map).
 	if req.Header.Get("Host") == "" {
@@ -55,34 +71,36 @@ func (s *S3Store) signRequest(req *http.Request, payloadHash string) {
 	stringToSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n" + canonicalHash
 
 	// --- Signing key ---
-	signingKey := s.deriveKey(dateStamp)
+	signingKey := s.deriveKey(dateStamp, creds)
 
 	// --- Signature ---
 	signature := hex.EncodeToString(hmacSHA256(signingKey, []byte(stringToSign)))
 
 	// --- Authorization header ---
-	auth := "AWS4-HMAC-SHA256 Credential=" + s.accessKey + "/" + scope +
+	auth := "AWS4-HMAC-SHA256 Credential=" + creds.AccessKeyID + "/" + scope +
 		", SignedHeaders=" + signedHeaders +
 		", Signature=" + signature
 	req.Header.Set("Authorization", auth)
+	return nil
 }
 
-// deriveKey returns the signing key for the given date, using a cache to
-// avoid recomputation on every request.
-func (s *S3Store) deriveKey(dateStamp string) []byte {
+// deriveKey returns the signing key for the given date and keys, using
+// a cache to avoid recomputation on every request.
+func (s *S3Store) deriveKey(dateStamp string, creds Credentials) []byte {
 	s.keyCache.mu.Lock()
 	defer s.keyCache.mu.Unlock()
 
-	if s.keyCache.date == dateStamp && s.keyCache.key != nil {
+	if s.keyCache.date == dateStamp && s.keyCache.akid == creds.AccessKeyID && s.keyCache.key != nil {
 		return s.keyCache.key
 	}
 
-	kDate := hmacSHA256([]byte("AWS4"+s.secretKey), []byte(dateStamp))
+	kDate := hmacSHA256([]byte("AWS4"+creds.SecretAccessKey), []byte(dateStamp))
 	kRegion := hmacSHA256(kDate, []byte(s.region))
 	kService := hmacSHA256(kRegion, []byte("s3"))
 	kSigning := hmacSHA256(kService, []byte("aws4_request"))
 
 	s.keyCache.date = dateStamp
+	s.keyCache.akid = creds.AccessKeyID
 	s.keyCache.key = kSigning
 	return kSigning
 }
