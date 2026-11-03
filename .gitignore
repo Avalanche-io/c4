@@ -67,3 +67,5 @@ Thumbs.db
 .docket-claims/
 .claude/
 .worktrees/
+# test vectors are c4m files by nature
+!c4m/testdata/**/*.c4m
