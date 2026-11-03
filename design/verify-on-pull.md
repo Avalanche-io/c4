@@ -1,6 +1,6 @@
 # Verify on pull: a client setting of the library, default on, trust per source
 
-Status: design, 2026-11-03, for Joshua through c4-fleet. Nothing built.
+Status: design, 2026-11-03, for Joshua. Nothing built.
 
 ## The ruling
 
@@ -72,7 +72,7 @@ and the read returns `ErrCorrupt`. A consumer that copies to a file (the
 durable writer in reconcile) therefore never closes a complete file on
 bad bytes: the copy fails, the temporary file is discarded, nothing is
 renamed into place, exactly as for any other read error. This is the
-rule c4d's tier applies now (`tier.Fetcher.Verify`); the library takes it
+rule the operator's tier applies now (`tier.Fetcher.Verify`); the library takes it
 over so there is one reader.
 
 Where a source reports a size (S3 HEAD, a file's stat), a short stream
@@ -114,7 +114,7 @@ cluster that measured it opts out deliberately.
 
 ## Cost
 
-Measured by agent-jobs and c4d today, SHA-512 over pulled bytes:
+Measured today, SHA-512 over pulled bytes:
 
 | Hardware             | CPU-seconds per GB |
 | -------------------- | ------------------ |
