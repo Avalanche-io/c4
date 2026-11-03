@@ -1,9 +1,12 @@
 # The normaliser: `c4 id FILE.c4m` re-derives what the file determines
 
-Status: design, 2026-11-03. Ruled by Joshua (via c4-fleet): "unless the c4
-lead comes up with an issue we should have the normalizer do the tree walk
-fixes as well." One open edge below is sent back for his answer before any
-code.
+Status: built on branch `normalizer`, 2026-11-03. Ruled by Joshua (via
+c4-fleet): "unless the c4 lead comes up with an issue we should have the
+normalizer do the tree walk fixes as well." The open edge below was ruled
+the same day: re-derive to null, dropped and reported on stderr. No `-w`:
+stdout only; rewriting is shell composition. And, from his ruling that no
+file can contain its own ID, `c4 id FILE.c4m` no longer closes its output
+with the root-ID line; `-q` prints the ID alone.
 
 ## Problem
 
@@ -90,7 +93,7 @@ arguments only:
 
 | Invocation            | Stdout                                        | Exit                               |
 | --------------------- | --------------------------------------------- | ---------------------------------- |
-| `c4 id FILE.c4m`      | the normalised text, then the root ID         | 0; 2 if the file has null leaves   |
+| `c4 id FILE.c4m`      | the normalised text (no trailing root ID)     | 0; 2 if the file has null leaves   |
 | `c4 id -l FILE...`    | the names of files whose normalised text differs from their bytes | 1 if any name was printed, else 0 |
 | `c4 id -d FILE...`    | a unified diff per differing file             | 1 if any diff was printed, else 0  |
 
