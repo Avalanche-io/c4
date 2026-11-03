@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.0.22
+
+A patch that restates a directory line identically and then lists
+children under it deepens that directory; it never removes it (the
+2026-07-31 erratum, on master since July, now on the 1.0.x line). Through
+v1.0.21, `c4 diff` of a tree whose only change was inside a directory
+wrote that directory's unchanged line before its children, and
+`c4 patch` read the restatement as a removal of the whole subtree,
+silently. The shared deepen-vs-remove conformance vector ships in
+`c4m/testdata/deepen-vector/`, and every implementation in the suite
+passes it as of this release.
+
+Patch and diff compare timestamps at the format's one-second resolution,
+so a scanned tree's sub-second times no longer put unchanged entries in a
+patch.
+
+`c4 id -s` no longer warns "failed to store l: is a directory" on a tree
+with a symlink to a directory: the link carries the directory's C4 ID,
+whose record the directory's own entry stores.
+
+Pull requests against a release line now run the CI matrix.
+
 ## v1.0.21
 
 `c4 explain patch` now reports the plan `c4 patch` would make, from the
