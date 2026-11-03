@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha512"
 	"encoding/xml"
 	"fmt"
@@ -287,11 +288,26 @@ func (s *S3Store) singleUpload(path, key string) error {
 }
 
 // multipartUpload performs a multipart upload for large files.
-func (s *S3Store) multipartUpload(path, key string, size int64) error {
+func (s *S3Store) multipartUpload(path, key string, size int64) (err error) {
 	uploadID, err := s.initiateMultipart(key)
 	if err != nil {
 		return fmt.Errorf("initiate multipart: %w", err)
 	}
+
+	// An upload that doesn't complete is aborted, whatever ends it (a
+	// failed part, a failed completion, a panic): its parts are billed
+	// until it is. An abort that fails is reported with the error.
+	defer func() {
+		if p := recover(); p != nil {
+			s.abortMultipart(key, uploadID)
+			panic(p)
+		}
+		if err != nil {
+			if aerr := s.abortMultipart(key, uploadID); aerr != nil {
+				err = fmt.Errorf("%w; %v", err, aerr)
+			}
+		}
+	}()
 
 	numParts := int((size + partSize - 1) / partSize)
 	parts := make([]completedPart, numParts)
@@ -338,7 +354,6 @@ func (s *S3Store) multipartUpload(path, key string, size int64) error {
 
 	for _, p := range parts {
 		if p.err != nil {
-			s.abortMultipart(key, uploadID)
 			return fmt.Errorf("upload part %d: %w", p.num, p.err)
 		}
 	}
@@ -359,22 +374,25 @@ func (s *S3Store) initiateMultipart(key string) (string, error) {
 		return "", err
 	}
 
-	resp, err := s.doWithRetry(req)
+	// Creating an upload isn't idempotent: if the reply is lost, a retry
+	// would make a second upload and leave the first open, billed. So a
+	// transport failure here is not retried.
+	resp, err := s.doWithRetryOpt(req, false)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%w (if S3 created the upload before the reply was lost, its ID is unknown here; a bucket lifecycle rule, AbortIncompleteMultipartUpload, removes it)", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return "", fmt.Errorf("initiate multipart: %s", parseS3Error(body, resp.StatusCode))
 	}
 
 	var result struct {
 		UploadId string `xml:"UploadId"`
 	}
-	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("parse multipart init response: %w", err)
+	if err := xml.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil || result.UploadId == "" {
+		return "", fmt.Errorf("parse multipart init response: no upload ID (%v)", err)
 	}
 	return result.UploadId, nil
 }
@@ -445,35 +463,71 @@ func (s *S3Store) completeMultipart(key, uploadID string, parts []completedPart)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return fmt.Errorf("complete multipart: %s", parseS3Error(body, resp.StatusCode))
+	}
+	// S3 answers 200 at once and streams the result while it joins the
+	// parts: it can still report an error in the body, or the connection
+	// can drop first. Only a whole result is a stored object.
+	reply, rerr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	switch {
+	case rerr != nil:
+		return fmt.Errorf("complete multipart: reply cut off: %w", rerr)
+	case bytes.Contains(reply, []byte("<Error>")):
+		return fmt.Errorf("complete multipart failed: %s", parseS3Error(reply, resp.StatusCode))
+	case !bytes.Contains(reply, []byte("<CompleteMultipartUploadResult")):
+		return fmt.Errorf("complete multipart: no result in the reply")
 	}
 	return nil
 }
 
-// abortMultipart cancels a multipart upload.
-func (s *S3Store) abortMultipart(key, uploadID string) {
+// abortTimeout bounds an abort: an upload that is not aborted keeps
+// its parts billed, but a caller must not hang on it.
+const abortTimeout = 30 * time.Second
+
+// abortMultipart cancels a multipart upload. An abort that fails says
+// which upload is left open: its parts are billed until a bucket
+// lifecycle rule (AbortIncompleteMultipartUpload) removes it.
+func (s *S3Store) abortMultipart(key, uploadID string) error {
 	params := map[string]string{"uploadId": uploadID}
 	reqURL := s.bucketURL(key, params)
 
-	req, err := http.NewRequest("DELETE", reqURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), abortTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "DELETE", reqURL, nil)
+	if err == nil {
+		err = s.signRequest(req, "UNSIGNED-PAYLOAD")
+	}
+	var resp *http.Response
+	if err == nil {
+		resp, err = s.doWithRetry(req)
+	}
+	if err == nil && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		err = fmt.Errorf("%s", parseS3Error(body, resp.StatusCode))
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
-		return
+		return fmt.Errorf("upload %s of %s left open (abort failed: %v); a bucket lifecycle rule (AbortIncompleteMultipartUpload) removes it", uploadID, key, err)
 	}
-	if err := s.signRequest(req, "UNSIGNED-PAYLOAD"); err != nil {
-		return
-	}
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return
-	}
-	resp.Body.Close()
+	return nil
 }
 
 // doWithRetry executes an HTTP request with exponential backoff retry
-// on transient errors (503 SlowDown, 500 InternalError).
+// on transient errors (503 SlowDown, 500 InternalError) and on a
+// transport failure, for requests that are safe to send twice.
 func (s *S3Store) doWithRetry(req *http.Request) (*http.Response, error) {
+	return s.doWithRetryOpt(req, true)
+}
+
+// doWithRetryOpt is doWithRetry; retryTransport says whether a request
+// whose reply never came may be sent again. Not when doing it twice
+// differs from doing it once: starting a multipart upload is not
+// idempotent, and a retry after a lost reply would open a second
+// upload and leave the first one billed.
+func (s *S3Store) doWithRetryOpt(req *http.Request, retryTransport bool) (*http.Response, error) {
 	backoff := initialBackoff
 	var lastErr error
 
@@ -493,6 +547,9 @@ func (s *S3Store) doWithRetry(req *http.Request) (*http.Response, error) {
 
 		resp, err := s.client.Do(req)
 		if err != nil {
+			if !retryTransport {
+				return nil, err
+			}
 			lastErr = err
 			continue
 		}
