@@ -215,6 +215,35 @@ func TestPipedDescriptionIDAndPipedBytesID(t *testing.T) {
 	}
 }
 
+// `c4 patch -` reads the chain from stdin, so `c4 id DIR | c4 patch - | c4`
+// composes: the resolved flat text, then its file ID.
+func TestPatchReadsStdin(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+	env := map[string]string{"C4_STORE": filepath.Join(dir, "store"), "HOME": filepath.Join(dir, "home")}
+	tree := filepath.Join(dir, "tree")
+	writeTree(t, tree, map[string]string{"a.txt": "alpha", "d/b.txt": "beta"})
+	stream, _, code := runC4WithEnv(t, bin, env, "id", tree)
+	if code != 0 {
+		t.Fatal("c4 id failed")
+	}
+	fromStdin, stderr, code := runC4StdinWithEnv(t, bin, env, []byte(stream), "patch", "-")
+	if code != 0 {
+		t.Fatalf("c4 patch -: exit %d: %s", code, stderr)
+	}
+	chain := filepath.Join(dir, "chain.c4m")
+	if err := os.WriteFile(chain, []byte(stream), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fromFile, _, code := runC4WithEnv(t, bin, env, "patch", chain)
+	if code != 0 || fromFile != fromStdin {
+		t.Errorf("patch - differs from patch FILE (exit %d):\n%s\n---\n%s", code, fromStdin, fromFile)
+	}
+	if isBareID(strings.TrimSpace(fromStdin[strings.LastIndex(strings.TrimRight(fromStdin, "\n"), "\n")+1:])) {
+		t.Errorf("patch output ends with a bare ID: %q", fromStdin)
+	}
+}
+
 // runC4StdinWithEnv runs the binary with stdin and extra environment.
 func runC4StdinWithEnv(t *testing.T, bin string, env map[string]string, stdin []byte, args ...string) (string, string, int) {
 	t.Helper()

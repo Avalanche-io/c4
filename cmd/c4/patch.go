@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/Avalanche-io/c4/c4m"
@@ -47,7 +48,9 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 	var allSections []*c4m.PatchSection
 
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		// "-" is stdin, as for every verb that takes a c4m, so a chain
+		// composes: c4 id DIR | c4 patch - | c4
+		data, err := readC4mArg(path)
 		if err != nil {
 			fatalf("Error reading %s: %v", path, err)
 		}
@@ -87,9 +90,20 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 // chains resolve to their final state, checkpoints and the closing
 // validator are verified (grammar erratum, draft-v9 §4).
 func resolveC4m(path string) *c4m.Manifest {
+	if path == "-" {
+		return manifestFromStdin()
+	}
 	m, err := loadManifest(path)
 	if err != nil {
 		fatalf("Error loading %s: %v", path, err)
 	}
 	return m
+}
+
+// readC4mArg reads a c4m argument's bytes: a path, or "-" for stdin.
+func readC4mArg(path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(os.Stdin)
+	}
+	return os.ReadFile(path)
 }
