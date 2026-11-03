@@ -29,12 +29,12 @@ func OpenConfigured() (*TreeStore, error) {
 //
 // C4_STORE can be a single path/URI or comma-separated list:
 //
-//	C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
+//	C4_STORE=/fast/ssd,s3://bucket/c4/?region=us-west-2,/mnt/archive
 //
 // Alternatively, ~/.c4/config can have multiple store lines:
 //
 //	store = /fast/ssd
-//	store = s3://bucket/c4?region=us-west-2
+//	store = s3://bucket/c4/?region=us-west-2
 //
 // Returns nil, nil if no store configured.
 func OpenStore() (Store, error) {
@@ -65,8 +65,18 @@ func OpenStore() (Store, error) {
 }
 
 // openS3Configured parses an s3:// URI and returns an S3Store.
-// Format: s3://bucket/prefix?region=X&endpoint=Y
-// Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars.
+// Format: s3://bucket/prefix/?region=X&endpoint=Y&instance-role=true
+//
+// The prefix must end in "/" (or be empty): objects are stored as
+// prefix + ID, so s3://bucket/runs would put them beside the folder
+// (runsc4...) rather than in it, and c4-operator names the same keys
+// for the same URL. Such a URL is refused, naming the fix.
+//
+// Credentials are the standard chain (Ambient): AWS_ACCESS_KEY_ID,
+// AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN from the environment;
+// then a web identity (AWS_WEB_IDENTITY_TOKEN_FILE and AWS_ROLE_ARN);
+// then, only with instance-role=true on the URL, the EC2 instance's
+// role through the metadata service. Temporary keys renew themselves.
 func openS3Configured(raw string) (*S3Store, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -77,6 +87,9 @@ func openS3Configured(raw string) (*S3Store, error) {
 		return nil, fmt.Errorf("S3 URI missing bucket: %s", raw)
 	}
 	prefix := strings.TrimPrefix(u.Path, "/")
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		return nil, fmt.Errorf("S3 prefix %q must end in \"/\": objects are stored as prefix + ID, so %s would store them as %sc4..., beside the folder rather than in it; use s3://%s/%s/", prefix, raw, prefix, bucket, prefix)
+	}
 
 	region := u.Query().Get("region")
 	if region == "" {
@@ -88,13 +101,23 @@ func openS3Configured(raw string) (*S3Store, error) {
 		endpoint = os.Getenv("C4_S3_ENDPOINT")
 	}
 
-	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	if accessKey == "" || secretKey == "" {
-		return nil, fmt.Errorf("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set for S3 store")
+	// instance-role=true is safe here because core reads URLs only from
+	// C4_STORE and ~/.c4/config, which belong to the person running the
+	// command. c4-operator must never parse a Project's URL through this
+	// function: a Project could set instance-role=true and borrow the
+	// node's role. The operator calls NewS3StoreWithCredentials with
+	// Static (the Project's Secret) or Ambient(false), and a CEL rule on
+	// the Project CRD refuses instance-role in Project URLs.
+	instanceRole := false
+	switch v := u.Query().Get("instance-role"); v {
+	case "", "false", "0", "no":
+	case "true", "1", "yes":
+		instanceRole = true
+	default:
+		return nil, fmt.Errorf("S3 URI instance-role=%q: use true or false", v)
 	}
 
-	return NewS3Store(bucket, prefix, region, endpoint, accessKey, secretKey), nil
+	return NewS3StoreWithCredentials(bucket, prefix, region, endpoint, Ambient(instanceRole)), nil
 }
 
 // IsConfigured reports whether a content store is configured.

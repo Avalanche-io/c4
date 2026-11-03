@@ -425,8 +425,47 @@ holds the journal). Reads check all stores in order:
 
 ```bash
 C4_STORE=/data/store
-C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
+C4_STORE=/fast/ssd,s3://bucket/c4/?region=us-west-2,/mnt/archive
 ```
+
+An S3 URL is `s3://BUCKET/PREFIX/?region=R&endpoint=E&instance-role=true`.
+The prefix must end in `/` (or be empty): objects are stored as prefix
+plus ID, and the same rule holds in c4-operator, so both name the same
+keys for the same URL. Credentials are the standard AWS chain: the
+environment (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and, for
+temporary keys, `AWS_SESSION_TOKEN`); then a web identity
+(`AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_ARN`, as on EKS); then, only
+with `instance-role=true` on the URL, the EC2 instance's role through the
+metadata service. Temporary keys renew themselves before they expire.
+Profiles, SSO and ECS container credentials are not read; the aws CLI's
+own chain covers those.
+
+#### Moving a store to a prefix ending in "/"
+
+A store URL's prefix must end in "/": objects are stored as prefix + ID, so
+a URL such as `s3://show-a-bucket/c4` stored them beside the folder
+(`c4c4...`) rather than in it. Earlier builds accepted such URLs. To keep a
+store filled that way, move its objects once:
+
+```sh
+# BUCKET and PREFIX as in the old URL s3://BUCKET/PREFIX (no "/"). For a
+# store that isn't AWS, export AWS_ENDPOINT_URL=URL first. A key moves only
+# if it is exactly PREFIX followed by a C4 ID (c4 and 88 base58 digits);
+# every other key under PREFIXc4 is left and printed. Safe to run again.
+B=BUCKET P=PREFIX
+aws s3api list-objects-v2 --bucket "$B" --prefix "${P}c4" --query 'Contents[].Key' --output text |
+  tr '\t' '\n' | while read -r k; do
+    id=${k#"$P"}
+    if [ "$k" = None ]; then continue
+    elif [[ ${#k} -eq $((${#P} + 90)) && $id =~ ^c4[1-9A-HJ-NP-Za-km-z]{88}$ ]]; then
+      aws s3 mv "s3://$B/$k" "s3://$B/$P/$id" --only-show-errors
+    else
+      echo "skipped: $k" >&2
+    fi
+  done
+```
+
+Then change the URL to `s3://BUCKET/PREFIX/`.
 
 On first use of `-s` without a configured store, the CLI offers to
 create `~/.c4/store`.

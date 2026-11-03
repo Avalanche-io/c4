@@ -1,6 +1,6 @@
 # Two IDs: the file ID and the description ID, and how the CLI keeps them apart
 
-Status: design, 2026-11-03, for Joshua through c4-fleet. Nothing built.
+Status: design, 2026-11-03, for Joshua. Nothing built.
 Follows design/no-self-id.md; precedes the "one ID, any starting point"
 page and its conformance test, which this note makes possible to write.
 

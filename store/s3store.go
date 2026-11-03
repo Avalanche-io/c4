@@ -37,14 +37,13 @@ var _ Store = (*S3Store)(nil)
 // S3Store is a content-addressed store backed by an S3-compatible object
 // storage service. It uses only the Go standard library.
 type S3Store struct {
-	client    *http.Client
-	bucket    string
-	prefix    string // key prefix for all objects (e.g., "c4/")
-	region    string
-	endpoint  string // custom endpoint for non-AWS S3
-	accessKey string
-	secretKey string
-	keyCache  signingKeyCache
+	client   *http.Client
+	bucket   string
+	prefix   string // key prefix for all objects (e.g., "c4/")
+	region   string
+	endpoint string // custom endpoint for non-AWS S3
+	creds    CredentialSource
+	keyCache signingKeyCache
 }
 
 // completedPart holds the result of uploading a single multipart part.
@@ -54,24 +53,35 @@ type completedPart struct {
 	err  error
 }
 
-// NewS3Store creates a new S3Store. For AWS S3, leave endpoint empty.
-// For S3-compatible services (MinIO, Backblaze B2, Wasabi, Ceph), set
-// endpoint to the service URL (e.g., "s3.us-west-001.backblazeb2.com").
+// NewS3Store creates a new S3Store signing with static keys. For AWS
+// S3, leave endpoint empty. For S3-compatible services (MinIO,
+// Backblaze B2, Wasabi, Ceph), set endpoint to the service URL (e.g.,
+// "s3.us-west-001.backblazeb2.com").
 func NewS3Store(bucket, prefix, region, endpoint, accessKey, secretKey string) *S3Store {
+	return NewS3StoreWithCredentials(bucket, prefix, region, endpoint,
+		Static(Credentials{AccessKeyID: accessKey, SecretAccessKey: secretKey}))
+}
+
+// NewS3StoreWithCredentials creates an S3Store that asks src for the
+// keys to sign each request with: static keys, or the standard chain
+// (Ambient), whose temporary keys renew before they expire. The client
+// never follows a redirect: a 3xx is the answer, since following one
+// would resend a signed request, token and body elsewhere.
+func NewS3StoreWithCredentials(bucket, prefix, region, endpoint string, src CredentialSource) *S3Store {
 	transport := &http.Transport{
 		MaxIdleConnsPerHost: 10,
 	}
 	return &S3Store{
 		client: &http.Client{
-			Transport: transport,
-			Timeout:   5 * time.Minute,
+			Transport:     transport,
+			Timeout:       5 * time.Minute,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
-		bucket:    bucket,
-		prefix:    prefix,
-		region:    region,
-		endpoint:  endpoint,
-		accessKey: accessKey,
-		secretKey: secretKey,
+		bucket:   bucket,
+		prefix:   prefix,
+		region:   region,
+		endpoint: endpoint,
+		creds:    src,
 	}
 }
 
@@ -124,7 +134,9 @@ func (s *S3Store) Has(id c4.ID) bool {
 	if err != nil {
 		return false
 	}
-	s.signRequest(req, "UNSIGNED-PAYLOAD")
+	if err := s.signRequest(req, "UNSIGNED-PAYLOAD"); err != nil {
+		return false
+	}
 
 	resp, err := s.doWithRetry(req)
 	if err != nil {
@@ -143,7 +155,9 @@ func (s *S3Store) Open(id c4.ID) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("s3 open: %w", err)
 	}
-	s.signRequest(req, "UNSIGNED-PAYLOAD")
+	if err := s.signRequest(req, "UNSIGNED-PAYLOAD"); err != nil {
+		return nil, fmt.Errorf("s3 open: %w", err)
+	}
 
 	resp, err := s.doWithRetry(req)
 	if err != nil {
@@ -213,7 +227,9 @@ func (s *S3Store) Remove(id c4.ID) error {
 	if err != nil {
 		return fmt.Errorf("s3 remove: %w", err)
 	}
-	s.signRequest(req, "UNSIGNED-PAYLOAD")
+	if err := s.signRequest(req, "UNSIGNED-PAYLOAD"); err != nil {
+		return fmt.Errorf("s3 remove: %w", err)
+	}
 
 	resp, err := s.doWithRetry(req)
 	if err != nil {
@@ -255,7 +271,9 @@ func (s *S3Store) singleUpload(path, key string) error {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Content-Length", strconv.Itoa(len(data)))
-	s.signRequest(req, payloadHash)
+	if err := s.signRequest(req, payloadHash); err != nil {
+		return err
+	}
 
 	resp, err := s.doWithRetry(req)
 	if err != nil {
@@ -337,7 +355,9 @@ func (s *S3Store) initiateMultipart(key string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
-	s.signRequest(req, hashSHA256(nil))
+	if err := s.signRequest(req, hashSHA256(nil)); err != nil {
+		return "", err
+	}
 
 	resp, err := s.doWithRetry(req)
 	if err != nil {
@@ -374,7 +394,9 @@ func (s *S3Store) uploadPart(key, uploadID string, partNum int, data []byte) (st
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Content-Length", strconv.Itoa(len(data)))
-	s.signRequest(req, payloadHash)
+	if err := s.signRequest(req, payloadHash); err != nil {
+		return "", err
+	}
 
 	resp, err := s.doWithRetry(req)
 	if err != nil {
@@ -412,7 +434,9 @@ func (s *S3Store) completeMultipart(key, uploadID string, parts []completedPart)
 	}
 	req.Header.Set("Content-Type", "application/xml")
 	req.Header.Set("Content-Length", strconv.Itoa(len(data)))
-	s.signRequest(req, payloadHash)
+	if err := s.signRequest(req, payloadHash); err != nil {
+		return err
+	}
 
 	resp, err := s.doWithRetry(req)
 	if err != nil {
@@ -436,7 +460,9 @@ func (s *S3Store) abortMultipart(key, uploadID string) {
 	if err != nil {
 		return
 	}
-	s.signRequest(req, "UNSIGNED-PAYLOAD")
+	if err := s.signRequest(req, "UNSIGNED-PAYLOAD"); err != nil {
+		return
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -457,9 +483,12 @@ func (s *S3Store) doWithRetry(req *http.Request) (*http.Response, error) {
 			time.Sleep(jitter)
 			backoff *= 2
 
-			// Re-sign on retry (timestamp changes).
+			// Re-sign on retry (timestamp changes, and keys may have
+			// renewed).
 			payloadHash := req.Header.Get("x-amz-content-sha256")
-			s.signRequest(req, payloadHash)
+			if err := s.signRequest(req, payloadHash); err != nil {
+				return nil, err
+			}
 		}
 
 		resp, err := s.client.Do(req)
