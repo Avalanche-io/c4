@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/store"
@@ -276,11 +277,15 @@ func applyPatchTree(base, patch *patchNode) {
 }
 
 // entriesIdentical checks if two entries are exactly the same across all
-// metadata fields. Used by patch semantics: an exact duplicate signals removal.
+// metadata fields, at the format's resolution: timestamps compare to the
+// second, since that is all a c4m line carries. Used by patch semantics:
+// an exact duplicate signals removal. Comparing nanoseconds here would
+// let PatchDiff emit a "change" for two scans of the same file that a
+// text round trip then turns into a removal.
 func entriesIdentical(a, b *Entry) bool {
 	return a.Name == b.Name &&
 		a.Mode == b.Mode &&
-		a.Timestamp.Equal(b.Timestamp) &&
+		a.Timestamp.Truncate(time.Second).Equal(b.Timestamp.Truncate(time.Second)) &&
 		a.Size == b.Size &&
 		a.C4ID == b.C4ID &&
 		a.Target == b.Target &&
@@ -390,10 +395,11 @@ func entriesEqual(a, b *Entry) bool {
 		return a.C4ID == b.C4ID && a.Mode == b.Mode
 	}
 
-	// Otherwise compare all attributes
+	// Otherwise compare all attributes, at the format's resolution (a
+	// c4m line carries whole seconds).
 	return a.Mode == b.Mode &&
 		a.Size == b.Size &&
-		a.Timestamp.Equal(b.Timestamp) &&
+		a.Timestamp.Truncate(time.Second).Equal(b.Timestamp.Truncate(time.Second)) &&
 		a.Target == b.Target
 }
 
