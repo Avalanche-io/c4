@@ -205,10 +205,14 @@ func runRestore(args []string) {
 		os.Exit(3)
 	}
 
-	// Verify at the target's knowledge level: the as-built tree must
-	// recompute to the target's own root ID. Line 2 prints only when
-	// recomputation reproduces it.
-	built := scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
+	// Verify at the target's knowledge level, field by field: the
+	// as-built tree, with every field nulled that the target leaves null
+	// at the same path, must recompute to the target's own root ID. A
+	// null in the target never overwrote the path's own value (and a
+	// null mode on a created file took the platform default), so those
+	// fields legitimately differ from the target and are not compared.
+	// Line 2 prints only when recomputation reproduces the target.
+	built := projectToKnowledge(scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false), target)
 	builtID := built.ComputeC4ID()
 	targetID := target.ComputeC4ID()
 	if builtID != targetID {
@@ -335,4 +339,34 @@ func opName(op reconcile.Op) string {
 	default:
 		return "unknown"
 	}
+}
+
+// projectToKnowledge returns a copy of built with every field nulled that
+// target leaves null for the same path: mode, timestamp, size and C4 ID.
+// Paths the target does not name are kept as built, so an extra file is
+// still a difference. Directory aggregates the target leaves null are
+// nulled too; ComputeC4ID then derives them the same way on both sides.
+// Projection only ever removes knowledge.
+func projectToKnowledge(built, target *c4m.Manifest) *c4m.Manifest {
+	want := c4m.EntryPaths(target.Entries)
+	out := built.Copy()
+	for path, e := range c4m.EntryPaths(out.Entries) {
+		t, ok := want[path]
+		if !ok {
+			continue
+		}
+		if t.Mode == 0 {
+			e.Mode = 0
+		}
+		if t.Timestamp.Equal(c4m.NullTimestamp()) {
+			e.Timestamp = c4m.NullTimestamp()
+		}
+		if t.Size < 0 {
+			e.Size = -1
+		}
+		if t.C4ID.IsNil() {
+			e.C4ID = c4.ID{}
+		}
+	}
+	return out
 }

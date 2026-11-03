@@ -116,14 +116,11 @@ func TestRestoreNullTimestampNeverOverwritesAnExistingFile(t *testing.T) {
 	if err := os.Chtimes(filepath.Join(dest, "a.txt"), when, when); err != nil {
 		t.Fatal(err)
 	}
-	// The file keeps its own time. Restore then verifies the as-built tree
-	// against the target at full knowledge, where the kept time differs
-	// from the target's null, so today it reports a verification failure
-	// (exit 3) after leaving the file correct. Whether verification should
-	// instead compare at the target's per-field knowledge is an open
-	// ruling; this test pins only the rule that is settled.
+	// The file keeps its own time, and verification compares at the
+	// target's per-field knowledge, so the kept time is not held against
+	// the target's null: the restore succeeds.
 	_, stderr, code = runC4WithEnv(t, bin, env, "restore", "--force", desc, dest)
-	if code != 0 && !strings.Contains(stderr, "verification failed") {
+	if code != 0 || strings.Contains(stderr, "verification failed") {
 		t.Fatalf("restore: exit %d: %s", code, stderr)
 	}
 	info, err := os.Stat(filepath.Join(dest, "a.txt"))

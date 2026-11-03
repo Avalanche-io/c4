@@ -305,6 +305,8 @@ When a description is materialized onto a filesystem (`c4 restore`, `c4 patch`, 
 
 1. **Applied to a path that already exists**, a null never overwrites the value the path has. The file keeps its timestamp and mode.
 2. **Creating a file or directory that did not exist**, a null timestamp sets the Unix epoch, which scans back as null. So a tree created from a null-dated description reads back at that description's ID: the materialization round-trips.
+3. **Creating from a null mode**, the file or directory takes the platform default (a regular file as the process's umask makes it, a directory likewise). No on-disk mode reads back as null, so a scan of the result legitimately differs from the description at that field, exactly as a scan at a finer level does.
+4. **Verifying a materialization** compares at the description's own knowledge, field by field: the as-built tree is projected onto the description's nulls (a field the description leaves null is not compared) and must then recompute to the description's root ID.
 
 ### Use Cases
 
