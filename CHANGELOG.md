@@ -1,6 +1,12 @@
 # Changelog
 
-## v1.0.22
+## v1.0.23
+
+Same-day supersede of v1.0.22, whose tag carries this same code but a
+binary that reports `c4 1.0.21`: the version constant in `cmd/c4` was
+not bumped before the tag. v1.0.22 never reached the suite release or
+the Homebrew tap. The tag stays, since c4sh and c4git v1.0.22 pin the
+module at it; nothing else differs.
 
 A patch that restates a directory line identically and then lists
 children under it deepens that directory; it never removes it (the
