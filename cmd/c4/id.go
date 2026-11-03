@@ -180,19 +180,21 @@ func runID(args []string) {
 				continue
 			}
 			if *ergonomic {
-				// -e implies buffered: aligned flat entries closed by an
-				// unpadded root-ID line, printed after any claim is durable.
+				// -e implies buffered: aligned flat entries. No root-ID
+				// line after them: a file written from this output must
+				// not end with its own ID (design/no-self-id.md); -q is
+				// the ID, and stored: on stderr is the -s narration.
 				if shouldStore {
 					storeManifestContent(m, p, scanStart)
 				}
 				outputManifest(m, true)
-				fmt.Println(m.ComputeC4ID())
 			} else {
 				// The streaming chain shape: the body streams as
-				// description; the final bare root-ID line is the claim
-				// under -s and prints only after the store barrier and
-				// journal append. A dead stdout never cancels a
-				// snapshot: ingest and journal complete, exit 1.
+				// description and ends on its last entry; nothing is
+				// printed after it (design/no-self-id.md). Under -s the
+				// claim is the -q line or the journal; stored: on stderr
+				// narrates after the barrier. A dead stdout never cancels
+				// a snapshot: ingest and journal complete, exit 1.
 				bodyErr := c4m.WriteChainBody(os.Stdout, m)
 				if shouldStore {
 					storeManifestContent(m, p, scanStart)
@@ -205,7 +207,6 @@ func runID(args []string) {
 					fmt.Fprintln(os.Stderr)
 					os.Exit(1)
 				}
-				fmt.Println(m.ComputeC4ID())
 			}
 			if partial {
 				os.Exit(2)
@@ -331,7 +332,7 @@ func doStdin(storeFlag bool) {
 		s := getOrSetupStore()
 		if s != nil {
 			start := time.Now().UTC()
-			id, _, _, err := storeContentC4mAware(s, os.Stdin)
+			id, _, err := storeContentBytes(s, os.Stdin)
 			if err != nil {
 				fatalf("Error storing: %v", err)
 			}
@@ -342,18 +343,12 @@ func doStdin(storeFlag bool) {
 		}
 	}
 
-	// Read all stdin to detect c4m.
+	// Identify means the bytes: stdin is never parsed here (c4 id -
+	// parses a description), so a c4m file's ID is the ID that
+	// summons it (design/no-self-id.md).
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		fatalf("Error reading stdin: %v", err)
-	}
-	if looksLikeC4m(data) {
-		canonical, _ := canonicalizeC4mBytes(data)
-		if canonical != nil {
-			id := c4.Identify(bytes.NewReader(canonical))
-			fmt.Println(id)
-			return
-		}
 	}
 	id := c4.Identify(bytes.NewReader(data))
 	fmt.Println(id)
@@ -498,17 +493,16 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 	}
 
 	if mode == scan.ModeFull || mode == scan.ModeContent {
+		// A file's ID is the ID of its bytes, a .c4m file included
+		// (design/no-self-id.md).
 		if shouldStore {
-			s := getOrSetupStore()
-			if s != nil {
-				entry.C4ID = storeC4mAware(s, path)
+			if s := getOrSetupStore(); s != nil {
+				entry.C4ID = storeFileBytes(s, path)
 			} else {
-				id, _ := identifyC4mFile(path)
-				entry.C4ID = id
+				entry.C4ID = identifyFileBytes(path)
 			}
 		} else {
-			id, _ := identifyC4mFile(path)
-			entry.C4ID = id
+			entry.C4ID = identifyFileBytes(path)
 		}
 	}
 
@@ -677,17 +671,10 @@ func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
 	if err != nil {
 		return // skip files we can't open
 	}
-	var storeData []byte
-	if strings.HasSuffix(entry.Name, ".c4m") || looksLikeC4m(data) {
-		canonical, _ := canonicalizeC4mBytes(data)
-		if canonical != nil {
-			storeData = canonical
-		}
-	}
-	if storeData == nil {
-		storeData = data
-	}
-	newID, err := s.Put(bytes.NewReader(storeData))
+	// The bytes, whatever the name: a .c4m file inside a tree is stored
+	// as itself, so its entry ID returns it and restore writes it back
+	// byte for byte (design/no-self-id.md).
+	newID, err := s.Put(bytes.NewReader(data))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
 		return

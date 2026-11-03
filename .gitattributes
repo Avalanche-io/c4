@@ -2,3 +2,6 @@
 # contracts: no EOL conversion, ever.
 c4m/testdata/chain-vector/* -text
 c4m/testdata/deepen-vector/* -text
+# Content-addressed bytes: git never transforms a c4m file or a test vector.
+*.c4m -text
+c4m/testdata/** -text

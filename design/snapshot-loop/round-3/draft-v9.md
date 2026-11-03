@@ -42,6 +42,14 @@ patch chain, streamed:
 4. The resolved root ID on a bare final line — the closing validator,
    consumer-verified (MUST verify on resolve, ErrPatchIDMismatch).
 
+   > **Corrected 2026-11-03 (Joshua): rule 4 is withdrawn.** No file
+   > can contain its own ID: a c4m file ending with its resolved ID is a
+   > different file from the one that ID names, so the stream ends on
+   > the refinement patch's last entry and bare IDs appear only as
+   > boundaries before a patch. Nothing replaces the closing validator;
+   > what that leaves undetected, and why it is accepted, is in
+   > design/no-self-id.md §2.
+
 Rules: streaming is unconditional (no flag, no isatty); the contract
 is BYTES at any concurrency (a fully buffered implementation
 conforms); ordered emission = per-directory canonical sort at
@@ -57,6 +65,11 @@ listing-emitting invocations: directory, .c4m, stdin). Empty
 directory: exactly one line, the empty-description constant.
 
 ## 3. `-s` streams; the claim is the final line (Count 3)
+
+> **Corrected 2026-11-03 (Joshua):** there is no final line. The
+> printed claims are exactly the `-q` lines; `-s` without `-q` streams
+> description and narrates `stored: <ID>` on stderr after the barrier;
+> `tail -1` is withdrawn as a contract. See design/no-self-id.md §1.
 
 - `-s` prints the same stream as bare id, storing underneath; the
   final bare root-ID line prints only after the store barrier and the

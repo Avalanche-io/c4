@@ -32,6 +32,10 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	// before any other operation type, preserving plan order between
 	// creates and everything else.
 	var creates []Operation
+	// Directories this apply made: a null timestamp on one of them
+	// becomes the epoch, so the tree reads back at the target's ID; on
+	// a directory that already existed a null never overwrites.
+	freshDirs := make(map[string]bool)
 	flush := func() {
 		r.applyCreates(creates, res)
 		creates = creates[:0]
@@ -45,8 +49,12 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 		flush()
 		switch op.Type {
 		case OpMkdir:
-			if err := r.applyMkdir(op, res); err != nil {
+			made, err := r.applyMkdir(op, res)
+			if err != nil {
 				res.Errors = append(res.Errors, err)
+			}
+			if made {
+				freshDirs[op.Path] = true
 			}
 			dirOps = append(dirOps, op)
 		case OpMove:
@@ -89,7 +97,7 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 			return len(dirOps[i].Path) > len(dirOps[j].Path) // deepest first
 		})
 		for _, op := range dirOps {
-			r.setMetadata(op.Path, op.Entry)
+			r.setMetadata(op.Path, op.Entry, freshDirs[op.Path])
 		}
 	}
 
@@ -106,25 +114,27 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	return res, nil
 }
 
-func (r *Reconciler) applyMkdir(op Operation, res *Result) error {
+// applyMkdir makes the directory; made reports whether it did (false
+// when it already existed or in a dry run).
+func (r *Reconciler) applyMkdir(op Operation, res *Result) (made bool, err error) {
 	info, err := os.Stat(op.Path)
 	if err == nil && info.IsDir() {
 		res.Skipped++
-		return nil
+		return false, nil
 	}
 	if r.dryRun {
 		res.Created++
-		return nil
+		return false, nil
 	}
 	mode := os.FileMode(0755)
 	if op.Entry != nil && op.Entry.Mode != 0 {
 		mode = op.Entry.Mode.Perm() | os.ModeDir
 	}
 	if err := os.MkdirAll(op.Path, mode.Perm()); err != nil {
-		return err
+		return false, err
 	}
 	res.Created++
-	return nil
+	return true, nil
 }
 
 // applyCreates executes create operations, in parallel when the worker
@@ -186,7 +196,7 @@ func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 	// to streaming on any failure.
 	if src, ok := r.localPath(op.ContentID); ok {
 		if err := r.copyFile(src, op.Path); err == nil {
-			r.setMetadata(op.Path, op.Entry)
+			r.setMetadata(op.Path, op.Entry, true)
 			res.Created++
 			return nil
 		}
@@ -209,8 +219,8 @@ func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 		return err
 	}
 
-	// Set metadata.
-	r.setMetadata(op.Path, op.Entry)
+	// Set metadata: the file is new, so a null timestamp becomes the epoch.
+	r.setMetadata(op.Path, op.Entry, true)
 	res.Created++
 	return nil
 }
@@ -250,7 +260,8 @@ func (r *Reconciler) applyMove(op Operation, res *Result) error {
 		}
 	}
 
-	r.setMetadata(op.Path, op.Entry)
+	// Moved content existed before: a null never overwrites its time.
+	r.setMetadata(op.Path, op.Entry, false)
 	res.Moved++
 	return nil
 }
@@ -375,15 +386,22 @@ func (r *Reconciler) applyRmdir(op Operation, res *Result) error {
 }
 
 // setMetadata applies mode and timestamp from an entry to a file path.
-func (r *Reconciler) setMetadata(path string, entry *c4m.Entry) {
+// A null mode or timestamp never overwrites what the path already
+// has. When the path is fresh (made by this apply), a null timestamp
+// becomes the epoch, which scans back as null, so a tree restored
+// from a null-dated description reads back at the description's ID.
+func (r *Reconciler) setMetadata(path string, entry *c4m.Entry, fresh bool) {
 	if entry == nil {
 		return
 	}
 	if entry.Mode != 0 {
 		os.Chmod(path, entry.Mode.Perm())
 	}
-	if !entry.Timestamp.Equal(c4m.NullTimestamp()) {
+	switch {
+	case !entry.Timestamp.Equal(c4m.NullTimestamp()):
 		os.Chtimes(path, entry.Timestamp, entry.Timestamp)
+	case fresh:
+		os.Chtimes(path, c4m.NullTimestamp(), c4m.NullTimestamp())
 	}
 }
 

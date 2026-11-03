@@ -48,9 +48,12 @@ same ruling retires all five: **identify means the bytes.**
   entry. A flat tree is the base alone, with no bare ID at all.
   `c4 id dir > x.c4m` is then a file whose own byte ID summons it, and
   whose resolved description ID any reader computes.
-- **The description's ID is `-q`**, the one scripted form, unchanged:
-  `c4 id -q DIR`, `c4 id -q FILE.c4m`, `c4 id -s -q DIR`. `tail -1` is
-  retired as a contract; the help text that promises it goes.
+- **The description's ID is composition**: `c4 id DIR | c4 id -q -` (Joshua,
+  2026-11-03); `-q` is the convenience that prints the same ID directly.
+  `c4 id DIR | c4` is a different ID: that of exactly the bytes piped,
+  which summons that exact text. Both are documented in id(1) and pinned
+  by the round-trip tests. `tail -1` is retired as a contract; the help
+  text that promises it goes.
 - **The `-s` claim.** Printed claims are exactly the `-q` lines, printed
   only after the store barrier and the journal append: "a printed claim
   never dangles" survives with one fewer kind of claim. Without `-q`,

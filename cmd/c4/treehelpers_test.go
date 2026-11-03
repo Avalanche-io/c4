@@ -43,9 +43,9 @@ func countObjects(t *testing.T, storeDir string) int {
 	return n
 }
 
-// stripValidator removes the trailing bare root-ID line a listing
-// stream ends with (draft-v9: the final line of a listing-emitting id
-// invocation is the root ID), yielding the flat description text.
+// stripValidator removes a trailing bare root-ID line if a listing
+// stream ends with one. Since design/no-self-id.md no stream does, so
+// this is the identity; it stays so older tests read unchanged.
 func stripValidator(s string) string {
 	trimmed := strings.TrimRight(s, "\n")
 	cut := strings.LastIndexByte(trimmed, '\n')

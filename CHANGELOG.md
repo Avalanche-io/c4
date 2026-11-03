@@ -2,6 +2,21 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A c4m file never ends with its own ID ⚠
+
+`c4 id DIR` no longer closes its output with a bare root-ID line, and
+neither do `c4 id FILE.c4m` and `c4 id -`; a chain ends on its last
+entry, and bare IDs appear only as boundaries before a patch. A file
+written from `c4 id` is therefore the file its own C4 ID names:
+`c4 cat` of that ID returns it byte for byte. The description's ID is
+`c4 id -q`, the one scripted form; `tail -1` is no longer a contract.
+Under `-s` without `-q`, the stored ID is narrated on stderr as before
+and recorded in `c4 log`. Identifying or storing stdin, and every file
+inside a scanned tree, now means its bytes: a `.c4m` file is no longer
+re-rendered before hashing, and `c4 cat ID` returns an object's bytes
+unless `-e` or `-r` asks for a rendering. The chain grammar and every
+stored record are unchanged. (Joshua, 2026-11-03; design/no-self-id.md.)
+
 ### The S3 store: temporary credentials, and the prefix rule ⚠
 
 The S3 store takes the standard AWS credential chain (`store.Ambient`,

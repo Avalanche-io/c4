@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -19,6 +20,27 @@ var nullTimestamp = time.Unix(0, 0).UTC()
 
 // NullTimestamp returns the sentinel value for null/unspecified timestamps (Unix epoch).
 func NullTimestamp() time.Time { return nullTimestamp }
+
+// ZeroMode is the known zero mode: a regular file with no permission
+// bits, written "----------". It is not the null mode, which is the
+// zero value of os.FileMode and is written "-". The two differ for
+// progressive resolution: null means not yet checked, zero means
+// checked and found zero. Bit 18 is set by no operating system mode
+// and is ignored by Perm, IsDir and the type mask, so ZeroMode acts
+// as mode 0 everywhere a mode is applied.
+const ZeroMode os.FileMode = 1 << 18
+
+// KnownMode returns m as a known mode: a mode read from disk is never
+// null, so an all-zero mode becomes ZeroMode.
+func KnownMode(m os.FileMode) os.FileMode {
+	if m == 0 {
+		return ZeroMode
+	}
+	return m
+}
+
+// IsNullMode reports whether m is the null (unspecified) mode.
+func IsNullMode(m os.FileMode) bool { return m == 0 }
 
 // Manifest represents a complete C4M manifest
 type Manifest struct {

@@ -145,6 +145,11 @@ func catFile(path string, ergonomic, recursive bool) {
 	if c4m.IsJournal(data) {
 		fatalf("Error: %s is a store journal, not a description — list it with: c4 log %s", path, path)
 	}
+	// Without a rendering flag, cat is the bytes (design/no-self-id.md).
+	if !ergonomic && !recursive {
+		os.Stdout.Write(data)
+		return
+	}
 	m := tryParseC4m(data)
 	if m == nil {
 		fatalf("Error: %s does not parse as c4m", path)
@@ -166,13 +171,22 @@ func catFile(path string, ergonomic, recursive bool) {
 func catFromStore(s store.Store, id c4.ID, ergonomic, recursive, assertListing bool) {
 	data := readVerified(s, id)
 
-	// Try to parse as c4m for formatting flags.
+	// The object's bytes, exactly: what an ID names is what cat returns
+	// (design/no-self-id.md). Only -e and -r render; a path descent
+	// must still parse as a listing.
+	if !ergonomic && !recursive && !assertListing {
+		os.Stdout.Write(data)
+		return
+	}
 	m := tryParseC4m(data)
 	if m == nil {
 		if assertListing {
 			fatalf("Error: %s does not parse as a listing", id)
 		}
-		// Not c4m — output raw bytes.
+		os.Stdout.Write(data)
+		return
+	}
+	if !ergonomic && !recursive {
 		os.Stdout.Write(data)
 		return
 	}

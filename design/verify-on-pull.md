@@ -42,6 +42,15 @@ their own way; and the operator's default is the opposite of the ruling.
 - A source that is not configured as a store cannot be trusted (the line
   is reported and ignored). Nothing is inferred: not from `localhost`,
   not from a Unix path, not from a cluster membership.
+- **Matching is exact, after one normalisation, and one line trusts one
+  source.** A `trust` value is compared to each configured endpoint after
+  both are normalised the same way: a path is cleaned (`filepath.Clean`)
+  and made absolute against the config file's directory for a config
+  line or the working directory for `C4_TRUST`; an `s3://` URL keeps its
+  bucket, prefix and query exactly, only the scheme and host lowercased.
+  The normalised strings must be byte-equal. No globs, no prefixes, no
+  "all S3": a line that matches two endpoints is a configuration error,
+  reported, and trusts neither.
 
 Library surface, in `store`:
 
@@ -111,6 +120,20 @@ nothing" and a CEL rule refusing both together. An existing Project that
 never set `verifyFill` starts verifying on fill after the upgrade: that is
 the ruling, and the release notes say so with the cost table below so a
 cluster that measured it opts out deliberately.
+
+`store.trust` lowers a protection, so it is set the way strict
+accountability is turned down: only a farm admin may set it, it is a
+signed, booked control (who, when, which sources), and the HUD shows it
+on the project: "fills from peers aren't verified for this project, set
+by <admin> on <date>". A Shared partition trusts a source only if every
+project in it does; one project's trust never lowers another's
+verification.
+
+Trusting `peers` means one compromised node can poison another's cache:
+a node that serves bad bytes under a good ID is believed by every peer
+that trusts it, and the corruption travels until something downstream
+rehashes. That is the trade the cost table prices; it belongs in the
+HUD's line and the release notes, next to the numbers.
 
 ## Cost
 

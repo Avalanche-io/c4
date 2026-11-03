@@ -11,10 +11,11 @@ import (
 	"github.com/Avalanche-io/c4/c4m"
 )
 
-// TestStreamShapeAndFinalLine pins the v9 output contract: a directory
-// listing is a valid chain whose final line is the root ID — equal to
-// -q on the same tree — and directory base lines carry null aggregates
-// refined by one patch.
+// TestStreamShapeAndFinalLine pins the output contract: a directory
+// listing is a valid chain that ends on its last entry (no file contains
+// its own ID; design/no-self-id.md), resolves to the ID -q prints on the
+// same tree, and its directory base lines carry null aggregates refined
+// by one patch.
 func TestStreamShapeAndFinalLine(t *testing.T) {
 	bin := buildC4(t)
 	dir := t.TempDir()
@@ -30,24 +31,22 @@ func TestStreamShapeAndFinalLine(t *testing.T) {
 		t.Fatalf("id exit %d", code)
 	}
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	last := lines[0]
-	if len(lines) > 0 {
-		last = lines[len(lines)-1]
+	last := lines[len(lines)-1]
+	if f := strings.TrimSpace(last); len(f) == 90 && strings.HasPrefix(f, "c4") {
+		t.Fatalf("the stream must end on its last entry, not a bare ID: %q", last)
 	}
 
 	qOut, _, _ := runC4(t, bin, "id", "-q", tree)
-	if last != strings.TrimSpace(qOut) {
-		t.Fatalf("final stream line %q != -q ID %q", last, strings.TrimSpace(qOut))
-	}
+	want := strings.TrimSpace(qOut)
 
-	// The stream is a valid chain resolving to the same root ID
-	// (checkpoint and validator verified by the decoder).
+	// The stream is a valid chain resolving to the ID -q prints (the
+	// checkpoint before the patch is verified by the decoder).
 	m, err := c4m.Unmarshal([]byte(out))
 	if err != nil {
 		t.Fatalf("stream must decode: %v", err)
 	}
-	if m.ComputeC4ID().String() != last {
-		t.Fatal("stream must resolve to its own validator")
+	if m.ComputeC4ID().String() != want {
+		t.Fatalf("stream resolves to %s, -q prints %s", m.ComputeC4ID(), want)
 	}
 
 	// The base sub/ line carries a null ID (refined later).
@@ -64,9 +63,9 @@ func TestStreamShapeAndFinalLine(t *testing.T) {
 	}
 }
 
-// TestStreamSnapshotClaimIsFinalLine pins -s streaming: the stream's
-// final line equals -s -q's single line (THE claim), and the claim is
-// journaled before it prints.
+// TestStreamSnapshotClaimIsFinalLine pins -s streaming: the stream
+// ends on its last entry, stderr narrates stored: <ID> equal to -s -q's
+// single line (THE claim), and the claim is journaled before it prints.
 func TestStreamSnapshotClaimIsFinalLine(t *testing.T) {
 	bin := buildC4(t)
 	dir := t.TempDir()
@@ -74,7 +73,7 @@ func TestStreamSnapshotClaimIsFinalLine(t *testing.T) {
 	tree := filepath.Join(dir, "proj")
 	writeTree(t, tree, map[string]string{"a.txt": "alpha", "sub/b.txt": "bravo"})
 
-	out, _, code := runC4WithEnv(t, bin, env, "id", "-s", tree)
+	out, stderr, code := runC4WithEnv(t, bin, env, "id", "-s", tree)
 	if code != 0 {
 		t.Fatalf("id -s exit %d", code)
 	}
@@ -82,14 +81,17 @@ func TestStreamSnapshotClaimIsFinalLine(t *testing.T) {
 	if len(lines) < 3 {
 		t.Fatalf("-s should stream the listing, got %d lines", len(lines))
 	}
-	claim := lines[len(lines)-1]
+	if f := strings.TrimSpace(lines[len(lines)-1]); len(f) == 90 && strings.HasPrefix(f, "c4") {
+		t.Fatalf("-s must not print a claim on stdout after the stream: %q", f)
+	}
+	claim := storedID(t, stderr)
 
 	qOut, _, code := runC4WithEnv(t, bin, env, "id", "-s", "-q", tree)
 	if code != 0 {
 		t.Fatal("id -s -q failed")
 	}
 	if claim != strings.TrimSpace(qOut) {
-		t.Fatalf("stream claim %q != -s -q %q", claim, qOut)
+		t.Fatalf("stored: %q != -s -q %q", claim, qOut)
 	}
 
 	claims, err := c4m.OpenJournal(filepath.Join(dir, "store")).Claims()
