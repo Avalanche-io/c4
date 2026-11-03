@@ -192,6 +192,15 @@ func (r *Reconciler) applyCreate(op Operation, res *Result) error {
 		return nil
 	}
 
+	// A create planned from a move's destination (one content ID wanted at
+	// two paths) copies from there; the move has already run.
+	if op.SrcPath != "" {
+		if err := r.copyFile(op.SrcPath, op.Path); err == nil {
+			r.setMetadata(op.Path, op.Entry, true)
+			res.Created++
+			return nil
+		}
+	}
 	// Local fast path: copy file-to-file from a LocalSource, falling back
 	// to streaming on any failure.
 	if src, ok := r.localPath(op.ContentID); ok {

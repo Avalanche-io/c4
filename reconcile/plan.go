@@ -209,6 +209,14 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 		}
 	}
 
+	// A removed file moves to the first target that wants its content; a
+	// second target for the same content (one plate in two shot folders)
+	// is a create copied from where the move put it. Moves run before
+	// creates, so that path exists by then. Before this, the remove stayed
+	// in removeByID after the move consumed it, so every later target
+	// became a second move from the same source, and the rename failed
+	// with the folder half switched (found by a demo scout, 2026-11-03).
+	movedTo := make(map[c4.ID]string) // C4 ID -> absolute path a move put it at
 	var filteredCreates []Operation
 	for _, op := range creates {
 		if rmIdx, ok := removeByID[op.ContentID]; ok {
@@ -220,11 +228,16 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 				ContentID: op.ContentID,
 			})
 			delete(needsContent, op.ContentID)
-			// Mark the remove as consumed.
+			// Mark the remove as consumed, once.
 			removes[rmIdx].Type = -1 // sentinel
-		} else {
-			filteredCreates = append(filteredCreates, op)
+			delete(removeByID, op.ContentID)
+			movedTo[op.ContentID] = op.Path
+			continue
 		}
+		if dst, ok := movedTo[op.ContentID]; ok {
+			op.SrcPath = dst
+		}
+		filteredCreates = append(filteredCreates, op)
 	}
 	creates = filteredCreates
 

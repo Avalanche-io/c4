@@ -126,7 +126,7 @@ const (
 type Operation struct {
 	Type      Op
 	Path      string     // absolute target path
-	SrcPath   string     // source path for move
+	SrcPath   string     // source path for a move; for a create, a local file holding the content (a move's destination)
 	Entry     *c4m.Entry // target entry metadata
 	ContentID c4.ID      // content to write
 }
