@@ -2,7 +2,13 @@
 
 ## v1.0.21
 
-Lockstep patch: no change to c4 itself. The suite archives and the
+`c4 explain patch` now reports the plan `c4 patch` would make, from the
+same sources: content the folder already holds under another name counts
+(patch moves it), as do the store and any `--source` path. Before, it
+counted the store alone, so it said "Missing" for a switch between two
+views of files a folder holds, which `c4 patch` itself performs.
+
+Otherwise lockstep: no other change to c4. The suite archives and the
 Homebrew formula bring the farm tools from c4-operator v0.2.2, whose
 embedded HUD matches its server (on v0.2.1 every write from the browser
 was refused), whose `c4 farm up` keeps an existing farm and its ports,

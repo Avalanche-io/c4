@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
+	"github.com/Avalanche-io/c4/reconcile"
 	"github.com/Avalanche-io/c4/scan"
 	"github.com/Avalanche-io/c4/store"
 )
@@ -200,7 +202,7 @@ func runExplainDiff(args []string) {
 func runExplainPatch(args []string) {
 	fs := newFlags("explain patch")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f")
-	_ = fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
+	sources := fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
 	fs.parse(args)
 
 	if len(fs.args) == 0 || len(fs.args) > 2 {
@@ -299,39 +301,58 @@ func runExplainPatch(args []string) {
 		fmt.Println("  Already up to date — nothing to do.")
 	}
 
-	// Store availability check.
+	// Content check: the plan patch itself would make, from the same
+	// sources, so explain never refuses what patch accepts. Content the
+	// destination already holds under another name counts (patch moves
+	// it), as does the store and any --source path.
 	s, _ := store.OpenStore()
-	fmt.Println()
+	opts := []reconcile.Option{
+		reconcile.WithTrustedMetadata(true),
+		reconcile.WithSource(reconcile.NewDirSource(destManifest, destArg)),
+	}
 	if s != nil {
-		storePath := store.DefaultStorePath()
-		// Check which target IDs need content (creates + updates).
-		var missingCount int
-		var missingSize int64
-		for path, te := range targetMap {
-			if te.IsDir() || te.C4ID.IsNil() {
-				continue
-			}
-			de, exists := destMap[path]
-			if exists && te.C4ID == de.C4ID {
-				continue // already correct
-			}
-			if !s.Has(te.C4ID) {
-				missingCount++
-				if te.Size > 0 {
-					missingSize += te.Size
-				}
-			}
+		opts = append(opts, reconcile.WithSource(s))
+	}
+	for _, src := range *sources {
+		if isDirectory(src) {
+			srcManifest := resolveManifestOrDir(src, scan.ModeFull)
+			opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(srcManifest, src)))
 		}
+	}
+	plan, err := reconcile.New(opts...).Plan(targetManifest, destArg)
+	if err != nil {
+		fatalf("Error planning reconciliation: %v", err)
+	}
+	missing := make(map[c4.ID]bool, len(plan.Missing))
+	for _, id := range plan.Missing {
+		missing[id] = true
+	}
+	var missingCount int
+	var missingSize int64
+	for _, te := range targetMap {
+		if te.IsDir() || te.C4ID.IsNil() || !missing[te.C4ID] {
+			continue
+		}
+		missingCount++
+		if te.Size > 0 {
+			missingSize += te.Size
+		}
+	}
 
-		if missingCount == 0 {
-			fmt.Printf("Store: %s (all content available)\n", storePath)
-		} else {
-			fmt.Printf("Store: %s\n", storePath)
-			fmt.Printf("Missing: %s (%s) — not in store\n",
-				pluralize(missingCount, "file"), formatBytes(missingSize))
-		}
-	} else {
+	fmt.Println()
+	switch {
+	case s == nil && missingCount == 0:
+		fmt.Println("Store: not configured (all content available)")
+	case s == nil:
 		fmt.Println("Store: not configured")
+	case missingCount == 0:
+		fmt.Printf("Store: %s (all content available)\n", store.DefaultStorePath())
+	default:
+		fmt.Printf("Store: %s\n", store.DefaultStorePath())
+	}
+	if missingCount > 0 {
+		fmt.Printf("Missing: %s (%s) — not in store, in %s, or in a --source\n",
+			pluralize(missingCount, "file"), formatBytes(missingSize), destArg)
 	}
 
 	if createCount > 0 || updateCount > 0 || removeCount > 0 {
