@@ -9,11 +9,11 @@ filesystem, not by the reconcile package.
 Materializing a 20,050-file / 105 MB tree from a c4m file on APFS
 (M-series Mac, local TreeStore):
 
-| Operation | Wall | CPU | Real disk |
-|---|---|---|---|
-| `c4 patch snap.c4m dest/` (v1.0.13) | 164.6 s | 13.5 s | 158 MB |
-| `cp -Rc` (APFS clonefile) of the same tree | 3.08 s | — | 5.9 MB |
-| whole-dir clonefile of a 13,837-file node_modules | 0.26 s | — | — |
+| Operation                                         | Wall    | CPU    | Real disk |
+| ------------------------------------------------- | ------- | ------ | --------- |
+| `c4 patch snap.c4m dest/` (v1.0.13)               | 164.6 s | 13.5 s | 158 MB    |
+| `cp -Rc` (APFS clonefile) of the same tree        | 3.08 s  | —      | 5.9 MB    |
+| whole-dir clonefile of a 13,837-file node_modules | 0.26 s  | —      | —         |
 
 The 12x gap between wall and CPU time shows the process is almost
 entirely blocked, not computing. Root causes, in order of impact:
@@ -145,16 +145,16 @@ Options for per-file CoW with zero new dependencies:
 
 ## Chosen design — API additions
 
-| Addition | Purpose |
-|---|---|
-| `store.NewAtomicWriter(final)` | Temp + atomic rename, no fsync. |
-| `(*store.DurableWriter).ReadFrom` | OS-accelerated file-to-file copies. |
-| `reconcile.WithSync(bool)` | Default true. False selects atomic (non-fsync) writes in Apply. |
-| `reconcile.WithMaxConcurrency(int)` | Worker cap for parallel creates. 0 = auto, 1 = sequential. |
-| `reconcile.WithTrustedMetadata(bool)` | Default false. True lets Plan reuse target IDs on size+mtime match. |
-| `reconcile.LocalSource` | Optional interface: local path for content, enabling clone/direct copy. |
-| `ContentPath` on `DirSource`, `Folder`, `ShardedFolder`, `TreeStore` | LocalSource implementations. |
-| `c4 patch --no-fsync` | CLI opt-out of per-file fsync for reconcile paths. |
+| Addition                                                             | Purpose                                                                 |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `store.NewAtomicWriter(final)`                                       | Temp + atomic rename, no fsync.                                         |
+| `(*store.DurableWriter).ReadFrom`                                    | OS-accelerated file-to-file copies.                                     |
+| `reconcile.WithSync(bool)`                                           | Default true. False selects atomic (non-fsync) writes in Apply.         |
+| `reconcile.WithMaxConcurrency(int)`                                  | Worker cap for parallel creates. 0 = auto, 1 = sequential.              |
+| `reconcile.WithTrustedMetadata(bool)`                                | Default false. True lets Plan reuse target IDs on size+mtime match.     |
+| `reconcile.LocalSource`                                              | Optional interface: local path for content, enabling clone/direct copy. |
+| `ContentPath` on `DirSource`, `Folder`, `ShardedFolder`, `TreeStore` | LocalSource implementations.                                            |
+| `c4 patch --no-fsync`                                                | CLI opt-out of per-file fsync for reconcile paths.                      |
 
 CLI behavior: `c4 patch` enables `WithTrustedMetadata(true)` (matching
 its existing guided scan of the same directory) and auto concurrency.
@@ -167,14 +167,14 @@ synthetic 20,050-file / ~105 MB tree, local TreeStore, `c4 patch
 snap.c4m dest/` into an empty destination. All outputs verified
 byte-identical to the source tree (`diff -rq`).
 
-| Run | Wall | CPU (user+sys) | Notes |
-|---|---:|---:|---|
-| master v1.0.13 | 171.2 s | 13.1 s | baseline reproduced (164.6 s originally) |
-| branch, durable default | 129.3 s | 26.4 s | parallel fsync; F_FULLFSYNC serializes at the device |
-| branch `--no-fsync` | **4.0 s** | 42.5 s | **43x; target met** |
-| `cp -Rc` reference | 2.9 s | 2.7 s | whole-tree clonefile |
-| no-op re-apply, master | 0.74 s | 1.2 s | Plan hashes all 20k files |
-| no-op re-apply, branch | 0.20 s | 0.5 s | trusted-metadata plan |
+| Run                     |      Wall | CPU (user+sys) | Notes                                                |
+| ----------------------- | --------: | -------------: | ---------------------------------------------------- |
+| master v1.0.13          |   171.2 s |         13.1 s | baseline reproduced (164.6 s originally)             |
+| branch, durable default |   129.3 s |         26.4 s | parallel fsync; F_FULLFSYNC serializes at the device |
+| branch `--no-fsync`     | **4.0 s** |         42.5 s | **43x; target met**                                  |
+| `cp -Rc` reference      |     2.9 s |          2.7 s | whole-tree clonefile                                 |
+| no-op re-apply, master  |    0.74 s |          1.2 s | Plan hashes all 20k files                            |
+| no-op re-apply, branch  |    0.20 s |          0.5 s | trusted-metadata plan                                |
 
 CoW option measurements:
 
@@ -187,6 +187,44 @@ CoW option measurements:
   x/sys would cut materialization wall time roughly in half again and
   reduce disk allocation ~25x — this is the measured case for the
   dependency decision.
+
+### Option (e): clonefile through libSystem with no dependency (measured 2026-11-03)
+
+`x/sys` reaches `clonefile(2)` the only supported way on darwin: a
+dynamic import of the libSystem symbol and an assembly trampoline. That
+technique needs no module: one `//go:cgo_import_dynamic libc_clonefile
+clonefile "/usr/lib/libSystem.B.dylib"` line, a `go:linkname` to
+`syscall.syscall`, and a ten-line `.s` file, all build-tagged darwin.
+Prototype: `/tmp/c4clone` (4 files, ~60 lines), built with the current
+toolchain, run on a 512 MB random file on this Mac's APFS volume:
+
+| Operation                  | Wall                             | Bytes identical |
+| -------------------------- | -------------------------------- | --------------- |
+| `clonefile` via trampoline | 0.15 ms, 0.19 ms, 0.19 ms, 10 ms | yes             |
+| `io.Copy` of the same file | 189 ms, 253 ms, 316 ms           | yes             |
+
+The demo scout's measurement on master the same day, restoring 2 GB (four
+512 MB clips) with the `cp -c` workaround: 0.48 s against 1.2 s for byte
+copies, with about a tenth of the disk. `du` reports a clone at full size
+(APFS shows logical allocation); the real cost is the `df` delta, which
+sat inside the volume's noise for the clone and at the file's size for the
+copy.
+
+What it costs: two darwin-only files in `reconcile` and the `go:linkname`
+into `syscall`, which is the same private-symbol dependence `x/sys` has
+carried since Go 1.12 and which the Go team has so far exempted from the
+linkname restrictions for exactly this use. It is not a module dependency,
+so it does not trip the zero-dependency rule on its own terms, but it is
+the first assembly and the first `linkname` in core, which is a different
+kind of cost, and Joshua decides it the same way he decides `x/sys`. The
+options as they stand:
+
+- (c) `x/sys unix.Clonefile`: one well-maintained dependency, ~3 lines.
+- (e) the trampoline above: zero dependencies, ~60 lines, assembly and a
+  linkname to maintain, Go 1.16 compatibility not yet verified on the CI
+  matrix (the technique predates 1.16; the directive forms used are the
+  ones `x/sys` shipped for 1.16).
+- Leave the stub: restore on a Mac keeps copying bytes.
 
 ## Failure modes and trade-offs
 
