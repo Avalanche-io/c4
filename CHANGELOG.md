@@ -16,7 +16,16 @@ refused, naming the fix, because objects are stored as prefix + ID and
 that URL put them beside the folder (`runsc4...`), and c4-operator
 names the same keys for the same URL. A store filled under a slashless
 prefix keeps its objects where they are; the CLI reference has the
-one-off `aws s3 mv` recipe that moves them.
+one-off `aws s3 mv` recipe that moves them. The URL's region must be a
+region name (it becomes part of a host name). `store.NoRedirects` and
+`store.ValidRegion` are exported for other S3 clients.
+
+The multipart writer: a completion is a stored object only when its reply
+is a whole result (S3 answers 200 and can still report an error in the
+body, or the connection can drop first); the start of an upload is never
+resent after a lost reply (a second upload would be left open, billed);
+every failed exit aborts the upload, panics included, and an abort that
+fails names the upload left open for a bucket lifecycle rule.
 
 The snapshot-loop surface (`design/snapshot-loop`, rounds 2–3),
 crash-verified end-to-end including streaming and SIGPIPE modes

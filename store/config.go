@@ -95,6 +95,11 @@ func openS3Configured(raw string) (*S3Store, error) {
 	if region == "" {
 		region = "us-east-1"
 	}
+	// The region becomes part of a host name (bucket.s3.REGION.amazonaws.com),
+	// so it must be a region name.
+	if !ValidRegion(region) {
+		return nil, fmt.Errorf("S3 URI region %q is not a region name", region)
+	}
 
 	endpoint := u.Query().Get("endpoint")
 	if endpoint == "" {

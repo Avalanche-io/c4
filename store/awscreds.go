@@ -239,7 +239,7 @@ func (c *Chain) stsEndpoint() (string, error) {
 	switch {
 	case region == "":
 		return "https://sts.amazonaws.com", nil
-	case !validRegion(region):
+	case !ValidRegion(region):
 		return "", fmt.Errorf("AWS region %q is not a region name", region)
 	case strings.HasPrefix(region, "cn-"):
 		return "https://sts." + region + ".amazonaws.com.cn", nil
@@ -247,9 +247,9 @@ func (c *Chain) stsEndpoint() (string, error) {
 	return "https://sts." + region + ".amazonaws.com", nil
 }
 
-// validRegion keeps a region name to what can safely become part of a
+// ValidRegion keeps a region name to what can safely become part of a
 // host name.
-func validRegion(r string) bool {
+func ValidRegion(r string) bool {
 	if r == "" {
 		return false
 	}
@@ -261,11 +261,11 @@ func validRegion(r string) bool {
 	return true
 }
 
-// noRedirects is cl (or a client with timeout) that never follows a
+// NoRedirects is cl (or a client with timeout) that never follows a
 // redirect: a 3xx is the answer. Following one would resend the web
 // identity token, a session token or a request body to wherever the
 // Location points, and would turn a PUT into a body-less GET.
-func noRedirects(cl *http.Client, timeout time.Duration) *http.Client {
+func NoRedirects(cl *http.Client, timeout time.Duration) *http.Client {
 	var c http.Client
 	if cl != nil {
 		c = *cl
@@ -305,7 +305,7 @@ func (c *Chain) webIdentity(ctx context.Context, file, role string) (Credentials
 		return Credentials{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := noRedirects(c.Client, 30*time.Second).Do(req)
+	resp, err := NoRedirects(c.Client, 30*time.Second).Do(req)
 	if err != nil {
 		return Credentials{}, fmt.Errorf("sts: %w", err)
 	}
@@ -344,7 +344,7 @@ func (c *Chain) instanceRole(ctx context.Context) (Credentials, error) {
 		base = "http://169.254.169.254"
 	}
 	base = strings.TrimSuffix(base, "/")
-	client := noRedirects(c.IMDSClient, 2*time.Second)
+	client := NoRedirects(c.IMDSClient, 2*time.Second)
 	call := func(method, path, token string) (string, error) {
 		req, err := http.NewRequestWithContext(ctx, method, base+path, nil)
 		if err != nil {
