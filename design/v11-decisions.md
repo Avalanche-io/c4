@@ -397,7 +397,7 @@ the c4-hud launch do not wait on the re-scope, and make v1.1.0 the
 version at which c4-operator joins the group (its RELEASING.md,
 install.yaml URLs and goreleaser need nothing but the tag name). Also
 c4-hud, once it has a remote: same question, same answer. Agreed with
-income 2026-10-21, with one clause for the operator's docs at v1.1.0:
+the agent fleet's lead, 2026-10-21, with one clause for the operator's docs at v1.1.0:
 the suite number is a release train; compatibility is promised per API
 (CRD version `v1alpha1`, the `submit/1` and `tool/1` schema versions),
 not by the number, which is already how the suite policy reads ("minor

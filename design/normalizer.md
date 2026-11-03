@@ -1,6 +1,6 @@
 # The normaliser: `c4 id FILE.c4m` re-derives what the file determines
 
-Status: design, 2026-11-03. Ruled by Joshua (via c4-fleet): "unless the c4
+Status: design, 2026-11-03. Ruled by Joshua: "unless the c4
 lead comes up with an issue we should have the normalizer do the tree walk
 fixes as well." One open edge below is sent back for his answer before any
 code.
@@ -8,7 +8,7 @@ code.
 ## Problem
 
 `c4 id FILE.c4m` is the documented normaliser, and today it fixes form only.
-Measured on main 2c78b64 (c4-fleet, scratch HOME `/tmp/c4rt.zHMz`):
+Measured on main 2c78b64 (scratch HOME `/tmp/c4rt.zHMz`):
 
 - **Stale derived values survive.** `nulls.c4m` lists `d/` with a stale size
   (136; the children determine 117) and a stale C4 ID. The normalised output
@@ -116,7 +116,7 @@ description.
 
 ## Tests
 
-- c4-fleet's three cases, made without hand-rolling c4m: a library scan of a
+- The three measured cases, made without hand-rolling c4m: a library scan of a
   two-file tree is the reference (`n.c4m`); the stale and nulled variants are
   produced by decoding it, mutating the `d/` entry through the c4m package,
   and encoding. Normalising each must give the reference's root ID and
