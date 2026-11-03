@@ -30,7 +30,7 @@ func TestTestVectorsAreByteStable(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		rel := filepath.ToSlash(strings.TrimPrefix(path, "testdata/"))
+		rel := strings.TrimPrefix(filepath.ToSlash(path), "testdata/")
 		if bytes.IndexByte(data, '\r') >= 0 && !strings.Contains(rel, "crlf") {
 			t.Errorf("%s carries a CR: a line-ending conversion changed its bytes (or name it *crlf* if meant)", rel)
 		}
