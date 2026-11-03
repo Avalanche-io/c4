@@ -31,7 +31,12 @@ func runID(args []string) {
 	modeFlag := fs.stringFlag("mode", 'm', "", "Detail level: s=structure, m=metadata, f=full (default), c=content projection")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Reuse guide: trust unchanged size+mtime from this c4m (racy-safe)")
 	verifyFlag := fs.boolFlag("verify", 0, false, "Re-hash everything; with -c, report changes hidden under unchanged metadata")
+	listFlag := fs.boolFlag("list", 'l', false, "List the .c4m files whose normalised text differs from their bytes; exit 1 if any")
+	diffFlag := fs.boolFlag("diff", 'd', false, "Show the diff from each .c4m file's bytes to its normalised text; exit 1 if any")
 	fs.parse(args)
+	if *listFlag || *diffFlag {
+		os.Exit(runIDCheck(fs.args, *listFlag, *diffFlag))
+	}
 
 	// -s snapshots at full detail, always. Without -q it streams the
 	// listing and closes with the claim line; -s -q is the blessed
@@ -118,6 +123,7 @@ func runID(args []string) {
 		if p == "-" {
 			// Parse stdin as a c4m description; -m projects downward.
 			m := manifestFromStdin()
+			reportNormalized("-", c4m.Normalize(m))
 			if mode == scan.ModeContent {
 				m = scan.ProjectContent(m)
 			}
@@ -134,8 +140,10 @@ func runID(args []string) {
 				fmt.Println(m.ComputeC4ID())
 				continue
 			}
+			// No trailing root ID: a c4m written from this output must
+			// not end with its own ID (a file cannot contain its own ID;
+			// Joshua, 2026-11-03). -q prints the ID alone.
 			outputManifest(m, *ergonomic)
-			fmt.Println(m.ComputeC4ID())
 			return
 		}
 
@@ -218,6 +226,9 @@ func runID(args []string) {
 				}
 				fatalf("Error loading %s: %v", p, err)
 			}
+			// Normalise: every directory with listed children is re-derived
+			// from them, so a hand edit computes to the library's own ID.
+			reportNormalized(p, c4m.Normalize(m))
 			if mode == scan.ModeContent {
 				m = scan.ProjectContent(m)
 			}
@@ -238,10 +249,11 @@ func runID(args []string) {
 				fmt.Println(m.ComputeC4ID())
 				continue
 			}
-			// Resolved FLAT canonical text closed by the root-ID
-			// validator line — the sanctioned flattener.
+			// Resolved FLAT canonical text, the sanctioned flattener. No
+			// trailing root ID: a c4m written from this output must not
+			// end with its own ID (a file cannot contain its own ID;
+			// Joshua, 2026-11-03). -q prints the ID alone.
 			outputManifest(m, *ergonomic)
-			fmt.Println(m.ComputeC4ID())
 			return
 		}
 
@@ -694,25 +706,11 @@ func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
 // The stored c4m is canonical: only direct children at depth 0, sorted.
 // This matches how directory C4 IDs are computed (one-level canonical form).
 func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Store) c4.ID {
-	children := manifest.Children(dirEntry)
-	if len(children) == 0 {
-		return c4.Identify(bytes.NewReader(nil))
-	}
-
-	sub := c4m.NewManifest()
-	for _, child := range children {
-		entryCopy := *child
-		entryCopy.Depth = 0 // Direct children at root level
-		sub.AddEntry(&entryCopy)
-	}
-
-	// Match how ComputeC4ID() works: canonicalize (propagate metadata)
-	// then produce canonical text.
-	sub.Canonicalize()
-	sub.SortEntries()
-	canonical := sub.Canonical()
+	// One derivation of a directory's identity: c4m.DirectoryRecord, the
+	// same the scanner and the normaliser use.
+	canonical, recordID := c4m.DirectoryRecord(manifest, dirEntry)
 	if canonical == "" {
-		return c4.ID{}
+		return recordID
 	}
 
 	id, err := s.Put(strings.NewReader(canonical))

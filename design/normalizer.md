@@ -1,14 +1,16 @@
 # The normaliser: `c4 id FILE.c4m` re-derives what the file determines
 
-Status: design, 2026-11-03. Ruled by Joshua (via c4-fleet): "unless the c4
-lead comes up with an issue we should have the normalizer do the tree walk
-fixes as well." One open edge below is sent back for his answer before any
-code.
+Status: built on branch `normalizer`, 2026-11-03. Ruled by Joshua: "unless the c4 lead comes up with an issue we should have the
+normalizer do the tree walk fixes as well." The open edge below was ruled
+the same day: re-derive to null, dropped and reported on stderr. No `-w`:
+stdout only; rewriting is shell composition. And, from his ruling that no
+file can contain its own ID, `c4 id FILE.c4m` no longer closes its output
+with the root-ID line; `-q` prints the ID alone.
 
 ## Problem
 
 `c4 id FILE.c4m` is the documented normaliser, and today it fixes form only.
-Measured on main 2c78b64 (c4-fleet, scratch HOME `/tmp/c4rt.zHMz`):
+Measured on main 2c78b64 (scratch HOME `/tmp/c4rt.zHMz`):
 
 - **Stale derived values survive.** `nulls.c4m` lists `d/` with a stale size
   (136; the children determine 117) and a stale C4 ID. The normalised output
@@ -90,7 +92,7 @@ arguments only:
 
 | Invocation            | Stdout                                        | Exit                               |
 | --------------------- | --------------------------------------------- | ---------------------------------- |
-| `c4 id FILE.c4m`      | the normalised text, then the root ID         | 0; 2 if the file has null leaves   |
+| `c4 id FILE.c4m`      | the normalised text (no trailing root ID)     | 0; 2 if the file has null leaves   |
 | `c4 id -l FILE...`    | the names of files whose normalised text differs from their bytes | 1 if any name was printed, else 0 |
 | `c4 id -d FILE...`    | a unified diff per differing file             | 1 if any diff was printed, else 0  |
 
@@ -116,7 +118,7 @@ description.
 
 ## Tests
 
-- c4-fleet's three cases, made without hand-rolling c4m: a library scan of a
+- The three measured cases, made without hand-rolling c4m: a library scan of a
   two-file tree is the reference (`n.c4m`); the stale and nulled variants are
   produced by decoding it, mutating the `d/` entry through the c4m package,
   and encoding. Normalising each must give the reference's root ID and
