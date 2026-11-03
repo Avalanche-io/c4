@@ -502,6 +502,13 @@ func (s *S3Store) abortMultipart(key, uploadID string) error {
 	if err == nil {
 		resp, err = s.doWithRetry(req)
 	}
+	if err == nil && resp.StatusCode == http.StatusNotFound {
+		// NoSuchUpload: it completed (a cut-off completion reply can
+		// hide a stored object) or was already removed. Nothing is left
+		// open, and the caller's own error stands.
+		resp.Body.Close()
+		return fmt.Errorf("no upload left open (upload %s of %s completed or was already removed)", uploadID, key)
+	}
 	if err == nil && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		err = fmt.Errorf("%s", parseS3Error(body, resp.StatusCode))

@@ -33,7 +33,7 @@ func (f *fakeMultipart) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(r.URL.Path, "/bucket/")
 	body, _ := io.ReadAll(r.Body)
 	switch {
-	case r.Method == http.MethodPost && q.Has("uploads"):
+	case r.Method == http.MethodPost && hasQuery(q, "uploads"):
 		atomic.AddInt32(&f.initiates, 1)
 		if f.loseInitiate {
 			hj, _ := w.(http.Hijacker)
@@ -202,3 +202,6 @@ func TestMultipartPutJoinsParts(t *testing.T) {
 		t.Fatal("a successful upload was aborted")
 	}
 }
+
+// hasQuery reports whether the query carries key (url.Values.Has is Go 1.17).
+func hasQuery(q map[string][]string, key string) bool { _, ok := q[key]; return ok }
