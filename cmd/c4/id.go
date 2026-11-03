@@ -457,6 +457,12 @@ func storeSequenceIDList(s store.Store, entry *c4m.Entry, memberIDs []c4.ID) err
 // storing a transformed copy loses the original and leaves the entry
 // naming content that is not on disk.
 func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
+	// A symlink to a directory carries the directory's ID, and the
+	// directory's own entry stores that record; the link path has no
+	// bytes of its own to store (reading it as a file is "is a directory").
+	if info, err := os.Stat(fullPath); err != nil || info.IsDir() {
+		return
+	}
 	f, err := os.Open(fullPath)
 	if err != nil {
 		return // skip files we can't open
