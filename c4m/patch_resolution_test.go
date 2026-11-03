@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 )
@@ -15,11 +16,18 @@ import (
 // through the library, with the directory aggregates nulled the way a
 // stream's base section carries them.
 func TestPatchDiffOfNullIDDirectoryWithChangedChild(t *testing.T) {
-	scan := func(x string) *Manifest {
+	// the unchanged file gets the same second in both trees with a
+	// different sub-second part, so the two scans never straddle a second
+	// by accident and always differ below the format's resolution
+	scan := func(x string, nanos int) *Manifest {
 		dir := t.TempDir()
 		os.MkdirAll(filepath.Join(dir, "d"), 0o755)
 		os.WriteFile(filepath.Join(dir, "d", "x.txt"), []byte(x), 0o644)
 		os.WriteFile(filepath.Join(dir, "a.txt"), []byte("same"), 0o644)
+		at := time.Date(2026, 1, 2, 3, 4, 5, nanos, time.UTC)
+		if err := os.Chtimes(filepath.Join(dir, "a.txt"), at, at); err != nil {
+			t.Fatal(err)
+		}
 		m := NewManifest()
 		for _, p := range []string{"a.txt", "d/", "d/x.txt"} {
 			full := filepath.Join(dir, filepath.FromSlash(strings.TrimSuffix(p, "/")))
@@ -42,8 +50,8 @@ func TestPatchDiffOfNullIDDirectoryWithChangedChild(t *testing.T) {
 		}
 		return m
 	}
-	old := scan("one")
-	new := scan("two!") // different bytes and size
+	old := scan("one", 250000000)
+	new := scan("two!", 750000000) // different bytes and size
 
 	pr := PatchDiff(old, new)
 	text, err := Marshal(pr.Patch)
