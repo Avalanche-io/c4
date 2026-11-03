@@ -386,6 +386,8 @@ c4<id-after-patch-1>
 
 Each checkpoint verifies the state after all preceding patches have been applied.
 
+A chain ends on its last section's entries. A bare ID appears only as a boundary before a patch; a c4m file never ends with a bare ID of its own resolved state, because no file can contain its own ID: a file written from a description must be the file its own C4 ID names (design/no-self-id.md, 2026-11-03).
+
 ### Encoding Patches
 
 `EncodePatch` writes a patch section: the old manifest's C4 ID as a bare line, followed by the patch entries. `PatchDiff` computes the patch between two manifests.

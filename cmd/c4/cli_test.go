@@ -138,14 +138,10 @@ func TestIDC4mNormalize(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	// Normalized output matches the original's entries. The scan stream
-	// still closes with a bare root-ID line; a c4m file's normalised
-	// form never does (a file cannot contain its own ID; the stream's
-	// closing line is under redesign). Compare the entry lines.
-	lines := strings.Split(strings.TrimSpace(out1), "\n")
-	entries := strings.Join(lines[:len(lines)-1], "\n") + "\n"
-	if entries != out2 {
-		t.Fatalf("normalize mismatch:\n  original entries: %s\n  normalized: %s", entries, out2)
+	// Normalized output matches the original: neither ends with a bare
+	// ID (no file contains its own ID).
+	if out1 != out2 {
+		t.Fatalf("normalize mismatch:\n  original: %s\n  normalized: %s", out1, out2)
 	}
 }
 

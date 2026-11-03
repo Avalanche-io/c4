@@ -40,7 +40,7 @@ func TestIDStoreSelfCapture(t *testing.T) {
 	})
 
 	// The full-form description (a chain stream). -s streams the same
-	// listing and closes with the claim line, echoed on stderr too.
+	// listing; the claim is narrated on stderr and equals -s -q.
 	manifest, _, code := runC4WithEnv(t, bin, env, "id", "-m", "f", tree)
 	if code != 0 {
 		t.Fatal("id -m f failed")
@@ -49,9 +49,12 @@ func TestIDStoreSelfCapture(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("id -s exit %d: %s", code, stderr)
 	}
-	outLines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if outLines[len(outLines)-1] != storedID(t, stderr) {
-		t.Fatalf("-s final line %q != stored: line %q", outLines[len(outLines)-1], storedID(t, stderr))
+	if stdout != manifest {
+		t.Fatalf("-s must stream exactly the listing:\n%s\nwant:\n%s", stdout, manifest)
+	}
+	qOut, _, code := runC4WithEnv(t, bin, env, "id", "-s", "-q", tree)
+	if code != 0 || strings.TrimSpace(qOut) != storedID(t, stderr) {
+		t.Fatalf("-s -q %q != stored: line %q", strings.TrimSpace(qOut), storedID(t, stderr))
 	}
 	id := storedID(t, stderr)
 
