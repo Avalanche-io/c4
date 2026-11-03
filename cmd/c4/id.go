@@ -667,6 +667,12 @@ func storeSequenceMember(s store.Store, relPath, fullPath string) {
 }
 
 func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
+	// A symlink to a directory carries the directory's ID, and the
+	// directory's own entry stores that record; the link path has no
+	// bytes of its own to store (reading it as a file is "is a directory").
+	if info, err := os.Stat(fullPath); err != nil || info.IsDir() {
+		return
+	}
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		return // skip files we can't open
