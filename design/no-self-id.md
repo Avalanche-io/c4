@@ -1,6 +1,6 @@
 # No file contains its own ID: the stream's closing line, the claim, and c4m-aware hashing
 
-Status: design, 2026-11-03, for Joshua's review through c4-fleet. Nothing
+Status: design, 2026-11-03, for Joshua's review. Nothing
 built. Supersedes draft-v9 rule 4 and part of its section 3 (see §5).
 
 ## The ruling
@@ -10,7 +10,7 @@ able to use a file's c4 id to summon that file; if the id of the file is
 appended to the file, that now is a second file with the first file's id
 at the end. These do not close the loop."
 
-Measured (c4-fleet, main, scratch HOME `/tmp/c4rt.zHMz`): a description's
+Measured on main (scratch HOME `/tmp/c4rt.zHMz`): a description's
 ID `c44voXiE…` is the byte ID of its stored canonical record, so it is a
 byte ID like any other; the chain file `c4 id dir` writes, which ends with
 that line, is `c42Q2h7j…` as bytes. Appending the ID made a different file,

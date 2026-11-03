@@ -140,10 +140,11 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 	// Build indentation
 	indent := strings.Repeat(" ", entry.Depth*e.indentWidth)
 
-	// Format mode — pretty-print uses ten dashes for null (column alignment).
+	// Format mode: null is "-" in every form; "----------" is the known
+	// zero mode and must survive a round trip.
 	var modeStr string
 	if entry.Mode == 0 {
-		modeStr = "----------" // Null mode in pretty form
+		modeStr = "-"
 	} else {
 		modeStr = formatMode(entry.Mode)
 	}

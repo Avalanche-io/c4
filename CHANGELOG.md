@@ -17,6 +17,22 @@ re-rendered before hashing, and `c4 cat ID` returns an object's bytes
 unless `-e` or `-r` asks for a rendering. The chain grammar and every
 stored record are unchanged. (Joshua, 2026-11-03; design/no-self-id.md.)
 
+### The S3 store: temporary credentials, and the prefix rule ⚠
+
+The S3 store takes the standard AWS credential chain (`store.Ambient`,
+standard library only): the environment with `AWS_SESSION_TOKEN`, then a
+web identity through STS, then, only with `instance-role=true` on the
+URL, the EC2 instance role through IMDSv2; temporary keys renew before
+they expire and the session token is sent and signed. Static keys in the
+environment work as before. c4-operator imports this chain from here.
+
+An S3 prefix must now end in "/" (or be empty): `s3://bucket/runs` is
+refused, naming the fix, because objects are stored as prefix + ID and
+that URL put them beside the folder (`runsc4...`), and c4-operator
+names the same keys for the same URL. A store filled under a slashless
+prefix keeps its objects where they are; the CLI reference has the
+one-off `aws s3 mv` recipe that moves them.
+
 The snapshot-loop surface (`design/snapshot-loop`, rounds 2–3),
 crash-verified end-to-end including streaming and SIGPIPE modes
 (`design/snapshot-loop/kill9-crucible.sh`). Breaking changes are

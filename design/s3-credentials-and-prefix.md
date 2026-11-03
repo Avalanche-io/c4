@@ -1,8 +1,8 @@
 # The CLI's S3 store: temporary credentials, and the prefix rule
 
-Status: design, 2026-11-03, for Joshua through c4-fleet. Two items raised
-by c4d's S3 work on c4-operator (branch `s3-session-creds`, note of
-08:56 in `.handoff/c4d-to-c4-fleet.md`). Nothing built.
+Status: design, 2026-11-03, for Joshua. Two items raised
+by the operator's S3 work (c4-operator branch `s3-session-creds`).
+Nothing built.
 
 ## 1. Credentials: the standard chain, in core, used by both
 
@@ -11,7 +11,7 @@ by c4d's S3 work on c4-operator (branch `s3-session-creds`, note of
 signs with a static key pair. On EC2 or EKS a user of `c4 id -s` to S3
 must mint long-lived keys, which is what those platforms exist to avoid.
 
-**c4d's chain** (`internal/storeurl/creds.go`, 411 lines, standard library
+**The operator's chain** (`internal/storeurl/creds.go`, 411 lines, standard library
 only): a `Credentials` value with `SessionToken` and `Expires`; a
 `CredentialSource` interface with `Static` and `Ambient`; `Ambient` is the
 environment (including `AWS_SESSION_TOKEN`), then a web identity
@@ -78,7 +78,7 @@ does not see them. Options:
 - B. Refuse new configurations but keep reading the legacy key as a
   fallback on miss. Hides the inconsistency it means to remove, and adds a
   second key shape forever.
-- C. Silently add the slash. Rejected by c4d for the farm, for the same
+- C. Silently add the slash. Rejected for the farm, for the same
   reason: it would make the two sides disagree about existing data.
 
 Recommendation: A. The S3 store is young, the fix is a one-line config
