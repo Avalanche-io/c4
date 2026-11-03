@@ -133,6 +133,44 @@ Joshua: "Is the problem here that we simply need to make identification and stor
 
 Recommendation: **A**, as a verb, proposed not added. It is the step the model names, it makes the three-step story true at the shell, and it costs one verb with one output that already exists as a stored object.
 
+> **Withdrawn 2026-11-03, same day (Joshua's direction, below):** the record is a store artefact that people rarely handle as a file, and `c4 cat <record ID>` already writes it when they must. No `c4 canon`.
+
 ### Retrieval under the model
 
 A user who stored a nested file (`c4 -s notes.c4m`, or the file inside a snapshotted tree) gets that exact file back with `c4 cat <file ID>`. A user who snapshotted a description (`c4 id -s dir`, `c4 id -s notes.c4m`) gets the root record with `c4 cat <description ID>` and the nested view with `c4 cat -r <description ID>`. Each ID returns the bytes it names, and the stderr line in `c4 id` tells a user holding a `.c4m` file which of its two IDs they are looking at.
+
+## Revision: the record is a store artefact (Joshua's direction, 2026-11-03)
+
+Joshua: "maybe we need an explicit file creation step that people just quickly learn not to use. The idea is you'd only use the compiled c4m format in a store most likely."
+
+**The model, restated with that.** The canonical one-level root record is the store's form of a description. Its byte ID is the description ID. People normally never hold it as a file: the store does. Every human-facing c4m file (the nested resolved listing, the aligned `-e` form, a scan's chain, a `c4 diff` chain, a hand edit) is a *view* of a record, with a file ID of its own. The three steps stand: `c4 id` compiles whatever it is given to the record and reports the record's ID (`-q`), and with `-s` puts the record, every directory's record and every file's bytes in the store; bare `c4` identifies, and with `-s` stores, bytes, whatever their name; a directory given to bare `c4` snapshots, since it has no bytes.
+
+**The explicit file-creation step already exists.** `c4 cat <description ID> > record.c4m` writes the root record from a store, byte for byte, and `c4 cat -r` writes its expansion. It needs the description to be stored first, which is the point: the record is a store artefact, and a user who wants it as a file has stored it. No `c4 canon`; the proposal above is withdrawn. The one case a store-less canonicalise would serve, comparing record bytes across implementations, is served by a temporary store in the conformance test, not by a verb.
+
+**One term everywhere.** Two candidates: *compiled* (Joshua's word: it says you do not write it by hand) and *record* (the word the store, `c4 cat -r`, the spec and the code already use for exactly this object). Recommendation: **record**, introduced once as "the record is the compiled c4m: the store's form of a description, one level, never written by hand", then *record* everywhere: help, errors, docs, `c4 explain`, c4-mcp. Two names for one object is the confusion we are removing; *record* is the one already in the codebase.
+
+**The two names, final.** *File ID*: the ID of a file's bytes. *Record ID* (the description ID): the ID of the record a description compiles to. The spec's "the ID of a description is the ID of its canonical text" becomes "is its record's ID".
+
+**The stderr line.** When `c4 id` reads a `.c4m` path whose file ID differs from its record ID, one line on stderr:
+
+    notes.c4m: file ID c42Q…; its record is c44v…
+
+A canonical one-level file prints nothing: its file ID is its record ID. Stdin and files inside a scanned tree print nothing (the verb, or the entry line, already says which ID).
+
+**How the "one ID, any starting point" page then reads.** One rule at the top: *`c4 id -q <anything>` is the record ID; `c4 <file>` is the file ID.* Then the table, one row per starting form, each with the command for the record ID and, for file forms, the command for the file ID and what `c4 cat` of each returns:
+
+| Starting form | Record ID | File ID | `c4 cat` of the record ID returns |
+| --- | --- | --- | --- |
+| a directory on disk | `c4 id -q DIR` | (none: no bytes) | the root record |
+| a stored snapshot | the ID itself | the ID itself | the root record; `-r` the whole tree |
+| the record as a file (from `c4 cat ID > f`) | `c4 id -q f` = `c4 f` | `c4 f` | the same bytes |
+| a nested or aligned c4m file | `c4 id -q f` | `c4 f` | the root record, not this file |
+| a scan's chain or a `c4 diff` chain | `c4 id -q f` | `c4 f` | the record of the resolved state |
+| a hand-edited c4m | `c4 id -q f` (normalised first) | `c4 f` | the record of what it describes |
+| a c4m on stdin | `… \| c4 id -q -` | `… \| c4` | the record |
+| a c4m inside a scanned tree | `c4 id -q path` | its entry's ID | the record |
+| an S3 store listing | `c4 cat ID` with the store configured | the ID itself | the root record |
+
+Every row's record ID is the same ID for the same description; the file IDs differ by design and each summons its own file. The conformance test asserts exactly that table, form by form, with every form made by the CLI.
+
+**The agent sentence.** "To name a description, use `c4 id -q`; to name a file, use `c4 FILE`. If you hold a `.c4m` file, `c4 id` tells you both on stderr. `c4 cat` returns what the ID you give it names: the record for a record ID, the file for a file ID."
