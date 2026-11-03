@@ -2,3 +2,5 @@
 # contracts: no EOL conversion, ever.
 c4m/testdata/chain-vector/* -text
 c4m/testdata/deepen-vector/* -text
+# c4m is LF-only by specification; never convert line endings on checkout
+*.c4m text eol=lf
