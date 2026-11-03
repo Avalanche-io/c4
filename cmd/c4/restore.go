@@ -368,5 +368,11 @@ func projectToKnowledge(built, target *c4m.Manifest) *c4m.Manifest {
 			e.C4ID = c4.ID{}
 		}
 	}
+	// Directory aggregates derive from their children's lines, which the
+	// projection just changed (a nulled timestamp shortens the line and
+	// changes the record), so every directory with listed children is
+	// re-derived from the projected children, exactly as the normaliser
+	// derives it.
+	c4m.Normalize(out)
 	return out
 }

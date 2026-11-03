@@ -91,12 +91,15 @@ func TestRestoreNullTimestampNeverOverwritesAnExistingFile(t *testing.T) {
 	}
 	env := map[string]string{"C4_STORE": storeDir, "HOME": filepath.Join(dir, "home")}
 
-	// a null-dated description of one file
+	// a null-dated description of two files, one in a subdirectory: the
+	// subdirectory's record and size derive from its child's line, which
+	// a kept date lengthens, so verification must re-derive directories
+	// after projecting (the case the fleet's lead measured)
 	src := filepath.Join(dir, "src")
-	writeTree(t, src, map[string]string{"a.txt": "alpha"})
+	writeTree(t, src, map[string]string{"a.txt": "alpha", "d/b.txt": "beta"})
 	epoch := time.Unix(0, 0).UTC()
-	for _, p := range []string{"a.txt", "."} {
-		if err := os.Chtimes(filepath.Join(src, p), epoch, epoch); err != nil {
+	for _, p := range []string{"a.txt", "d/b.txt", "d", "."} {
+		if err := os.Chtimes(filepath.Join(src, filepath.FromSlash(p)), epoch, epoch); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -109,10 +112,10 @@ func TestRestoreNullTimestampNeverOverwritesAnExistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// the same file already in the destination, dated
+	// the same files already in the destination, dated
 	dest := filepath.Join(dir, "dest")
-	writeTree(t, dest, map[string]string{"a.txt": "alpha"})
-	when := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	writeTree(t, dest, map[string]string{"a.txt": "alpha", "d/b.txt": "beta"})
+	when := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	if err := os.Chtimes(filepath.Join(dest, "a.txt"), when, when); err != nil {
 		t.Fatal(err)
 	}
