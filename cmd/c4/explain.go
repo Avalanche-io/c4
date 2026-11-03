@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/scan"
 	"github.com/Avalanche-io/c4/store"
@@ -334,39 +336,59 @@ func runExplainRestore(args []string) {
 		fmt.Println("  Already up to date — nothing to do.")
 	}
 
-	// Store availability check.
+	// Content check, as restore's own pre-flight makes it: every ID the
+	// target names must come from the store or from bytes the
+	// destination already holds, each file hashed, never matched by size
+	// and time (restore moves them). So explain never refuses what
+	// restore --force performs.
 	s, _ := store.OpenStore()
-	fmt.Println()
-	if s != nil {
-		storePath := store.DefaultStorePath()
-		// Check which target IDs need content (creates + updates).
-		var missingCount int
-		var missingSize int64
-		for path, te := range targetMap {
-			if te.IsDir() || te.C4ID.IsNil() {
-				continue
-			}
-			de, exists := destMap[path]
-			if exists && te.C4ID == de.C4ID {
-				continue // already correct
-			}
-			if !s.Has(te.C4ID) {
-				missingCount++
-				if te.Size > 0 {
-					missingSize += te.Size
+	missing := make(map[c4.ID]*c4m.Entry)
+	for path, te := range targetMap {
+		if te.IsDir() || te.C4ID.IsNil() {
+			continue
+		}
+		de, exists := destMap[path]
+		if exists && te.C4ID == de.C4ID {
+			continue // already correct
+		}
+		if s != nil && s.Has(te.C4ID) {
+			continue
+		}
+		missing[te.C4ID] = te
+	}
+	if len(missing) > 0 {
+		if info, serr := os.Stat(destArg); serr == nil && info.IsDir() {
+			held := scanDirectory(destArg, scan.ModeFull, false, false, nil, "", nil, time.Time{}, false)
+			for _, e := range held.Entries {
+				if !e.IsDir() && e.Target == "" && !e.C4ID.IsNil() {
+					delete(missing, e.C4ID)
 				}
 			}
 		}
-
-		if missingCount == 0 {
-			fmt.Printf("Store: %s (all content available)\n", storePath)
-		} else {
-			fmt.Printf("Store: %s\n", storePath)
-			fmt.Printf("Missing: %s (%s) — not in store\n",
-				pluralize(missingCount, "file"), formatBytes(missingSize))
+	}
+	var missingCount int
+	var missingSize int64
+	for _, te := range missing {
+		missingCount++
+		if te.Size > 0 {
+			missingSize += te.Size
 		}
-	} else {
+	}
+
+	fmt.Println()
+	switch {
+	case s == nil && missingCount == 0:
+		fmt.Println("Store: not configured (all content available)")
+	case s == nil:
 		fmt.Println("Store: not configured")
+	case missingCount == 0:
+		fmt.Printf("Store: %s (all content available)\n", store.DefaultStorePath())
+	default:
+		fmt.Printf("Store: %s\n", store.DefaultStorePath())
+	}
+	if missingCount > 0 {
+		fmt.Printf("Missing: %s (%s) — not in store, and not held by %s\n",
+			pluralize(missingCount, "file"), formatBytes(missingSize), destArg)
 	}
 
 	if createCount > 0 || updateCount > 0 || removeCount > 0 {
