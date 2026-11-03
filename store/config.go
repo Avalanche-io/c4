@@ -101,6 +101,13 @@ func openS3Configured(raw string) (*S3Store, error) {
 		endpoint = os.Getenv("C4_S3_ENDPOINT")
 	}
 
+	// instance-role=true is safe here because core reads URLs only from
+	// C4_STORE and ~/.c4/config, which belong to the person running the
+	// command. c4-operator must never parse a Project's URL through this
+	// function: a Project could set instance-role=true and borrow the
+	// node's role. The operator calls NewS3StoreWithCredentials with
+	// Static (the Project's Secret) or Ambient(false), and a CEL rule on
+	// the Project CRD refuses instance-role in Project URLs.
 	instanceRole := false
 	switch v := u.Query().Get("instance-role"); v {
 	case "", "false", "0", "no":

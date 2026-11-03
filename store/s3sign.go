@@ -16,10 +16,11 @@ import (
 // access key so that the four-step HMAC chain is computed at most once
 // per calendar day per key (temporary keys rotate).
 type signingKeyCache struct {
-	mu   sync.Mutex
-	date string
-	akid string
-	key  []byte
+	mu     sync.Mutex
+	date   string
+	akid   string
+	secret string // SHA-256 of the secret: a changed secret under the same key ID re-derives
+	key    []byte
 }
 
 // signRequest adds AWS Signature V4 authorization headers to req, with
@@ -90,7 +91,8 @@ func (s *S3Store) deriveKey(dateStamp string, creds Credentials) []byte {
 	s.keyCache.mu.Lock()
 	defer s.keyCache.mu.Unlock()
 
-	if s.keyCache.date == dateStamp && s.keyCache.akid == creds.AccessKeyID && s.keyCache.key != nil {
+	secretHash := hashSHA256([]byte(creds.SecretAccessKey))
+	if s.keyCache.date == dateStamp && s.keyCache.akid == creds.AccessKeyID && s.keyCache.secret == secretHash && s.keyCache.key != nil {
 		return s.keyCache.key
 	}
 
@@ -101,6 +103,7 @@ func (s *S3Store) deriveKey(dateStamp string, creds Credentials) []byte {
 
 	s.keyCache.date = dateStamp
 	s.keyCache.akid = creds.AccessKeyID
+	s.keyCache.secret = secretHash
 	s.keyCache.key = kSigning
 	return kSigning
 }

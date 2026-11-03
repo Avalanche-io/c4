@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,8 +32,9 @@ func (c Credentials) validAt(t time.Time) bool {
 	return c.ok() && (c.Expires.IsZero() || t.Before(c.Expires))
 }
 
-// String, GoString and LogValue name the key and never print the secret
-// or the token, however Credentials is formatted or logged.
+// String and GoString (and LogValue, in awscreds_slog.go for Go 1.21
+// and later) name the key and never print the secret or the token,
+// however Credentials is formatted or logged.
 func (c Credentials) String() string {
 	s := "Credentials{AccessKeyID: " + c.AccessKeyID + ", SecretAccessKey: " + redacted(c.SecretAccessKey)
 	if c.SessionToken != "" {
@@ -46,8 +46,7 @@ func (c Credentials) String() string {
 	return s + "}"
 }
 
-func (c Credentials) GoString() string     { return c.String() }
-func (c Credentials) LogValue() slog.Value { return slog.StringValue(c.String()) }
+func (c Credentials) GoString() string { return c.String() }
 
 func redacted(v string) string {
 	if v == "" {

@@ -78,11 +78,11 @@ func (c *clock) Add(d time.Duration) { c.mu.Lock(); c.t = c.t.Add(d); c.mu.Unloc
 // valid for an hour of the test's clock.
 type fakeSTS struct {
 	clk    *clock
-	calls  atomic.Int32
+	calls  int32 // atomic
 	tokens []string
 	mu     sync.Mutex
 	delay  time.Duration
-	fail   atomic.Bool
+	fail   int32 // atomic; 1 = fail
 }
 
 func (f *fakeSTS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +91,7 @@ func (f *fakeSTS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "<ErrorResponse><Error><Code>InvalidParameter</Code><Message>bad request</Message></Error></ErrorResponse>", 400)
 		return
 	}
-	if f.fail.Load() {
+	if atomic.LoadInt32(&f.fail) != 0 {
 		http.Error(w, "<ErrorResponse><Error><Code>ServiceUnavailable</Code><Message>down</Message></Error></ErrorResponse>", 503)
 		return
 	}
@@ -99,7 +99,7 @@ func (f *fakeSTS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.tokens = append(f.tokens, r.Form.Get("WebIdentityToken"))
 	f.mu.Unlock()
-	n := f.calls.Add(1)
+	n := atomic.AddInt32(&f.calls, 1)
 	exp := f.clk.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	fmt.Fprintf(w, `<AssumeRoleWithWebIdentityResponse><AssumeRoleWithWebIdentityResult><Credentials>
 <AccessKeyId>ASIA%d</AccessKeyId><SecretAccessKey>secret%d</SecretAccessKey><SessionToken>token%d</SessionToken><Expiration>%s</Expiration>
@@ -132,8 +132,8 @@ func TestAmbientWebIdentityRenews(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	clk.Add(50 * time.Minute) // 10 minutes left: still fresh
-	if got, _ := c.Retrieve(ctx); got.AccessKeyID != "ASIA1" || f.calls.Load() != 1 {
-		t.Fatalf("renewed early: %s, %d calls", got.AccessKeyID, f.calls.Load())
+	if got, _ := c.Retrieve(ctx); got.AccessKeyID != "ASIA1" || atomic.LoadInt32(&f.calls) != 1 {
+		t.Fatalf("renewed early: %s, %d calls", got.AccessKeyID, atomic.LoadInt32(&f.calls))
 	}
 	os.WriteFile(tokFile, []byte("jwt-2\n"), 0o600)
 	clk.Add(6 * time.Minute) // 4 minutes left: renewal starts, the old keys serve meanwhile
@@ -146,7 +146,7 @@ func TestAmbientWebIdentityRenews(t *testing.T) {
 	}
 
 	// STS goes down near expiry: the keys that still hold are used.
-	f.fail.Store(true)
+	atomic.StoreInt32(&f.fail, 1)
 	clk.Add(57 * time.Minute) // 3 minutes left
 	if got, err := c.Retrieve(ctx); err != nil || got.AccessKeyID != "ASIA2" {
 		t.Fatalf("lost keys that still hold: %+v %v", got, err)
@@ -159,7 +159,7 @@ func TestAmbientWebIdentityRenews(t *testing.T) {
 	if _, err := c.Retrieve(ctx); err == nil || !strings.Contains(err.Error(), "ServiceUnavailable") {
 		t.Fatalf("expired keys were used, or the error was lost: %v", err)
 	}
-	f.fail.Store(false)
+	atomic.StoreInt32(&f.fail, 0)
 	if _, err := c.Retrieve(ctx); err == nil {
 		t.Fatal("asked STS again within 10 s of a failure")
 	}
@@ -205,7 +205,7 @@ func TestAmbientRenewsOnceUnderLoad(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n := f.calls.Load(); n != 1 {
+	if n := atomic.LoadInt32(&f.calls); n != 1 {
 		t.Fatalf("%d exchanges for 64 requests", n)
 	}
 }
@@ -303,7 +303,7 @@ func TestS3StoreSurvivesExpiryMidRun(t *testing.T) {
 		rec := httptest.NewRecorder()
 		sts.ServeHTTP(rec, r)
 		// What STS issues, the bucket accepts; it forgets older keys.
-		n := sts.calls.Load()
+		n := atomic.LoadInt32(&sts.calls)
 		bucket.mu.Lock()
 		bucket.valid = map[string]string{fmt.Sprintf("ASIA%d", n): fmt.Sprintf("token%d", n)}
 		bucket.mu.Unlock()
@@ -347,7 +347,7 @@ func TestS3StoreSurvivesExpiryMidRun(t *testing.T) {
 		}
 		clk.Add(40 * time.Minute) // across two renewals in four objects
 	}
-	if n := sts.calls.Load(); n < 2 {
+	if n := atomic.LoadInt32(&sts.calls); n < 2 {
 		t.Fatalf("keys never renewed (%d exchanges)", n)
 	}
 }
@@ -355,8 +355,8 @@ func TestS3StoreSurvivesExpiryMidRun(t *testing.T) {
 // The prefix must end in "/" (or be empty), as the operator requires, so
 // both name the same keys; the error names the fix.
 func TestS3PrefixMustEndInSlash(t *testing.T) {
-	t.Setenv("AWS_ACCESS_KEY_ID", "AK")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "SK")
+	setenv(t, "AWS_ACCESS_KEY_ID", "AK")
+	setenv(t, "AWS_SECRET_ACCESS_KEY", "SK")
 	for raw, ok := range map[string]bool{
 		"s3://bucket":            true,
 		"s3://bucket/":           true,
@@ -375,8 +375,8 @@ func TestS3PrefixMustEndInSlash(t *testing.T) {
 	}
 	// a store without keys anywhere opens (the chain resolves per
 	// request), and instance-role must be a boolean
-	t.Setenv("AWS_ACCESS_KEY_ID", "")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	setenv(t, "AWS_ACCESS_KEY_ID", "")
+	setenv(t, "AWS_SECRET_ACCESS_KEY", "")
 	if _, err := openS3Configured("s3://bucket/runs/?instance-role=maybe"); err == nil {
 		t.Error("instance-role=maybe was accepted")
 	}
@@ -395,4 +395,19 @@ func TestS3PrefixMustEndInSlash(t *testing.T) {
 		t.Errorf("the instance role must be off unless asked for")
 	}
 	_ = c4.ID{}
+}
+
+// setenv sets an environment variable for the test and restores it after
+// (testing.T.Setenv needs Go 1.17; the matrix builds on 1.16).
+func setenv(t *testing.T, k, v string) {
+	t.Helper()
+	old, had := os.LookupEnv(k)
+	os.Setenv(k, v)
+	t.Cleanup(func() {
+		if had {
+			os.Setenv(k, old)
+		} else {
+			os.Unsetenv(k)
+		}
+	})
 }
