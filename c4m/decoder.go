@@ -239,10 +239,10 @@ func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 		return nil, fmt.Errorf("%w: line %d: line too short", ErrInvalidEntry, d.lineNum)
 	}
 
-	// Parse mode (handle null value "-")
+	// Parse mode: "-" is null (the zero value); every ten-character
+	// mode is known, "----------" included (ZeroMode).
 	var mode os.FileMode
-	if modeStr == "-" || modeStr == "----------" {
-		// Null mode - treat as unspecified (zero value)
+	if modeStr == "-" {
 		mode = 0
 	} else {
 		var err error
@@ -864,5 +864,6 @@ func parseMode(s string) (os.FileMode, error) {
 
 	mode |= os.FileMode(perms)
 
-	return mode, nil
+	// A ten-character mode is always known; all-zero is ZeroMode, not null.
+	return KnownMode(mode), nil
 }

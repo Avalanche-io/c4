@@ -19,9 +19,9 @@ func TestParseNullValues(t *testing.T) {
 		checkC4ID string // Use string for easier comparison
 	}{
 		{
-			name:      "null mode",
+			name:      "zero mode, ten dashes, is known and not null",
 			input:     `---------- 2024-01-01T00:00:00Z 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
-			checkMode: 0,
+			checkMode: ZeroMode,
 			checkTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			checkSize: 100,
 			checkC4ID: "c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB",
@@ -52,7 +52,7 @@ func TestParseNullValues(t *testing.T) {
 		},
 		{
 			name:      "all null values except name",
-			input:     `---------- - - file.txt -`,
+			input:     `- - - file.txt -`,
 			checkMode: 0,
 			checkTime: time.Unix(0, 0).UTC(),
 			checkSize: -1,

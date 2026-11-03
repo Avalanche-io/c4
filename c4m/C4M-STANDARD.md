@@ -160,10 +160,11 @@ file with zero permissions. It is NOT the same as null. The distinction
 matters for progressive resolution: `-` means "haven't checked yet,"
 `----------` means "checked and it's zero."
 
-**Decoder compatibility**: The decoder MUST accept `----------` as a valid
-ten-character mode (zero permissions on a regular file). It previously served
-as an ergonomic form of null mode; decoders SHOULD continue accepting it
-on input for backward compatibility.
+**Decoder behaviour**: The decoder MUST accept `----------` as a valid
+ten-character mode and MUST decode it as the known zero (zero permissions
+on a regular file), never as null. Encoders MUST write null as `-` in every
+form, pretty included; earlier encoders wrote null as `----------` in pretty
+form, which conflated the two.
 
 **Implementation note**: The decoder distinguishes single-dash null mode from
 the regular-file type indicator by checking for `- ` (dash followed by space

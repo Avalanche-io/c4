@@ -275,7 +275,7 @@ This creates a Merkle tree where each directory's identity depends on its conten
 
 ### Directory Sizes
 
-The size field for a directory is the **total size of all contents** (recursive sum of file sizes). Does not include filesystem metadata overhead.
+The size field for a directory is the **total size of all contents**: the recursive sum of file sizes, plus the byte length of each subdirectory's canonical one-level c4m record. That record is content too: it has a C4 ID and lives in the store beside the files, so a directory's size is the whole cost of everything inside it (see `design/directory-size-includes-c4m.md`). Filesystem metadata overhead is not included. A folder holding one 5-byte file therefore reads larger than 5, and its size changes when a child's metadata changes, because the child's record does.
 
 #### Nil-Infectious Propagation
 
@@ -296,6 +296,15 @@ C4M supports null values to enable progressive resolution and manual editing:
 | Size | `-` | -1 |
 | C4 ID | `-` or omitted | nil |
 | Name | (cannot be null) | — |
+
+`----------` decodes as the known zero mode and encodes back as `----------`, in canonical and pretty form alike; `-` decodes as null and encodes as `-`. A zero mode is never rewritten as null, and a null mode is never rewritten as zero.
+
+### Materializing null metadata
+
+When a description is materialized onto a filesystem (`c4 restore`, `c4 patch`, reconcile):
+
+1. **Applied to a path that already exists**, a null never overwrites the value the path has. The file keeps its timestamp and mode.
+2. **Creating a file or directory that did not exist**, a null timestamp sets the Unix epoch, which scans back as null. So a tree created from a null-dated description reads back at that description's ID: the materialization round-trips.
 
 ### Use Cases
 
