@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -814,28 +813,14 @@ func (g *Generator) canonicalDirID(children []*Entry) c4.ID {
 // listing is the empty string. The directory's ID is the hash of these
 // bytes; its size is their length.
 func canonicalListing(children []*Entry) []byte {
-	sorted := make([]*Entry, len(children))
-	copy(sorted, children)
-	sort.Slice(sorted, func(i, j int) bool {
-		iDir := strings.HasSuffix(sorted[i].Name, "/")
-		jDir := strings.HasSuffix(sorted[j].Name, "/")
-		if iDir != jDir {
-			return !iDir // files first
-		}
-		return c4m.NaturalLess(sorted[i].Name, sorted[j].Name)
-	})
-
-	var buf bytes.Buffer
-	for _, e := range sorted {
-		buf.WriteString(e.Canonical())
-		buf.WriteByte('\n')
-	}
-	return buf.Bytes()
+	text, _ := c4m.ListingRecord(children)
+	return []byte(text)
 }
 
 // canonicalListingID hashes the one-level canonical listing.
 func canonicalListingID(children []*Entry) c4.ID {
-	return c4.Identify(bytes.NewReader(canonicalListing(children)))
+	_, id := c4m.ListingRecord(children)
+	return id
 }
 
 // ProjectContent returns the content projection of a manifest: mode

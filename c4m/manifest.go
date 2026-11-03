@@ -528,6 +528,16 @@ func (m *Manifest) sortSiblingsHierarchically() {
 // subtrees do not interleave. Manifest.SortEntries produces this order;
 // scan.GenerateFromPath emits it directly.
 func PropagateMetadata(entries []*Entry) {
+	propagateMetadata(entries, false)
+}
+
+// propagateMetadata is PropagateMetadata; with deriveIDs it also sets
+// each resolved directory's C4 ID from its direct children's final
+// lines (ListingRecord), after its size and timestamp and before its
+// own line is counted into its parent, exactly as the scanner does on
+// closing a directory. Normalize uses it after clearing the aggregates
+// it wants re-derived.
+func propagateMetadata(entries []*Entry, deriveIDs bool) {
 	if len(entries) == 0 {
 		return
 	}
@@ -566,7 +576,8 @@ func PropagateMetadata(entries []*Entry) {
 	}
 	stack := make([]frame, 0, 16)
 
-	closeTop := func() {
+	// end is the index just past the directory's subtree in entries.
+	closeTop := func(end int) {
 		top := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		d := entries[top.idx]
@@ -590,6 +601,17 @@ func PropagateMetadata(entries []*Entry) {
 			default:
 				d.Timestamp = top.ts
 			}
+		}
+		// Derive the ID from the direct children, whose lines are final
+		// (deeper directories closed first).
+		if deriveIDs && top.hadChildren && d.C4ID.IsNil() {
+			var direct []*Entry
+			for _, c := range entries[top.idx+1 : end] {
+				if c.Depth == d.Depth+1 {
+					direct = append(direct, c)
+				}
+			}
+			_, d.C4ID = ListingRecord(direct)
 		}
 
 		// Propagate this directory's contribution into its parent frame.
@@ -616,7 +638,7 @@ func PropagateMetadata(entries []*Entry) {
 	for i, e := range entries {
 		// We've left every frame whose depth is >= e.Depth.
 		for len(stack) > 0 && stack[len(stack)-1].depth >= e.Depth {
-			closeTop()
+			closeTop(i)
 		}
 		if e.IsDir() {
 			stack = append(stack, frame{idx: i, depth: e.Depth})
@@ -641,7 +663,7 @@ func PropagateMetadata(entries []*Entry) {
 		p.c4mBytes += int64(len(e.Canonical())) + 1
 	}
 	for len(stack) > 0 {
-		closeTop()
+		closeTop(len(entries))
 	}
 }
 
