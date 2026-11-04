@@ -2,6 +2,64 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `c4 diff`, `c4 restore` and `c4 explain` hash every file; `-c` is the stated way to trust ⚠
+
+A directory side of `c4 diff`, the destination of `c4 restore`, and the
+destination `c4 explain restore` describes are hashed in full: a file
+whose bytes changed under the same size and mtime is a change. Before,
+all three trusted size and mtime against the other side's description,
+silently and with no racy rule, so such a change went unreported by
+diff, unplanned by restore (whose `--force` then failed its own
+verification with the changed bytes still in place), and unmentioned by
+explain. Whether to trust metadata is the caller's choice: `-c GUIDE.c4m`
+on all three applies exactly `c4 id -c`'s re-scan trust, racy rule and
+"reuse:" line included. A restore's plan reuses the pre-image scan it
+already took (for files that scan provably hashed: same size, same
+mtime, strictly older than the scan start), so the destination is read
+once.
+
+### A directory's timestamp is its own (reading A)
+
+A directory's timestamp is its modification time as observed on disk;
+the children fill it only when it is null (the spec's "Directory
+Timestamps", ruled 2026-11-03). The normaliser re-derives a listed
+directory's size and C4 ID and keeps its stated timestamp; it had
+re-derived the timestamp from the newest descendant, which made
+`c4 restore` fail its own verification on every nested tree whose
+directory time differs from its newest child's, and reported a fresh
+scan's own output as not normal. A fresh scan is normal.
+
+### Restore sets a directory's recorded time back after changing its contents
+
+Creating, moving, linking or removing an entry bumps its directory's
+mtime, so a directory that matched the target when the plan was made no
+longer matched after it ran, and a re-run planned the chtimes the first
+run should have. The plan now sets the recorded time back on every
+directory whose contents it changes, deepest first, after the children.
+
+### One source wanted at two targets
+
+A restore whose target lists one content ID at two paths, onto a folder
+holding it at one path to be removed, planned two moves from the one
+file; the second rename failed and left the folder half switched. The
+first target is a move, later targets are creates copied from the move's
+destination.
+
+### `c4 id -s` refuses without a content store
+
+With no store configured and stdin not a terminal (or the create prompt
+declined), `-s` silently scanned without storing, printed no "stored:"
+line and exited 0. It now refuses before scanning, exit 1, naming
+`C4_STORE` and the interactive way to create the default store.
+
+### Patch and diff compare at the format's resolution; a directory symlink stores nothing of its own
+
+`c4m` patch and diff compare timestamps at one-second resolution, so a
+scanned tree's sub-second times no longer put unchanged entries in a
+patch. `c4 id -s` no longer tries to store a directory symlink's
+"content" (the link carries the directory's C4 ID, whose record the
+directory's own entry stores).
+
 ### A c4m file never ends with its own ID ⚠
 
 `c4 id DIR` no longer closes its output with a bare root-ID line, and
