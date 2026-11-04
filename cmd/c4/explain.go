@@ -234,7 +234,7 @@ func runExplainPatch(args []string) {
 	// Load or scan the destination.
 	var destManifest *c4m.Manifest
 	if info, serr := os.Stat(destArg); serr == nil && info.IsDir() {
-		destManifest = guidedScan(destArg, targetManifest, scan.ModeFull)
+		destManifest = scanDest(destArg, "") // every file hashed; the target is never an implicit guide
 	} else {
 		destManifest = c4m.NewManifest()
 	}

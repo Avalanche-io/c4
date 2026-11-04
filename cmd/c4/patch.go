@@ -25,7 +25,13 @@ func runPatch(args []string) {
 	sourceFlags := fs.stringArrayFlag("source", "Additional content source paths (repeatable)")
 	noStore := fs.boolFlag("no-store", 0, false, "Skip prior-state capture and content storage")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode for directory arguments: s/m/f")
+	continueFlag := fs.stringFlag("continue", 'c', "", "Reuse guide: trust unchanged size+mtime from this c4m (default: every file is hashed)")
 	fs.parse(args)
+	// Whether to trust size and mtime is the caller's choice, stated with
+	// -c, never the default: through 1.0.23 patch trusted them silently,
+	// so a file whose bytes changed under the same size and mtime was
+	// reported "Reconciled" and left in place (2026-11-03).
+	trust := *continueFlag != ""
 
 	if len(fs.args) == 0 {
 		patchUsage()
@@ -43,7 +49,7 @@ func runPatch(args []string) {
 			fmt.Fprintf(os.Stderr, "Usage: c4 patch -r <changeset.c4m|manifest-id> <dir>\n")
 			os.Exit(1)
 		}
-		runPatchReverse(fs.args[0], fs.args[1], *storeFlag, *noStore, *dryRun, *quiet, *sourceFlags)
+		runPatchReverse(fs.args[0], fs.args[1], *storeFlag, *noStore, *dryRun, *quiet, *sourceFlags, trust)
 		return
 	}
 
@@ -51,7 +57,7 @@ func runPatch(args []string) {
 	case 1:
 		runPatchSingle(fs.args[0], mode, *n, *ergonomic, *noStore)
 	case 2:
-		runPatchPair(fs.args[0], fs.args[1], mode, *ergonomic, *dryRun, *noStore, *storeFlag, *quiet, *sourceFlags)
+		runPatchPair(fs.args[0], fs.args[1], mode, *ergonomic, *dryRun, *noStore, *storeFlag, *quiet, *sourceFlags, *continueFlag)
 	default:
 		// 3+ args: multi-file chain resolution (existing behavior).
 		runPatchChain(fs.args, *n, *ergonomic)
@@ -71,6 +77,8 @@ func patchUsage() {
 	fmt.Fprintf(os.Stderr, "  c4 patch <file.c4m>...             Multi-file chain resolution\n")
 	fmt.Fprintf(os.Stderr, "\nReconcile forms store dest's prior state before applying\n")
 	fmt.Fprintf(os.Stderr, "(revert: c4 patch -r <id> <dir>). --no-store opts out.\n")
+	fmt.Fprintf(os.Stderr, "Every file in dest is hashed; a byte change under the same size and mtime is a change.\n")
+	fmt.Fprintf(os.Stderr, "-c GUIDE.c4m trusts unchanged size+mtime from GUIDE instead (only changed files are hashed).\n")
 }
 
 // runPatchSingle handles single-argument patch.
@@ -101,7 +109,7 @@ func runPatchSingle(path string, mode scan.ScanMode, n int, ergonomic, noStore b
 }
 
 // runPatchPair handles two-argument patch with dispatch based on argument types.
-func runPatchPair(target, dest string, mode scan.ScanMode, ergonomic, dryRun, noStore, storeRemovals, quiet bool, sources []string) {
+func runPatchPair(target, dest string, mode scan.ScanMode, ergonomic, dryRun, noStore, storeRemovals, quiet bool, sources []string, guidePath string) {
 	targetIsDir := isDirectory(target)
 	destIsDir := isDirectory(dest)
 
@@ -109,12 +117,27 @@ func runPatchPair(target, dest string, mode scan.ScanMode, ergonomic, dryRun, no
 	case !targetIsDir && !destIsDir:
 		runPatchC4mToC4m(target, dest, ergonomic)
 	case !targetIsDir && destIsDir:
-		runPatchC4mToDir(target, dest, mode, dryRun, noStore, storeRemovals, quiet, sources)
+		runPatchC4mToDir(target, dest, mode, dryRun, noStore, storeRemovals, quiet, sources, guidePath)
 	case targetIsDir && !destIsDir:
 		runPatchDirToC4m(target, dest, mode, noStore)
 	default:
-		runPatchDirToDir(target, dest, mode, dryRun, noStore, storeRemovals, quiet, sources)
+		runPatchDirToDir(target, dest, mode, dryRun, noStore, storeRemovals, quiet, sources, guidePath != "")
 	}
+}
+
+// scanDest scans a patch destination for the plan: every file hashed,
+// unless the caller named a guide with -c, in which case a file whose
+// size and mtime equal the guide's entry reuses the guide's C4 ID
+// without being read (guidedScan), by the caller's stated choice.
+func scanDest(dirPath, guidePath string) *c4m.Manifest {
+	if guidePath == "" {
+		return scanDirectory(dirPath, scan.ModeFull, false, false, nil, "", nil)
+	}
+	guide, err := loadManifest(guidePath)
+	if err != nil {
+		fatalf("Error loading guide %s: %v", guidePath, err)
+	}
+	return guidedScan(dirPath, guide, scan.ModeFull)
 }
 
 // runPatchC4mToC4m resolves the target manifest and writes it to dest.
@@ -140,13 +163,15 @@ func runPatchC4mToC4m(target, dest string, ergonomic bool) {
 
 // runPatchC4mToDir reconciles a directory to match a c4m target state.
 // Outputs the computed diff to stdout.
-func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet bool, sources []string) {
+func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet bool, sources []string, guidePath string) {
 	targetManifest := resolveC4m(target)
 
-	// Scan current state using target as a guide — only hash changed files.
+	// Scan the current state: every file hashed, or the -c guide's
+	// re-scan trust. The target is never an implicit guide: trusting its
+	// sizes and times hid a same-size, same-mtime byte change.
 	var currentManifest *c4m.Manifest
 	if info, err := os.Stat(dirPath); err == nil && info.IsDir() {
-		currentManifest = guidedScan(dirPath, targetManifest, scan.ModeFull)
+		currentManifest = scanDest(dirPath, guidePath)
 	} else {
 		currentManifest = c4m.NewManifest()
 	}
@@ -168,10 +193,10 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 		}
 	}
 
-	// Build content sources. Plan trusts size+mtime matches, consistent
-	// with the guided scan above.
+	// Build content sources. The plan trusts size+mtime only when -c
+	// asked for it, consistent with the scan above.
 	var opts []reconcile.Option
-	opts = append(opts, reconcile.WithTrustedMetadata(true))
+	opts = append(opts, reconcile.WithTrustedMetadata(guidePath != ""))
 	opts = append(opts, reconcile.WithSyncMode(store.SyncBatch))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(currentManifest, dirPath)))
 
@@ -243,7 +268,7 @@ func runPatchDirToC4m(dirPath, destPath string, mode scan.ScanMode, noStore bool
 
 // runPatchDirToDir scans source directory and reconciles dest to match.
 // Outputs the computed diff to stdout.
-func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet bool, sources []string) {
+func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStore, storeRemovals, quiet bool, sources []string, trust bool) {
 	shouldStore := !noStore && mode == scan.ModeFull
 	targetManifest := scanDirectory(srcDir, mode, false, shouldStore, nil, "", nil)
 
@@ -271,7 +296,7 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 	}
 
 	var opts []reconcile.Option
-	opts = append(opts, reconcile.WithTrustedMetadata(true))
+	opts = append(opts, reconcile.WithTrustedMetadata(trust))
 	opts = append(opts, reconcile.WithSyncMode(store.SyncBatch))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(targetManifest, srcDir)))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(destManifest, destDir)))
@@ -406,7 +431,7 @@ func opName(op reconcile.Op) string {
 // runPatchReverse reverts a directory to a stored prior state. The first
 // argument is either a changeset file — its first bare C4 ID (OldID) names
 // the prior state — or the manifest ID printed by "prior state stored".
-func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun, quiet bool, sources []string) {
+func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun, quiet bool, sources []string, trust bool) {
 	if !isDirectory(dirPath) {
 		fatalf("Error: %s is not a directory", dirPath)
 	}
@@ -484,7 +509,7 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 
 	// Build content sources and reconcile.
 	var opts []reconcile.Option
-	opts = append(opts, reconcile.WithTrustedMetadata(true))
+	opts = append(opts, reconcile.WithTrustedMetadata(trust))
 	opts = append(opts, reconcile.WithSyncMode(store.SyncBatch))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(currentManifest, dirPath)))
 	opts = append(opts, reconcile.WithSource(s))
