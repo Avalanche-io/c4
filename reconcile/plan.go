@@ -260,6 +260,69 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	}
 	removes = filteredRemoves
 
+	// 5b. A directory whose contents this plan changes gets its recorded
+	//     mtime set back afterwards, whether or not its own mtime differs
+	//     now: creating (temp file plus rename), moving, linking or
+	//     removing an entry bumps the parent's mtime on every platform, so
+	//     a directory that matched the target at plan time no longer
+	//     matches after Apply, and a re-run then plans the chtimes it
+	//     should have planned the first time. Apply runs directory
+	//     chtimes in a post-pass, deepest first, after the children.
+	//     (2026-11-03: a changed file inside a subdirectory failed
+	//     restore's verification on every run.)
+	hasChtimes := make(map[string]bool, len(chtimes))
+	for _, op := range chtimes {
+		hasChtimes[op.Path] = true
+	}
+	touched := make(map[string]bool)
+	noteParents := func(p string) {
+		for d := filepath.Dir(p); len(d) > len(dirPath); d = filepath.Dir(d) {
+			touched[d] = true
+		}
+	}
+	for _, op := range creates {
+		noteParents(op.Path)
+	}
+	for _, op := range moves {
+		noteParents(op.Path)
+		noteParents(op.SrcPath)
+	}
+	for _, op := range symlinks {
+		noteParents(op.Path)
+	}
+	for _, op := range removes {
+		noteParents(op.Path)
+	}
+	for _, op := range mkdirs {
+		noteParents(op.Path)
+	}
+	for _, op := range rmdirs {
+		noteParents(op.Path)
+	}
+	touchedDirs := make([]string, 0, len(touched))
+	for d := range touched {
+		touchedDirs = append(touchedDirs, d)
+	}
+	sort.Strings(touchedDirs) // byte-identical plans at any concurrency
+	for _, abs := range touchedDirs {
+		if hasChtimes[abs] {
+			continue
+		}
+		rel, err := filepath.Rel(dirPath, abs)
+		if err != nil {
+			continue
+		}
+		entry := targetPaths[filepath.ToSlash(rel)+"/"]
+		if entry == nil || entry.Timestamp.Equal(c4m.NullTimestamp()) {
+			continue // not described, or no time recorded: the platform's time stands
+		}
+		chtimes = append(chtimes, Operation{
+			Type:  OpChtimes,
+			Path:  abs,
+			Entry: entry,
+		})
+	}
+
 	// 6. Content availability check.
 	var missingIDs []c4.ID
 	for id := range needsContent {
