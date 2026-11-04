@@ -57,9 +57,13 @@ func runID(args []string) {
 
 	// If -s is requested, ensure the store is configured before scanning.
 	// This prompts the user immediately rather than after a long scan.
+	// Without a store, -s refuses: through 1.0.23 it silently fell back
+	// to a plain scan when stdin was not a terminal (or the prompt was
+	// declined), printing no "stored:" line and exiting 0, so a script
+	// believed its content was stored when nothing was.
 	if shouldStore {
 		if s := getOrSetupStore(); s == nil {
-			shouldStore = false
+			fatalf("Error: -s needs a content store and none is configured: set C4_STORE=/path/to/store or s3://bucket/prefix, or run c4 id -s in a terminal to create %s", store.DefaultStorePath())
 		}
 	}
 
