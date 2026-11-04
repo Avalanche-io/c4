@@ -91,7 +91,9 @@ func runRestore(args []string) {
 	// carry exactly the bytes the target names. Under --force this scan is
 	// the pre-image, so the destination is hashed once.
 	var destScan *c4m.Manifest
+	var destScanStart time.Time
 	if len(missing) > 0 && destExists {
+		destScanStart = time.Now().UTC()
 		destScan = scanDirectory(destArg, scan.ModeFull, false, false, nil, "", nil, time.Time{}, false)
 		held := make(map[c4.ID]bool)
 		for _, e := range destScan.Entries {
@@ -134,6 +136,7 @@ func runRestore(args []string) {
 		// One scan serves the printed patch and the plan: every file
 		// hashed unless -c names a guide.
 		var current *c4m.Manifest
+		scanStart := time.Now().UTC()
 		if destExists {
 			current = scanForCompare(destArg, level, *continueFlag)
 		} else {
@@ -146,7 +149,7 @@ func runRestore(args []string) {
 		}
 		fmt.Println(diff.NewID)
 
-		plan := planRestore(s, target, destArg, current, *continueFlag != "")
+		plan := planRestore(s, target, destArg, current, scanStart, *continueFlag != "")
 		fmt.Fprintf(os.Stderr, "dry run: %d operations planned for %s (use --force to apply)\n",
 			len(plan.Operations), destArg)
 		for _, op := range plan.Operations {
@@ -161,9 +164,11 @@ func runRestore(args []string) {
 	// pre-image is the empty description constant.
 	preStart := time.Now().UTC()
 	var preManifest *c4m.Manifest
+	preScanStart := preStart // when the pre-image's files were hashed
 	switch {
 	case destScan != nil:
 		preManifest = destScan
+		preScanStart = destScanStart
 	case destExists:
 		preManifest = scanDirectory(destArg, scan.ModeFull, false, false, nil, "", nil, time.Time{}, false)
 	default:
@@ -193,10 +198,11 @@ func runRestore(args []string) {
 	fmt.Println(preID) // line 1: printed only after the journaled barrier above
 
 	// Reconcile to the target, pulling content from the store. The plan
-	// is made from the pre-image scan just taken (every file hashed),
-	// not from a metadata match against the target.
-	plan := planRestore(s, target, destArg, preManifest, *continueFlag != "")
-	r := restoreReconciler(s, preManifest, destArg, *continueFlag != "")
+	// is made from the pre-image scan just taken (every file hashed):
+	// its C4 IDs are the plan's current state, so the destination is
+	// read once, and a file written since that scan is rehashed.
+	plan := planRestore(s, target, destArg, preManifest, preScanStart, *continueFlag != "")
+	r := restoreReconciler(s, preManifest, preScanStart, destArg, *continueFlag != "")
 	result, err := r.Apply(plan, destArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error applying restore: %v\n", err)
@@ -287,11 +293,11 @@ func isContentLevel(m *c4m.Manifest) bool {
 // mtime by default, so a same-size, same-mtime byte change planned no
 // operation, and --force then failed its own verification with the
 // changed bytes still in place.
-func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.Manifest, trust bool) *reconcile.Plan {
+func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.Manifest, scanStart time.Time, trust bool) *reconcile.Plan {
 	if current == nil {
 		current = c4m.NewManifest()
 	}
-	r := restoreReconciler(s, current, dest, trust)
+	r := restoreReconciler(s, current, scanStart, dest, trust)
 	plan, err := r.Plan(target, dest)
 	if err != nil {
 		fatalf("Error planning restore: %v", err)
@@ -299,8 +305,12 @@ func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.
 	return plan
 }
 
-func restoreReconciler(s store.Store, current *c4m.Manifest, dest string, trust bool) *reconcile.Reconciler {
+// restoreReconciler plans and applies against current, the caller's own
+// hashed scan of dest started at scanStart: the plan reuses its IDs for
+// files that scan provably hashed and reads nothing twice.
+func restoreReconciler(s store.Store, current *c4m.Manifest, scanStart time.Time, dest string, trust bool) *reconcile.Reconciler {
 	return reconcile.New(
+		reconcile.WithKnownState(current, scanStart),
 		reconcile.WithTrustedMetadata(trust),
 		reconcile.WithSyncMode(store.SyncBatch),
 		reconcile.WithSource(reconcile.NewDirSource(current, dest)),

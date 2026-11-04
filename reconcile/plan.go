@@ -47,6 +47,11 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 
 			// Compute C4 ID for regular files.
 			if info.Mode().IsRegular() && info.Size() >= 0 {
+				if id, ok := r.knownID(rel, info); ok {
+					currentIDs[rel] = id
+					idToCurrentPaths[id] = append(idToCurrentPaths[id], rel)
+					return nil
+				}
 				if id, ok := r.trustedID(targetPaths[rel], info); ok {
 					currentIDs[rel] = id
 					idToCurrentPaths[id] = append(idToCurrentPaths[id], rel)
@@ -319,6 +324,26 @@ func (r *Reconciler) trustedID(e *c4m.Entry, info os.FileInfo) (c4.ID, bool) {
 		return c4.ID{}, false
 	}
 	if !info.ModTime().UTC().Truncate(time.Second).Equal(e.Timestamp.UTC().Truncate(time.Second)) {
+		return c4.ID{}, false
+	}
+	return e.C4ID, true
+}
+
+// knownID returns the C4 ID the caller's own scan (WithKnownState)
+// recorded for a file, when the file is provably the one that scan
+// hashed: same size, same mtime, and an mtime strictly older than the
+// scan's start at second precision, so a write during or after the scan
+// (within the filesystem's timestamp granularity) is always rehashed.
+func (r *Reconciler) knownID(rel string, info os.FileInfo) (c4.ID, bool) {
+	e := r.known[rel]
+	if e == nil || e.C4ID.IsNil() || e.IsDir() || e.IsSymlink() || e.Size != info.Size() {
+		return c4.ID{}, false
+	}
+	if e.Timestamp.Equal(c4m.NullTimestamp()) {
+		return c4.ID{}, false
+	}
+	mtime := info.ModTime().UTC().Truncate(time.Second)
+	if !mtime.Equal(e.Timestamp.UTC().Truncate(time.Second)) || !mtime.Before(r.knownStart.Truncate(time.Second)) {
 		return c4.ID{}, false
 	}
 	return e.C4ID, true

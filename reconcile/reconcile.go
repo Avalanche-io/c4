@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -160,11 +161,13 @@ type Saver interface {
 type Reconciler struct {
 	sources        []ContentSource
 	dryRun         bool
-	storeRemovals  Saver          // if set, store content before removing files
-	syncMode       store.SyncMode // created-file durability (default SyncEach)
-	wroteFiles     bool           // any create executed; gates the batch barrier
-	maxConcurrency int            // Apply worker cap: 0 = auto, 1 = sequential
-	trustMetadata  bool           // Plan may reuse target IDs on size+mtime match
+	storeRemovals  Saver                 // if set, store content before removing files
+	syncMode       store.SyncMode        // created-file durability (default SyncEach)
+	wroteFiles     bool                  // any create executed; gates the batch barrier
+	maxConcurrency int                   // Apply worker cap: 0 = auto, 1 = sequential
+	trustMetadata  bool                  // Plan may reuse target IDs on size+mtime match
+	known          map[string]*c4m.Entry // the caller's own hashed scan of the directory, by relative path
+	knownStart     time.Time             // when that scan started; files not strictly older are rehashed
 }
 
 // Option configures a Reconciler.
@@ -222,6 +225,25 @@ func WithMaxConcurrency(n int) Option {
 func WithTrustedMetadata(v bool) Option {
 	return func(r *Reconciler) {
 		r.trustMetadata = v
+	}
+}
+
+// WithKnownState gives Plan the caller's own scan of the directory, taken
+// at scanStart with every file hashed, so Plan reads no file twice. A
+// regular file reuses the scan's C4 ID when its size and mtime equal the
+// scan entry's and its mtime is strictly older than scanStart (second
+// precision, c4 id -c's racy rule); any other file is hashed. Unlike
+// WithTrustedMetadata, what is trusted is a scan of this directory taken
+// moments ago by the caller, not a description from the past: restore's
+// pre-image scan already hashed every byte, and the plan reuses that
+// work instead of repeating it.
+func WithKnownState(m *c4m.Manifest, scanStart time.Time) Option {
+	return func(r *Reconciler) {
+		if m == nil {
+			return
+		}
+		r.known = c4m.EntryPaths(m.Entries)
+		r.knownStart = scanStart.UTC()
 	}
 }
 
