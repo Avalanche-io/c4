@@ -158,30 +158,32 @@ c4py already computed. Conformance vectors:
 `c4m/testdata/natural_sort_vectors.json`, shared with c4py and c4ts
 (whose double-precision parse lost digits past 16).
 
-### ⚠ Streaming chain output; the final line is the root ID
+### ⚠ Streaming chain output, and `-s`
 
 `c4 id` streams its description as a valid c4m chain: entries in
 canonical pre-order with directory lines carrying null ID/size
-(bottom-up aggregates, unknown as the line passes), one refinement
-patch filling them in, and the resolved root ID on a bare final line
-— the closing validator, consumer-verified. Every listing-emitting
-invocation (directory, `.c4m` file, stdin) that exits 0 or 2 ends
-with the root ID; a single regular-file argument emits one entry line
-and no trailing line. A killed scan leaves a valid partial
-description. `-e` implies buffered aligned output, still closed by an
-unpadded root-ID line. Without `-q`, id takes ONE path per invocation.
+(bottom-up aggregates, unknown as the line passes), one boundary ID
+naming that base state, and one refinement patch filling the
+aggregates in. The chain ends on the patch's last entry; a flat tree
+is the base alone, with no bare ID at all (see "A c4m file never ends
+with its own ID", above). A single regular-file argument emits one
+entry line. A killed scan leaves a valid partial description. `-e`
+implies buffered aligned output. Without `-q`, id takes ONE path per
+invocation. The description's ID is `c4 id -q`; piping the stream
+through `c4 id -q -` gives the same ID, and `c4 id DIR | c4` the ID of
+exactly the bytes piped.
 
-### ⚠ `-s` streams; the claim is the final line
-
-`c4 id -s` streams the same bytes while snapshotting; the final
-root-ID line is THE CLAIM, printed only after content is durable and
-the journal append is fsynced. Entry lines above it are description,
-never claims ("a printed CLAIM never dangles"). The blessed script
-capture is `SNAP=$(c4 id -s -q dir/)` — one line, nothing else. A
-dying stdout (closed pipe) never cancels a snapshot: ingest and
-journal complete, id exits 1, `c4 log` holds the claim. Partial scans
-(unreadable entries, unreadable directories included) record nulls,
-continue, and exit 2 with the claim line printed and true.
+`c4 id -s` streams the same bytes while snapshotting. The claim is
+`c4 id -s -q`'s one ID line, printed only after content is durable and
+the journal append is fsynced ("a printed CLAIM never dangles"); the
+blessed script capture is `SNAP=$(c4 id -s -q dir/)`. Without `-q`,
+`-s` streams the description and narrates `stored: <ID>` on stderr
+after the barrier; entry lines are description, never claims, and
+`c4 log` holds every claim either way. A dying stdout (closed pipe)
+never cancels a snapshot: ingest and journal complete, id exits 1,
+`c4 log` holds the claim. Partial scans (unreadable entries, unreadable
+directories included) record nulls, continue, and exit 2 with the
+claim printed and true.
 
 ### ⚠ The store journal is its own format
 
