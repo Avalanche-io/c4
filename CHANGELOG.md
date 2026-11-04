@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+### `c4 patch` hashes every file; `-c GUIDE.c4m` is the stated way to trust size and mtime
+
+`c4 patch <c4m> <dir>`, `c4 patch <dir> <dir>`, `c4 patch -r` and
+`c4 explain patch` hash every file in the destination for the plan: a
+file whose bytes changed under the same size and mtime is a change.
+Through v1.0.23 they scanned the destination with the target as an
+implicit guide and planned with trusted metadata, so such a change was
+reported "Reconciled" and left in place. Trust is the caller's choice,
+stated out loud: `-c GUIDE.c4m` reuses the guide's C4 ID for a file
+whose size and mtime equal the guide's entry, and plans with trusted
+metadata. `c4 diff` already hashed in full mode and is unchanged. A
+patch that only needs trust for speed on a trusted filesystem adds `-c`;
+everything else is unchanged in meaning and gets the hashing it was
+documented to do.
+
+### A directory's recorded time is set back after its contents change
+
+Creating, moving, linking or removing an entry bumps its directory's
+mtime, so a directory that matched the target when the plan was made no
+longer matched after it ran, and a re-run planned the chtimes the first
+run should have. The plan now sets the recorded time back on every
+directory whose contents it changes, deepest first, after the children.
+
+### `c4 id -s` refuses without a content store
+
+With no store configured and stdin not a terminal (or the create prompt
+declined), `-s` silently scanned without storing, printed no "stored:"
+line and exited 0. It now refuses before scanning, exit 1, naming
+`C4_STORE` and the interactive way to create the default store.
+`c4 patch` without a store still warns that the prior state is not
+captured and proceeds.
+
 ## v1.0.23
 
 Same-day supersede of v1.0.22, whose tag carries this same code but a
