@@ -19,16 +19,17 @@ func runDiff(args []string) {
 	fs := newFlags("diff")
 	fs.help(diffHelp)
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Column-aligned output")
+	continueFlag := fs.stringFlag("continue", 'c', "", "Reuse guide: trust unchanged size+mtime from this c4m (racy-safe)")
 	fs.parse(args)
 
 	if len(fs.args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 diff [-e] <old> <new>\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 diff [-e] [-c GUIDE.c4m] <old> <new>\n")
 		fmt.Fprintf(os.Stderr, "\nProduce a c4m diff (patch). Sides: directories, c4m files, or store IDs.\n")
 		os.Exit(1)
 	}
 
 	oldArg, newArg := fs.args[0], fs.args[1]
-	oldManifest, newManifest := smartResolve(oldArg, newArg)
+	oldManifest, newManifest := smartResolve(oldArg, newArg, *continueFlag)
 	outputDiff(oldManifest, newManifest, *ergonomic)
 }
 
@@ -66,9 +67,9 @@ func descLevel(m *c4m.Manifest) scan.ScanMode {
 }
 
 // smartResolve loads both sides. A directory scans at the other side's
-// level when that side is a description (using it as a guide so only
-// changed files rehash), at content level otherwise.
-func smartResolve(oldArg, newArg string) (*c4m.Manifest, *c4m.Manifest) {
+// level when that side is a description, at content level otherwise.
+// Every file is hashed; a guide named with -c applies re-scan trust.
+func smartResolve(oldArg, newArg, guidePath string) (*c4m.Manifest, *c4m.Manifest) {
 	oldIsDir := isDirectory(oldArg)
 	newIsDir := isDirectory(newArg)
 
@@ -93,15 +94,11 @@ func smartResolve(oldArg, newArg string) (*c4m.Manifest, *c4m.Manifest) {
 		ref = resolveDiffSide(oldArg)
 		dirPath = newArg
 	}
-	// A full-form description guides the scan (unchanged size+mtime
-	// reuse its IDs); a content-form one records no timestamps to
-	// trust, so the directory hashes in full at content level.
-	var dirManifest *c4m.Manifest
-	if level := descLevel(ref); level == scan.ModeContent {
-		dirManifest = resolveManifestOrDir(dirPath, scan.ModeContent)
-	} else {
-		dirManifest = guidedScan(dirPath, ref, level)
-	}
+	// The description sets the level; the directory is hashed in full at
+	// that level. The other side is never an implicit guide: trusting
+	// its sizes and times hid a same-size, same-mtime byte change
+	// (2026-11-03). -c names a guide out loud.
+	dirManifest := scanForCompare(dirPath, descLevel(ref), guidePath)
 
 	if oldIsDir {
 		return dirManifest, ref

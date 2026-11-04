@@ -260,6 +260,11 @@ const restoreHelp = `C4-RESTORE(1) - make a directory match a description, undo-
 SYNOPSIS
     c4 restore <target> <dir>              (dry run: print the plan)
     c4 restore --force <target> <dir>      (snapshot dir, then apply)
+    -c GUIDE.c4m  reuse guide: trust unchanged size+mtime from this description, by the
+                  same racy-safe rule as c4 id -c (RE-SCAN TRUST in c4 id --help). Without
+                  it every file in <dir> is hashed, for the plan and for the pre-image: a
+                  byte change that kept its size and mtime is still a change. Whether to
+                  trust metadata is the caller's choice, never the default.
 
     target  a store-resolved C4 ID (snapshot, content, or any stored listing ID), optionally
             /path descending by entry name (c4-cat(1) PATHS; must land on a directory entry -
@@ -431,13 +436,18 @@ RETENTION
 
 const diffHelp = `C4-DIFF(1) - compare two states; emit a c4m patch
 SYNOPSIS
-    c4 diff [-e] <old> <new>
+    c4 diff [-e] [-c GUIDE.c4m] <old> <new>
 DESCRIPTION
     diff compares two states - directories, c4m files, or store IDs (ID/path allowed; the
     resolved object must be a listing) - and emits a c4m patch on stdout; directories scan at
     content level, or at the other side's level when that side is a description, folding
     exactly what it folds. Equal states emit nothing. c4 diff <SNAP> <dir> right after a
     snapshot shows everything the snapshot left out.
+
+    A directory side is hashed in full: a file whose bytes changed under the same size and
+    mtime is a change. -c GUIDE.c4m reuses the guide's IDs for unchanged size+mtime by the
+    same racy-safe rule as c4 id -c (RE-SCAN TRUST in c4 id --help); the other side is never
+    an implicit guide. Trusting metadata is the caller's choice, never the default.
 `
 
 const patchHelp = `C4-PATCH(1) - resolve patch chains to c4m text

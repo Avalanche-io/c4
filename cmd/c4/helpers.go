@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -115,69 +114,30 @@ func isDirectory(path string) bool {
 	return info.IsDir()
 }
 
-// guidedScan scans a directory using a reference manifest to avoid rehashing
-// unchanged files. Files with matching size and timestamp get their C4 ID
-// from the reference. Only files with changed metadata are hashed.
-func guidedScan(dirPath string, ref *c4m.Manifest, mode scan.ScanMode) *c4m.Manifest {
-	refPaths := c4m.EntryPaths(ref.Entries)
-
-	// Scan in metadata mode (fast — no hashing).
-	gen := scan.NewGeneratorWithOptions(scan.WithMode(scan.ModeMetadata))
-	metaManifest, err := gen.GenerateFromPath(dirPath)
-	if err != nil {
-		fatalf("Error scanning %s: %v", dirPath, err)
+// scanForCompare scans a directory for diff, restore and explain. Every
+// file is hashed, unless the caller names a guide with -c: then the scan
+// applies exactly c4 id -c's re-scan trust (RE-SCAN TRUST in c4 id
+// --help), stated out loud and racy-safe, with one implementation.
+//
+// Until 2026-11-03 these verbs trusted size and mtime silently, against
+// the other side's description, with no racy rule: a file whose bytes
+// changed but whose size and mtime did not went undetected by c4 diff,
+// and c4 restore planned nothing for it, then failed its own
+// verification and left the changed bytes in place. Whether to trust
+// metadata is the client's choice (Joshua: trusted HPC versus exchanges
+// between untrusted parties); it is never the silent default.
+func scanForCompare(dirPath string, mode scan.ScanMode, guidePath string) *c4m.Manifest {
+	var guide *c4m.Manifest
+	var guideStart time.Time
+	if guidePath != "" {
+		var err error
+		guide, err = loadManifest(guidePath)
+		if err != nil {
+			fatalf("Error loading guide %s: %v", guidePath, err)
+		}
+		guideStart = resolveGuideScanStart(guidePath, guide)
 	}
-
-	scanPaths := c4m.EntryPaths(metaManifest.Entries)
-
-	// For each entry, use the reference C4 ID if metadata matches,
-	// otherwise hash the file.
-	changed := make(map[string]bool) // track paths that changed
-	for path, entry := range scanPaths {
-		if entry.IsDir() {
-			continue
-		}
-		refEntry, ok := refPaths[path]
-		// Compare timestamps at second precision — c4m truncates to seconds.
-		if ok && !refEntry.C4ID.IsNil() &&
-			entry.Size == refEntry.Size &&
-			entry.Timestamp.Truncate(time.Second).Equal(refEntry.Timestamp.Truncate(time.Second)) {
-			entry.C4ID = refEntry.C4ID
-		} else if mode == scan.ModeFull {
-			fullPath := filepath.Join(dirPath, filepath.FromSlash(path))
-			f, err := os.Open(fullPath)
-			if err != nil {
-				continue
-			}
-			entry.C4ID = c4.Identify(f)
-			f.Close()
-			changed[path] = true
-		} else {
-			changed[path] = true
-		}
-	}
-
-	// If nothing changed and the entry sets are identical, the scanned
-	// manifest is equivalent to the reference. Return the reference to
-	// preserve directory C4 IDs and canonical structure.
-	if len(changed) == 0 {
-		sameEntries := true
-		if len(scanPaths) != len(refPaths) {
-			sameEntries = false
-		} else {
-			for p := range scanPaths {
-				if _, ok := refPaths[p]; !ok {
-					sameEntries = false
-					break
-				}
-			}
-		}
-		if sameEntries {
-			return ref
-		}
-	}
-
-	return metaManifest
+	return scanDirectory(dirPath, mode, false, false, nil, "", guide, guideStart, false)
 }
 
 // tryParseC4m attempts to parse data as a c4m file.

@@ -111,7 +111,7 @@ func runExplainDiff(args []string) {
 	}
 
 	oldArg, newArg := fs.args[0], fs.args[1]
-	oldManifest, newManifest := smartResolve(oldArg, newArg)
+	oldManifest, newManifest := smartResolve(oldArg, newArg, "")
 
 	oldFiles, _, _ := manifestStats(oldManifest)
 	newFiles, _, _ := manifestStats(newManifest)
@@ -243,10 +243,11 @@ func runExplainPatch(args []string) {
 // runExplainRestore shows a human-readable restore plan.
 func runExplainRestore(args []string) {
 	fs := newFlags("explain restore")
+	continueFlag := fs.stringFlag("continue", 'c', "", "Reuse guide: trust unchanged size+mtime from this c4m (racy-safe)")
 	fs.parse(args)
 
 	if len(fs.args) == 0 || len(fs.args) > 2 {
-		fmt.Fprintf(os.Stderr, "Usage: c4 explain restore <target> [<dest>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: c4 explain restore [-c GUIDE.c4m] <target> [<dest>]\n")
 		os.Exit(1)
 	}
 
@@ -269,7 +270,7 @@ func runExplainRestore(args []string) {
 	// Load or scan the destination.
 	var destManifest *c4m.Manifest
 	if info, serr := os.Stat(destArg); serr == nil && info.IsDir() {
-		destManifest = guidedScan(destArg, targetManifest, scan.ModeFull)
+		destManifest = scanForCompare(destArg, scan.ModeFull, *continueFlag)
 	} else {
 		destManifest = c4m.NewManifest()
 	}
