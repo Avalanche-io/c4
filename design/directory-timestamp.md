@@ -1,9 +1,14 @@
 # A directory's timestamp: its own mtime, or its newest descendant's?
 
-Status: format question for Joshua, 2026-11-03. Two readings exist in the
-spec and the code, and they disagree on master today. This note names the
-scope in which each is right, which code follows which, what breaks, and
-the minimal fix under each reading. It picks nothing.
+Status: ruled A, 2026-11-03. Joshua: a directory's timestamp is its own
+mtime as observed on disk, and children fill it only when it is null. The
+normaliser keeps a stated directory timestamp and fills only nulls, as
+PropagateMetadata already did; SPECIFICATION.md "Directory Timestamps"
+stands as written; PropagateMetadata's doc comment and `normalizer.md`
+rule 1 are corrected in place. The note below is the question as it was
+put, kept for the record: it names the scope in which each reading is
+right, which code followed which, what broke, and the minimal fix under
+each. The fix under A is what shipped.
 
 ## The defect that exposed it
 

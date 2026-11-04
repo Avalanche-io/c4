@@ -30,11 +30,20 @@ library's ID, as `gofmt` turns any spacing into the one canonical form.
 
 When `c4 id` is given a c4m file (or `-`), after resolving the chain:
 
-1. **Every directory whose children are listed is re-derived.** Its size,
-   timestamp and C4 ID are computed from the listed children by the
-   library's rules (below), filling nulls and replacing stale values alike.
-   The listed children *are* the directory's definition; a stated aggregate
-   that disagrees with them is wrong by construction.
+1. **Every directory whose children are listed is re-derived.** Its size
+   and C4 ID are computed from the listed children by the library's rules
+   (below), filling nulls and replacing stale values alike. The listed
+   children *are* the directory's definition for those two; a stated
+   aggregate that disagrees with them is wrong by construction.
+   *Correction, 2026-11-03:* this rule first included the timestamp, and
+   the normaliser cleared and re-derived it from the newest descendant.
+   That contradicted the spec ("the filesystem's modification time for the
+   directory itself"), the scan, and PropagateMetadata's fill-only rule,
+   and made restore fail its own verification on every nested tree whose
+   directory time differs from its newest child's. Joshua ruled reading A
+   of `directory-timestamp.md`: a directory's timestamp is its own; the
+   normaliser keeps a stated one and fills only a null, as
+   PropagateMetadata always did.
 2. **A directory listed without children keeps its stated values.** Nothing
    in the file contradicts them; its ID points at a record in a store. This
    is the collapsed form, and it stays collapsed.
@@ -47,14 +56,15 @@ When `c4 id` is given a c4m file (or `-`), after resolving the chain:
 The derivation rules are the existing ones, used by exactly one
 implementation each:
 
-- **Size and timestamp:** `c4m.PropagateMetadata`: size is the sum of
-  descendant file sizes plus the byte length of each subdirectory's
-  canonical one-level record; timestamp is the most recent among
-  descendants; both nil-infectious; an empty directory has size 0 and a null
-  timestamp. Today PropagateMetadata fills nulls only ("entries with
-  non-null Size/Timestamp are never overwritten"); the normaliser clears the
-  aggregates of every directory with listed children first, then calls it,
-  so one function derives for both the scan and the normaliser.
+- **Size, and a null timestamp:** `c4m.PropagateMetadata`: size is the sum
+  of descendant file sizes plus the byte length of each subdirectory's
+  canonical one-level record, nil-infectious; an empty directory has size
+  0. A null timestamp is filled with the most recent among descendants; a
+  stated one is the directory's own mtime and is kept (reading A, above).
+  PropagateMetadata fills nulls only ("entries with non-null Size/Timestamp
+  are never overwritten"); the normaliser clears the size and ID of every
+  directory with listed children first, then calls it, so one function
+  derives for both the scan and the normaliser.
 - **Directory C4 ID:** the ID of the directory's canonical one-level record
   (direct children at depth 0, canonicalised, sorted), which is what
   `storeDirectoryC4m` stores. That derivation moves into the c4m package as

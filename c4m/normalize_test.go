@@ -34,8 +34,10 @@ func TestListingRecordOrder(t *testing.T) {
 	}
 }
 
-// Normalize re-derives a directory with listed children and reports the
-// stated values it replaced; a directory without listed children is kept.
+// Normalize re-derives a directory's size and ID from its listed children
+// and reports the stated values it replaced; its timestamp is its own
+// (reading A, 2026-11-03) and is kept, filled only when null; a directory
+// without listed children is kept whole.
 func TestNormalizeDerivesAndReports(t *testing.T) {
 	when := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
 	later := when.Add(time.Hour)
@@ -43,7 +45,9 @@ func TestNormalizeDerivesAndReports(t *testing.T) {
 	d := &Entry{Mode: os.ModeDir | 0755, Timestamp: when, Size: 999, Name: "d/", Depth: 0}
 	b := &Entry{Mode: 0644, Timestamp: later, Size: 5, Name: "b.txt", Depth: 1}
 	c := &Entry{Mode: os.ModeDir | 0755, Timestamp: when, Size: 42, Name: "collapsed/", Depth: 0}
-	m.Entries = append(m.Entries, d, b, c)
+	n := &Entry{Mode: os.ModeDir | 0755, Timestamp: NullTimestamp(), Size: -1, Name: "n/", Depth: 0}
+	nb := &Entry{Mode: 0644, Timestamp: later, Size: 5, Name: "b.txt", Depth: 1}
+	m.Entries = append(m.Entries, d, b, c, n, nb)
 
 	changes := Normalize(m)
 
@@ -55,8 +59,11 @@ func TestNormalizeDerivesAndReports(t *testing.T) {
 	if d.Size != wantSize {
 		t.Errorf("d/ size = %d, want %d (file bytes plus the record)", d.Size, wantSize)
 	}
-	if !d.Timestamp.Equal(later) {
-		t.Errorf("d/ timestamp = %v, want the child's %v", d.Timestamp, later)
+	if !d.Timestamp.Equal(when) {
+		t.Errorf("d/ timestamp = %v, want its own stated %v (children do not determine it)", d.Timestamp, when)
+	}
+	if !n.Timestamp.Equal(later) {
+		t.Errorf("n/ null timestamp = %v, want filled from the newest child %v", n.Timestamp, later)
 	}
 	if c.Size != 42 || !c.Timestamp.Equal(when) {
 		t.Errorf("a directory without listed children must keep its stated values")
@@ -65,8 +72,8 @@ func TestNormalizeDerivesAndReports(t *testing.T) {
 	for _, ch := range changes {
 		fields = append(fields, ch.Path+":"+ch.Field)
 	}
-	if got := strings.Join(fields, " "); got != "d/:size d/:timestamp" {
-		t.Errorf("changes = %q (a null ID filled is not a change)", got)
+	if got := strings.Join(fields, " "); got != "d/:size" {
+		t.Errorf("changes = %q (a filled null is not a change; a timestamp is never replaced)", got)
 	}
 	if changes[0].Old != "999" || changes[0].New != sizeText(wantSize) {
 		t.Errorf("size change = %+v", changes[0])

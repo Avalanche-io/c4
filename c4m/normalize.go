@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/Avalanche-io/c4"
 )
@@ -54,19 +53,23 @@ type Change struct {
 	New   string
 }
 
-// Normalize re-derives the size, timestamp and C4 ID of every directory
-// whose children are listed, by the same rules the scanner applies
-// (PropagateMetadata for size and timestamp, ListingRecord for the ID),
-// filling nulls and replacing stale values alike: the listed children are
-// the directory's definition. A directory listed without children keeps
-// its stated values. It returns one Change per stated non-null value that
-// the derivation replaced, in entry order; filled nulls are not changes.
+// Normalize re-derives the size and C4 ID of every directory whose
+// children are listed, by the same rules the scanner applies
+// (PropagateMetadata for size, ListingRecord for the ID), filling nulls
+// and replacing stale values alike: the listed children determine those
+// two. A directory's timestamp is its own modification time as observed
+// on disk (SPECIFICATION.md "Directory Timestamps"; Joshua ruled reading
+// A of design/directory-timestamp.md on 2026-11-03): the children do not
+// determine it, so a stated timestamp is kept and only a null one is
+// filled from the newest descendant, exactly as PropagateMetadata has
+// always done. A directory listed without children keeps its stated
+// values. It returns one Change per stated non-null value that the
+// derivation replaced, in entry order; filled nulls are not changes.
 // Projection only ever removes knowledge, and a value the listed children
 // cannot support (a null child) derives to null: dropped, and reported.
 func Normalize(m *Manifest) []Change {
 	type stated struct {
 		size int64
-		ts   time.Time
 		id   c4.ID
 	}
 	before := make(map[*Entry]stated)
@@ -74,9 +77,8 @@ func Normalize(m *Manifest) []Change {
 		if !e.IsDir() || len(m.Children(e)) == 0 {
 			continue
 		}
-		before[e] = stated{e.Size, e.Timestamp, e.C4ID}
+		before[e] = stated{e.Size, e.C4ID}
 		e.Size = -1
-		e.Timestamp = NullTimestamp()
 		e.C4ID = c4.ID{}
 	}
 	if len(before) == 0 {
@@ -89,7 +91,6 @@ func Normalize(m *Manifest) []Change {
 		paths[e] = p
 	}
 	var changes []Change
-	null := NullTimestamp()
 	for _, e := range m.Entries {
 		old, ok := before[e]
 		if !ok {
@@ -98,9 +99,6 @@ func Normalize(m *Manifest) []Change {
 		path := paths[e]
 		if old.size >= 0 && old.size != e.Size {
 			changes = append(changes, Change{path, "size", sizeText(old.size), sizeText(e.Size)})
-		}
-		if !old.ts.Equal(null) && !old.ts.Equal(e.Timestamp) {
-			changes = append(changes, Change{path, "timestamp", timeText(old.ts), timeText(e.Timestamp)})
 		}
 		if !old.id.IsNil() && old.id != e.C4ID {
 			changes = append(changes, Change{path, "id", idText(old.id), idText(e.C4ID)})
@@ -114,13 +112,6 @@ func sizeText(n int64) string {
 		return "-"
 	}
 	return formatInt(n)
-}
-
-func timeText(t time.Time) string {
-	if t.Equal(NullTimestamp()) {
-		return "-"
-	}
-	return t.UTC().Format(TimestampFormat)
 }
 
 func idText(id c4.ID) string {

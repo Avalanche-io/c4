@@ -512,8 +512,13 @@ func (m *Manifest) sortSiblingsHierarchically() {
 //   - Directory Size sums all descendant file sizes plus the byte length of
 //     each subdirectory's canonical c4m text (the one-level listing). This
 //     matches design/directory-size-includes-c4m.md.
-//   - Directory Timestamp is the most recent modification time among all
-//     descendants.
+//   - Directory Timestamp is the directory's own modification time, as the
+//     scan observed it (SPECIFICATION.md "Directory Timestamps"). Only a
+//     null one is filled here, with the most recent modification time among
+//     the descendants; the children never determine a stated one. (Reading
+//     A of design/directory-timestamp.md, ruled 2026-11-03: the earlier
+//     wording "the most recent modification time among all descendants"
+//     described the fill and read as a definition.)
 //   - Both are nil-infectious: if any descendant has a null Size (-1) or null
 //     Timestamp (NullTimestamp()), the parent (and recursively the root)
 //     inherits null.

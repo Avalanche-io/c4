@@ -10,15 +10,12 @@ import (
 
 // A changed file inside a subdirectory: restore --force writes the file
 // back and sets the directory's recorded mtime after the write, so the
-// tree matches the description on disk, a diff afterwards is clean, and
-// a re-run plans nothing. (Reported by the fleet lead, 2026-11-03.)
-//
-// The exit code is not asserted here: restore's verification projects
-// the as-built scan through the normaliser, which today re-derives a
-// directory's time from its newest child, so a directory whose own mtime
-// differs from its newest child's fails the check whatever restore did.
-// That is the open reading in design/directory-timestamp.md, not this
-// fix; the assertions below are on the filesystem and on c4 diff.
+// tree matches the description on disk, verification passes (exit 0), a
+// diff afterwards is clean, and a re-run plans nothing. (Reported by the
+// fleet lead, 2026-11-03.) The directory's own mtime differs from its
+// newest child's on purpose: under reading A of
+// design/directory-timestamp.md (ruled 2026-11-03) that is the normal
+// case, and the verification's projection keeps the directory's own time.
 func TestRestoreSetsDirectoryMtimeAfterNestedChange(t *testing.T) {
 	bin := buildC4(t)
 	root := t.TempDir()
@@ -48,8 +45,10 @@ func TestRestoreSetsDirectoryMtimeAfterNestedChange(t *testing.T) {
 	}
 	write("NESTED\n") // the directory's own mtime still matches the snapshot
 
-	_, stderr, code = runC4WithEnv(t, bin, env, "restore", "--force", c4mPath, dir)
-	t.Logf("restore --force exit %d (verification is the open directory-timestamp reading)\n%s", code, stderr)
+	out, stderr, code = runC4WithEnv(t, bin, env, "restore", "--force", c4mPath, dir)
+	if code != 0 || strings.Contains(stderr, "verification failed") {
+		t.Fatalf("restore --force exit %d:\n%s%s", code, out, stderr)
+	}
 	got, _ := os.ReadFile(filepath.Join(dir, "sub", "n.txt"))
 	if string(got) != "nested\n" {
 		t.Fatalf("n.txt holds %q after restore", got)
