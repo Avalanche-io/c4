@@ -93,8 +93,17 @@ func runID(args []string) {
 
 		if info.IsDir() {
 			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide)
+			partial := reportPartial(m, mode)
 			if !*quiet {
 				outputManifest(m, *ergonomic)
+			}
+			// A scan that could not read every file is partial knowledge:
+			// recorded with nulls, declared on stderr, and exit 2, so a
+			// script can tell it from a complete scan. Through 1.0.23 it
+			// exited 0 (measured on a mount with a non-local file,
+			// 2026-11-07).
+			if partial {
+				os.Exit(2)
 			}
 			return
 		}
@@ -588,4 +597,23 @@ func outputManifest(manifest *c4m.Manifest, ergonomic bool) {
 		enc.SetPretty(true)
 	}
 	enc.Encode(manifest)
+}
+
+// reportPartial declares every file a scan could not read, recorded with
+// a null ID, on stderr, and reports whether any exist. Only the full
+// level can tell unread from unrecorded. (1.0.x: through 1.0.23 such a
+// scan exited 0, so a script could not tell it from a complete one.)
+func reportPartial(m *c4m.Manifest, mode scan.ScanMode) bool {
+	if mode != scan.ModeFull {
+		return false
+	}
+	found := false
+	for path, e := range c4m.EntryPaths(m.Entries) {
+		if e.IsDir() || e.IsSequence || e.Target != "" || !e.C4ID.IsNil() {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "partial: %s recorded with nulls (unreadable)\n", path)
+		found = true
+	}
+	return found
 }
