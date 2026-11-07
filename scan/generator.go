@@ -930,7 +930,10 @@ func (g *Generator) generateMetadata(path string, info os.FileInfo, depth int) F
 	return md
 }
 
-// computeFileC4ID computes the C4 ID for a file
+// computeFileC4ID computes the C4 ID for a file. A file that cannot be
+// opened or read has no ID: the error is returned and the entry is
+// recorded with a null ID, never the ID of the bytes read before the
+// failure (a non-local file on a mount fails partway with EIO).
 func (g *Generator) computeFileC4ID(path string) (c4.ID, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -938,7 +941,7 @@ func (g *Generator) computeFileC4ID(path string) (c4.ID, error) {
 	}
 	defer file.Close()
 
-	return c4.Identify(file), nil
+	return c4.IdentifyReader(file)
 }
 
 // computeSymlinkTargetC4ID computes the C4 ID for a symlink's target

@@ -67,15 +67,26 @@ func init() {
 	}
 }
 
-// Generate an id from an io.Reader
-func Identify(src io.Reader) (id ID) {
+// Identify returns the C4 ID of everything src yields. If src fails
+// before EOF the result is the nil ID (IsNil), never the ID of the bytes
+// read so far: a read error must not become an identity. Callers that
+// need the error use IdentifyReader.
+func Identify(src io.Reader) ID {
+	id, _ := IdentifyReader(src)
+	return id
+}
+
+// IdentifyReader returns the C4 ID of everything src yields, or the nil
+// ID and the read error when src fails before EOF. An empty reader has
+// an ID (the ID of zero bytes); a failed one has none.
+func IdentifyReader(src io.Reader) (ID, error) {
+	var id ID
 	h := sha512.New()
-	_, err := io.Copy(h, src)
-	if err != nil && err != io.EOF {
-		return id
+	if _, err := io.Copy(h, src); err != nil && err != io.EOF {
+		return id, err
 	}
 	copy(id[:], h.Sum(nil))
-	return id
+	return id, nil
 }
 
 // ID represents a C4 ID.

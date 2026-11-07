@@ -536,7 +536,12 @@ func (ps *ProgressiveScanner) computeC4ID(entry *ScanEntry) {
 	}
 	defer file.Close()
 
-	id := c4.Identify(file)
+	// A read that fails leaves the ID null: never the ID of the bytes
+	// read before the failure.
+	id, err := c4.IdentifyReader(file)
+	if err != nil {
+		return
+	}
 
 	// Set the C4 ID in FileMetadata
 	entry.FileMetadata.SetID(id)

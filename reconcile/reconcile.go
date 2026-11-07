@@ -323,6 +323,6 @@ func fileMatchesID(path string, id c4.ID, expectedSize int64) bool {
 		return false
 	}
 	defer f.Close()
-	actual := c4.Identify(f)
-	return actual == id
+	actual, err := c4.IdentifyReader(f)
+	return err == nil && actual == id
 }

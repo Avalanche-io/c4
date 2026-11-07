@@ -59,8 +59,14 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 				}
 				f, ferr := os.Open(path)
 				if ferr == nil {
-					id := c4.Identify(f)
+					// A file whose read fails has no ID: it is a present
+					// path with unknown content, never a file holding
+					// the bytes read before the failure.
+					id, herr := c4.IdentifyReader(f)
 					f.Close()
+					if herr != nil {
+						return nil
+					}
 					currentIDs[rel] = id
 					idToCurrentPaths[id] = append(idToCurrentPaths[id], rel)
 				}
