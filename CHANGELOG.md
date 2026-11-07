@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## v1.0.24
+
+### A partial scan exits 2, not 0
+
+`c4 id DIR` on a tree with a file it could not read recorded the entry
+with a null C4 ID (a read error never becomes an ID) but said nothing
+and exited 0, so a script could not tell a partial description from a
+complete one. Each unreadable file is now declared on stderr ("partial:
+PATH recorded with nulls (unreadable)") and the scan exits 2 after
+writing the description; a fully readable tree exits 0 as before. Found
+on a mount with a non-local file, whose reads fail with EIO.
 
 ### `c4 patch` hashes every file; `-c GUIDE.c4m` is the stated way to trust size and mtime
 
