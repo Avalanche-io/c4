@@ -151,14 +151,20 @@ func tryParseC4m(data []byte) *c4m.Manifest {
 }
 
 // identifyFileBytes returns the C4 ID of a file's bytes. A .c4m file is
-// bytes like any other: its ID is the ID that summons it.
-func identifyFileBytes(path string) c4.ID {
+// bytes like any other: its ID is the ID that summons it. A file that
+// cannot be opened or read has no ID: the error is returned and the ID
+// is nil, never the ID of the bytes read before the failure.
+func identifyFileBytes(path string) (c4.ID, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		fatalf("Error reading %s: %v", path, err)
+		return c4.ID{}, err
 	}
 	defer f.Close()
-	return c4.Identify(f)
+	id, err := c4.IdentifyReader(f)
+	if err != nil {
+		return c4.ID{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	return id, nil
 }
 
 // storeFileBytes stores a file's bytes and returns their C4 ID.

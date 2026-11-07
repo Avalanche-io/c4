@@ -266,7 +266,15 @@ func runID(args []string) {
 		// its bytes: stored, barriered, and journaled per path — the ID
 		// prints only after its claim is durable.
 		start := time.Now().UTC()
-		entry := identifyFile(p, info, mode, shouldStore)
+		entry, readErr := identifyFile(p, info, mode, shouldStore)
+		if readErr != nil {
+			// The file could not be read: it has no ID, and saying "does
+			// not hash" would blame the level. A non-local file on a mount
+			// fails this way (EIO partway through the read).
+			fmt.Fprintf(os.Stderr, "Error: cannot read %s: %v\n", p, readErr)
+			failed = true
+			continue
+		}
 		combined.AddEntry(entry)
 		if entry.C4ID.IsNil() {
 			if *quiet {
@@ -476,7 +484,8 @@ func reportObfuscated(m, guide *c4m.Manifest) {
 	}
 }
 
-func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore bool) *c4m.Entry {
+func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore bool) (*c4m.Entry, error) {
+	var readErr error
 	entry := &c4m.Entry{
 		Name: filepath.Base(path),
 	}
@@ -498,19 +507,20 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 
 	if mode == scan.ModeFull || mode == scan.ModeContent {
 		// A file's ID is the ID of its bytes, a .c4m file included
-		// (design/no-self-id.md).
+		// (design/no-self-id.md). A file that cannot be read has no ID:
+		// the entry stays null and the error is reported to the caller.
 		if shouldStore {
 			if s := getOrSetupStore(); s != nil {
 				entry.C4ID = storeFileBytes(s, path)
 			} else {
-				entry.C4ID = identifyFileBytes(path)
+				entry.C4ID, readErr = identifyFileBytes(path)
 			}
 		} else {
-			entry.C4ID = identifyFileBytes(path)
+			entry.C4ID, readErr = identifyFileBytes(path)
 		}
 	}
 
-	return entry
+	return entry, readErr
 }
 
 func storeManifestContent(manifest *c4m.Manifest, baseDir string, scanStart time.Time) {
