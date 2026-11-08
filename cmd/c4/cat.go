@@ -339,8 +339,12 @@ func requireCompleteTree(what string, missing []missingRecord) {
 }
 
 // fetchListing fetches a C4 ID from the store, verifies the bytes hash to
-// it, and parses them as a listing. On failure it returns nil and the
-// reason, for the partial: narration.
+// it, and parses them as a listing. A listing that is absent or does not
+// parse returns nil and the reason, for the partial: narration; one whose
+// bytes do not hash to its ID is a verification failure, and like every
+// other failed verification in cat it is fatal (exit 1) before anything
+// is written: a damaged record is never narrated as "partial". (Until
+// 2026-11-08 inlined listings were not verified at all.)
 func fetchListing(s store.Store, id c4.ID) (*c4m.Manifest, string) {
 	rc, err := s.Open(id)
 	if err != nil {
@@ -352,7 +356,7 @@ func fetchListing(s store.Store, id c4.ID) (*c4m.Manifest, string) {
 		return nil, "unreadable: " + err.Error()
 	}
 	if c4.Identify(bytes.NewReader(data)) != id {
-		return nil, "failed verification (bytes do not hash to it)"
+		fatalf("Error: stored content for %s does not match its ID (object is damaged or altered)", id)
 	}
 	m := tryParseC4m(data)
 	if m == nil {
