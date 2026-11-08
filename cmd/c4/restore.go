@@ -148,10 +148,11 @@ func runRestore(args []string) {
 	if !*force {
 		// The plan in c4m patch form, computed at the target's knowledge
 		// level: line 1 is the destination's current ID at that level,
-		// one line per differing entry, then the target ID. Matching
-		// states print equal boundary IDs with no entry lines.
-		// One scan serves the printed patch and the plan: every file
-		// hashed unless -c names a guide.
+		// then one line per differing entry. Nothing follows them: the
+		// target's ID is the resolved state's own ID, and a c4m stream
+		// never ends with its own ID (2026-11-08). Matching states print
+		// the boundary ID alone. One scan serves the printed patch and
+		// the plan: every file hashed unless -c names a guide.
 		var current *c4m.Manifest
 		scanStart := time.Now().UTC()
 		if destExists {
@@ -164,7 +165,6 @@ func runRestore(args []string) {
 		if !diff.IsEmpty() {
 			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
 		}
-		fmt.Println(diff.NewID)
 
 		plan := planRestore(s, target, destArg, current, scanStart, current, *continueFlag != "", true)
 		fmt.Fprintf(os.Stderr, "dry run: %d operations planned for %s (use --force to apply)\n",

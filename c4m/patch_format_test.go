@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -303,9 +304,10 @@ func TestEncodePatchRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDecodeClosingValidator(t *testing.T) {
-	// Grammar erratum: a bare C4 ID at EOF is the chain's closing
-	// validator — legal, and verified against the resolved manifest.
+func TestDecodeTrailingID(t *testing.T) {
+	// A bare C4 ID at EOF is a format error (2026-11-08): a c4m file
+	// never ends with its own ID. The 2026-07-13 erratum had made it
+	// the legal "closing validator"; that is withdrawn.
 	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
 	base := &Manifest{
 		Version: "1.0",
@@ -320,21 +322,57 @@ func TestDecodeClosingValidator(t *testing.T) {
 	baseText := baseBuf.String()
 	baseID := base.ComputeC4ID()
 
-	// Stream: base entries, then the closing validator.
+	// Stream: base entries, then the state's own ID: refused, and the
+	// error says what to do.
 	input := baseText + baseID.String() + "\n"
+	_, err := Unmarshal([]byte(input))
+	if !errors.Is(err, ErrTrailingID) {
+		t.Fatalf("trailing ID must be ErrTrailingID, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "c4 id FILE.c4m") {
+		t.Fatalf("error must say how to fix the file, got %v", err)
+	}
 
-	m, err := Unmarshal([]byte(input))
+	// A WRONG trailing ID is still a checkpoint mismatch first.
+	bad := baseText + c4.Identify(strings.NewReader("not the state")).String() + "\n"
+	if _, err := Unmarshal([]byte(bad)); !errors.Is(err, ErrPatchIDMismatch) {
+		t.Fatalf("wrong trailing ID must be ErrPatchIDMismatch, got %v", err)
+	}
+
+	// The migration path: a lenient decoder verifies the trailing ID,
+	// drops it, and reports that it did.
+	d := NewDecoder(strings.NewReader(input))
+	d.AllowTrailingID()
+	m, err := d.Decode()
 	if err != nil {
-		t.Fatalf("closing validator must be accepted: %v", err)
+		t.Fatalf("AllowTrailingID must accept a correct trailing ID: %v", err)
+	}
+	if !d.DroppedTrailingID() {
+		t.Fatal("DroppedTrailingID must report the dropped line")
 	}
 	if m.ComputeC4ID() != baseID {
-		t.Fatal("validated chain must resolve to the validator's state")
+		t.Fatal("migrated chain must resolve to the dropped ID's state")
+	}
+	d = NewDecoder(strings.NewReader(bad))
+	d.AllowTrailingID()
+	if _, err := d.Decode(); !errors.Is(err, ErrPatchIDMismatch) {
+		t.Fatalf("AllowTrailingID must still verify the ID it drops, got %v", err)
 	}
 
-	// A WRONG trailing validator is rejected.
-	bad := baseText + c4.Identify(strings.NewReader("not the state")).String() + "\n"
-	if _, err := Unmarshal([]byte(bad)); err == nil {
-		t.Fatal("wrong closing validator must be rejected (ErrPatchIDMismatch)")
+	// A chain that ends on its entries is the valid form, and a bare ID
+	// before a patch is still a boundary.
+	patch := &Manifest{Version: "1.0", Entries: []*Entry{
+		{Name: "b.txt", Mode: 0644, Timestamp: ts, Size: 3,
+			C4ID: c4.Identify(strings.NewReader("bbb")), Depth: 0}}}
+	var patchBuf bytes.Buffer
+	NewEncoder(&patchBuf).Encode(patch)
+	d = NewDecoder(strings.NewReader(baseText + baseID.String() + "\n" + patchBuf.String()))
+	m, err = d.Decode()
+	if err != nil {
+		t.Fatalf("boundary before a patch must be accepted: %v", err)
+	}
+	if d.DroppedTrailingID() || len(m.Entries) != 2 {
+		t.Fatalf("chain must resolve to both entries with nothing dropped, got %d", len(m.Entries))
 	}
 }
 
@@ -355,17 +393,27 @@ func TestDecodeConsecutiveCheckpoints(t *testing.T) {
 	baseID := base.ComputeC4ID()
 
 	// Consecutive checkpoints both name the same accumulated state:
-	// close-then-supersede — legal when equal, rejected when not.
+	// close-then-supersede — legal when equal, rejected when not. A
+	// patch must follow them: a stream never ends with a bare ID.
+	patch := &Manifest{Version: "1.0", Entries: []*Entry{
+		{Name: "b.txt", Mode: 0644, Timestamp: ts, Size: 3,
+			C4ID: c4.Identify(strings.NewReader("bbb")), Depth: 0}}}
+	var patchBuf bytes.Buffer
+	NewEncoder(&patchBuf).Encode(patch)
 	input := baseText +
 		baseID.String() + "\n" +
-		baseID.String() + "\n"
+		baseID.String() + "\n" +
+		patchBuf.String()
 
 	m, err := Unmarshal([]byte(input))
 	if err != nil {
 		t.Fatalf("consecutive equal checkpoints must be accepted: %v", err)
 	}
-	if m.ComputeC4ID() != baseID {
-		t.Fatal("chain must resolve to the checkpointed state")
+	if len(m.Entries) != 2 {
+		t.Fatalf("chain must resolve to the checkpointed state plus the patch, got %d entries", len(m.Entries))
+	}
+	if _, err := Unmarshal([]byte(baseText + baseID.String() + "\n" + baseID.String() + "\n")); !errors.Is(err, ErrTrailingID) {
+		t.Fatalf("consecutive checkpoints at EOF end the file with a bare ID: want ErrTrailingID, got %v", err)
 	}
 
 	bad := baseText +
@@ -423,13 +471,19 @@ func TestDecodeExternalBaseDefersAllCheckpoints(t *testing.T) {
 	// Two patch sections with boundary IDs that could never match a
 	// base-less fold of the patch entries (they are the appended-diff
 	// shape: resolved-state IDs of a state we cannot reconstruct here).
+	// The stream ends on its last patch's entries; even with an
+	// external base a trailing bare ID is a format error.
 	boundary1 := c4.Identify(strings.NewReader("resolved state one"))
 	boundary2 := c4.Identify(strings.NewReader("resolved state two"))
 	input := base.String() + "\n" +
 		"-rw-r--r-- 2026-03-06T12:00:00Z 100 a.txt " + c4.Identify(strings.NewReader("aaa")).String() + "\n" +
 		boundary1.String() + "\n" +
 		"-rw-r--r-- 2026-03-06T12:00:00Z 200 b.txt " + c4.Identify(strings.NewReader("bbb")).String() + "\n" +
-		boundary2.String() + "\n"
+		boundary2.String() + "\n" +
+		"-rw-r--r-- 2026-03-06T12:00:00Z 300 c.txt " + c4.Identify(strings.NewReader("ccc")).String() + "\n"
+	if _, err := Unmarshal([]byte(strings.TrimSuffix(input, "-rw-r--r-- 2026-03-06T12:00:00Z 300 c.txt "+c4.Identify(strings.NewReader("ccc")).String()+"\n"))); !errors.Is(err, ErrTrailingID) {
+		t.Fatalf("external-base chain ending with a bare ID must be ErrTrailingID, got %v", err)
+	}
 
 	m, err := Unmarshal([]byte(input))
 	if err != nil {
@@ -438,7 +492,7 @@ func TestDecodeExternalBaseDefersAllCheckpoints(t *testing.T) {
 	if m.Base != base {
 		t.Fatal("the external base reference must survive patch application")
 	}
-	if len(m.Entries) != 2 {
-		t.Fatalf("expected 2 folded entries, got %d", len(m.Entries))
+	if len(m.Entries) != 3 {
+		t.Fatalf("expected 3 folded entries, got %d", len(m.Entries))
 	}
 }

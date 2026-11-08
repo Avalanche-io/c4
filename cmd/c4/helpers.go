@@ -30,6 +30,27 @@ func loadManifest(path string) (*c4m.Manifest, error) {
 	return c4m.DecodeResolved(f, nil)
 }
 
+// loadManifestMigrating is loadManifest for the normaliser only: a file
+// that ends with a bare C4 ID (the shape `c4 diff >>` wrote through
+// 1.0.24) is accepted, its trailing ID verified as a checkpoint and
+// dropped, and dropped reports that it happened so the caller can say
+// so. Every other verb reads strictly and refuses that shape.
+func loadManifestMigrating(path string) (m *c4m.Manifest, dropped bool, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	d := c4m.NewDecoder(f)
+	d.AllowTrailingID()
+	m, err = d.Decode()
+	if err != nil {
+		return nil, false, err
+	}
+	m, err = c4m.ResolveBase(m, nil)
+	return m, d.DroppedTrailingID(), err
+}
+
 // loadManifestFromStore loads a description and backfills an external base
 // reference from the configured store — for the verbs that already read it.
 // With no store configured it degrades to loadManifest's loud failure.

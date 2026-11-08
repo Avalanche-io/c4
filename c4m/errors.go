@@ -23,6 +23,13 @@ var (
 	// ErrEmptyPatch indicates a patch section contains no entries.
 	ErrEmptyPatch = errors.New("c4m: empty patch section")
 
+	// ErrTrailingID indicates the stream ends with a bare C4 ID. A c4m
+	// file never ends with its own ID: a bare ID is a boundary before a
+	// patch, and a file that ends with one is a format error (Joshua,
+	// 2026-11-08). Files written by c4 1.0.13 through 1.0.24 with
+	// `c4 diff >>` have this shape; `c4 id FILE.c4m` rewrites them.
+	ErrTrailingID = errors.New("c4m: a bare C4 ID ends the file; a c4m file never ends with its own ID")
+
 	// ErrUnresolvedBase indicates a first-line external base reference
 	// could not be fetched: no source was supplied, or the source does
 	// not hold that ID. A description whose base is unreadable is an

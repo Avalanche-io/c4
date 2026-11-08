@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 // restoreIDs runs `c4 restore --force` and returns its two stdout
@@ -51,8 +53,10 @@ func TestRestoreRecoverFromStoreAlone(t *testing.T) {
 	}
 
 	// Dry run first: the plan in c4m patch form — the current ID (the
-	// empty description for an absent dir), differing entries, the
-	// target ID — and nothing touched.
+	// empty description for an absent dir), then the differing entries
+	// and nothing after them (a stream never ends with its own ID) —
+	// and nothing touched. The plan is itself a valid chain that
+	// resolves to the target.
 	stdout, _, code = runC4WithEnv(t, bin, env, "restore", snapID, tree)
 	if code != 0 {
 		t.Fatalf("dry run exit %d", code)
@@ -61,8 +65,11 @@ func TestRestoreRecoverFromStoreAlone(t *testing.T) {
 	if len(planLines) < 2 {
 		t.Fatalf("dry run plan too short: %q", stdout)
 	}
-	if planLines[len(planLines)-1] != snapID {
-		t.Fatalf("plan must end with the target ID:\n%s", stdout)
+	if last := strings.TrimSpace(planLines[len(planLines)-1]); isBareID(last) {
+		t.Fatalf("plan must end on an entry, not an ID:\n%s", stdout)
+	}
+	if plan, err := c4m.Unmarshal([]byte(stdout)); err != nil || plan.ComputeC4ID().String() != snapID {
+		t.Fatalf("plan must decode to the target %s (err %v):\n%s", snapID, err, stdout)
 	}
 	if planLines[0] == snapID {
 		t.Fatal("plan first line should be the (differing) current ID")

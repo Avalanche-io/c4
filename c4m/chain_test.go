@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -84,7 +85,9 @@ func TestDecodePatchChainWithPatch(t *testing.T) {
 }
 
 func TestDecodePatchChainTrailingID(t *testing.T) {
-	// A trailing bare ID (closing boundary) should not create an empty section.
+	// A trailing bare ID is a format error for the shape-level reader
+	// too (2026-11-08); until then it was dropped silently as a closing
+	// boundary.
 	base := NewManifest()
 	base.AddEntry(&Entry{
 		Name: "a.txt",
@@ -97,13 +100,18 @@ func TestDecodePatchChainTrailingID(t *testing.T) {
 	baseID := base.ComputeC4ID()
 	buf.WriteString(baseID.String() + "\n")
 
+	if _, err := DecodePatchChain(bytes.NewReader(buf.Bytes())); !errors.Is(err, ErrTrailingID) {
+		t.Fatalf("trailing ID must be ErrTrailingID, got %v", err)
+	}
+
+	// The same ID followed by a patch is a boundary: two sections.
+	buf.WriteString("-rw-r--r-- 2026-03-06T12:00:00Z 5 b.txt " + c4.Identify(strings.NewReader("world")).String() + "\n")
 	sections, err := DecodePatchChain(bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if len(sections) != 1 {
-		t.Fatalf("expected 1 section (trailing ID should not create empty section), got %d", len(sections))
+	if len(sections) != 2 || sections[1].BaseID != baseID {
+		t.Fatalf("expected 2 sections with the boundary as the patch's base, got %d", len(sections))
 	}
 }
 
@@ -170,5 +178,21 @@ func TestChainVectorConformance(t *testing.T) {
 		if _, err := Unmarshal(data); err == nil {
 			t.Fatalf("%s must be rejected", bad)
 		}
+	}
+
+	// Since 2026-11-08 the vector ends on its last entry: a chain that
+	// ends with its own resolved ID is a format error, so the valid
+	// vector followed by that ID is rejected, and bad-validator.c4m is
+	// rejected for its mismatch before the end of input is reached.
+	trailing := append(append([]byte{}, data...), []byte(strings.TrimSpace(string(want))+"\n")...)
+	if _, err := Unmarshal(trailing); !errors.Is(err, ErrTrailingID) {
+		t.Fatalf("vector plus its own ID must be ErrTrailingID, got %v", err)
+	}
+	badData, err := os.ReadFile(dir + "bad-validator.c4m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Unmarshal(badData); !errors.Is(err, ErrPatchIDMismatch) {
+		t.Fatalf("bad-validator must be ErrPatchIDMismatch, got %v", err)
 	}
 }

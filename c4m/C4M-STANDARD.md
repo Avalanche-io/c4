@@ -721,12 +721,19 @@ unchanged siblings are preserved from the base.
 > `ErrEmptyPatch` stand.
 
 - A bare C4 ID at the end of a c4m file is a **format error**. Writers
-  MUST NOT end a c4m with one. (How a reader treats such a line in files
-  earlier tools wrote is not settled here.)
+  MUST NOT end a c4m with one; a stream MUST end on an entry line.
+- A decoder MUST reject a stream that ends with a bare C4 ID
+  (`ErrTrailingID`) and SHOULD say how to fix it. A migrating reader (a
+  normaliser) MAY verify the ID as a checkpoint (Section 10.3), drop it,
+  and report that it did; it MUST NOT write it back out. *(Settled
+  2026-11-12; this item previously left the reader's treatment open.)*
+  Streams written by c4 1.0.13 through 1.0.26 with `c4 diff >>` end this
+  way; the normaliser (`c4 id FILE.c4m`) migrates them.
 - Two consecutive bare C4 IDs are **checkpoint repetition**: both name
   the accumulated state at that point. A resolving decoder verifies
   each; a shape-level (non-resolving) reader treats the second as
-  closing the (empty) section and superseding the first.
+  closing the (empty) section and superseding the first. A patch
+  section MUST follow the second.
 - Checkpoint verification applies to self-contained streams. After an
   unresolved external base reference (Section 10.2), the accumulated
   state is unknowable to a non-fetching decoder; verification defers
@@ -748,7 +755,7 @@ c4<checkpoint-2>        ; verifies state after patch-1
 Each checkpoint verifies the complete manifest state at that point (all
 preceding content and patches applied).
 
-### 10.7 Unclosed Patch at EOF
+### 10.7 The Final Patch
 
 A patch section that reaches EOF is the normal end of a chain. The
 entries are applied as a patch; the final state is not named in the
@@ -758,7 +765,8 @@ file, because no file can contain its own ID (Section 10.5).
 > producer append a closing bare C4 ID for end-of-stream integrity. That
 > line is a format error (Section 10.5). The integrity of a whole file is
 > its own byte ID wherever the file travels by ID; a reader that needs
-> the final state's ID computes it.
+> the final state's ID computes it. A producer MUST NOT append the
+> resolved state's ID after the final entries.
 
 ### 10.8 Inline Range Data
 
@@ -933,7 +941,8 @@ Decoders MUST reject streams containing:
 | Name contains path separator (`/` as non-trailing, `\`) | `ErrPathTraversal` |
 | Duplicate path within same scope | `ErrDuplicatePath` |
 | Bare C4 ID mismatch (non-first-line) | `ErrPatchIDMismatch` |
-| Checkpoint/validator mismatch | `ErrPatchIDMismatch` |
+| Checkpoint mismatch | `ErrPatchIDMismatch` |
+| Bare C4 ID at EOF | `ErrTrailingID` |
 | Malformed flow target | `ErrInvalidFlowTarget` |
 
 ### 14.2 Accepted Variations
@@ -1046,18 +1055,22 @@ BASE58CHAR     = %x31-39 / %x41-48 / %x4A-4E / %x50-5A
 | Invalid flow target | `ErrInvalidFlowTarget` | Flow target does not match `location:path` pattern |
 | Patch ID mismatch | `ErrPatchIDMismatch` | Bare C4 ID does not match accumulated manifest state |
 | Empty patch | `ErrEmptyPatch` | Retired by the 10.5 erratum; identifier reserved |
+| Trailing ID | `ErrTrailingID` | Stream ends with a bare C4 ID (10.5, 2026-11-08); the normaliser migrates the file |
 
 ---
 
 ## Appendix C: Design Notes
 
-### C.1 Unclosed Final Patch
+### C.1 The Final Patch Is Not Checkpointed
 
-The final patch section in a stream is not verified by a closing checkpoint
-(see Section 10.7). This is by design for streaming use cases where the
-final C4 ID may not be known at write time. Stream consumers who require
-end-to-end verification should compute the manifest's C4 ID after decoding
-and compare against an expected value.
+The final patch section in a stream is not followed by a checkpoint (see
+Sections 10.5 and 10.7). Two reasons: in streaming use the final C4 ID is
+not known at write time, and, decisively, a file cannot contain its own
+ID: a c4m file travels by the ID of its bytes, and that ID must summon
+exactly that file. Stream consumers who require end-to-end verification
+compute the resolved manifest's C4 ID after decoding and compare it
+against the value they were given out of band (`c4 id -q`, a journal
+claim, a store address), never against a line inside the file.
 
 ### C.2 Null Mode vs Zero Mode
 

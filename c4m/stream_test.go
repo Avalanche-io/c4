@@ -33,7 +33,7 @@ func streamTestManifest(t *testing.T) *Manifest {
 
 // TestChainStreamRoundTrip pins the streaming shape: the emitted chain
 // resolves — through the verifying decoder — to exactly the source
-// manifest, and its final line is the source's root ID.
+// manifest, and ends on its last refined entry, never on an ID.
 func TestChainStreamRoundTrip(t *testing.T) {
 	m := streamTestManifest(t)
 
@@ -42,15 +42,15 @@ func TestChainStreamRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The final line of the stream is always the root ID.
+	// The final line is an entry: a c4m file never ends with its own ID.
 	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
-	last := lines[len(lines)-1]
-	if last != m.ComputeC4ID().String() {
-		t.Fatalf("final line %q != root ID %s", last, m.ComputeC4ID())
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if len(last) == 90 && strings.HasPrefix(last, "c4") {
+		t.Fatalf("stream must not end with a bare ID:\n%s", text)
 	}
 
-	// The stream decodes (checkpoint and validator verified) back to
-	// the source manifest exactly.
+	// The stream decodes (checkpoint verified) back to the source
+	// manifest exactly.
 	got, err := Unmarshal([]byte(text))
 	if err != nil {
 		t.Fatalf("stream must decode cleanly: %v", err)
@@ -81,7 +81,7 @@ func TestChainStreamRoundTrip(t *testing.T) {
 }
 
 // TestChainStreamFlat pins the no-refinement case: a manifest with no
-// aggregate-bearing directories streams as base + validator only.
+// aggregate-bearing directories streams as its base entries alone.
 func TestChainStreamFlat(t *testing.T) {
 	ts := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	m := NewManifest()
@@ -93,11 +93,8 @@ func TestChainStreamFlat(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("flat stream should be entry + validator, got %d lines:\n%s", len(lines), text)
-	}
-	if lines[1] != m.ComputeC4ID().String() {
-		t.Fatal("flat stream must close with the root ID")
+	if len(lines) != 1 {
+		t.Fatalf("flat stream should be the entry alone, got %d lines:\n%s", len(lines), text)
 	}
 	if _, err := Unmarshal([]byte(text)); err != nil {
 		t.Fatalf("flat stream must decode: %v", err)

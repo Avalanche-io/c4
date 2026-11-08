@@ -285,8 +285,9 @@ DESCRIPTION
     preserved: snapshot IDs are the recovery handle, content IDs the comparison handle.
 
     Without --force nothing is written; stdout is the plan in c4m patch form, computed at the
-    target's knowledge level: line 1 is <dir>'s current ID at that level, one line per differing
-    entry, then the target ID. Matching = no entry lines = equal boundary IDs.
+    target's knowledge level: line 1 is <dir>'s current ID at that level, then one line per
+    differing entry; nothing follows them (a stream never ends with its own ID). Matching = the
+    boundary ID alone.
 
     With --force: (1) every ID the target names must resolve, from the store or from bytes
     already in <dir> (each file hashed, never matched by size and time), else listed on stderr -

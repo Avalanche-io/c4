@@ -29,6 +29,7 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 	var sections []*PatchSection
 	current := &PatchSection{}
 	firstLine := true
+	lastWasID := false // the previous non-blank line was a bare C4 ID
 
 	for {
 		line, err := d.readLine()
@@ -60,20 +61,23 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 				// First bare ID: external base reference on first section.
 				current.BaseID = id
 			} else if len(current.Entries) == 0 && len(sections) > 0 {
-				// Consecutive bare IDs with no entries between them (e.g.,
-				// closing ID of one diff + opening ID of the next). The
-				// second ID supersedes — just update the current base.
+				// Consecutive bare IDs with no entries between them
+				// (checkpoint repetition). The second supersedes — just
+				// update the current base.
 				current.BaseID = id
+				lastWasID = true
 			} else {
 				// Flush current section.
 				if len(current.Entries) > 0 {
 					sections = append(sections, current)
 				}
 				current = &PatchSection{BaseID: id}
+				lastWasID = true
 			}
 			firstLine = false
 			continue
 		}
+		lastWasID = false
 
 		if strings.HasPrefix(trimmed, "@") {
 			return nil, fmt.Errorf("directives not supported (line %d): %s", d.lineNum, line)
@@ -89,8 +93,17 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 		firstLine = false
 	}
 
-	// Flush final section — only if it has entries. A trailing bare C4 ID
-	// (closing page boundary) is a validator, not a new section.
+	// A bare C4 ID at end of input is a format error (2026-11-08): a c4m
+	// file never ends with its own ID. Through 1.0.24 this reader dropped
+	// it silently as a "closing validator"; now every shape-level verb
+	// (patch, log, split, explain) refuses the file and names the fix,
+	// the same as the resolving Decoder. The normaliser migrates it.
+	if lastWasID {
+		return nil, fmt.Errorf("%w (line %d): delete that line, or rewrite the file with `c4 id FILE.c4m > fixed.c4m`",
+			ErrTrailingID, d.lineNum)
+	}
+
+	// Flush the final section.
 	if len(current.Entries) > 0 {
 		sections = append(sections, current)
 	}

@@ -26,6 +26,13 @@ type Decoder struct {
 	onEntry func(line, section int, e *Entry)
 	// quiet suppresses the decoder's narration on stderr.
 	quiet bool
+	// allowTrailingID makes a bare C4 ID at end of input a verified
+	// checkpoint that is then dropped, instead of ErrTrailingID. Only
+	// the normaliser sets it: it is the migration for files written by
+	// c4 1.0.13 through 1.0.24, whose `c4 diff` ended its output with
+	// the new state's ID. droppedTrailingID reports that it happened.
+	allowTrailingID   bool
+	droppedTrailingID bool
 }
 
 // NewDecoder creates a new Decoder that reads from r.
@@ -35,6 +42,16 @@ func NewDecoder(r io.Reader) *Decoder {
 		indentWidth: -1, // will be detected
 	}
 }
+
+// AllowTrailingID lets this decoder accept a file that ends with a bare
+// C4 ID, verifying it as a checkpoint and dropping it, so a normaliser
+// can rewrite the file into the form the format requires. Every other
+// reader rejects the shape with ErrTrailingID.
+func (d *Decoder) AllowTrailingID() { d.allowTrailingID = true }
+
+// DroppedTrailingID reports whether the last Decode met and dropped a
+// trailing bare C4 ID under AllowTrailingID.
+func (d *Decoder) DroppedTrailingID() bool { return d.droppedTrailingID }
 
 // Decode reads and decodes a manifest from the input stream.
 // The format is entry-only: no header, no directives.
@@ -66,7 +83,8 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 	firstLine := true
 	patchMode := false
 	externalBase := false
-	sectionIdx := 0 // patch sections seen, for onEntry
+	sectionIdx := 0            // patch sections seen, for onEntry
+	lastWasCheckpoint := false // the previous non-blank line was a checkpoint
 
 	for {
 		line, err := d.readLine()
@@ -111,8 +129,9 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 				// manifest state (grammar erratum, draft-v9 §4). Flush
 				// the pending section, then verify. A checkpoint
 				// directly following another (consecutive boundaries)
-				// verifies the same accumulated state; at EOF the final
-				// checkpoint is the chain's closing validator.
+				// verifies the same accumulated state. A checkpoint at
+				// end of input is a format error (see the flush below).
+				lastWasCheckpoint = true
 				if !patchMode {
 					m.Entries = append(m.Entries, section...)
 				} else if len(section) > 0 {
@@ -159,12 +178,26 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 			}
 		}
 		firstLine = false
+		lastWasCheckpoint = false
 	}
 
-	// Flush remaining section. A stream may end without a closing
-	// validator (the final patch applies unverified — C4M-STANDARD
-	// §10.7); a stream whose last line was a bare C4 ID ended with its
-	// closing validator, already verified above.
+	// A bare C4 ID at end of input is a format error: a c4m file never
+	// ends with its own ID (a bare ID is a boundary before a patch, and
+	// a file cannot contain the ID that names it; Joshua, 2026-11-08).
+	// The checkpoint was verified above, so under AllowTrailingID the
+	// normaliser may drop it and rewrite the file; every other reader
+	// refuses and says how to fix the file.
+	if lastWasCheckpoint {
+		if !d.allowTrailingID {
+			return nil, fmt.Errorf("%w (line %d): delete that line, or rewrite the file with `c4 id FILE.c4m > fixed.c4m`",
+				ErrTrailingID, d.lineNum)
+		}
+		d.droppedTrailingID = true
+	}
+
+	// Flush the remaining section: a chain ends on its last section's
+	// entries, and the final patch is verified by what it names, not by
+	// a line after it.
 	if !patchMode {
 		m.Entries = append(m.Entries, section...)
 	} else if len(section) > 0 {

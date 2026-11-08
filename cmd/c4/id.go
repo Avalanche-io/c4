@@ -222,7 +222,10 @@ func runID(args []string) {
 			// c4m input → normalize to canonical (or ergonomic) form;
 			// -m projects downward (a description computes at its own
 			// knowledge level; projection only ever removes knowledge).
-			m, err := loadManifest(p)
+			// The normaliser is the migration for files that end with a
+			// bare ID (written by `c4 diff >>` through 1.0.24): it reads
+			// them, drops the line, says so, and writes the valid form.
+			m, dropped, err := loadManifestMigrating(p)
 			if err != nil {
 				if *quiet {
 					fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", p, err)
@@ -230,6 +233,9 @@ func runID(args []string) {
 					continue
 				}
 				fatalf("Error loading %s: %v", p, err)
+			}
+			if dropped {
+				fmt.Fprintf(os.Stderr, "normalized: %s: trailing root ID removed (a c4m file never ends with its own ID)\n", p)
 			}
 			// Normalise: every directory with listed children is re-derived
 			// from them, so a hand edit computes to the library's own ID.

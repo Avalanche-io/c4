@@ -36,8 +36,9 @@ $ c4 id ./project/
 drwxr-xr-x 2026-03-18T22:22:57Z - src/ -
   -rw-r--r-- 2026-03-18T22:22:57Z 66 main.go c43Q4j81SxGkV9FhbeW23YrMTj6...
 drwxr-xr-x 2026-03-18T22:22:57Z 66 src/ c44nbgL6nkBWsEBDCUCr4LufsjVhJt...
-c45k2Jd...                                  ← the final line is the tree's ID
 ```
+
+The stream ends on its last entry; the tree's ID is `c4 id -q ./project/`.
 
 Each line looks like `ls -l` with a content ID at the end — and the
 output *streams*: file lines print the moment they're hashed

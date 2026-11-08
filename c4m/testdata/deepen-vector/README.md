@@ -26,8 +26,13 @@ c4<checkpoint>                 = accumulated state after the base
 
 drwxr-xr-x … docs/ …           restated BYTE-IDENTICALLY in both files
   -rw-r--r-- … guide.md …      deepen.c4m ONLY: a child follows
-c4<closing validator>          = the resolved manifest's ID, at EOF
 ```
+
+Both files end on their last entry line. Until 2026-11-08 each ended
+with the resolved manifest's ID on a bare final line; that line was
+removed when a trailing bare ID was ruled a format error (chain-vector
+README, "2026-11-08 amendment"). The root IDs in the `*-root-id.txt`
+files are unchanged.
 
 - `deepen.c4m` resolves to **four** entries: `a.txt`, `docs/`,
   `readme.md`, `guide.md`. A section that declares a child cannot be
@@ -52,12 +57,11 @@ anything about the directory itself, so its parent line is necessarily
 restated unchanged.
 
 An implementation carrying the old rule fails `deepen.c4m` by
-resolving it to `remove.c4m`'s answer. Note that a decoder which
-verifies the closing validator will surface this as a mismatch, while
-a non-verifying chain reader will simply return the wrong manifest —
-so conformance MUST be checked on the resolved entry set, not only on
-the error.
+resolving it to `remove.c4m`'s answer, at exit 0: nothing in the file
+verifies the final state, so conformance MUST be checked on the
+resolved entry set against `deepen-root-id.txt`, never on an error.
 
 Timestamps in the fixtures are fixed constants — the files are
-byte-stable forever; regenerating them is never necessary and never
-permitted (they are the contract).
+byte-stable forever; apart from the 2026-11-08 removal of the trailing
+ID line, regenerating them is never necessary and never permitted
+(they are the contract).

@@ -45,7 +45,7 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | `Manifest`     | Collection of entries with optional patch chain base ID and range data.               |
 | `Entry`        | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links.   |
 | `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes.           |
-| `Decoder`      | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. |
+| `Decoder` | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. Rejects a bare ID at EOF (`ErrTrailingID`, 2026-11-08); `AllowTrailingID`/`DroppedTrailingID` are the normaliser's migration hook. |
 | `PatchSection` | One section of a patch chain (base or delta).                                         |
 | `Validator`    | Reads through the Decoder (an unexported per-entry hook), so a format fault is the decoder's error at its line; adds duplicate paths, path-like names (`isPathName`), depth past a parent, flow targets, and with Strict canonical order (`siblingLess`). |
 
@@ -388,7 +388,7 @@ c4 --> (stdlib only)
 - **Depth-based tree encoding**: c4m entries use `Depth int` + `Name string` (bare filename), not full paths
 - **Guided scanning**: reuse IDs from a reference manifest for unchanged files (size + mtime match)
 - **Canonical ordering**: entries sorted by natural sort; decoder auto-sorts on read
-- **Patch chains**: append-only versioning via bare C4 ID separators in c4m files
+- **Patch chains**: append-only versioning via bare C4 ID separators in c4m files; a chain ends on an entry line, never on its own ID (`design/trailing-id.md`)
 - **Single-pass distribution**: `reconcile.Distribute` hashes + copies in one read pass
 - **Atomic writes**: `store.DurableWriter` writes to temp file then renames
 - **Batch durability barrier**: CLI ingest lands objects with cheap per-object fsyncs and issues one `F_FULLFSYNC` (`store.Syncer.Sync`) at completion — durable-at-completion instead of durable-per-object (`design/store-ingest-performance.md`)

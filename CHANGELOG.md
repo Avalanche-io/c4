@@ -445,6 +445,7 @@ store is its boot. Temps are now named `.ingest.<host>.<pid>.<random>`;
 writer's and another host's, sweeps the old unnamed form only after a
 day, and never touches an object. `TreeStore.SweepIngest` is exported.
 `design/store-ingest-sweep.md`.
+
 ### `c4 cat -r` names every listing the store lacks and exits 2
 
 `c4 cat -r` on a snapshot whose store is missing a directory's listing
@@ -461,6 +462,34 @@ address that does not expand in full now refuse with exit 1 and the same
 `partial:` lines, instead of comparing or restoring against a tree with
 the store's gaps in it. A directory already listed with its children, or
 an empty one, is never expanded or named.
+
+### A c4m file never ends with its own ID; `c4 diff` no longer prints one ⚠
+
+A bare C4 ID at the end of a c4m file is a format error (ruled
+2026-11-08; `design/trailing-id.md`). The 2026-07-13 erratum had made it
+the verified "closing validator"; that is withdrawn, because a file
+cannot contain its own ID and still be the file its ID summons.
+
+- `c4 diff` prints the old state's ID and the entries, and nothing after
+  them. Through 1.0.26 it ended with the new state's ID, so every chain
+  built with `c4 diff >> FILE.c4m` has the old shape. The restore dry
+  run likewise ends on its entries.
+- Every reader refuses a file that ends with a bare ID
+  (`c4m.ErrTrailingID`), both the resolving decoder and the chain
+  reader behind `patch`, `log`, `split` and `explain`, with an error
+  that says how to fix it. The 1.0.24 decoder already refused these
+  files, as "empty patch section"; only master briefly accepted them.
+- The normaliser is the migration: `c4 id FILE.c4m` reads the old
+  shape, verifies the trailing ID as a checkpoint, drops it, reports
+  `trailing root ID removed` on stderr and writes the valid form.
+  `c4 id -l` lists such files; `c4 id -d` shows the deletion.
+  (`Decoder.AllowTrailingID` and `DroppedTrailingID` expose this.)
+- The conformance vectors `chain-vector/{vector,bad-checkpoint}.c4m`
+  and `deepen-vector/{deepen,remove}.c4m` lose their final line; their
+  root IDs are unchanged. `bad-validator.c4m` now pins both rejections.
+  Every other implementation's copies need the same edit.
+- `c4m.WriteChainStream` is gone; `WriteChainBody` and `ChainStream`
+  write the stream, which ends on its last refined entry.
 
 ### `c4 diff`, `c4 restore` and `c4 explain` hash every file; `-c` is the stated way to trust ⚠
 

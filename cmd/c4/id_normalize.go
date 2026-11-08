@@ -59,7 +59,11 @@ func runIDCheck(paths []string, list, diff bool) int {
 			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", p, err)
 			return 1
 		}
-		m, err := loadManifest(p)
+		// -l and -d read as the normaliser does: a file ending with a
+		// bare ID (the shape `c4 diff >>` wrote through 1.0.24) is
+		// listed as not normal, since its bytes differ from the
+		// normalised text, rather than refused.
+		m, _, err := loadManifestMigrating(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", p, err)
 			return 1

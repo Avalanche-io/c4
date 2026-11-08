@@ -42,7 +42,7 @@ contain terabytes of data:
 
 ```bash
 c4 id myproject/ > project.c4m          # streams; a valid c4m chain
-                                        # whose final line is the ID
+                                        # ending on its last entry
 ```
 
 ## 3. Snapshot into the Store
@@ -53,8 +53,8 @@ prints only after everything it names is on stable media; if it
 printed, you can get it back, even after `kill -9` or power loss.
 
 ```bash
-$ c4 id -s myproject/                   # streams the listing; the
-                                        # final line is the durable ID
+$ c4 id -s myproject/                   # streams the listing; stderr
+                                        # narrates "stored: <ID>" once durable
 $ SNAP=$(c4 id -s -q myproject/)        # script capture: one line
 $ echo "$SNAP"
 c43k2Jd...

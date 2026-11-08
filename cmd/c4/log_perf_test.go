@@ -23,7 +23,8 @@ func TestLogLongChainLinear(t *testing.T) {
 
 	// Build a chain: a base with one entry, then N patch sections each
 	// adding one file. Format per c4m chain tests: base entries, base
-	// ID line, patch entries, patch ID line, ...
+	// ID line, patch entries, patch ID line, ..., ending on the last
+	// patch's entries (a chain never ends with its own ID).
 	var chain bytes.Buffer
 	base := c4m.NewManifest()
 	base.AddEntry(&c4m.Entry{
@@ -38,6 +39,11 @@ func TestLogLongChainLinear(t *testing.T) {
 
 	resolved := base
 	for i := 1; i < sections; i++ {
+		if i > 1 {
+			// Each patch is preceded by the accumulated state's bare ID
+			// line — the chain-format section boundary.
+			chain.WriteString(resolved.ComputeC4ID().String() + "\n")
+		}
 		patch := c4m.NewManifest()
 		patch.AddEntry(&c4m.Entry{
 			Name: fmt.Sprintf("file%04d.txt", i),
@@ -45,10 +51,7 @@ func TestLogLongChainLinear(t *testing.T) {
 			C4ID: c4.Identify(strings.NewReader(fmt.Sprintf("content-%d", i))),
 		})
 		c4m.NewEncoder(&chain).Encode(patch)
-		// Each section ends with the resolved state's bare ID line —
-		// the chain-format section boundary.
 		resolved = c4m.ApplyPatch(resolved, patch)
-		chain.WriteString(resolved.ComputeC4ID().String() + "\n")
 	}
 
 	dir := t.TempDir()

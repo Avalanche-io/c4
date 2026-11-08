@@ -5,8 +5,9 @@ import (
 	"io"
 )
 
-// WriteChainStream renders a manifest as the streaming chain shape
-// (design/snapshot-loop/round-3/draft-v9.md §2):
+// WriteChainBody renders a manifest as the streaming chain shape
+// (design/snapshot-loop/round-3/draft-v9.md §2, as amended by
+// design/no-self-id.md and the 2026-11-08 ruling):
 //
 //  1. the base section — every entry in canonical pre-order, with
 //     directory lines carrying null ID and null size (bottom-up
@@ -15,26 +16,15 @@ import (
 //     unreadable directories (null ID in the source) stay null;
 //  2. one bare checkpoint line — the accumulated (base) state's ID;
 //  3. one refinement patch restating exactly the directory lines
-//     whose ID or size changed from their null base form;
-//  4. the resolved manifest's ID on a bare final line — the closing
-//     validator (verified by every conforming resolving decoder).
+//     whose ID or size changed from their null base form.
 //
-// The output is a valid c4m chain that resolves to exactly m. The
-// final line of the stream is always the root ID. These BYTES are
+// The stream ends on the last refined line. Nothing follows it: a
+// c4m file never ends with its own ID, so the resolved state's ID is
+// never written after the entries (through 1.0.24 a "closing
+// validator" line did; that shape is now ErrTrailingID). The output
+// is a valid c4m chain that resolves to exactly m. These BYTES are
 // the contract at any concurrency; a buffered implementation (this
 // one) and a true streaming emitter must produce them identically.
-func WriteChainStream(w io.Writer, m *Manifest) error {
-	if err := WriteChainBody(w, m); err != nil {
-		return err
-	}
-	_, err := io.WriteString(w, m.ComputeC4ID().String()+"\n")
-	return err
-}
-
-// WriteChainBody writes the stream WITHOUT its final validator line —
-// the seam c4 id -s needs: the body streams, the store barrier and
-// journal append run, and only then does the claim (the final root-ID
-// line) print.
 func WriteChainBody(w io.Writer, m *Manifest) error {
 	// The base view: directory aggregates nulled. An empty directory
 	// (no children in m) keeps its real ID and size — both are known
@@ -103,10 +93,10 @@ func indentOf(depth int) string {
 	return out + spaces[:need]
 }
 
-// ChainStream renders WriteChainStream to a string.
+// ChainStream renders WriteChainBody to a string.
 func ChainStream(m *Manifest) (string, error) {
 	var buf bytes.Buffer
-	if err := WriteChainStream(&buf, m); err != nil {
+	if err := WriteChainBody(&buf, m); err != nil {
 		return "", err
 	}
 	return buf.String(), nil

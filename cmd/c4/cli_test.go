@@ -172,19 +172,20 @@ func TestDiffProducesPatch(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 
-	// Diff should contain base ID, entries, and new ID.
+	// Diff is the base ID then the entries; nothing follows them (a
+	// stream never ends with its own ID, 2026-11-08).
 	lines := strings.Split(strings.TrimSpace(diff), "\n")
-	if len(lines) < 3 {
-		t.Fatalf("expected at least 3 lines in diff, got %d: %s", len(lines), diff)
+	if len(lines) < 2 {
+		t.Fatalf("expected at least 2 lines in diff, got %d: %s", len(lines), diff)
 	}
 	// First line should be a C4 ID.
 	if !strings.HasPrefix(lines[0], "c4") || len(lines[0]) != 90 {
 		t.Fatalf("first line should be C4 ID: %s", lines[0])
 	}
-	// Last line should be a C4 ID.
-	last := lines[len(lines)-1]
-	if !strings.HasPrefix(last, "c4") || len(last) != 90 {
-		t.Fatalf("last line should be C4 ID: %s", last)
+	// Last line is an entry, never a bare ID.
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if strings.HasPrefix(last, "c4") && len(last) == 90 {
+		t.Fatalf("diff must not end with a bare ID: %s", last)
 	}
 }
 

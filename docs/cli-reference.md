@@ -47,8 +47,8 @@ The CLI has zero external dependencies. It requires Go 1.16+.
 
 ```
 c4 id [flags] <path>...              Describe files/directories/c4m files (c4m text to stdout)
-c4 id -s <path>                      Snapshot into the store; the stream's final line is THE
-                                     claim, printed after it is durable (-s -q = ID only)
+c4 id -s <path>                      Snapshot into the store; stderr narrates "stored: <ID>"
+                                     after it is durable (-s -q = ID only on stdout)
 c4 restore [--force] <target> <dir>  Make dir match a description (dry run by default)
 c4 cat [-e] [-r] <id[/path]|f.c4m>   Retrieve a store object by ID or ID/path (verified)
 c4 diff [-e] <old> <new>             Produce a c4m diff; sides: dirs, c4m files, or IDs
@@ -79,8 +79,8 @@ level for `c4 id`; get the bare ID with `-q`.
 
 **Snapshot ID** — the ID of a full description: everything observed
 at a moment (modes, times, sizes, names, content). Full is the
-default level for `c4 id` (bare ID with `-q`); the final line of a
-`c4 id -s` stream is the claim; the store alone returns all of it.
+default level for `c4 id` (bare ID with `-q`); `c4 id -s -q` prints the
+claim; the store alone returns all of it.
 
 An ID never says which kind it is: compare like with like. A
 store-resolved ID may take `/path` to descend by recorded entry name

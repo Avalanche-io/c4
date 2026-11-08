@@ -117,6 +117,13 @@ func outputDiff(oldManifest, newManifest *c4m.Manifest, ergonomic bool) {
 		return
 	}
 
+	// The patch form: the old state's ID as the boundary, then the
+	// entries. Nothing follows them: a bare ID after the entries would
+	// be the new state's own ID, and a c4m file never ends with its own
+	// ID (format error since 2026-11-08; through 1.0.24 this printed
+	// result.NewID here, which is why `c4 diff >>` chains need `c4 id
+	// FILE.c4m` to be read again). The new state's ID is `c4 id -q` of
+	// the result.
 	fmt.Println(result.OldID)
 
 	enc := c4m.NewEncoder(os.Stdout)
@@ -124,6 +131,4 @@ func outputDiff(oldManifest, newManifest *c4m.Manifest, ergonomic bool) {
 		enc.SetPretty(true)
 	}
 	enc.Encode(result.Patch)
-
-	fmt.Println(result.NewID)
 }

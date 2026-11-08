@@ -401,12 +401,22 @@ ended with the ID of its own resolved state would be a different file from
 the one that ID names, and a reader cannot tell such a line from data that
 happens to be an ID. Bare IDs appear only as boundaries, naming the state
 of the sections before them, where a patch follows. Writers MUST NOT end a
-c4m with a bare C4 ID. (How a reader treats such a line in files that
-earlier tools wrote, refusing it or accepting it during a migration, is
-not settled here.)
+c4m with a bare C4 ID.
+
+A stream MUST end on an entry line. A bare C4 ID appears only as the
+first-line external base reference or as a checkpoint **before** a patch
+section. A decoder MUST reject a bare C4 ID at EOF (`ErrTrailingID`), and
+the error SHOULD say how to fix the file. A migrating reader (a
+normaliser) MAY instead verify the ID as a checkpoint, drop it, and report
+that it did; it MUST NOT write it back out. *(Settled 2026-11-12; this
+paragraph previously left the reader's treatment open.)* Through c4
+1.0.26, `c4 diff` ended its output with the new state's ID, so files
+built with `c4 diff >>` have this shape; the normaliser (`c4 id
+FILE.c4m`) rewrites them.
 
 Consecutive checkpoints are checkpoint repetition: each names the same
-accumulated state, and a resolving decoder verifies both. `ErrEmptyPatch`
+accumulated state, and a resolving decoder verifies both; the second must
+still be followed by a patch. `ErrEmptyPatch`
 is retired; the identifier remains reserved.
 
 ### Multiple Patches
@@ -423,7 +433,7 @@ c4<id-after-patch-1>
 
 Each checkpoint verifies the state after all preceding patches have been applied.
 
-A chain ends on its last section's entries. A bare ID appears only as a boundary before a patch; a c4m file never ends with a bare ID of its own resolved state, because no file can contain its own ID: a file written from a description must be the file its own C4 ID names (design/no-self-id.md, 2026-11-03).
+A chain ends on its last section's entries. A bare ID appears only as a boundary before a patch; a c4m file never ends with a bare ID of its own resolved state, because no file can contain its own ID: a file written from a description must be the file its own C4 ID names (design/no-self-id.md, 2026-11-03; a format error since 2026-11-08, "No Trailing ID" above).
 
 ### Encoding Patches
 
@@ -496,7 +506,7 @@ Parsers MUST:
 - Reject CR (carriage return) characters
 - Apply canonical transformation consistently
 - Verify bare C4 IDs match accumulated content (except first-line base reference)
-- Treat a bare C4 ID at the end of a file as a format error, never as a validator (see "No Closing Validator")
+- Reject a bare C4 ID at the end of a file (`ErrTrailingID`) as a format error, never as a validator (see "No Closing Validator")
 - Accept null values as specified
 - Reject path traversal attempts (`../`, `./`, a name containing `/` other than a directory's trailing one). A backslash is a literal name character, never a separator *(corrected 2026-11-11: this listed `\` as a separator; only `/` separates paths, ruled 2026-11-10)*
 - Reject duplicate paths within the same scope
@@ -525,3 +535,4 @@ Parsers MAY:
 | `ErrInvalidFlowTarget` | Malformed flow link target |
 | `ErrPatchIDMismatch` | Bare C4 ID does not match accumulated content |
 | `ErrEmptyPatch` | Retired (2026-07-13 erratum); identifier reserved |
+| `ErrTrailingID` | Stream ends with a bare C4 ID (2026-11-08 erratum); fix with the normaliser |
