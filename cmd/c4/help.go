@@ -356,7 +356,9 @@ DESCRIPTION
     object types - what an ID names is knowledge you bring from wherever you got the ID (a
     journal line, a listing entry's kind, an ID list); cat never guesses. A listing is c4m
     text, so catting a directory's ID shows its one-level children; -r expands directory
-    entries through the store; forms that must interpret the object (/path, trailing slash, -r)
+    entries through the store, as far as the store can supply them: each listing it cannot
+    supply is named on stderr (partial: <path> listing <ID> <why>) and cat exits 2, so exit 0
+    with -r means the whole tree. Forms that must interpret the object (/path, trailing slash, -r)
     parse it as a listing, exit 1 if it does not parse. A .c4m file path displays the file,
     chains resolved. Every read is verified: the bytes must hash to the requested ID or cat
     writes nothing and exits 1. "Absent" and "failed verification" are distinguished on stderr

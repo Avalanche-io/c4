@@ -51,7 +51,11 @@ func resolveDiffSide(arg string) *c4m.Manifest {
 		if m == nil {
 			fatalf("Error: %s must resolve to a listing", arg)
 		}
-		return expandIfRecord(m, s)
+		// A diff against a partially expanded tree would report the
+		// store's gaps as the tree's changes: the whole tree or nothing.
+		m, missing := expandIfRecord(m, s)
+		requireCompleteTree(arg, missing)
+		return m
 	}
 	return resolveC4m(arg)
 }

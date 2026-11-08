@@ -256,7 +256,10 @@ func resolveRestoreTarget(s store.Store, arg string) *c4m.Manifest {
 		if m == nil {
 			fatalf("Error: %s must resolve to a listing (extract files with c4 cat)", arg)
 		}
-		m = expandIfRecord(m, s)
+		// A restore target must be the whole tree: restoring a partially
+		// expanded one would remove every subtree the store lacks.
+		m, missing := expandIfRecord(m, s)
+		requireCompleteTree(arg, missing)
 		validateRevertTarget(m)
 		return m
 	}
@@ -265,7 +268,8 @@ func resolveRestoreTarget(s store.Store, arg string) *c4m.Manifest {
 		if err != nil {
 			fatalf("Error loading %s: %v", arg, err)
 		}
-		m = expandIfRecord(m, s)
+		m, missing := expandIfRecord(m, s)
+		requireCompleteTree(arg, missing)
 		return m
 	}
 	fatalf("Error: restore targets are descriptions only — a snapshot ID or a .c4m file, not %s", arg)

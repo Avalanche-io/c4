@@ -21,6 +21,17 @@ import (
 // the base" is ignorance ABOUT the description, and must never be presented
 // as a complete manifest. Decode deliberately leaves the reference unresolved
 // and defers checkpoint verification here rather than guessing.
+//
+// The result is a fold, not an expansion. A stored block is a one-level
+// record: its subdirectories are single lines carrying their own listing
+// IDs. Folding a patch onto it deepens the tree only along the paths the
+// patch restates; every other directory stays one collapsed line, correct
+// (its ID names its record) but not expanded. A consumer that needs the
+// whole tree, to store it, scan against it or materialise it, must inline
+// the collapsed records from the store afterwards (cmd/c4's
+// expandIfRecord does this and names every record the store lacks).
+// Storing the fold as if it were the full tree writes listings whose
+// children were never read (a c4d prototype did exactly this, 2026-11-08).
 func ResolveBase(m *Manifest, src store.Source) (*Manifest, error) {
 	if m == nil {
 		return NewManifest(), nil

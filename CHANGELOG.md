@@ -13,6 +13,21 @@ store is its boot. Temps are now named `.ingest.<host>.<pid>.<random>`;
 writer's and another host's, sweeps the old unnamed form only after a
 day, and never touches an object. `TreeStore.SweepIngest` is exported.
 `design/store-ingest-sweep.md`.
+### `c4 cat -r` names every listing the store lacks and exits 2
+
+`c4 cat -r` on a snapshot whose store is missing a directory's listing
+printed the tree as far as it could and exited 0, silently. That hid a
+real bug in a c4d prototype whose check read only the exit status
+(2026-11-08). Now the tree still prints as far as the store supplies it,
+each listing the store cannot supply is named on stderr as
+`partial: <path> listing <ID> <why>` (not in store, failed verification,
+does not parse, or no store configured), and cat exits 2, the partial
+scan's code. Expanded listings are verified against their IDs, as every
+other cat read already was. `c4 diff` and `c4 restore` given a store
+address that does not expand in full now refuse with exit 1 and the same
+`partial:` lines, instead of comparing or restoring against a tree with
+the store's gaps in it. A directory already listed with its children, or
+an empty one, is never expanded or named.
 
 ### `c4 diff`, `c4 restore` and `c4 explain` hash every file; `-c` is the stated way to trust ⚠
 

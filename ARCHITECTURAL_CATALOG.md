@@ -306,7 +306,7 @@ reference pages live in `help.go` and print via each verb's `--help`):
 |------|---------|----------|
 | `id.go` | `c4 id` | Observer; writer only with `-s` |
 | `restore.go` | `c4 restore` | THE tree writer (dry-run default; `--force`) |
-| `cat.go` | `c4 cat` | Observer (verified reads; ID/path descent) |
+| `cat.go` | `c4 cat` | Observer (verified reads; ID/path descent; -r names each listing the store lacks on stderr and exits 2) |
 | `diff.go` | `c4 diff` | Observer |
 | `patch.go` | `c4 patch` | Observer (text algebra; never touches directories) |
 | `log.go` | `c4 log` | Observer (journal + chain sections) |
