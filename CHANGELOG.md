@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased (1.0.x)
+
+### `c4 cat -r` names every listing the store lacks and exits 2
+
+`c4 cat -r` on a snapshot whose store is missing a directory's listing
+printed the tree as far as it could and exited 0, silently. That hid a
+real bug in a c4d prototype whose check read only the exit status
+(2026-11-08). Now the tree still prints as far as the store supplies it,
+each listing the store cannot supply is named on stderr as
+`partial: <path> listing <ID> <why>` (not in store, does not parse, or no
+store configured), and cat exits 2, the partial scan's code since 1.0.23.
+A listing that fails verification stays fatal (exit 1), as before. `c4 patch <ID> <dir>` given a snapshot that
+does not expand in full refuses with exit 1 and the same `partial:`
+lines, instead of applying a tree with the store's gaps in it. A
+directory already listed with its children, or an empty one, is never
+expanded or named.
+
 ## v1.0.24
 
 ### A partial scan exits 2, not 0

@@ -25,7 +25,8 @@ func runCat(args []string) {
 		fmt.Fprintf(os.Stderr, "or display a c4m file from disk.\n")
 		fmt.Fprintf(os.Stderr, "\nFlags:\n")
 		fmt.Fprintf(os.Stderr, "  -e, --ergonomic    Pretty-print c4m content\n")
-		fmt.Fprintf(os.Stderr, "  -r, --recursive    Recursively expand directory entries\n")
+		fmt.Fprintf(os.Stderr, "  -r, --recursive    Recursively expand directory entries (a listing the store\n")
+		fmt.Fprintf(os.Stderr, "                     lacks is named on stderr as partial: ...; exit 2)\n")
 		os.Exit(1)
 	}
 
@@ -72,14 +73,17 @@ func catFile(path string, ergonomic, recursive bool) {
 		return
 	}
 
+	var missing []missingRecord
 	if recursive {
-		s := openStoreOrNil()
-		if s != nil {
-			m = expandRecursive(m, s)
-		}
+		// A nil store expands nothing and names every collapsed directory
+		// as missing: -r without a store is a partial answer, not a quiet one.
+		m, missing = expandRecursive(m, openStoreOrNil())
 	}
 
 	outputManifest(m, ergonomic)
+	if reportPartialTree(missing) {
+		os.Exit(2)
+	}
 }
 
 // catFromStore fetches content from the store, verifies it against the
@@ -116,11 +120,18 @@ func catFromStore(s store.Store, id c4.ID, ergonomic, recursive bool) {
 		return
 	}
 
+	var missing []missingRecord
 	if recursive {
-		m = expandRecursive(m, s)
+		m, missing = expandRecursive(m, s)
 	}
 
+	// The tree goes out as far as the store can supply it, then every
+	// listing it could not supply is named on stderr and cat exits 2:
+	// partial is a valid answer, silence about it is not.
 	outputManifest(m, ergonomic)
+	if reportPartialTree(missing) {
+		os.Exit(2)
+	}
 }
 
 // streamVerified hashes a stored object on a first pass and streams it
@@ -163,23 +174,59 @@ func fatalMismatch(id c4.ID) {
 	fatalf("Error: stored content for %s does not match its ID (object is damaged or altered)", id)
 }
 
-// expandRecursive walks a manifest and expands directory entries that have
-// C4 IDs by fetching the directory's c4m from the store and inlining the
-// children at the appropriate depth.
-func expandRecursive(m *c4m.Manifest, s store.Store) *c4m.Manifest {
+// missingRecord names a directory whose listing could not be inlined: the
+// path as recorded, the listing's ID, and why the store could not supply
+// it. A partial tree is a valid answer (partial knowledge is first-class),
+// but it is never a silent one.
+type missingRecord struct {
+	path string
+	id   c4.ID
+	why  string
+}
+
+// emptyListingID is the ID of an empty directory's listing (zero bytes):
+// such a directory has no children to fetch and is complete as a line.
+var emptyListingID = c4.Identify(bytes.NewReader(nil))
+
+// expandRecursive walks a manifest and expands every collapsed directory
+// entry (one that carries a listing ID and lists no children) by fetching
+// the listing from the store, verifying it, and inlining the children at
+// the right depth, recursively. It returns the expanded manifest and
+// every directory it could not expand. Until 2026-11-08 a missing listing
+// was skipped silently and the caller exited 0 on a partial tree; that
+// hid a real bug in a c4d prototype whose check read only the exit status.
+func expandRecursive(m *c4m.Manifest, s store.Store) (*c4m.Manifest, []missingRecord) {
 	result := c4m.NewManifest()
-	for _, entry := range m.Entries {
+	var missing []missingRecord
+	var dirs []string // recorded directory names by depth, for paths
+	for i, entry := range m.Entries {
 		result.AddEntry(entry)
-		if !entry.IsDir() || entry.C4ID.IsNil() {
+		if entry.Depth < len(dirs) {
+			dirs = dirs[:entry.Depth]
+		}
+		if !entry.IsDir() {
 			continue
 		}
-		// Try to fetch the directory's c4m from the store.
-		sub := fetchManifestFromStore(s, entry.C4ID)
+		path := strings.Join(dirs, "") + entry.Name
+		dirs = append(dirs, entry.Name)
+		collapsed := i+1 >= len(m.Entries) || m.Entries[i+1].Depth <= entry.Depth
+		if !collapsed || entry.C4ID.IsNil() || entry.C4ID == emptyListingID {
+			continue
+		}
+		if s == nil {
+			missing = append(missing, missingRecord{path, entry.C4ID, "no store configured"})
+			continue
+		}
+		sub, why := fetchListing(s, entry.C4ID)
 		if sub == nil {
+			missing = append(missing, missingRecord{path, entry.C4ID, why})
 			continue
 		}
-		// Recursively expand the sub-manifest.
-		sub = expandRecursive(sub, s)
+		sub, more := expandRecursive(sub, s)
+		for _, mr := range more {
+			mr.path = path + mr.path
+			missing = append(missing, mr)
+		}
 		// Inline children at depth = entry.Depth + 1.
 		for _, child := range sub.Entries {
 			childCopy := *child
@@ -187,41 +234,68 @@ func expandRecursive(m *c4m.Manifest, s store.Store) *c4m.Manifest {
 			result.AddEntry(&childCopy)
 		}
 	}
-	return result
+	return result, missing
 }
 
 // expandIfRecord turns a one-level directory record (all entries at
-// depth 0) into the full tree by inlining stored per-directory records.
-// Full manifests — anything with nested entries — pass through
-// unchanged.
-func expandIfRecord(m *c4m.Manifest, s store.Store) *c4m.Manifest {
+// depth 0) into the full tree by inlining stored per-directory records,
+// reporting every listing the store could not supply. Full manifests —
+// anything with nested entries — pass through unchanged.
+func expandIfRecord(m *c4m.Manifest, s store.Store) (*c4m.Manifest, []missingRecord) {
 	hasDir := false
 	for _, e := range m.Entries {
 		if e.Depth > 0 {
-			return m // nested entries: already a full manifest
+			return m, nil // nested entries: already a full manifest
 		}
 		if e.IsDir() && !e.C4ID.IsNil() {
 			hasDir = true
 		}
 	}
 	if !hasDir {
-		return m
+		return m, nil
 	}
 	return expandRecursive(m, s)
 }
 
-// fetchManifestFromStore fetches a C4 ID from the store and tries to parse
-// it as a c4m manifest. Returns nil if not found or not c4m; exits if the
-// stored bytes do not hash to id.
-func fetchManifestFromStore(s store.Store, id c4.ID) *c4m.Manifest {
+// reportPartialTree narrates every missing listing on stderr, one line
+// each, and returns true when there were any. Callers that have printed
+// a partial tree exit 2, as a partial scan does (c4 id's rule since
+// 1.0.23); callers that need the whole tree exit 1.
+func reportPartialTree(missing []missingRecord) bool {
+	for _, mr := range missing {
+		fmt.Fprintf(os.Stderr, "partial: %s listing %s %s\n", mr.path, mr.id, mr.why)
+	}
+	return len(missing) > 0
+}
+
+// requireCompleteTree exits 1 when a tree the verb must have in full has
+// missing listings, naming each of them.
+func requireCompleteTree(what string, missing []missingRecord) {
+	if !reportPartialTree(missing) {
+		return
+	}
+	fatalf("Error: %s is incomplete in the store: %d listing(s) missing (see partial: lines above)", what, len(missing))
+}
+
+// fetchListing fetches a C4 ID from the store through the verifying
+// reader and parses the bytes as a listing. A listing that is absent or
+// does not parse returns nil and the reason, for the partial: narration;
+// one whose bytes do not hash to its ID is a verification failure, and
+// like every other failed verification in cat it is fatal (exit 1) before
+// anything is written: a damaged record is never narrated as "partial".
+func fetchListing(s store.Store, id c4.ID) (*c4m.Manifest, string) {
 	data, err := readVerified(s, id)
 	if _, ok := err.(storeMismatchError); ok {
 		fatalf("Error: %v", err)
 	}
 	if err != nil {
-		return nil
+		return nil, "not in store"
 	}
-	return tryParseC4m(data)
+	m := tryParseC4m(data)
+	if m == nil {
+		return nil, "does not parse as a listing"
+	}
+	return m, ""
 }
 
 // openStoreOrNil opens the configured store, returning nil on error or if

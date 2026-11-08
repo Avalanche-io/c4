@@ -475,8 +475,10 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 	}
 
 	// A one-level root record expands into the full tree through the
-	// stored per-directory records.
-	targetManifest = expandIfRecord(targetManifest, s)
+	// stored per-directory records. The whole tree or nothing: applying a
+	// partially expanded one would remove every subtree the store lacks.
+	targetManifest, missing := expandIfRecord(targetManifest, s)
+	requireCompleteTree(source, missing)
 	validateRevertTarget(targetManifest)
 
 	// Scan current directory state.
