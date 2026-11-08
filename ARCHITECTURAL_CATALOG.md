@@ -42,7 +42,7 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | Type           | Description                                                                           |
 | -------------- | ------------------------------------------------------------------------------------- |
 | `Manifest`     | Collection of entries with optional patch chain base ID and range data.               |
-| `Entry`        | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links.   |
+| `Entry`        | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links. `SizeIsNull` is the one test for an unknown size (-1, or 0 beside a non-empty C4 ID); `EmptyContentID` is the C4 ID of zero bytes. |
 | `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes. Writes a non-nil `Base` as the first line (`EncodePatch` writes its `OldID` there instead). |
 | `Decoder` | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. Rejects a bare ID at EOF (`ErrTrailingID`, 2026-11-08); `AllowTrailingID`/`DroppedTrailingID` are the normaliser's migration hook. `SetSource` supplies listings a self-contained chain deepens (otherwise `ErrUnresolvedBase`). |
 | `PatchSection` | One section of a patch chain (base or delta).                                         |

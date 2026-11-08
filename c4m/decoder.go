@@ -433,6 +433,12 @@ func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 	entry.HardLink = hardLink
 	entry.FlowDirection = flowDir
 	entry.FlowTarget = flowTarget
+	// A 0 beside the C4 ID of non-empty content is a null size written
+	// by a surface that has no "-" (a mount); read it as null so every
+	// consumer sees one value for one meaning.
+	if entry.SizeIsNull() {
+		entry.Size = -1
+	}
 
 	// Check for sequence notation in the RAW name (before unescaping).
 	// Escaped brackets (\[, \]) are excluded; only unescaped brackets

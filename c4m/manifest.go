@@ -523,9 +523,10 @@ func (m *Manifest) sortSiblingsHierarchically() {
 // Metadata Propagation
 // ----------------------------------------------------------------------------
 
-// emptyListingID is the C4 ID of an empty listing: the ID of zero bytes.
-// A directory with no listed children and this ID is known to be empty.
-var emptyListingID = c4.Identify(bytes.NewReader(nil))
+// emptyListingID is the C4 ID of an empty listing, which is the ID of zero
+// bytes (EmptyContentID): one value, named for the directory reading. A
+// directory with no listed children and this ID is known to be empty.
+var emptyListingID = EmptyContentID
 
 // PropagateMetadata resolves null directory Size and Timestamp by accumulating
 // from descendants in a single pass. This is the canonical, spec-compliant
@@ -623,7 +624,9 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 		// derive its size and a null stays null. Through 2026-11-11 any
 		// non-nil ID gave 0, an invented value ComputeC4ID then hashed
 		// (childless-dir vector).
-		if d.Size < 0 {
+		// A size of 0 beside a C4 ID other than the empty content's is
+		// a null size too (ruling 2026-11-08; Entry.SizeIsNull).
+		if d.SizeIsNull() {
 			switch {
 			case !top.hadChildren && d.C4ID == emptyListingID:
 				d.Size = 0
@@ -662,7 +665,7 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 		}
 		p := &stack[len(stack)-1]
 		p.hadChildren = true
-		if d.Size < 0 {
+		if d.SizeIsNull() {
 			p.nullSize = true
 		} else {
 			p.size += d.Size
@@ -692,7 +695,7 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 		}
 		p := &stack[len(stack)-1]
 		p.hadChildren = true
-		if e.Size < 0 {
+		if e.SizeIsNull() {
 			p.nullSize = true
 		} else {
 			p.size += e.Size

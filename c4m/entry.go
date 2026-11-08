@@ -1,6 +1,7 @@
 package c4m
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path"
@@ -9,6 +10,10 @@ import (
 
 	"github.com/Avalanche-io/c4"
 )
+
+// EmptyContentID is the C4 ID of zero bytes: the only C4 ID a size of 0
+// can truthfully sit beside, and the ID of an empty directory's listing.
+var EmptyContentID = c4.Identify(bytes.NewReader(nil))
 
 // FlowDirection indicates the direction of a flow link.
 type FlowDirection int
@@ -102,7 +107,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 
 	// Format size (handle null value)
 	var sizeStr string
-	if e.Size < 0 {
+	if e.SizeIsNull() {
 		sizeStr = "-" // Null size
 	} else {
 		sizeStr = formatSize(e.Size, displayFormat)
@@ -148,9 +153,11 @@ func (e *Entry) Canonical() string {
 	} else {
 		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
 	}
-	// Null size renders as "-"
+	// Null size renders as "-", including a 0 contradicted by the ID
+	// (SizeIsNull), so the description's ID is the same however the
+	// null was written.
 	var sizeStr string
-	if e.Size < 0 {
+	if e.SizeIsNull() {
 		sizeStr = "-"
 	} else {
 		sizeStr = fmt.Sprintf("%d", e.Size) // No formatting in canonical
@@ -381,12 +388,29 @@ func (e *Entry) IsSocket() bool {
 	return e.Mode&os.ModeSocket != 0
 }
 
+// SizeIsNull reports whether the entry's size is unknown. -1 is null. So
+// is a stated 0 beside the C4 ID of content that is not empty: a
+// filesystem surface has no number for "unknown", so a null size can
+// only materialise as 0, and a 0 is contradicted by every C4 ID except
+// the empty content's (Joshua, 2026-11-08; design/null-size-zero.md).
+// Only the empty content has size 0, so the rule reinterprets a
+// combination no honest scan produces and changes no real data. A 0
+// with no C4 ID is a known zero (a structure-level scan of an empty
+// file). Symlinks are exempt: their size is the link's own and their
+// C4 ID is the target's.
+func (e *Entry) SizeIsNull() bool {
+	if e.Size < 0 {
+		return true
+	}
+	return e.Size == 0 && !e.C4ID.IsNil() && e.C4ID != EmptyContentID && !e.IsSymlink()
+}
+
 // HasNullValues returns true if entry has any null metadata
 func (e *Entry) HasNullValues() bool {
 	// Mode==0 is null (ZeroMode is a known zero) — directory-ness comes from trailing "/" in name.
 	hasNullMode := e.Mode == 0
 	hasNullTimestamp := e.Timestamp.Equal(NullTimestamp())
-	hasNullSize := e.Size < 0
+	hasNullSize := e.SizeIsNull()
 	// C4ID being nil is OK for empty files or directories without computed IDs yet
 
 	return hasNullMode || hasNullTimestamp || hasNullSize
@@ -402,7 +426,7 @@ func (e *Entry) GetNullFields() []string {
 	if e.Timestamp.Equal(NullTimestamp()) {
 		nullFields = append(nullFields, "Timestamp")
 	}
-	if e.Size < 0 {
+	if e.SizeIsNull() {
 		nullFields = append(nullFields, "Size")
 	}
 

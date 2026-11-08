@@ -1,7 +1,6 @@
 package c4m
 
 import (
-	"bytes"
 	"sort"
 	"strings"
 
@@ -17,7 +16,7 @@ import (
 // the scanner, the store writer and the normaliser all call it.
 func ListingRecord(children []*Entry) (string, c4.ID) {
 	if len(children) == 0 {
-		return "", c4.Identify(bytes.NewReader(nil))
+		return "", EmptyContentID
 	}
 	sorted := make([]*Entry, len(children))
 	copy(sorted, children)

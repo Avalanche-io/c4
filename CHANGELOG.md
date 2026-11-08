@@ -539,6 +539,18 @@ store is its boot. Temps are now named `.ingest.<host>.<pid>.<random>`;
 writer's and another host's, sweeps the old unnamed form only after a
 day, and never touches an object. `TreeStore.SweepIngest` is exported.
 `design/store-ingest-sweep.md`.
+### A size of 0 beside a C4 ID other than the empty content's is null
+
+Only the empty content has size 0. A `0` on a file or directory line
+beside any other C4 ID is therefore a null size written by a surface
+that has no `-` (a mount), and is read as one (ruled 2026-11-08;
+`design/null-size-zero.md`). The decoder holds it as -1, canonical form
+and the encoder write `-`, and the parent directory's size goes null
+over it, so `0 f <ID>` and `- f <ID>` are one description with one ID.
+A `0` with no C4 ID, a `0` with the empty content's ID, and a symlink's
+`0` stay known zeros. `c4m.Entry.SizeIsNull` is the one test;
+`c4m.EmptyContentID` names the ID of zero bytes. No shipped scanner
+writes the combination, so no existing file changes meaning.
 
 ### `c4 cat -r` names every listing the store lacks and exits 2
 

@@ -213,6 +213,18 @@ Leading zeros are forbidden (except `0` itself).
 
 **Null size**: `-`. Internally represented as -1.
 
+**Zero beside a C4 ID (2026-11-08)**: only the empty content has size 0;
+its C4 ID is the C4 ID of zero bytes
+(`c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT`).
+A size of `0` on a file or directory entry beside any other C4 ID is a
+null size. A decoder MUST read it as null (-1); the canonical form (Section
+5) MUST write it as `-`; the two spellings are one description with one
+C4 ID. A `0` beside no C4 ID is a known zero. The rule does not apply to
+symlink entries, whose size is the link's own. The rule exists because a
+filesystem surface has no `-`: a null size can only be shown there as `0`,
+and the C4 ID distinguishes the two meanings without any marker outside
+the entry.
+
 **Ergonomic form**: Comma-separated thousands (e.g., `1,234,567`). Decoders
 MUST accept commas in size fields and strip them before parsing.
 
@@ -873,7 +885,7 @@ listing piped through the C4 hash function.
 |-------|-----------|----------------|-------|
 | Mode | `-` or `----------` | 0 (zero) | Canonical: `-` |
 | Timestamp | `-` or `0` | Unix epoch (1970-01-01T00:00:00Z) | |
-| Size | `-` | -1 | |
+| Size | `-`; or `0` beside a C4 ID other than the empty content's | -1 | Canonical: `-`; symlinks exempt (4.3) |
 | C4 ID | `-` or absent | nil / zero-value ID | |
 | Name | (no null) | — | Required field |
 

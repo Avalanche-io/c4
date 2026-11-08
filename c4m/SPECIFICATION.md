@@ -69,6 +69,8 @@ File size in bytes as a decimal integer. No leading zeros except for `0` itself.
 
 **Null size**: `-` (single dash). Internally represented as -1.
 
+**Zero beside a C4 ID (2026-11-08).** Only the empty content has size 0, and its C4 ID is `c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT`. A size of `0` beside any other C4 ID on a file or directory entry is therefore a **null size**, not a zero: a filesystem surface (a mount) has no `-`, so a null size can only be shown as `0`, and the C4 ID says which it is. A decoder MUST read such a `0` as null (-1), the canonical form writes it as `-`, and the two spellings are one description with one ID. A `0` with no C4 ID is a known zero (a structure-level scan of an empty file). A symlink's size is the link's own, so this rule does not apply to symlink entries. See `design/null-size-zero.md`.
+
 **Directory sizes**: Sum of all content within the directory (recursive). See [Directory C4 IDs and Metadata](#directory-c4-ids-and-metadata).
 
 ### Name
@@ -298,7 +300,7 @@ C4M supports null values to enable progressive resolution and manual editing:
 |-------|-------------------|---------------------|
 | Mode | `-` (single dash — unknown) | `----------` (ten dashes — known zero) |
 | Timestamp | `-` or `0` | Unix epoch |
-| Size | `-` | -1 |
+| Size | `-`; or `0` beside a C4 ID other than the empty content's (file or directory) | `0` beside no C4 ID or the empty content's ID |
 | C4 ID | `-` or omitted | nil |
 | Name | (cannot be null) | — |
 
@@ -314,6 +316,7 @@ When a description is materialized onto a filesystem (`c4 restore`, `c4 patch`, 
 2. **Creating a file or directory that did not exist**, a null timestamp sets the Unix epoch, which scans back as null. So a tree created from a null-dated description reads back at that description's ID: the materialization round-trips.
 3. **Creating from a null mode**, the file or directory takes the platform default (a regular file as the process's umask makes it, a directory likewise). No on-disk mode reads back as null, so a scan of the result legitimately differs from the description at that field, exactly as a scan at a finer level does.
 4. **Verifying a materialization** compares at the description's own knowledge, field by field: the as-built tree is projected onto the description's nulls (a field the description leaves null is not compared) and must then recompute to the description's root ID.
+5. **A null size on a filesystem surface** (a mount, which must show a number) is resolved first: with a C4 ID, the size is found from any source that has the content, remote if need be, and shown. Only when no source can give one is `0` shown, and then the entry's C4 ID is not the empty content's, so the `0` reads back as null (see "Size"). A null size with no C4 ID cannot be fulfilled: the surface shows `0` and refuses to open the file; a scan of it records a read error, never a quiet empty file.
 
 ### Use Cases
 
