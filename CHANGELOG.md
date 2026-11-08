@@ -2,6 +2,18 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### Incomplete ingests are collected when the store opens
+
+A batch ingest killed before its barrier left its `.ingest.*` temp files
+in the store root forever (found by c4d's commit measurements). The rule
+(2026-11-08): on boot a system garbage-collects incomplete transactions
+that cannot, or should not, be replayed to completion, and opening a
+store is its boot. Temps are now named `.ingest.<host>.<pid>.<random>`;
+`NewTreeStore` removes those of this host's dead writers, keeps a live
+writer's and another host's, sweeps the old unnamed form only after a
+day, and never touches an object. `TreeStore.SweepIngest` is exported.
+`design/store-ingest-sweep.md`.
+
 ### `c4 diff`, `c4 restore` and `c4 explain` hash every file; `-c` is the stated way to trust ⚠
 
 A directory side of `c4 diff`, the destination of `c4 restore`, and the

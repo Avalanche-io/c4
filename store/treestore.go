@@ -48,7 +48,12 @@ func NewTreeStore(root string) (*TreeStore, error) {
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return nil, fmt.Errorf("create store root: %w", err)
 	}
-	return &TreeStore{root: root, splitThreshold: DefaultSplitThreshold}, nil
+	s := &TreeStore{root: root, splitThreshold: DefaultSplitThreshold}
+	// Opening is the store's boot: incomplete ingests a dead writer left
+	// behind are collected (ingest_sweep.go). Best effort; a sweep that
+	// cannot read the root does not stop the store from opening.
+	s.SweepIngest()
+	return s, nil
 }
 
 // Root returns the root directory of the store.
@@ -141,7 +146,7 @@ func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	// Sync barrier, same as Put — a rename must never precede the
 	// durability of the bytes it exposes.
 	if s.syncMode == SyncBatch {
-		tmp, err := os.CreateTemp(s.root, ".ingest.*")
+		tmp, err := os.CreateTemp(s.root, ingestPattern())
 		if err != nil {
 			return nil, err
 		}
@@ -212,7 +217,7 @@ func (w *pendingWriter) Close() error {
 // publish step (exists-check, rename, split accounting) is serialized.
 func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	// Write to a temp file while computing the C4 ID.
-	tmp, err := os.CreateTemp(s.root, ".ingest.*")
+	tmp, err := os.CreateTemp(s.root, ingestPattern())
 	if err != nil {
 		return c4.ID{}, fmt.Errorf("create temp: %w", err)
 	}
