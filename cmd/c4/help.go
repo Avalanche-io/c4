@@ -57,8 +57,10 @@ from stderr, and never scrape an ID out of entry text or prose.
                                      its own undo handle
   c4 log | awk '{print $NF}'         every ID the installed journal lists, oldest first
   c4 cat -r "$ID" | c4 id -q -       recompute any claim instead of trusting it
-With -s, entry lines stream as description, never claims; the claim is the final bare root-ID
-line, valid on exit 0 or 2 - scripts use -q.
+With -s, entry lines stream as description, never claims; the claim is the one ID line that
+-s -q prints, valid on exit 0 or 2, and without -q the stored ID is narrated on stderr as
+"stored: <ID>" - scripts use -q. A stream never ends with its own ID (c4m: a file cannot
+contain the ID that names it).
 Exit codes: 0 ok; 1 error - bare -q ID lines already printed remain true claims; streamed
 description lines were never claims; 2 completed with declared partiality on stderr; 3 (restore
 only) curable - cure, then re-run. One path per listing stream: without -q, id refuses several
@@ -66,11 +68,11 @@ paths; with -q, one line per path that SUCCEEDED - pairing is guesswork unless e
 path, one line, one exit.
 
 Nothing is written anywhere without -s (or restore --force), and -s writes only inside the store.
-A claim line - every -q line, and the final bare root-ID line of an -s stream that exits 0 or
-2 - prints only after everything it names is on stable media; kill -9, panic, and power loss
-are one case, and a printed claim never dangles: if the claim line printed, you can get it
-back. Lines above it are description, never claims. No c4 verb deletes store objects; the
-journal (c4 log) records every claim.
+A claim line - every -q line - prints only after everything it names is on stable media;
+kill -9, panic, and power loss are one case, and a printed claim never dangles: if the claim
+line printed, you can get it back. Streamed entry lines are description, never claims, and
+the "stored:" narration on stderr follows the same barrier. No c4 verb deletes store objects;
+the journal (c4 log) records every claim.
 
 Store: a plain directory of hash-named objects plus one journal file (default ~/.c4/store; set
 C4_STORE, or list stores in ~/.c4/config - reads consult stores in order; the first is written
