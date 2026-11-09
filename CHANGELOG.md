@@ -2,6 +2,15 @@
 
 ## Unreleased (1.0.x)
 
+### `c4 id -q` without `-s` says on stderr that it printed nothing
+
+On this line `-q` is "quiet": `c4 id -q DIR` prints nothing and exits 0.
+On 1.1 the same flag prints the description's ID. A script moving between
+the lines got silence with exit 0 here (absfs, 2026-11-09). `-q` without
+`-s` now narrates once on stderr that it printed nothing by design and
+that the ID is the `stored:` line of `c4 id -s`. stdout and exit codes
+are unchanged; with `-s` nothing new is printed.
+
 ### `c4 cat -r` names every listing the store lacks and exits 2
 
 `c4 cat -r` on a snapshot whose store is missing a directory's listing

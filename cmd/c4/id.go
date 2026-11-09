@@ -85,6 +85,15 @@ func runID(args []string) {
 	combined := c4m.NewManifest()
 	start := racy.Start() // before any file argument is observed
 
+	// On this line -q means "quiet": nothing is printed to stdout. On 1.1
+	// it means "the ID only" and prints one line. A script moving between
+	// the two gets silence with exit 0 here, so say so once on stderr
+	// (found by absfs, 2026-11-09). With -s the stored: line already
+	// narrates, so the silence is not silent.
+	if *quiet && !shouldStore {
+		fmt.Fprintln(os.Stderr, "c4 id -q: output suppressed; on 1.0.x -q prints nothing by design (on 1.1 it prints the ID; here the ID is the stored: line of c4 id -s)")
+	}
+
 	for _, p := range paths {
 		info, err := os.Lstat(p)
 		if err != nil {
