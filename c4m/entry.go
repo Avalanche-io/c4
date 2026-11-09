@@ -89,14 +89,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	indent := strings.Repeat(" ", e.Depth*indentWidth)
 
 	// Format mode (handle null value).
-	// Mode==0 is null; the known zero is ZeroMode and formats as ten
-	// dashes. Directory-ness comes from trailing "/" in name.
-	var modeStr string
-	if e.Mode == 0 {
-		modeStr = "-" // Null mode
-	} else {
-		modeStr = formatMode(e.Mode)
-	}
+	modeStr := e.modeText()
 
 	// Format timestamp (handle null value)
 	var timeStr string
@@ -147,13 +140,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 // Canonical returns the canonical form for C4 ID computation
 func (e *Entry) Canonical() string {
 	// No indentation in canonical form.
-	// Null mode renders as "-"; the known zero (ZeroMode) as "----------".
-	var modeStr string
-	if e.Mode == 0 {
-		modeStr = "-"
-	} else {
-		modeStr = formatMode(e.Mode)
-	}
+	modeStr := e.modeText()
 	// Canonical format MUST be UTC only; null timestamps render as "-"
 	var timeStr string
 	if e.Timestamp.Equal(NullTimestamp()) {

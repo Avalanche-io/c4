@@ -24,6 +24,8 @@ against null sorted correctly everywhere):
   the whole scan failed with exit 1 (measured 2026-11-09).
 - A childless directory with no C4 ID keeps a null size when metadata is
   propagated; only an empty directory (the empty-content ID) is size 0.
+- A known-zero mode on a directory name encodes as `d---------` in every
+  form, never `----------` (which on a directory line is the legacy null).
 - `c4m/testdata/zero-null-vector/`: the shared conformance vector, made
   by the library on master; `TestZeroNullVector` pins it here.
 
