@@ -89,7 +89,8 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 	indent := strings.Repeat(" ", e.Depth*indentWidth)
 
 	// Format mode (handle null value).
-	// Mode==0 is always null — directory-ness comes from trailing "/" in name.
+	// Mode==0 is null; the known zero is ZeroMode and formats as ten
+	// dashes. Directory-ness comes from trailing "/" in name.
 	var modeStr string
 	if e.Mode == 0 {
 		modeStr = "-" // Null mode
@@ -146,7 +147,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 // Canonical returns the canonical form for C4 ID computation
 func (e *Entry) Canonical() string {
 	// No indentation in canonical form.
-	// Null mode renders as "-". Mode==0 is always null.
+	// Null mode renders as "-"; the known zero (ZeroMode) as "----------".
 	var modeStr string
 	if e.Mode == 0 {
 		modeStr = "-"
@@ -392,7 +393,7 @@ func (e *Entry) IsSocket() bool {
 
 // HasNullValues returns true if entry has any null metadata
 func (e *Entry) HasNullValues() bool {
-	// Mode==0 is always null — directory-ness comes from trailing "/" in name.
+	// Mode==0 is null (ZeroMode is a known zero) — directory-ness comes from trailing "/" in name.
 	hasNullMode := e.Mode == 0
 	hasNullTimestamp := e.Timestamp.Equal(NullTimestamp())
 	hasNullSize := e.Size < 0

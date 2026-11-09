@@ -618,7 +618,10 @@ func reportPartial(m *c4m.Manifest, mode scan.ScanMode) bool {
 	}
 	found := false
 	for path, e := range c4m.EntryPaths(m.Entries) {
-		if e.IsDir() || e.IsSequence || e.Target != "" || !e.C4ID.IsNil() {
+		// A full scan gives every readable directory an ID (resolveDir), so
+		// a directory with none is one the walk could not open: named too
+		// (2026-11-09; through 1.0.24 such a scan aborted instead).
+		if e.IsSequence || e.Target != "" || !e.C4ID.IsNil() {
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "partial: %s recorded with nulls (unreadable)\n", path)

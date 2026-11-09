@@ -76,7 +76,7 @@ func NewFileMetadata(path string, info os.FileInfo, depth int) FileMetadata {
 		path:    path,
 		name:    info.Name(),
 		size:    size,
-		mode:    info.Mode(),
+		mode:    c4m.KnownMode(info.Mode()), // read from disk, so never null
 		modTime: info.ModTime(),
 		isDir:   info.IsDir(),
 		depth:   depth,

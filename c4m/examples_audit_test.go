@@ -582,15 +582,15 @@ func TestExamplesAudit_DecoderEdgeCases(t *testing.T) {
 		t.Logf("Input:\n%s\nParsed entry: mode=%v, name=%s", input, m.Entries[0].Mode, m.Entries[0].Name)
 	})
 
-	// Test: ten-dash null mode decoding
-	t.Run("ten_dash_null_mode", func(t *testing.T) {
+	// Test: ten dashes decode as the known zero mode, never as null
+	t.Run("ten_dash_zero_mode", func(t *testing.T) {
 		input := "---------- 2024-06-15T14:30:00Z 100 file.txt\n"
 		m, err := Unmarshal([]byte(input))
 		if err != nil {
 			t.Fatalf("Unmarshal error: %v", err)
 		}
-		if m.Entries[0].Mode != 0 {
-			t.Errorf("expected null mode (0), got %v", m.Entries[0].Mode)
+		if m.Entries[0].Mode != ZeroMode {
+			t.Errorf("expected the known zero mode, got %v (null is %v)", m.Entries[0].Mode, os.FileMode(0))
 		}
 	})
 

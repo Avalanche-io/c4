@@ -474,7 +474,30 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 	}
 	dirEntries, err := os.ReadDir(dirPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory %s: %w", dirPath, err)
+		// Partial knowledge is a valid state: an unreadable directory
+		// records exactly what the walk observed, its name and kind, its
+		// observed mode (d---------, known) and mtime, and null for
+		// everything unread (children, size, ID), and the scan continues
+		// and exits 2, as it does for an unreadable file since 1.0.23.
+		// Through 1.0.24 the whole scan aborted with no output (measured
+		// 2026-11-09). The scan root itself failing to read is still an
+		// error: there is nothing to describe at all.
+		if dirName == "" {
+			return nil, fmt.Errorf("failed to read directory %s: %w", dirPath, err)
+		}
+		dirInfo, statErr := os.Lstat(dirPath)
+		if statErr != nil {
+			return nil, fmt.Errorf("failed to read directory %s: %w", dirPath, err)
+		}
+		entry, genErr := g.generateEntry(dirPath, dirInfo, depth)
+		if genErr != nil {
+			return nil, genErr
+		}
+		entry.Name = dirName + "/"
+		entry.Size = -1
+		entry.C4ID = c4.ID{}
+		entry.Timestamp = dirInfo.ModTime().UTC()
+		return []*Entry{entry}, nil
 	}
 
 	out := make([]*Entry, 0, len(dirEntries)+1)

@@ -2,6 +2,31 @@
 
 ## Unreleased (1.0.x)
 
+### Known zero against null: ten dashes is the known zero mode; an unreadable directory no longer aborts the scan
+
+Backport of master's null-metadata rules (Joshua, 2026-11-09: known zero
+against null sorted correctly everywhere):
+
+- `----------` decodes as the **known zero** mode (`c4m.ZeroMode`, a
+  regular file with zero permissions) and encodes back as `----------` in
+  canonical and pretty form; `-` is the null mode and encodes as `-` in
+  every form. Through 1.0.24 the decoder read ten dashes as null and the
+  pretty encoder wrote null as ten dashes, so a chmod 000 file lost its
+  mode on the way through a pretty file, and restore applied the default.
+  Ten dashes on a directory line stays the legacy null (old pretty files).
+- A create from a null timestamp sets the epoch, so the tree reads back
+  at the description's ID; a create from a null mode takes the platform
+  default; the known zero applies as 0000.
+- `c4 id` on a tree with an unreadable directory (`d---------`) no longer
+  aborts with no output. The directory is recorded with its observed
+  mode and time and null size and ID, named on stderr as `partial:`, and
+  the scan exits 2, as an unreadable file has since 1.0.23. Through 1.0.24
+  the whole scan failed with exit 1 (measured 2026-11-09).
+- A childless directory with no C4 ID keeps a null size when metadata is
+  propagated; only an empty directory (the empty-content ID) is size 0.
+- `c4m/testdata/zero-null-vector/`: the shared conformance vector, made
+  by the library on master; `TestZeroNullVector` pins it here.
+
 ### `c4 id -q` without `-s` says on stderr that it printed nothing
 
 On this line `-q` is "quiet": `c4 id -q DIR` prints nothing and exits 0.
