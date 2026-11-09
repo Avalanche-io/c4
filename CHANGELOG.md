@@ -12,6 +12,17 @@ directory type for a known mode on a directory name: `d---------`, in
 canonical and pretty form, through one `modeText` used by both. Other
 type bits on a directory name are left as given; that is a malformed
 entry, not one to repair silently.
+### A pretty timestamp with an unknown zone abbreviation is refused
+
+The pretty-form timestamp (`Jan  2 03:04:05 2026 CST`) carries a zone
+abbreviation, and Go's parser fabricates a zone with offset zero for any
+abbreviation it does not know, so a file written on one machine read
+hours wrong on another and claimed success (found by the libc4 and c4py
+ports, 2026-11-09). The decoder now accepts UTC, GMT, Z, the local zone's
+own abbreviation and numeric offsets, and refuses any other abbreviation
+with "unknown time zone abbreviation ...: write UTC or a numeric offset".
+Canonical text is unaffected (it is always UTC). What `-e` should write so
+its text parses anywhere is with Joshua.
 
 ### An unread directory keeps a null size; the zero-against-null vector
 

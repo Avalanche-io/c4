@@ -768,19 +768,22 @@ func parseTimestamp(s string) (time.Time, error) {
 		return t.UTC(), nil
 	}
 
-	// Try Unix format (e.g., "Mon Jan  2 15:04:05 MST 2006")
-	if t, err := time.Parse(time.UnixDate, s); err == nil {
-		return t.UTC(), nil
-	}
-
-	// Try pretty format with timezone (e.g., "Jan  2 15:04:05 2006 MST")
-	// Need to handle both single and double-space after month
-	if t, err := time.Parse("Jan _2 15:04:05 2006 MST", s); err == nil {
-		return t.UTC(), nil
-	}
-
-	// Try without the space padding
-	if t, err := time.Parse("Jan 2 15:04:05 2006 MST", s); err == nil {
+	// Try Unix format (e.g., "Mon Jan  2 15:04:05 MST 2006") and the pretty
+	// forms with a zone abbreviation (e.g., "Jan  2 15:04:05 2006 MST").
+	// An abbreviation names an offset only if this process knows it:
+	// UTC/GMT/Z, or the local zone's own. For any other abbreviation Go's
+	// time.Parse fabricates a zone with offset zero, which would read the
+	// time wrongly by hours while claiming success; that is refused
+	// (2026-11-09; found by the libc4 and c4py ports). Write UTC or a
+	// numeric offset for text that must parse on another machine.
+	for _, layout := range []string{time.UnixDate, "Jan _2 15:04:05 2006 MST", "Jan 2 15:04:05 2006 MST"} {
+		t, err := time.Parse(layout, s)
+		if err != nil {
+			continue
+		}
+		if name, off := t.Zone(); off == 0 && t.Location() != time.Local && t.Location() != time.UTC && name != "UTC" && name != "GMT" && name != "Z" {
+			return time.Time{}, fmt.Errorf("unknown time zone abbreviation %q in %q: write UTC or a numeric offset", name, s)
+		}
 		return t.UTC(), nil
 	}
 
