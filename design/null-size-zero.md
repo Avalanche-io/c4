@@ -147,6 +147,27 @@ READDIR(PLUS)** with no attributes and no handle, so the listing still
 says the entry exists. That needs a change in absnfs (c4d has told absfs)
 and then a measurement of what `ls -l` and Finder show for such an entry.
 
+**Measured again (absnfs #92, c4d, 2026-11-09 16:14 CST):** with the
+name kept in READDIR(PLUS) and no attributes or handle, macOS `ls` and
+`find` do not show it at all (the client's bulk-attribute path skips an
+entry it cannot describe); `getdirentries` returns it and `stat` gives
+EIO. So on NFS v3 with the macOS client the two-part rule is honest to a
+program reading the directory raw and invisible to `ls`, Finder and a
+`c4 id` scan: the "reads as a deletion" outcome after all. The remaining
+option there is to let LOOKUP and GETATTR succeed (size 0, as ruled) and
+refuse at ACCESS, the one call the client makes before letting a program
+open the file; whether the macOS client honours an ACCESS refusal for a
+file its owner may read is not yet measured. On SMB the door has a real
+open, and absfs measured that refusal as loud in every tool.
+
+**The rule as it stands, then:** where the door has an open, or an
+access check the client honours, refuse there and list the entry with
+size 0. Where it has neither, the entry cannot be both listed and safe;
+hiding it, with an honest error on any direct access by name, is the
+lesser harm, and the capture side must still carry the entry (it knows
+the ID), so the hiding is a property of that door, not of the
+description. The ACCESS measurement decides which case NFS v3 is in.
+
 ## Cost
 
 - **Every implementation** (c4py, c4ts, c4m-swift, libc4) must apply the
