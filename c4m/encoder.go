@@ -141,13 +141,8 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 	indent := strings.Repeat(" ", entry.Depth*e.indentWidth)
 
 	// Format mode: null is "-" in every form; "----------" is the known
-	// zero mode and must survive a round trip.
-	var modeStr string
-	if entry.Mode == 0 {
-		modeStr = "-"
-	} else {
-		modeStr = formatMode(entry.Mode)
-	}
+	// zero mode and must survive a round trip (modeText, one rule for all forms).
+	modeStr := entry.modeText()
 
 	// Format timestamp (handle null value)
 	var timeStr string
