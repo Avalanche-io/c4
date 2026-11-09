@@ -307,6 +307,12 @@ func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 
 	entry.Size = size
 	entry.Name = UnsafeName(name)
+	// Ten dashes on a directory can only be a legacy null: a correct
+	// encoder writes a zero-permission directory as "d---------", and
+	// encoders through 1.0.21 wrote null as ten dashes in pretty form.
+	if modeStr == "----------" && strings.HasSuffix(entry.Name, "/") {
+		entry.Mode = 0
+	}
 	entry.Target = UnsafeName(target)
 	entry.C4ID = id
 	entry.HardLink = hardLink
