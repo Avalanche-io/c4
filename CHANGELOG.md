@@ -39,6 +39,15 @@ vector for known zero against null (ten-dash file, `d---------` with a
 child, null mode, empty file and directory, unread directory), made by
 the library in canonical and pretty form, with the per-entry results every
 implementation must see; `TestZeroNullVector` regenerates and pins it.
+### A failed store barrier is fatal; nothing is claimed
+
+`c4 id -s` (and every verb that stores) runs the store's batch barrier
+and then journals and prints the claim. When the barrier failed, the
+failure was only warned about and the claim went out anyway, naming
+bytes that may not be on stable media (found in c4d's storage review,
+2026-11-09). The barrier's failure is now fatal, before the journal
+append and before any ID is printed: "store sync failed; nothing
+claimed".
 
 ### Incomplete ingests are collected when the store opens
 

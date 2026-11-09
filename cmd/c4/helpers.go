@@ -235,16 +235,26 @@ func applyIngestSync(s store.Store) store.Store {
 }
 
 // syncStore issues the ingest batch barrier: everything stored so far
-// becomes durable. No-op for stores without batch semantics.
+// becomes durable. No-op for stores without batch semantics. A barrier
+// that fails is fatal: every caller journals and prints a claim right
+// after it, and a claim names bytes that are on stable media, so nothing
+// may be claimed when the barrier did not hold. Until 2026-11-09 this
+// only warned and the claim went out anyway (found in c4d's review).
 func syncStore(s store.Store) {
+	if err := storeBarrier(s); err != nil {
+		fatalf("Error: store sync failed; nothing claimed: %v", err)
+	}
+}
+
+// storeBarrier runs the store's batch barrier and returns its error; nil
+// for a nil store or one without batch semantics.
+func storeBarrier(s store.Store) error {
 	if s == nil {
-		return
+		return nil
 	}
 	sy, ok := s.(store.Syncer)
 	if !ok {
-		return
+		return nil
 	}
-	if err := sy.Sync(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: store sync: %v\n", err)
-	}
+	return sy.Sync()
 }
