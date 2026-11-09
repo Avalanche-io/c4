@@ -2,6 +2,22 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### An unread directory keeps a null size; the zero-against-null vector
+
+A directory the scanner could not open (`d---------`, a chmod 000
+directory) was recorded with size `0`: the scanner set the size null,
+then `PropagateMetadata` filled 0 because the directory had no children.
+Under the size rule, 0 beside no C4 ID is a known empty, so the scan
+asserted an emptiness nobody saw (Joshua, 2026-11-09). Now a childless
+directory with no C4 ID keeps a null size; an empty directory, whose
+listing hashes to the empty-content ID, still gets 0. The scan is partial
+(exit 2) either way, as before. SPECIFICATION.md gains "Empty and Unread
+Directories". `c4m/testdata/zero-null-vector/` is the shared conformance
+vector for known zero against null (ten-dash file, `d---------` with a
+child, null mode, empty file and directory, unread directory), made by
+the library in canonical and pretty form, with the per-entry results every
+implementation must see; `TestZeroNullVector` regenerates and pins it.
+
 ### Incomplete ingests are collected when the store opens
 
 A batch ingest killed before its barrier left its `.ingest.*` temp files

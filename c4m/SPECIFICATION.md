@@ -281,6 +281,10 @@ The size field for a directory is the **total size of all contents**: the recurs
 
 If **any** child entry has null size (-1), the parent directory's size is also null. This applies recursively to the root. The same rule applies to timestamps.
 
+#### Empty and Unread Directories
+
+A directory with no children and the empty-content C4 ID (`c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT`, the ID of an empty listing) is **empty**: its size is 0. A directory with no listed children and **no** C4 ID is **unread**: nobody listed it (a directory at `d---------` the scanner could not open, or a hand-written line), so its size is null and stays null when metadata is propagated. Its mode and timestamp are still known if they were observed (`d--------- 2026-01-02T03:04:05Z - unread/ -`). Writing `0` for such a directory would assert an emptiness nobody saw. A scan that records one is partial (exit 2).
+
 ### Directory Timestamps
 
 Directory timestamps come from the filesystem's modification time for the directory itself.

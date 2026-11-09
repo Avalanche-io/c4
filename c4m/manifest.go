@@ -522,8 +522,9 @@ func (m *Manifest) sortSiblingsHierarchically() {
 //   - Both are nil-infectious: if any descendant has a null Size (-1) or null
 //     Timestamp (NullTimestamp()), the parent (and recursively the root)
 //     inherits null.
-//   - Empty directories get Size 0 (definitively empty, not unknown) and keep
-//     their null Timestamp.
+//   - An empty directory (no children, the empty-content ID) gets Size 0; a
+//     childless directory with no ID keeps a null size (nobody read it).
+//     Both keep their null Timestamp.
 //   - Entries with non-null Size/Timestamp are never overwritten.
 //
 // Complexity: O(N) work, O(max-depth) memory.
@@ -587,9 +588,16 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 		stack = stack[:len(stack)-1]
 		d := entries[top.idx]
 
-		// Resolve Size if null. Empty dir → 0. Nil-infectious otherwise.
+		// Resolve Size if null. Nil-infectious; a directory with no listed
+		// children is empty (size 0) only when its ID says so: an empty
+		// listing hashes to the empty-content ID. A childless directory
+		// with no ID is one nobody read (a chmod 000 directory in a scan,
+		// or a hand-written line): its size stays null, because 0 beside
+		// no ID is a known empty, and nothing here knows that (2026-11-09).
 		if d.Size < 0 {
 			switch {
+			case !top.hadChildren && d.C4ID.IsNil():
+				d.Size = -1
 			case !top.hadChildren:
 				d.Size = 0
 			case top.nullSize:

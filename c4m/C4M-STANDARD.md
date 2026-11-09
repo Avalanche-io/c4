@@ -937,7 +937,7 @@ Decoders SHOULD accept without error:
 
 - Ergonomic timestamp formats (converting to UTC)
 - Comma-separated size values (stripping commas)
-- Ten-dash form (`----------`) as zero-permission regular file or legacy null mode
+- Ten-dash form (`----------`) as the known zero mode (zero permissions, regular file); on a directory line it is the legacy null (4.1)
 - Inconsistent indentation width (with warning)
 - Non-sorted entries (re-sorting when processing)
 
