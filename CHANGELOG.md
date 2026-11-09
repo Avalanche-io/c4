@@ -88,6 +88,24 @@ patch. `c4 id -s` no longer tries to store a directory symlink's
 "content" (the link carries the directory's C4 ID, whose record the
 directory's own entry stores).
 
+### `c4 id -q` prints the ID; on 1.0.x it printed nothing ⚠
+
+`-q` changes meaning. On 1.0.x it is "quiet": `c4 id -q DIR` prints
+nothing to stdout and exits 0, and the only way to a bare ID is the
+`stored: <ID>` line `c4 id -s` narrates on stderr. On 1.1 `-q` means
+"the ID only": `c4 id -q DIR` prints the description's ID, `c4 id -s -q`
+prints the claim, and the stream is suppressed. A script written for one
+line and run on the other gets either silence with exit 0 or an
+unexpected ID line; neither fails loudly (found by absfs, 2026-11-09).
+
+Migration: a 1.0.x script that used `-q` to silence `c4 id` should
+redirect stdout instead (`c4 id -s DIR >/dev/null`); a script that wants
+the ID should use `c4 id -q` on 1.1 and, while it must still run on
+1.0.x, read the `stored:` line of `c4 id -s` from stderr. Check
+`c4 version` before relying on either. 1.0.25 narrates the old meaning
+on stderr when `-q` is given without `-s`, so the silence is no longer
+silent.
+
 ### A c4m file never ends with its own ID ⚠
 
 `c4 id DIR` no longer closes its output with a bare root-ID line, and
