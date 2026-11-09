@@ -38,9 +38,23 @@ Then re-encode: canonical form reproduces `canonical.c4m` byte for byte
 form writes the same mode spellings (column layout and local-time
 rendering may differ by implementation; the decoded manifest must not).
 
-The legacy exception, ten dashes on a *directory* line decoding as null
-(the shape old pretty encoders wrote), is pinned by
-`testdata/legacy/ten-dash-null-1.0.21.c4m`, a real 1.0.21 file.
+The legacy exception is the fourth file, `legacy-ten-dash-1.0.21.c4m`: a
+real pretty-form file written by c4 1.0.21, whose encoder wrote every
+null mode as ten dashes (a copy of `testdata/legacy/ten-dash-null-1.0.21.c4m`).
+A conforming decoder reads its **directory** lines (`---------- … d/`) as
+**null** mode, because a correct encoder writes a 0000 directory as
+`d---------` and only an old encoder produces ten dashes beside a `/`;
+it reads its **file** lines as the **known zero**, as ruled, which is the
+accepted cost of giving ten dashes a meaning. Re-encoding it writes `-`
+for every null, in canonical and pretty form alike; no encoder may write
+ten dashes for a null on any line.
+
+The general rule (SPECIFICATION.md "Null and Zero Values"): the name's
+trailing `/` says whether an entry is a directory; the type character must
+agree. Ten dashes on a directory line is the one disagreement with a
+defined meaning (legacy null). The Go decoder accepts other disagreements
+unchanged today (measured 2026-11-09); whether they become errors is
+Joshua's call.
 
 ## What the vector catches
 

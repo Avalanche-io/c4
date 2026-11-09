@@ -303,6 +303,8 @@ C4M supports null values to enable progressive resolution and manual editing:
 
 `----------` decodes as the known zero mode and encodes back as `----------`, in canonical and pretty form alike; `-` decodes as null and encodes as `-`. A zero mode is never rewritten as null, and a null mode is never rewritten as zero.
 
+**The type character must agree with the name.** The name's trailing `/` says whether an entry is a directory; the mode's first character says what kind of entry the mode describes. A known zero directory is therefore `d---------`, never `----------`. **Ten dashes on a directory line** (`---------- … name/`) is the one disagreement with a defined meaning: encoders through c4 1.0.21 wrote every null mode as ten dashes in pretty form, and no correct encoder writes a regular-file type beside a `/`, so a decoder MUST read it as the **null** mode (legacy). Ten dashes on a file line is the known zero, as ruled. Any other disagreement (a `d` type on a name without `/`; an `l`, `p`, `s`, `b` or `c` type, or a non-dash regular-file mode, on a name with `/`) is malformed: decoders SHOULD reject it as an invalid entry. (The Go decoder accepts such lines unchanged through 1.1, measured 2026-11-09; rejection awaits a ruling.) Encoders MUST NOT write ten dashes for a null mode on any line, in any form.
+
 ### Materializing null metadata
 
 When a description is materialized onto a filesystem (`c4 restore`, `c4 patch`, reconcile):
