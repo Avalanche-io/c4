@@ -116,8 +116,36 @@ at lookup or getattr with the protocol's "unreadable" error (EIO or its
 equivalent), so a listing shows the entry as unreadable and a copy fails
 loudly. Hiding the entry from the listing is the other option and is
 rejected: it lies about existence, and a client's scan would then record
-a deletion. c4d is measuring what an NFS v3 client does with a getattr
-error; the wording here will be pinned to that measurement.
+a deletion.
+
+**Measured by c4d, 2026-11-09** (macOS 27.2 NFS v3 client, c4fs behind
+absnfs, a c4m made with the package with README.md's size null, empty
+store, c4 master 6aa19d8):
+
+- *Door serving size 0 as a regular file:* `stat` 0, `cat` exit 0 and
+  nothing, `cp` a 0-byte copy, `shasum` the empty hash, and
+  **`c4 id -q README.md` prints the empty-content ID with exit 0**. No
+  open or read of the name reached the server. A scan of the mount
+  records `0 README.md c459dsjf…`, and a symlink to it gets the
+  empty-content ID too. **So the rule in this note cannot rescue a
+  client's scan of an open-less door:** the scan writes `0` beside the
+  empty-content ID, which is a known empty file by this very rule. The
+  round trip the ruling describes holds only for the c4-aware writer
+  that knows the entry's ID; a client that reads bytes records the bytes
+  it got. The control (`secret.txt`, size 8, not local) failed properly
+  in every tool except `shasum`.
+- *Door answering EIO to lstat and open:* every tool is loud, including
+  `c4 id -q` (exit 1, "lstat README.md: input/output error"); no quiet
+  empty file anywhere. **But the entry vanishes from the listing**, because
+  absnfs's READDIR and READDIRPLUS look each name up and skip the ones
+  that fail; `ls` omits it, a scan has no line for it (reads as a
+  deletion), and a link to it is recorded with a null ID.
+
+So the rule for an open-less door is two-part: fail LOOKUP and GETATTR
+for the entry (so every tool is loud), **and keep the name in
+READDIR(PLUS)** with no attributes and no handle, so the listing still
+says the entry exists. That needs a change in absnfs (c4d has told absfs)
+and then a measurement of what `ls -l` and Finder show for such an entry.
 
 ## Cost
 
