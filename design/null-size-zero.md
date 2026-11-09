@@ -94,14 +94,30 @@ size is known asks it:
 | ---------------------------------------- | ---------- | --------------------------------------- | --------------------------------------------------------------- |
 | size known                               | the size   | content by ID                           | round-trips                                                     |
 | size null, C4 ID, some source has bytes  | the size the source gives | content by ID               | round-trips with the found size (a refinement, as the primer allows) |
-| size null, C4 ID, no source has bytes    | `0`        | refused (non-local files refuse to open) | `0 name -` plus a read error: partial scan, exit 2 (#64); never a quiet empty file |
-| size null, no C4 ID                      | `0`        | refused (unfulfillable)                 | same as above                                                   |
+| size null, C4 ID, no source has bytes    | `0`        | refused at the earliest call the protocol has (see below) | `0 name -` plus a read error: partial scan, exit 2 (#64); never a quiet empty file |
+| size null, no C4 ID                      | `0`        | refused at the earliest call the protocol has (see below) | same as above                                                   |
 
 The third row is where Joshua's "special case" round trip lives, and it
 holds only for a c4-aware writer that knows the ID: the client's scan
 cannot recover the ID of bytes it could not read, so it records the read
 error instead. That is the right outcome: the client learns that the
 file is not there, not that it is empty.
+
+**Where the refusal happens** (amended 2026-11-09 after c4d's review).
+An earlier draft of this table said the mount "refuses to open". That
+assumes an open call. NFS v3 has none, and any client that sees size 0
+skips READ altogether, so a refusal placed at open or at the first read
+never fires and `cp` and `cat` would write quiet empty files, exactly
+what the ruling forbids. The intent of the ruling is that an
+unfulfillable entry is never served as content, so the refusal belongs
+at the **earliest call the protocol has**: a surface with no open MUST
+NOT present an unfulfillable entry as a size-0 regular file; it refuses
+at lookup or getattr with the protocol's "unreadable" error (EIO or its
+equivalent), so a listing shows the entry as unreadable and a copy fails
+loudly. Hiding the entry from the listing is the other option and is
+rejected: it lies about existence, and a client's scan would then record
+a deletion. c4d is measuring what an NFS v3 client does with a getattr
+error; the wording here will be pinned to that measurement.
 
 ## Cost
 
