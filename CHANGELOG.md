@@ -2,6 +2,21 @@
 
 ## Unreleased (1.0.x)
 
+### A pretty line with a null C4 ID no longer reads its padding into the name ⚠
+
+Through 1.0.24 the decoder tested a single space for the field boundary,
+so on a pretty (`-e`) line whose C4 ID column is `-` the name absorbed
+the alignment padding: `a.txt` decoded as `a.txt` followed by forty
+spaces. A names-only pretty description (a `-e -m s` scan, or any file
+written by 1.0.21's pretty encoder) therefore named nothing that existed,
+and **`c4 patch -q` of it onto its own tree removed every real file**;
+`c4 diff` and `c4 explain` misreported every entry as added and removed
+(measured 2026-11-09). The decoder now skips the whole run of spaces
+before testing the boundary, as master's has. Regression tests apply the
+tool's own pretty structure scan and the real 1.0.21 legacy file to their
+trees and check nothing is removed. Until this ships, do not `patch -q` a
+pretty names-only file on 1.0.x.
+
 ### `c4 id -q` without `-s` says on stderr that it printed nothing
 
 On this line `-q` is "quiet": `c4 id -q DIR` prints nothing and exits 0.
