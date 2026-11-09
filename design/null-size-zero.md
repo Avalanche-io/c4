@@ -168,6 +168,21 @@ lesser harm, and the capture side must still carry the entry (it knows
 the ID), so the hiding is a property of that door, not of the
 description. The ACCESS measurement decides which case NFS v3 is in.
 
+**ACCESS measured (absfs, macOS 27.2 client, absnfs a185d90, 2026-11-09
+16:24; relayed by c4d, single-sourced):** macOS NFS v3 is in the first
+case. With LOOKUP and GETATTR succeeding (size 0) and ACCESS refused,
+`ls -l`, `find` and `stat` list the entry with size 0 and exit 0, while
+`cat`, `cp`, Python, `shasum`, `c4 id` and `c4 id -q` all fail with exit
+1 (EACCES for NFS3ERR_ACCES or an OK with no bits, EIO for NFS3ERR_IO).
+The client asks ACCESS on every first open and never decides from the
+mode bits; no READ is sent for a size-0 file. **The catch:** a granted
+ACCESS is cached for the whole mount and a refusal is not, so the refusal
+must hold from the first ACCESS; whether a later attribute change drops a
+cached grant is not yet measured. c4fs's FileInfos now carry
+`SizeKnown() bool` (false only when Size() is 0 because the size cannot
+be found), which is the signal a door refuses on. Whether the doors
+refuse is c4d's review decision 6, with Joshua.
+
 ## Cost
 
 - **Every implementation** (c4py, c4ts, c4m-swift, libc4) must apply the
