@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A known-zero mode on a directory name encodes as `d---------`
+
+An entry built in memory with `Mode == c4m.ZeroMode` on a name ending in
+`/` encoded as `----------`, which the decoder then read as the legacy
+null (ten dashes on a directory line), so a known zero round-tripped to
+null (found by absfs in c4fs, 2026-11-09). The encoder now writes the
+directory type for a known mode on a directory name: `d---------`, in
+canonical and pretty form, through one `modeText` used by both. Other
+type bits on a directory name are left as given; that is a malformed
+entry, not one to repair silently.
+
 ### An unread directory keeps a null size; the zero-against-null vector
 
 A directory the scanner could not open (`d---------`, a chmod 000
