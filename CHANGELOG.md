@@ -33,6 +33,14 @@ It equals `ApplyPatch` on its own base (up to those derived values) and is
 idempotent. No conflict policy of its own (Merge keeps those).
 SPECIFICATION.md "Patch Entry Semantics" states the rule.
 
+A name is one thing. Directory names carry their slash, so a file `x`
+written by the patch and a directory `x/` the target held could both
+survive in the result (75 of 601 applications with kind swaps did, in the
+storage project's review, 2026-11-09). A write of `x` now removes `x/`
+and its subtree; a write under `x/`, or of `x/` itself, removes a file
+or symlink `x`; the later write wins by kind as it does by bytes.
+Pinned as the `kind-conflict` case of `c4m/testdata/apply-from-vector/`.
+
 ### A known-zero mode on a directory name encodes as `d---------`
 
 An entry built in memory with `Mode == c4m.ZeroMode` on a name ending in

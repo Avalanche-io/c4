@@ -225,7 +225,8 @@ func ApplyPatch(base, patch *Manifest) *Manifest {
 // replaying a fold removes what it added (found in the operator's fold,
 // 2026-11-09). ApplyPatchFrom reads each entry against base first, then
 // does to target what the entry means: removes the path, or writes the
-// entry (overwriting whatever target holds there; a caller wanting a
+// entry (overwriting whatever target holds there, including a directory
+// or file of the same name but the other kind; a caller wanting a
 // conflict policy compares first, Merge keeps its own rules). A directory
 // line with children under it is context for those children, not a
 // write: it never creates a directory on its own, and directory sizes
@@ -300,6 +301,17 @@ func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 // no children is read like a file. Derived directory values (size, ID)
 // are re-derived by the caller; nothing copies them from the patch onto
 // a directory whose children now differ.
+//
+// A name is one thing. Directory names carry their trailing slash, so
+// file x and directory x/ are different keys here and could otherwise
+// coexist in the result (75 of 601 applications with kind swaps did,
+// in the storage project's review, 2026-11-09). A write of x removes
+// x/ and everything under it; a write that lands under x/, or writes
+// x/ itself, removes a file or symlink x: the later write wins by kind
+// as it does by bytes. (What a removal does to an entry of the other
+// kind, and what a directory written by ID alone does to a directory
+// the target holds, are choices awaiting a ruling; the code's current
+// reading of each is pinned by no vector.)
 func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode]bool) (wrote bool) {
 	for name, pNode := range patch.children {
 		var bNode *patchNode
@@ -312,22 +324,18 @@ func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode
 				fresh := &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
 				if applyPatchFromTree(fresh, bNode, pNode, descended) {
 					target.children[name] = fresh
+					delete(target.children, otherKind(name))
 					descended[fresh] = true
 					wrote = true
 				}
 				continue
 			}
-			if !tNode.entry.IsDir() {
-				// A file where the patch deepens a directory: the directory
-				// replaces it, as a write.
-				tNode.entry = pNode.entry
-				tNode.children = make(map[string]*patchNode)
-				wrote = true
-			} else if bNode != nil && entriesIdentical(tNode.entry, bNode.entry) {
+			if bNode != nil && entriesIdentical(tNode.entry, bNode.entry) {
 				tNode.entry = pNode.entry
 			}
 			descended[tNode] = true
 			if applyPatchFromTree(tNode, bNode, pNode, descended) {
+				delete(target.children, otherKind(name))
 				wrote = true
 			}
 			continue
@@ -337,11 +345,22 @@ func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode
 			delete(target.children, name)
 			continue
 		}
-		// Written: the path now holds this entry.
+		// Written: the path now holds this entry, and nothing else of
+		// its name.
+		delete(target.children, otherKind(name))
 		target.children[name] = &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
 		wrote = true
 	}
 	return wrote
+}
+
+// otherKind returns the key of the entry a write at name displaces:
+// the directory x/ for a file or symlink x, and x for x/.
+func otherKind(name string) string {
+	if strings.HasSuffix(name, "/") {
+		return strings.TrimSuffix(name, "/")
+	}
+	return name + "/"
 }
 
 // patchNode is a tree node for patch application.

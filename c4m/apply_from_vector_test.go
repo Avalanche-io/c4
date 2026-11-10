@@ -131,6 +131,36 @@ func applyFromCases() []applyFromCase {
 				}
 			},
 		},
+		{
+			// A name is one thing. The target made directory x/ (with
+			// x/y.txt) and file d; the patch writes file x and deepens d/
+			// with a write under it. The later write wins by kind as it
+			// does by bytes: x/ and its subtree go, file d goes. Before
+			// the rule the result held both a file and a directory of one
+			// name (75 of 601 applications with kind swaps, the storage
+			// project's review, 2026-11-09).
+			name:   "kind-conflict",
+			base:   m(file("keep.txt", "K", 0, 0644, t1)),
+			after:  m(file("keep.txt", "K", 0, 0644, t1), file("x", "file now", 0, 0644, t2), dir("d/", 0, t2), file("n.txt", "N", 1, 0644, t2)),
+			target: m(file("keep.txt", "K", 0, 0644, t1), dir("x/", 0, t2), file("y.txt", "Y", 1, 0644, t2), file("d", "was a file", 0, 0644, t2)),
+			check: func(t *testing.T, got *Manifest) {
+				if has(got, "x") == nil || has(got, "x/") != nil || has(got, "x/y.txt") != nil {
+					t.Fatal("kind-conflict: writing file x must remove directory x/ and its subtree")
+				}
+				if has(got, "d/") == nil || has(got, "d/n.txt") == nil || has(got, "d") != nil {
+					t.Fatal("kind-conflict: a write under d/ must remove file d")
+				}
+				for _, e := range got.Entries {
+					other := e.Name + "/"
+					if e.IsDir() {
+						other = strings.TrimSuffix(e.Name, "/")
+					}
+					if e.Depth == 0 && has(got, other) != nil {
+						t.Fatalf("kind-conflict: %q and %q both present", e.Name, other)
+					}
+				}
+			},
+		},
 	}
 }
 

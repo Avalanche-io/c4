@@ -459,6 +459,11 @@ func (s *TreeStore) split(dir string) {
 // rename landed in it, or a split moved names in or out), for the entry
 // sync at the end of Sync. Caller holds s.mu.
 func (s *TreeStore) markTouched(dir string) {
+	if s.syncMode != SyncBatch {
+		// Only a batch Sync drains the set; in the other modes each
+		// publication is its own barrier, so nothing is recorded.
+		return
+	}
 	if s.touched == nil {
 		s.touched = make(map[string]bool)
 	}
@@ -526,7 +531,7 @@ var (
 // root stored unclean, d == root was never true and the walk reached
 // the filesystem root, where opening an ancestor the user cannot read
 // failed the barrier and, since the barrier is fatal, stopped the store
-// from storing (found in the fleet's review, 2026-11-10).
+// from storing (found in review, 2026-11-09).
 func dirsWithinRoot(root, dir string) []string {
 	var out []string
 	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
