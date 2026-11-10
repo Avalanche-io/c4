@@ -1,6 +1,7 @@
 package c4m
 
 import (
+	"bytes"
 	"os"
 	"strings"
 	"testing"
@@ -199,5 +200,45 @@ func TestApplyPatchFromKeepsTheTargetsDirectoryLineAndDerivesAggregates(t *testi
 	same := apfPaths(ApplyPatchFrom(base, base, patch))
 	if sd := same["d/"]; sd == nil || !sd.Timestamp.Equal(ts.Add(time.Hour)) {
 		t.Fatalf("on its own base the patch's directory line applies, got %v", sd)
+	}
+}
+
+// The operator's cross-check (seed 9): the patch removes the last child
+// of a directory whose line in the target differs from the base's. The
+// kept target line carried the ID of a directory still holding the
+// child; with no children left, Normalize could not tell it from a
+// directory known only by its ID, so the removal was undone at the ID.
+// A directory the walk entered is re-derived from what remains: here the
+// empty directory.
+func TestApplyPatchFromRederivesAnEmptiedDirectory(t *testing.T) {
+	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
+	dir := func(size int64, id c4.ID) *Entry {
+		return &Entry{Name: "weights/", Mode: 0, Size: size, C4ID: id, Timestamp: ts, Depth: 0}
+	}
+	model := apfEntry("model.bin", "weights", 1) // mode 0644
+	modelX := apfEntry("model.bin", "weights", 1)
+	modelX.Mode = 0755 // the other unit made it executable
+
+	base := apfManifest(dir(-1, c4.ID{}), model)
+	Normalize(base)
+	empty := c4.Identify(bytes.NewReader(nil))
+	patch := apfManifest(dir(0, empty), model) // weights/ now empty; model.bin restated: removal
+	target := apfManifest(dir(-1, c4.ID{}), modelX)
+	Normalize(target) // target's weights/ line differs from base's (its child differs)
+
+	got := ApplyPatchFrom(target, base, patch)
+	paths := apfPaths(got)
+	if paths["weights/model.bin"] != nil {
+		t.Fatal("model.bin must be removed")
+	}
+	w := paths["weights/"]
+	if w == nil {
+		t.Fatal("weights/ stays: the unit left it empty, it did not remove it")
+	}
+	if w.Size != 0 || w.C4ID != empty {
+		t.Fatalf("an emptied directory is the empty directory, got size %d id %s", w.Size, w.C4ID)
+	}
+	if w.C4ID == apfPaths(target)["weights/"].C4ID {
+		t.Fatal("the target's stale directory ID must not survive the removal")
 	}
 }

@@ -237,7 +237,29 @@ func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 	targetTree := buildPatchTree(target)
 	baseTree := buildPatchTree(base)
 	patchTree := buildPatchTree(patch)
-	applyPatchFromTree(targetTree, baseTree, patchTree)
+	descended := make(map[*patchNode]bool)
+	applyPatchFromTree(targetTree, baseTree, patchTree, descended)
+
+	// Every directory the walk went inside has children this call may have
+	// changed, so its size and ID are stale by construction: re-derive them
+	// from what remains. A directory left with no children is the empty
+	// directory (size 0, the empty-content ID), never a directory "known
+	// only by its ID", which is what a stale line with no children would
+	// read as and what Normalize cannot tell apart (found by the operator's
+	// cross-check, 2026-11-09). Directories the walk never entered keep
+	// their lines. Entries are copied before they change: the inputs are
+	// never mutated.
+	for node := range descended {
+		cp := *node.entry
+		if len(node.children) == 0 {
+			cp.Size = 0
+			cp.C4ID = c4.Identify(bytes.NewReader(nil))
+		} else {
+			cp.Size = -1
+			cp.C4ID = c4.ID{}
+		}
+		node.entry = &cp
+	}
 
 	var entries []*Entry
 	flattenPatchTree(targetTree, 0, &entries)
@@ -278,7 +300,7 @@ func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 // no children is read like a file. Derived directory values (size, ID)
 // are re-derived by the caller; nothing copies them from the patch onto
 // a directory whose children now differ.
-func applyPatchFromTree(target, base, patch *patchNode) (wrote bool) {
+func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode]bool) (wrote bool) {
 	for name, pNode := range patch.children {
 		var bNode *patchNode
 		if base != nil {
@@ -288,8 +310,9 @@ func applyPatchFromTree(target, base, patch *patchNode) (wrote bool) {
 			tNode, exists := target.children[name]
 			if !exists {
 				fresh := &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
-				if applyPatchFromTree(fresh, bNode, pNode) {
+				if applyPatchFromTree(fresh, bNode, pNode, descended) {
 					target.children[name] = fresh
+					descended[fresh] = true
 					wrote = true
 				}
 				continue
@@ -303,7 +326,8 @@ func applyPatchFromTree(target, base, patch *patchNode) (wrote bool) {
 			} else if bNode != nil && entriesIdentical(tNode.entry, bNode.entry) {
 				tNode.entry = pNode.entry
 			}
-			if applyPatchFromTree(tNode, bNode, pNode) {
+			descended[tNode] = true
+			if applyPatchFromTree(tNode, bNode, pNode, descended) {
 				wrote = true
 			}
 			continue
