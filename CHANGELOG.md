@@ -2,6 +2,32 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A store write is checked before it is named, and can be given up
+
+`TreeStore.Create(id)` bound whatever bytes arrived to the ID the caller
+chose: `Close` named them, so a source that failed part way left a
+partial object under a real C4 ID, and the writer offered no other way
+out (a caller could publish the partial object or leak the temp file;
+`defaultPut` leaked). `Validating` checked only after the store under it
+had closed, which is when that store names the object, then removed it
+and ignored the error, so wrong bytes sat under the ID from the close to
+the remove, and for good if the remove was unsupported or the process
+stopped between the two. Both found in the storage project's review,
+2026-11-09, as failing tests, kept in `store/review_abandon_test.go`.
+
+Now the bytes are checked, never trusted: `TreeStore`'s writers hash as
+they write and `Close` refuses with `ErrInvalidID`, removing the temp
+file and naming nothing, when the bytes do not hash to the ID, in every
+sync mode. Writers implement the new `store.Aborter` (`Abort() error`):
+closes, discards, names nothing, idempotent, and `Close` after it is a
+no-op. `DurableWriter` has `Abort` too. `Validating` checks before the
+inner writer closes and aborts it where it can, so an inner store that
+names on `Close` never names wrong bytes. `defaultPut` aborts its writer
+on a copy error. The `Sink` doc states the contract. The cost is one
+SHA-512 over each `Create` write, the same price `Put` already pays;
+`Create`'s writer no longer forwards `ReadFrom`, since every byte must
+pass the hash.
+
 ### The store barrier syncs the directories it renames into
 
 `TreeStore.Sync` flushed the device, renamed each pending object to its

@@ -247,6 +247,15 @@ func (l *loggingWriter) Write(b []byte) (int, error) {
 }
 
 // Close closes and logs to the contained io.WriteCloser.
+// Abort passes through to the wrapped writer where it offers Abort, and
+// closes it otherwise.
+func (l *loggingWriter) Abort() error {
+	if a, ok := l.r.(Aborter); ok {
+		return a.Abort()
+	}
+	return l.r.Close()
+}
+
 func (l *loggingWriter) Close() error {
 	fname := "Close"
 

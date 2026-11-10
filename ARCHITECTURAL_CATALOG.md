@@ -20,13 +20,13 @@ github.com/Avalanche-io/c4
 
 The core identity primitives. Zero dependencies outside stdlib.
 
-| Type | Description |
-|------|-------------|
-| `ID [64]byte` | 64-byte SHA-512 digest. Formats as 90-char base58 string with `c4` prefix. |
-| `IDs []ID` | Sortable slice. `IDs.Tree()` computes a merkle tree; `IDs.ID()` returns the tree root. |
-| `Tree []byte` | Byte-packed merkle tree. Sorted-input guarantee per SMPTE ST 2114. |
-| `Digest []byte` | Raw digest slice (DB compat). `.ID()` converts to `ID`. |
-| `Identifiable` | Interface: `ID() ID`. |
+| Type            | Description                                                                            |
+| --------------- | -------------------------------------------------------------------------------------- |
+| `ID [64]byte`   | 64-byte SHA-512 digest. Formats as 90-char base58 string with `c4` prefix.             |
+| `IDs []ID`      | Sortable slice. `IDs.Tree()` computes a merkle tree; `IDs.ID()` returns the tree root. |
+| `Tree []byte`   | Byte-packed merkle tree. Sorted-input guarantee per SMPTE ST 2114.                     |
+| `Digest []byte` | Raw digest slice (DB compat). `.ID()` converts to `ID`.                                |
+| `Identifiable`  | Interface: `ID() ID`.                                                                  |
 
 Key functions:
 - `Identify(io.Reader) ID` — hash content to a C4 ID
@@ -40,25 +40,25 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 
 ### Core types
 
-| Type | Description |
-|------|-------------|
-| `Manifest` | Collection of entries with optional patch chain base ID and range data. |
-| `Entry` | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links. |
-| `Encoder` | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes. |
-| `Decoder` | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. |
-| `PatchSection` | One section of a patch chain (base or delta). |
-| `Validator` | Validates manifest structure, field ranges, and sort order. |
+| Type           | Description                                                                           |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `Manifest`     | Collection of entries with optional patch chain base ID and range data.               |
+| `Entry`        | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links.   |
+| `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes.           |
+| `Decoder`      | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. |
+| `PatchSection` | One section of a patch chain (base or delta).                                         |
+| `Validator`    | Validates manifest structure, field ranges, and sort order.                           |
 
 ### Operations (c4m/operations.go)
 
-| Type | Description |
-|------|-------------|
-| `Source` | Interface: `ToManifest() (*Manifest, error)`. |
-| `ManifestSource` | Wraps a `*Manifest` as a `Source`. |
-| `DiffResult` | Added/removed/modified entries between two manifests. `Diff` matches entries by full path (never bare name), so same-named files in different directories cannot collide. |
-| `PatchResult` | Result of applying a patch to a manifest. |
-| `Resolver` | Resolves patch chains via content store. |
-| `ManifestCache` | Caches resolved manifests by C4 ID. |
+| Type             | Description                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Source`         | Interface: `ToManifest() (*Manifest, error)`.                                                                                                                             |
+| `ManifestSource` | Wraps a `*Manifest` as a `Source`.                                                                                                                                        |
+| `DiffResult`     | Added/removed/modified entries between two manifests. `Diff` matches entries by full path (never bare name), so same-named files in different directories cannot collide. |
+| `PatchResult`    | Result of applying a patch to a manifest.                                                                                                                                 |
+| `Resolver`       | Resolves patch chains via content store.                                                                                                                                  |
+| `ManifestCache`  | Caches resolved manifests by C4 ID.                                                                                                                                       |
 
 `ApplyPatchFrom(target, base, patch)` reads each entry against the patch's own base (removal or written) and applies that meaning to another tree; idempotent; equals `ApplyPatch` when target is the base (2026-11-09).
 `ApplyPatch` clobbers by name, grafts additions, and treats a restated
@@ -75,11 +75,11 @@ A first-line bare C4 ID names a block outside the file — the prior block
 this one refines. `Decoder.Decode` records it as `Manifest.Base` and
 defers checkpoint verification; it does not fetch.
 
-| Function | Description |
-|----------|-------------|
-| `ResolveBase(m, src)` | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. |
-| `ResolveBaseID(id, src)` | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID. |
-| `DecodeResolved(r, src)` | Decode plus `ResolveBase` in one step. |
+| Function                 | Description                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ResolveBase(m, src)`    | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. |
+| `ResolveBaseID(id, src)` | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID.                       |
+| `DecodeResolved(r, src)` | Decode plus `ResolveBase` in one step.                                                                                                            |
 
 An unreadable base is `ErrUnresolvedBase`, never a manifest silently
 missing its base; a repeated ID is `ErrBaseCycle`. Nulls express partial
@@ -100,14 +100,14 @@ patch cost what a full restatement cost. Measured at 40k entries /
 
 ### Other c4m types
 
-| Type | Description |
-|------|-------------|
-| `ManifestBuilder` | Fluent API for constructing manifests programmatically. |
-| `DirBuilder` | Helper for building directory subtrees in a manifest. |
-| `Sequence` | Represents a media file sequence (`frame.[0001-0100].exr`). |
-| `SequenceDetector` | Groups files into sequences by pattern. |
-| `SequenceExpander` | Expands sequence entries into individual file entries. |
-| `Conflict` | Reports conflicting entries during merge. |
+| Type               | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| `ManifestBuilder`  | Fluent API for constructing manifests programmatically.     |
+| `DirBuilder`       | Helper for building directory subtrees in a manifest.       |
+| `Sequence`         | Represents a media file sequence (`frame.[0001-0100].exr`). |
+| `SequenceDetector` | Groups files into sequences by pattern.                     |
+| `SequenceExpander` | Expands sequence entries into individual file entries.      |
+| `Conflict`         | Reports conflicting entries during merge.                   |
 
 ### Journal (c4m/journal.go)
 
@@ -118,10 +118,10 @@ mistaken for each other in either direction. One line per claim, two fields:
 `<scan-start RFC3339 UTC seconds> <claim-ID>`. The print-barrier leg between
 store durability and stdout.
 
-| Type | Description |
-|------|-------------|
-| `Journal` | `OpenJournal(storeRoot)`; `Append(Claim)` (durable before return: OS lock that dies with its holder, torn-tail truncation, fsync); `Claims()` (drops a torn tail, warns once). |
-| `Claim` | ScanStart (the walk's start instant, NOT append time — the re-scan racy rule measures against it), Size, Name, Origin, ID. `EntryLine()` renders the recorded text (what `c4 log` reprints). |
+| Type      | Description                                                                                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Journal` | `OpenJournal(storeRoot)`; `Append(Claim)` (durable before return: OS lock that dies with its holder, torn-tail truncation, fsync); `Claims()` (drops a torn tail, warns once).               |
+| `Claim`   | ScanStart (the walk's start instant, NOT append time — the re-scan racy rule measures against it), Size, Name, Origin, ID. `EntryLine()` renders the recorded text (what `c4 log` reprints). |
 
 Platform locks: `journal_lock_unix.go` (flock, EINTR loop) /
 `journal_lock_windows.go` (LockFileEx).
@@ -162,29 +162,29 @@ Properties:
 
 Directory scanner. Depends on `c4` and `c4m`.
 
-| Type | Description |
-|------|-------------|
-| `Generator` | Configurable scanner: mode, excludes, guides, sequences. |
-| `ScanMode` | `ModeStructure` / `ModeMetadata` / `ModeFull` / `ModeContent` (the content projection: mode+timestamp null at every level; machine/clock/umask-independent IDs) |
-| `FileSource` | Wraps a path + generator as a `c4m.Source`. |
+| Type         | Description                                                                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Generator`  | Configurable scanner: mode, excludes, guides, sequences.                                                                                                        |
+| `ScanMode`   | `ModeStructure` / `ModeMetadata` / `ModeFull` / `ModeContent` (the content projection: mode+timestamp null at every level; machine/clock/umask-independent IDs) |
+| `FileSource` | Wraps a path + generator as a `c4m.Source`.                                                                                                                     |
 
 Convenience: `scan.Dir(path, ...Option)` for simple scans.
 
 Options:
 
-| Option | Purpose |
-|---|---|
-| `WithMode` | structure / metadata / full |
-| `WithSymlinks` | follow symlinks |
-| `WithHidden` | include dotfiles |
-| `WithSequenceDetection` | collapse `file.[0001-0100].exr` patterns |
-| `WithExclude`, `WithExcludeFile` | glob exclusions |
-| `WithGuide` | restrict the scan to paths present in a reference manifest (a root-relative path FILTER — it does not reuse the guide's IDs; no CLI flag drives it since v8 repurposed `-c`) |
-| `WithReuseGuide(m, scanStart)` | metadata-trusted re-scan (the CLI's `-c`): a file reuses the guide's ID iff path+size+mtime match at second precision AND mtime is strictly older than scanStart (the racy rule — git's racy-index shape, no constants). `ReuseStats()` returns (reused, rehashed). |
-| `WithProgress(cb)` | periodic `ScanStats` callbacks; zero overhead when unset |
-| `WithMaxConcurrency(n)` | cap worker pool (0 = auto, 1 = sequential, n > 1 = explicit) |
-| `WithContext(ctx)` | cancellation observed at directory + entry boundaries |
-| `WithEntryStream(cb)` | per-entry callback; non-nil error halts scan with partial manifest |
+| Option                           | Purpose                                                                                                                                                                                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WithMode`                       | structure / metadata / full                                                                                                                                                                                                                                         |
+| `WithSymlinks`                   | follow symlinks                                                                                                                                                                                                                                                     |
+| `WithHidden`                     | include dotfiles                                                                                                                                                                                                                                                    |
+| `WithSequenceDetection`          | collapse `file.[0001-0100].exr` patterns                                                                                                                                                                                                                            |
+| `WithExclude`, `WithExcludeFile` | glob exclusions                                                                                                                                                                                                                                                     |
+| `WithGuide`                      | restrict the scan to paths present in a reference manifest (a root-relative path FILTER — it does not reuse the guide's IDs; no CLI flag drives it since v8 repurposed `-c`)                                                                                        |
+| `WithReuseGuide(m, scanStart)`   | metadata-trusted re-scan (the CLI's `-c`): a file reuses the guide's ID iff path+size+mtime match at second precision AND mtime is strictly older than scanStart (the racy rule — git's racy-index shape, no constants). `ReuseStats()` returns (reused, rehashed). |
+| `WithProgress(cb)`               | periodic `ScanStats` callbacks; zero overhead when unset                                                                                                                                                                                                            |
+| `WithMaxConcurrency(n)`          | cap worker pool (0 = auto, 1 = sequential, n > 1 = explicit)                                                                                                                                                                                                        |
+| `WithContext(ctx)`               | cancellation observed at directory + entry boundaries                                                                                                                                                                                                               |
+| `WithEntryStream(cb)`            | per-entry callback; non-nil error halts scan with partial manifest                                                                                                                                                                                                  |
 
 Parallel walk: subdirectories run on a bounded worker pool (default
 `min(GOMAXPROCS, 16)`) via a shared semaphore inherited by all `clone()`d
@@ -226,26 +226,27 @@ Content-addressed storage. Depends only on root `c4`.
 
 ### Interfaces
 
-| Interface | Methods |
-|-----------|---------|
-| `Source` | `Open(ID) (io.ReadCloser, error)` |
-| `Sink` | `Create(ID) (io.WriteCloser, error)` |
-| `Store` | `Source` + `Sink` + `Has(ID) bool` + `Put(io.Reader) (ID, error)` + `Remove(ID) error` |
-| `Syncer` | Optional: `Sync() error` — batch durability barrier: makes every object written so far durable. Implemented by `TreeStore` and `MultiStore` (forwards). |
+| Interface | Methods                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Source`  | `Open(ID) (io.ReadCloser, error)`                                                                                                                       |
+| `Sink`    | `Create(ID) (io.WriteCloser, error)`                                                                                                                    |
+| `Store`   | `Source` + `Sink` + `Has(ID) bool` + `Put(io.Reader) (ID, error)` + `Remove(ID) error`                                                                  |
+| `Syncer`  | Optional: `Sync() error` — batch durability barrier: makes every object written so far durable. Implemented by `TreeStore` and `MultiStore` (forwards). |
 
 ### Implementations
 
-| Type | Description |
-|------|-------------|
-| `Folder` | Flat directory: one file per ID. |
-| `ShardedFolder` | Two-level directory using ID chars 3-4 as shard key. |
-| `TreeStore` | Adaptive trie sharding: splits leaf dirs at threshold (default 4096; O(1) amortized split accounting via cached per-leaf counts). `SetSyncMode` selects the write-durability policy (`SyncEach` default / `SyncBatch` / `SyncNone`); `Sync` is the batch barrier. `Put` is safe for concurrent use. `Walk` enumerates every stored object (verification/tests; the seam a future journal-rooted collector needs). Opening sweeps dead writers' `.ingest.<host>.<pid>.*` temps (`SweepIngest`, `design/store-ingest-sweep.md`); objects are never touched. |
-| `S3Store` | S3-compatible object store. SigV4 signing with stdlib only. |
-| `MultiStore` | Writes to first, reads from all in order. |
-| `RAM` | In-memory store (testing). |
-| `Validating` | Wrapper that verifies content hashes on read/write. |
-| `Logger` | Wrapper that logs all operations. |
-| `DurableWriter` | Atomic write-to-temp-then-rename; Close flushes per its `SyncMode`. `NewDurableWriter` flushes to stable storage on Close (`SyncEach`); `NewAtomicWriter` skips the flush (`SyncNone` — atomic but not crash-durable, for scratch writes re-materializable from a store); `TreeStore.Create` hands out writers following the store's mode. `ReadFrom` delegates to the temp file so io.Copy gets OS copy acceleration (copy_file_range on Linux). |
+| Type            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Folder`        | Flat directory: one file per ID.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `ShardedFolder` | Two-level directory using ID chars 3-4 as shard key.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `TreeStore`     | Adaptive trie sharding: splits leaf dirs at threshold (default 4096; O(1) amortized split accounting via cached per-leaf counts). `SetSyncMode` selects the write-durability policy (`SyncEach` default / `SyncBatch` / `SyncNone`); `Sync` is the batch barrier. `Put` is safe for concurrent use. `Walk` enumerates every stored object (verification/tests; the seam a future journal-rooted collector needs). Opening sweeps dead writers' `.ingest.<host>.<pid>.*` temps (`SweepIngest`, `design/store-ingest-sweep.md`); objects are never touched.                                                                                                                                        |
+| `S3Store`       | S3-compatible object store. SigV4 signing with stdlib only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `MultiStore`    | Writes to first, reads from all in order.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `RAM`           | In-memory store (testing).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `Validating`    | Wrapper that verifies content hashes on read/write. On write it checks before the inner writer closes and aborts it where it can (`Aborter`), so an inner store that names on Close never names wrong bytes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `Logger`        | Wrapper that logs all operations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `DurableWriter` | Atomic write-to-temp-then-rename; Close flushes per its `SyncMode`. `NewDurableWriter` flushes to stable storage on Close (`SyncEach`); `NewAtomicWriter` skips the flush (`SyncNone` — atomic but not crash-durable, for scratch writes re-materializable from a store); `TreeStore.Create` hands out writers following the store's mode, hashing as they write: Close refuses with `ErrInvalidID` and names nothing when the bytes do not hash to the ID (those writers do not forward `ReadFrom`). `Abort` closes, removes the temp file and names nothing; Close after it is a no-op. `ReadFrom` delegates to the temp file so io.Copy gets OS copy acceleration (copy_file_range on Linux). |
+| `Aborter`       | `Abort() error` on a Create writer: give a write up, discarding what was written and naming nothing. Implemented by `DurableWriter`, both `TreeStore` writers, and the `Validating` and `Logger` wrappers (pass-through). `defaultPut` uses it on a copy error.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Local-path access: `Folder`, `ShardedFolder`, `TreeStore`, and
 `MultiStore` implement `ContentPath(id) (string, bool)`, returning the
@@ -261,27 +262,27 @@ local filesystem path for existing content. This satisfies
 
 Filesystem reconciliation. Depends on `c4`, `c4m`, and `store`.
 
-| Type | Description |
-|------|-------------|
-| `Reconciler` | Stateful reconciler with content sources and saver. |
-| `ContentSource` | Interface: `Has(ID)` + `Open(ID)`. Must tolerate concurrent `Open` when Apply concurrency > 1. |
-| `LocalSource` | Optional interface: `ContentPath(ID) (string, bool)`. Apply prefers local paths for file-to-file copies (CoW clone hook point — see design/reconcile-performance.md). |
-| `DirSource` | Wraps a directory + manifest as a `ContentSource` (also a `LocalSource`). |
-| `Saver` | Interface: `Put(io.Reader) (ID, error)` + `Has(ID) bool`. |
-| `Plan` | Ordered operation list with missing-content check. |
-| `Operation` | Single filesystem operation (mkdir, create, move, remove, chmod, chtimes). |
-| `Result` | Outcome counts and errors from `Apply`. |
+| Type            | Description                                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Reconciler`    | Stateful reconciler with content sources and saver.                                                                                                                   |
+| `ContentSource` | Interface: `Has(ID)` + `Open(ID)`. Must tolerate concurrent `Open` when Apply concurrency > 1.                                                                        |
+| `LocalSource`   | Optional interface: `ContentPath(ID) (string, bool)`. Apply prefers local paths for file-to-file copies (CoW clone hook point — see design/reconcile-performance.md). |
+| `DirSource`     | Wraps a directory + manifest as a `ContentSource` (also a `LocalSource`).                                                                                             |
+| `Saver`         | Interface: `Put(io.Reader) (ID, error)` + `Has(ID) bool`.                                                                                                             |
+| `Plan`          | Ordered operation list with missing-content check.                                                                                                                    |
+| `Operation`     | Single filesystem operation (mkdir, create, move, remove, chmod, chtimes).                                                                                            |
+| `Result`        | Outcome counts and errors from `Apply`.                                                                                                                               |
 
 Options:
 
-| Option | Purpose |
-|---|---|
-| `WithSource` | add a content source |
-| `WithDryRun` | plan-only Apply |
-| `WithStoreRemovals` | store content before removal |
-| `WithSyncMode` | created-file durability, mirroring `store.SyncMode`: `SyncEach` default (durable per file); `SyncBatch` = atomic writes + one device barrier at end of Apply (the CLI's mode); `SyncNone` scratch only |
-| `WithMaxConcurrency` | Apply create workers: 0 = auto (min(GOMAXPROCS, 16)), 1 = sequential |
-| `WithTrustedMetadata` | default false; true lets Plan reuse target IDs on size+mtime match (guided-scan contract) instead of hashing |
+| Option                | Purpose                                                                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WithSource`          | add a content source                                                                                                                                                                                   |
+| `WithDryRun`          | plan-only Apply                                                                                                                                                                                        |
+| `WithStoreRemovals`   | store content before removal                                                                                                                                                                           |
+| `WithSyncMode`        | created-file durability, mirroring `store.SyncMode`: `SyncEach` default (durable per file); `SyncBatch` = atomic writes + one device barrier at end of Apply (the CLI's mode); `SyncNone` scratch only |
+| `WithMaxConcurrency`  | Apply create workers: 0 = auto (min(GOMAXPROCS, 16)), 1 = sequential                                                                                                                                   |
+| `WithTrustedMetadata` | default false; true lets Plan reuse target IDs on size+mtime match (guided-scan contract) instead of hashing                                                                                           |
 
 Apply runs consecutive create operations on a bounded worker pool,
 merging counters and errors in operation order (deterministic output).
@@ -290,11 +291,11 @@ acceleration, falling back to streaming `Open` on any failure.
 
 Distribution (single-pass multi-target):
 
-| Type | Description |
-|------|-------------|
-| `Target` | Interface: `Kind() string`. |
-| `DirTarget` | Writes files to a directory. |
-| `StoreTarget` | Stores content by C4 ID. |
+| Type               | Description                            |
+| ------------------ | -------------------------------------- |
+| `Target`           | Interface: `Kind() string`.            |
+| `DirTarget`        | Writes files to a directory.           |
+| `StoreTarget`      | Stores content by C4 ID.               |
 | `DistributeResult` | Per-target outcomes from `Distribute`. |
 
 ## cmd/c4 (CLI)
@@ -303,21 +304,21 @@ Twelve verbs dispatched from `main.go` (surface of record:
 `design/snapshot-loop/round-1/surface-v7.md` + round-2 amendments; the
 reference pages live in `help.go` and print via each verb's `--help`):
 
-| File | Command | Category |
-|------|---------|----------|
-| `id.go` | `c4 id` | Observer; writer only with `-s` |
-| `restore.go` | `c4 restore` | THE tree writer (dry-run default; `--force`) |
-| `cat.go` | `c4 cat` | Observer (verified reads; ID/path descent; -r names each listing the store lacks on stderr and exits 2) |
-| `diff.go` | `c4 diff` | Observer |
-| `patch.go` | `c4 patch` | Observer (text algebra; never touches directories) |
-| `log.go` | `c4 log` | Observer (journal + chain sections) |
-| `explain.go` | `c4 explain` | Observer |
-| `paths.go` | `c4 paths` | Observer |
-| `intersect.go` | `c4 intersect` | Observer |
-| `merge.go` | `c4 merge` | Observer (text out) |
-| `split.go` | `c4 split` | Writes its two named output files |
-| `version.go` | `c4 version` | Observer |
-| `external.go` | `c4 farm`, `c4 <name>` | Runs `c4-<name>` from PATH (`design/external-tools.md`); reserved names `farm`, `agent` win over paths, other names yield to an existing path |
+| File           | Command                | Category                                                                                                                                      |
+| -------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id.go`        | `c4 id`                | Observer; writer only with `-s`                                                                                                               |
+| `restore.go`   | `c4 restore`           | THE tree writer (dry-run default; `--force`)                                                                                                  |
+| `cat.go`       | `c4 cat`               | Observer (verified reads; ID/path descent; -r names each listing the store lacks on stderr and exits 2)                                       |
+| `diff.go`      | `c4 diff`              | Observer                                                                                                                                      |
+| `patch.go`     | `c4 patch`             | Observer (text algebra; never touches directories)                                                                                            |
+| `log.go`       | `c4 log`               | Observer (journal + chain sections)                                                                                                           |
+| `explain.go`   | `c4 explain`           | Observer                                                                                                                                      |
+| `paths.go`     | `c4 paths`             | Observer                                                                                                                                      |
+| `intersect.go` | `c4 intersect`         | Observer                                                                                                                                      |
+| `merge.go`     | `c4 merge`             | Observer (text out)                                                                                                                           |
+| `split.go`     | `c4 split`             | Writes its two named output files                                                                                                             |
+| `version.go`   | `c4 version`           | Observer                                                                                                                                      |
+| `external.go`  | `c4 farm`, `c4 <name>` | Runs `c4-<name>` from PATH (`design/external-tools.md`); reserved names `farm`, `agent` win over paths, other names yield to an existing path |
 
 The print barrier (`design/snapshot-loop`): no ID reaches stdout before
 its content is durable, its journal entry appended and fsynced

@@ -58,6 +58,7 @@ func defaultPut(s Store, r io.Reader) (c4.ID, error) {
 		return c4.ID{}, err
 	}
 	if _, err := io.Copy(w, tmp); err != nil {
+		abortOrClose(w)
 		return c4.ID{}, err
 	}
 	if err := w.Close(); err != nil {
@@ -65,4 +66,14 @@ func defaultPut(s Store, r io.Reader) (c4.ID, error) {
 	}
 
 	return digest, nil
+}
+
+// abortOrClose gives a Create writer up: Abort where the writer offers
+// it, else Close (which names whatever was written, the best a writer
+// without Abort allows; the caller then removes the object).
+func abortOrClose(w io.WriteCloser) error {
+	if a, ok := w.(Aborter); ok {
+		return a.Abort()
+	}
+	return w.Close()
 }

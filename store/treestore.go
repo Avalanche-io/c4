@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"crypto/sha512"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -174,7 +176,13 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 
 // Create creates a new entry for writing. The caller must know the ID
 // in advance. Writes go to a temp file; Close flushes per the store's
-// sync mode and renames atomically.
+// sync mode and renames atomically. The bytes are hashed as they are
+// written and checked on Close: if they do not hash to id, Close
+// removes the temp file, names nothing and returns ErrInvalidID, so a
+// write that stopped part way, or the wrong bytes under a chosen ID,
+// never appear under that ID (found in the storage project's review,
+// 2026-11-09). The writer implements Aborter for a caller whose source
+// fails: Abort discards the write without the hash check.
 func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	p := s.path(id)
 	if s.Has(id) {
@@ -192,7 +200,7 @@ func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 		s.mu.Lock()
 		s.dirty = true
 		s.mu.Unlock()
-		return &pendingWriter{f: tmp, s: s, id: id}, nil
+		return &pendingWriter{f: tmp, s: s, id: id, h: sha512.New()}, nil
 	}
 
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
@@ -206,23 +214,77 @@ func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	s.mu.Lock()
 	s.dirty = true
 	s.mu.Unlock()
-	return w, nil
+	return &checkedWriter{w: w, id: id, h: sha512.New()}, nil
+}
+
+// checkedWriter is Create's writer outside batch mode: a DurableWriter
+// whose Close first checks the bytes against the ID the caller chose.
+// It does not forward ReadFrom: every byte must pass the hash.
+type checkedWriter struct {
+	w  *DurableWriter
+	id c4.ID
+	h  hash.Hash
+}
+
+func (w *checkedWriter) Write(b []byte) (int, error) {
+	n, err := w.w.Write(b)
+	w.h.Write(b[:n])
+	return n, err
+}
+
+func (w *checkedWriter) Abort() error { return w.w.Abort() }
+
+func (w *checkedWriter) Close() error {
+	if w.w.done {
+		return nil
+	}
+	if !bytes.Equal(w.h.Sum(nil), w.id[:]) {
+		w.w.Abort()
+		return ErrInvalidID
+	}
+	return w.w.Close()
 }
 
 // pendingWriter is Create's batch-mode writer: bytes land in a temp
 // file with a cheap flush on Close, and the object is registered as
 // pending so it publishes at its hash name only after the Sync barrier.
+// Close checks the bytes against the ID first; Abort discards them.
 type pendingWriter struct {
-	f  *os.File
-	s  *TreeStore
-	id c4.ID
+	f    *os.File
+	s    *TreeStore
+	id   c4.ID
+	h    hash.Hash
+	done bool
 }
 
 func (w *pendingWriter) Write(b []byte) (int, error) {
-	return w.f.Write(b)
+	n, err := w.f.Write(b)
+	w.h.Write(b[:n])
+	return n, err
+}
+
+// Abort closes and removes the temp file; nothing is registered.
+func (w *pendingWriter) Abort() error {
+	if w.done {
+		return nil
+	}
+	w.done = true
+	err := w.f.Close()
+	if rerr := os.Remove(w.f.Name()); err == nil {
+		err = rerr
+	}
+	return err
 }
 
 func (w *pendingWriter) Close() error {
+	if w.done {
+		return nil
+	}
+	if !bytes.Equal(w.h.Sum(nil), w.id[:]) {
+		w.Abort()
+		return ErrInvalidID
+	}
+	w.done = true
 	tmpName := w.f.Name()
 	if err := flushFile(w.f, SyncBatch); err != nil {
 		w.f.Close()

@@ -14,6 +14,7 @@ type DurableWriter struct {
 	tmp   *os.File
 	final string
 	sync  SyncMode
+	done  bool // closed or aborted: the temp file is gone
 }
 
 // NewDurableWriter creates a temp file in the same directory as final,
@@ -68,7 +69,25 @@ func (w *DurableWriter) ReadFrom(r io.Reader) (int64, error) {
 	return w.tmp.ReadFrom(r)
 }
 
+// Abort gives the write up: the temp file is closed and removed, and
+// the final path is never written. Close after Abort does nothing.
+func (w *DurableWriter) Abort() error {
+	if w.done {
+		return nil
+	}
+	w.done = true
+	err := w.tmp.Close()
+	if rerr := os.Remove(w.tmp.Name()); err == nil {
+		err = rerr
+	}
+	return err
+}
+
 func (w *DurableWriter) Close() error {
+	if w.done {
+		return nil
+	}
+	w.done = true
 	if err := flushFile(w.tmp, w.sync); err != nil {
 		w.tmp.Close()
 		os.Remove(w.tmp.Name())

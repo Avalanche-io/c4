@@ -14,8 +14,23 @@ type Source interface {
 
 // Sink - is an interface that defines a destination for data identified by c4
 // id.
+//
+// Create's writer names the object on Close. Because the caller chose
+// the ID, the bytes are checked, never trusted: a store that can hash
+// what it is given refuses on Close with ErrInvalidID and names nothing
+// when the bytes do not hash to id (TreeStore does; wrap a store that
+// cannot in Validating). A writer that also implements Aborter can give
+// up part way; a caller whose source fails should Abort rather than
+// Close, so that nothing is named and nothing leaks.
 type Sink interface {
 	Create(id c4.ID) (io.WriteCloser, error)
+}
+
+// Aborter is implemented by Create writers that can give up: Abort
+// closes the writer, discards what was written, and names nothing. It
+// is safe to call more than once, and Close after Abort is a no-op.
+type Aborter interface {
+	Abort() error
 }
 
 // Store defines the interface for a content-addressed data store.

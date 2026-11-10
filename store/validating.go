@@ -77,12 +77,34 @@ func (v *validatingWriter) Write(b []byte) (int, error) {
 	}
 	if err == io.EOF {
 		if !v.isValid() {
-			v.w.Close()
-			v.remove(v.id)
+			v.discard()
 			return n, ErrInvalidID
 		}
 	}
 	return n, err
+}
+
+// discard gives the inner write up without naming anything where the
+// inner writer can (Aborter); otherwise the inner Close names the
+// object and the remove that follows is the best available, with the
+// window between them that an Aborter closes.
+func (v *validatingWriter) discard() {
+	if a, ok := v.w.(Aborter); ok {
+		a.Abort()
+		return
+	}
+	v.w.Close()
+	v.remove(v.id)
+}
+
+// Abort gives the write up; nothing is named.
+func (v *validatingWriter) Abort() error {
+	if a, ok := v.w.(Aborter); ok {
+		return a.Abort()
+	}
+	err := v.w.Close()
+	v.remove(v.id)
+	return err
 }
 
 func (v *validatingWriter) isValid() bool {
@@ -92,13 +114,16 @@ func (v *validatingWriter) isValid() bool {
 	return false
 }
 
+// Close checks the bytes against the ID before the inner writer closes,
+// so an inner writer that names on Close never names wrong bytes
+// (through 1.0.x the inner Close came first and the remove after it,
+// found in the storage project's review, 2026-11-09).
 func (v *validatingWriter) Close() error {
-	err := v.w.Close()
 	if !v.isValid() {
-		v.remove(v.id)
+		v.discard()
 		return ErrInvalidID
 	}
-	return err
+	return v.w.Close()
 }
 
 // Open opens a file named the given c4.ID in read-only mode from the folder. If
