@@ -45,9 +45,10 @@ func TestApplyPatchFromEqualsApplyPatchOnItsOwnBase(t *testing.T) {
 		apfEntry("deep.txt", "D", 1),
 	)
 	want := ApplyPatch(base, patch)
+	Normalize(want) // ApplyPatchFrom derives directory values; compare on the same footing
 	got := ApplyPatchFrom(base, base, patch)
 	if got.Canonical() != want.Canonical() {
-		t.Fatalf("ApplyPatchFrom(base, base, p) must equal ApplyPatch(base, p):\n--- got\n%s--- want\n%s", got.Canonical(), want.Canonical())
+		t.Fatalf("ApplyPatchFrom(base, base, p) must equal ApplyPatch(base, p) up to derived directory values:\n--- got\n%s--- want\n%s", got.Canonical(), want.Canonical())
 	}
 	paths := apfPaths(got)
 	if paths["gone.txt"] != nil || paths["new.txt"] == nil || paths["d/deep.txt"] == nil || paths["d/old.txt"] == nil {
@@ -140,5 +141,63 @@ func TestApplyPatchFromDeepensIntoATargetLackingTheDirectory(t *testing.T) {
 	}
 	if got["other.txt"] == nil {
 		t.Fatal("unrelated target paths stay")
+	}
+}
+
+// A directory line with children under it is context, not a write. A
+// patch that restates d/ only to remove d/f, carried to a target that no
+// longer has d/, leaves the target unchanged: the unit never made that
+// directory, it only stopped having a file in it (found by the operator's
+// oracle test, 2026-11-09).
+func TestApplyPatchFromRemovalOnlyDeepeningDoesNotRecreateTheDirectory(t *testing.T) {
+	dir := &Entry{Name: "d/", Mode: 0755 | os.ModeDir, Size: -1, Depth: 0}
+	base := apfManifest(dir, apfEntry("f", "F", 1))
+	patch := apfManifest(dir, apfEntry("f", "F", 1)) // d/ restated, f restated: remove d/f
+	target := apfManifest(apfEntry("other.txt", "T", 0))
+
+	got := ApplyPatchFrom(target, base, patch)
+	if apfPaths(got)["d/"] != nil {
+		t.Fatalf("a removal-only deepening must not recreate d/ in a target that lacks it:\n%s", got.Canonical())
+	}
+	if got.Canonical() != target.Canonical() {
+		t.Fatalf("target must be unchanged:\n%s\nvs\n%s", got.Canonical(), target.Canonical())
+	}
+}
+
+// A directory the target holds with other children keeps its own line;
+// the patch's directory line (this unit's aggregate) is never copied onto
+// it, and its size and ID are derived from the children it now lists.
+func TestApplyPatchFromKeepsTheTargetsDirectoryLineAndDerivesAggregates(t *testing.T) {
+	ts := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
+	baseDir := &Entry{Name: "d/", Mode: 0755 | os.ModeDir, Size: -1, Timestamp: ts, Depth: 0}
+	base := apfManifest(baseDir, apfEntry("f", "F", 1))
+	// The unit's own d/ after adding g: a different line (another time).
+	unitDir := &Entry{Name: "d/", Mode: 0755 | os.ModeDir, Size: -1, Timestamp: ts.Add(time.Hour), Depth: 0}
+	patch := apfManifest(unitDir, apfEntry("g", "G", 1))
+	// The target's d/ was changed by another unit (x added) and has its own time.
+	targetDir := &Entry{Name: "d/", Mode: 0755 | os.ModeDir, Size: -1, Timestamp: ts.Add(2 * time.Hour), Depth: 0}
+	target := apfManifest(targetDir, apfEntry("f", "F", 1), apfEntry("x", "X", 1))
+
+	got := apfPaths(ApplyPatchFrom(target, base, patch))
+	d := got["d/"]
+	if d == nil || !d.Timestamp.Equal(ts.Add(2*time.Hour)) {
+		t.Fatalf("the target's own directory line must be kept, got %v", d)
+	}
+	if got["d/f"] == nil || got["d/g"] == nil || got["d/x"] == nil {
+		t.Fatalf("d/ must hold f, g and x: %v", keysOf(got))
+	}
+	// Size and ID are derived from f, g and x, not copied from the patch.
+	children := []*Entry{got["d/f"], got["d/g"], got["d/x"]}
+	_, wantID := ListingRecord(children)
+	if d.C4ID != wantID || d.Size < 0 {
+		t.Fatalf("directory aggregates must be derived from the listed children: size %d, id %s, want %s", d.Size, d.C4ID, wantID)
+	}
+
+	// Where the target's line is still the base's, the patch's line is the
+	// same observation continued and replaces it (so target == base gives
+	// ApplyPatch's answer).
+	same := apfPaths(ApplyPatchFrom(base, base, patch))
+	if sd := same["d/"]; sd == nil || !sd.Timestamp.Equal(ts.Add(time.Hour)) {
+		t.Fatalf("on its own base the patch's directory line applies, got %v", sd)
 	}
 }
