@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/Avalanche-io/c4"
@@ -37,6 +38,10 @@ type TreeStore struct {
 	// but can never leave a torn object at a valid name for a later
 	// run's write-skip to adopt.
 	pending map[c4.ID]string
+	// touched holds directories whose entries changed during publication
+	// (rename destinations and split sources and targets), synced and
+	// cleared at the end of Sync.
+	touched map[string]bool
 }
 
 var _ Store = (*TreeStore)(nil)
@@ -45,6 +50,12 @@ var _ Syncer = (*TreeStore)(nil)
 // NewTreeStore creates a TreeStore rooted at the given directory.
 // The directory is created if it does not exist.
 func NewTreeStore(root string) (*TreeStore, error) {
+	// The root is kept as given but cleaned (no trailing slash, no "./",
+	// no doubled separators), so paths built under it with filepath.Join
+	// compare and relate to it exactly. It is not made absolute: a
+	// relative root means "relative to the working directory" for the
+	// life of the process, as it always has.
+	root = filepath.Clean(root)
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return nil, fmt.Errorf("create store root: %w", err)
 	}
@@ -87,20 +98,25 @@ func (s *TreeStore) Sync() error {
 	if s.syncMode != SyncBatch || (!s.dirty && len(s.pending) == 0) {
 		return nil
 	}
-	if err := SyncDir(s.root); err != nil {
+	// The barrier, in order:
+	//  1. one device flush (SyncDir on darwin is F_FULLFSYNC): every
+	//     pending object's bytes are on stable media before any rename
+	//     makes a name visible, so a name always implies durable bytes;
+	//  2. the renames, with any new shard directories;
+	//  3. a plain fsync of every directory a rename or mkdir touched, and
+	//     of its ancestors up to the store root: the new names and
+	//     directories reach the filesystem's log;
+	//  4. one more device flush, so that log reaches the device before
+	//     Sync returns and a claim is journaled or printed.
+	// Before 2026-11-09 steps 3 and 4 did not exist: the directory entries
+	// were left to whatever flush happened next (the journal's), which
+	// POSIX does not promise carries them and which filesystems handle
+	// differently (found in the storage project's review). The per
+	// directory sync is a plain fsync so the device flush is paid twice
+	// per batch, not once per directory.
+	if err := syncDirFull(s.root); err != nil {
 		return err
 	}
-	// Directories whose entries change below: each rename adds a name to
-	// its leaf directory, and MkdirAll may add new directories under the
-	// root. A rename is durable only once the directory holding the new
-	// name is synced, and a new directory only once its parent is; POSIX
-	// promises neither for free. Until 2026-11-10 only the root was synced,
-	// before the renames, so a claim's durability leaned on the journal's
-	// own flush happening to carry unrelated directory entries (true on
-	// APFS, ext4 and XFS; not promised, and not on exFAT). Every touched
-	// directory and its ancestors up to the root are synced after the
-	// renames (found in the storage project's review).
-	touched := make(map[string]bool)
 	for id, tmpName := range s.pending {
 		p := s.path(id)
 		if _, err := os.Stat(p); err == nil {
@@ -114,18 +130,19 @@ func (s *TreeStore) Sync() error {
 		if err := os.Rename(tmpName, p); err != nil {
 			return fmt.Errorf("rename: %w", err)
 		}
-		s.noteAdd(filepath.Dir(p))
+		s.markTouched(filepath.Dir(p))
+		s.noteAdd(filepath.Dir(p)) // may split, which marks the directories it moves into
 		delete(s.pending, id)
-		for d := filepath.Dir(p); ; d = filepath.Dir(d) {
-			touched[d] = true
-			if d == s.root || d == filepath.Dir(d) {
-				break
-			}
+	}
+	touched := s.touchedDirs()
+	for d := range touched {
+		if err := syncDirEntries(d); err != nil {
+			return fmt.Errorf("sync %s: %w", d, err)
 		}
 	}
-	for d := range touched {
-		if err := SyncDir(d); err != nil {
-			return fmt.Errorf("sync %s: %w", d, err)
+	if len(touched) > 0 {
+		if err := syncDirFull(s.root); err != nil {
+			return err
 		}
 	}
 	s.dirty = false
@@ -432,7 +449,33 @@ func (s *TreeStore) split(dir string) {
 		subDir := filepath.Join(dir, sub)
 		os.MkdirAll(subDir, 0755)
 		os.Rename(filepath.Join(dir, name), filepath.Join(subDir, name))
+		// The split moves names out of dir and into subDir: both changed.
+		s.markTouched(subDir)
 	}
+	s.markTouched(dir)
+}
+
+// markTouched records a directory whose entries the barrier changed (a
+// rename landed in it, or a split moved names in or out), for the entry
+// sync at the end of Sync. Caller holds s.mu.
+func (s *TreeStore) markTouched(dir string) {
+	if s.touched == nil {
+		s.touched = make(map[string]bool)
+	}
+	s.touched[dir] = true
+}
+
+// touchedDirs returns every marked directory and its ancestors within
+// the root, and clears the marks. Caller holds s.mu.
+func (s *TreeStore) touchedDirs() map[string]bool {
+	out := make(map[string]bool)
+	for d := range s.touched {
+		for _, a := range dirsWithinRoot(s.root, d) {
+			out[a] = true
+		}
+	}
+	s.touched = nil
+	return out
 }
 
 // prefixDepth returns how many characters of the ID are consumed by the
@@ -466,6 +509,36 @@ func splitPath(p string) []string {
 		p = filepath.Clean(dir)
 	}
 	return parts
+}
+
+// syncDirFull and syncDirEntries are the barrier's two directory syncs,
+// as package variables so tests can observe which directories were
+// synced, in what order, and that nothing outside the store was.
+var (
+	syncDirFull    = SyncDir
+	syncDirEntries = fsyncDir
+)
+
+// dirsWithinRoot returns dir and each of its ancestors that lie inside
+// root, root itself included, nearest first. The bound is the relation
+// to the root, not string equality, so no spelling of the root (a
+// trailing slash, a "./") can make the walk leave the store: with a
+// root stored unclean, d == root was never true and the walk reached
+// the filesystem root, where opening an ancestor the user cannot read
+// failed the barrier and, since the barrier is fatal, stopped the store
+// from storing (found in the fleet's review, 2026-11-10).
+func dirsWithinRoot(root, dir string) []string {
+	var out []string
+	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
+		rel, err := filepath.Rel(root, d)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return out
+		}
+		out = append(out, d)
+		if rel == "." || d == filepath.Dir(d) {
+			return out
+		}
+	}
 }
 
 // isTemp returns true for temp files created during ingestion.

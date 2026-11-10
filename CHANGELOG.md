@@ -7,10 +7,14 @@
 `TreeStore.Sync` flushed the device, renamed each pending object to its
 hash name, and never synced the directories that received those names or
 the new shard directories it made, so a claim's durability leaned on the
-journal's own flush carrying unrelated directory entries (true on APFS,
-ext4 and XFS, promised nowhere, and not on exFAT). Found in the storage
+journal's own flush carrying unrelated directory entries, which POSIX
+does not promise and filesystems handle differently. Found in the storage
 project's review, 2026-11-09. Every touched directory and its ancestors
-up to the store root are now synced after the renames. `Normalize`'s
+up to the store root now get a plain fsync after the renames, then one
+more device flush, so the device flush is paid twice per batch rather
+than once per directory. The store root is cleaned on open, and the
+ancestor walk is bounded by the root, so no spelling of the root can make
+the barrier open directories above the store. `Normalize`'s
 documentation gains the rule for writers that update a tree in place:
 store every listing the patch restates or the derivation changes.
 
