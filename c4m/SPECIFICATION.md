@@ -372,6 +372,8 @@ Patch entries are matched against the current state **by name (and path)**:
 
 For directories, patch entries may contain children. The children are applied recursively using the same rules.
 
+**A patch is meaningful only over its own base.** Because removal is spelled by exact restatement, what an entry means (removed, or now this) depends on the state the section's boundary names. Applying a patch's text directly to any other tree reads those meanings against the wrong state: an addition that meets an identical entry already present reads as a removal. To carry a patch's changes to another tree, interpret each entry against the patch's base first, then do to the other tree what the entry means: remove the path, or write the entry (the Go library's `ApplyPatchFrom`). With the other tree equal to the base this is ordinary patch application, and it is idempotent.
+
 > **ERRATUM (2026-07-31).** The removal rule previously had no children
 > condition, so restating a directory identically while declaring
 > children under it deleted the directory and those children. A section
