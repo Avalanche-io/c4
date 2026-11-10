@@ -117,3 +117,28 @@ func keysOf(m map[string]*Entry) []string {
 	}
 	return out
 }
+
+// A deepened directory (its line restated with children) carried to a
+// target that lacks the directory creates it and applies the children
+// against the base's children: an added child lands, a child restated
+// identically to the base's means removal and so does not appear.
+func TestApplyPatchFromDeepensIntoATargetLackingTheDirectory(t *testing.T) {
+	dir := &Entry{Name: "d/", Mode: 0755 | os.ModeDir, Size: -1, Depth: 0}
+	base := apfManifest(dir, apfEntry("old.txt", "O", 1))
+	patch := apfManifest(dir, apfEntry("old.txt", "O", 1), apfEntry("new.txt", "N", 1)) // deepen: remove old, add new
+	target := apfManifest(apfEntry("other.txt", "T", 0))
+
+	got := apfPaths(ApplyPatchFrom(target, base, patch))
+	if got["d/"] == nil || !got["d/"].IsDir() {
+		t.Fatalf("the deepened directory must be created in the target: %v", keysOf(got))
+	}
+	if got["d/new.txt"] == nil {
+		t.Fatal("the added child must land under the created directory")
+	}
+	if got["d/old.txt"] != nil {
+		t.Fatal("a child restated identically to the base's is a removal and must not appear")
+	}
+	if got["other.txt"] == nil {
+		t.Fatal("unrelated target paths stay")
+	}
+}
