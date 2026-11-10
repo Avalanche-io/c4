@@ -222,7 +222,7 @@ func ApplyPatch(base, patch *Manifest) *Manifest {
 // meanings against the wrong state: an "add" that meets an identical
 // entry already present in the target reads as a removal, so two units
 // writing the same bytes to the same path leave the path empty, and
-// replaying a fold removes what it added (found by c4d in the operator,
+// replaying a fold removes what it added (found in the operator's fold,
 // 2026-11-09). ApplyPatchFrom reads each entry against base first, then
 // does to target what the entry means: removes the path, or writes the
 // entry (overwriting whatever target holds there; a caller wanting a
