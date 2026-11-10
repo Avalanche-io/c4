@@ -7,7 +7,7 @@
 An entry built in memory with `Mode == c4m.ZeroMode` on a name ending in
 `/` encoded as `----------`, which the decoder then read as the legacy
 null (ten dashes on a directory line), so a known zero round-tripped to
-null (found by absfs in c4fs, 2026-11-09). The encoder now writes the
+null (found in c4fs, 2026-11-09). The encoder now writes the
 directory type for a known mode on a directory name: `d---------`, in
 canonical and pretty form, through one `modeText` used by both. Other
 type bits on a directory name are left as given; that is a malformed
@@ -43,7 +43,7 @@ implementation must see; `TestZeroNullVector` regenerates and pins it.
 ### Incomplete ingests are collected when the store opens
 
 A batch ingest killed before its barrier left its `.ingest.*` temp files
-in the store root forever (found by c4d's commit measurements). The rule
+in the store root forever (found by the storage daemon's commit measurements). The rule
 (2026-11-08): on boot a system garbage-collects incomplete transactions
 that cannot, or should not, be replayed to completion, and opening a
 store is its boot. Temps are now named `.ingest.<host>.<pid>.<random>`;
@@ -55,7 +55,7 @@ day, and never touches an object. `TreeStore.SweepIngest` is exported.
 
 `c4 cat -r` on a snapshot whose store is missing a directory's listing
 printed the tree as far as it could and exited 0, silently. That hid a
-real bug in a c4d prototype whose check read only the exit status
+real bug in a storage-daemon prototype whose check read only the exit status
 (2026-11-08). Now the tree still prints as far as the store supplies it,
 each listing the store cannot supply is named on stderr as
 `partial: <path> listing <ID> <why>` (not in store, does not parse, or no
@@ -134,7 +134,7 @@ nothing to stdout and exits 0, and the only way to a bare ID is the
 "the ID only": `c4 id -q DIR` prints the description's ID, `c4 id -s -q`
 prints the claim, and the stream is suppressed. A script written for one
 line and run on the other gets either silence with exit 0 or an
-unexpected ID line; neither fails loudly (found by absfs, 2026-11-09).
+unexpected ID line; neither fails loudly (found by the filesystem project, 2026-11-09).
 
 Migration: a 1.0.x script that used `-q` to silence `c4 id` should
 redirect stdout instead (`c4 id -s DIR >/dev/null`); a script that wants
