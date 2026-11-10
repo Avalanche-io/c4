@@ -16,13 +16,13 @@ func (failingSyncer) Sync() error { return errors.New("device flush failed") }
 
 type plainStore struct{}
 
-func (plainStore) Has(c4.ID) bool                          { return false }
-func (plainStore) Open(c4.ID) (io.ReadCloser, error)       { return nil, errors.New("none") }
-func (plainStore) Create(c4.ID) (io.WriteCloser, error)    { return nil, errors.New("none") }
-func (plainStore) Put(io.Reader) (c4.ID, error)            { return c4.ID{}, errors.New("none") }
-func (plainStore) Remove(c4.ID) error                      { return nil }
-func (plainStore) Walk(func(c4.ID, int64) error) error     { return nil }
-func (plainStore) ContentPath(c4.ID) (string, bool)        { return "", false }
+func (plainStore) Has(c4.ID) bool                       { return false }
+func (plainStore) Open(c4.ID) (io.ReadCloser, error)    { return nil, errors.New("none") }
+func (plainStore) Create(c4.ID) (io.WriteCloser, error) { return nil, errors.New("none") }
+func (plainStore) Put(io.Reader) (c4.ID, error)         { return c4.ID{}, errors.New("none") }
+func (plainStore) Remove(c4.ID) error                   { return nil }
+func (plainStore) Walk(func(c4.ID, int64) error) error  { return nil }
+func (plainStore) ContentPath(c4.ID) (string, bool)     { return "", false }
 
 // The barrier's error reaches the caller, which is fatal before any claim
 // is journaled or printed (c4d review, 2026-11-09: it used to warn and
