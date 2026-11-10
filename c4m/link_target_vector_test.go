@@ -18,6 +18,7 @@ type linkTargetCase struct {
 	name, target string
 	hardLink     int
 	nullFields   bool  // mode, timestamp and size null, as views carry links
+	nullTime     bool  // a symlink mode and size, but a null timestamp: what c4 id -e writes for a link whose mtime is the epoch
 	id           c4.ID // the entry's own C4 ID, nil for none
 }
 
@@ -33,6 +34,8 @@ func linkTargetCases() []linkTargetCase {
 		{name: "objects-null", target: "../objects/" + idText, nullFields: true}, // control: read back before the fix
 		{name: "hard-null-id", hardLink: -1, nullFields: true, id: content},
 		{name: "hard-null-nil", hardLink: -1, nullFields: true},
+		{name: "epoch-link-nil", target: "missing.txt", nullTime: true},
+		{name: "epoch-link-id", target: "real.txt", nullTime: true, id: content},
 	}
 }
 
@@ -44,6 +47,8 @@ func linkTargetVectorManifest() *Manifest {
 		switch {
 		case c.nullFields:
 			e.Size, e.Timestamp = -1, NullTimestamp()
+		case c.nullTime:
+			e.Mode, e.Size, e.Timestamp = os.ModeSymlink|0o755, int64(len(c.target)), NullTimestamp()
 		case c.target != "":
 			e.Mode, e.Size, e.Timestamp = os.ModeSymlink|0o777, int64(len(c.target)), ts
 		}

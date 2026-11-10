@@ -24,16 +24,18 @@ Decode `canonical.c4m` and `pretty.c4m` to one manifest whose root ID is
 `root-id.txt`, and decode `patch.c4m` to one section over the empty
 tree's ID holding the same entries, with these targets and links:
 
-| Entry            | Mode, time, size    | Target                    | Link           | Own C4 ID |
-| ---------------- | ------------------- | ------------------------- | -------------- | --------- |
-| `id-null`        | null                | a C4 ID's text            | symlink        | null      |
-| `id-set`         | `lrwxrwxrwx`, known | a C4 ID's text            | symlink        | present   |
-| `id-exr-null`    | null                | a C4 ID's text and `.exr` | symlink        | null      |
-| `id-exr-set`     | `lrwxrwxrwx`, known | a C4 ID's text and `.exr` | symlink        | present   |
-| `c4-prefix-null` | null                | `c4studio`                | symlink        | null      |
-| `objects-null`   | null                | `../objects/` and an ID   | symlink        | null      |
-| `hard-null-id`   | null                | none                      | ungrouped hard | present   |
-| `hard-null-nil`  | null                | none                      | ungrouped hard | null      |
+| Entry            | Mode, time, size                    | Target                    | Link           | Own C4 ID |
+| ---------------- | ----------------------------------- | ------------------------- | -------------- | --------- |
+| `id-null`        | null                                | a C4 ID's text            | symlink        | null      |
+| `id-set`         | `lrwxrwxrwx`, known                 | a C4 ID's text            | symlink        | present   |
+| `id-exr-null`    | null                                | a C4 ID's text and `.exr` | symlink        | null      |
+| `id-exr-set`     | `lrwxrwxrwx`, known                 | a C4 ID's text and `.exr` | symlink        | present   |
+| `c4-prefix-null` | null                                | `c4studio`                | symlink        | null      |
+| `objects-null`   | null                                | `../objects/` and an ID   | symlink        | null      |
+| `hard-null-id`   | null                                | none                      | ungrouped hard | present   |
+| `hard-null-nil`  | null                                | none                      | ungrouped hard | null      |
+| `epoch-link-nil` | `lrwxr-xr-x`, null time, size known | `missing.txt`             | symlink        | null      |
+| `epoch-link-id`  | `lrwxr-xr-x`, null time, size known | `real.txt`                | symlink        | present   |
 
 ## The rules under test
 
@@ -50,7 +52,8 @@ tree's ID holding the same entries, with these targets and links:
   padding into the target of a link whose own C4 ID is null or present,
   escaped it on the next write, and so changed the tree's ID without an
   error. `c4 id -e` reaches this on any tree holding a symlink whose own
-  mtime is the epoch.
+  mtime is the epoch; the two `epoch-link` entries are exactly what it
+  writes for one, dangling and live.
 
 ## Not covered: unruled
 
