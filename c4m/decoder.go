@@ -457,8 +457,17 @@ func (d *Decoder) parseEntryFields(line string, mode os.FileMode) (size int64, n
 				for pos < n && line[pos] == ' ' {
 					pos++
 				}
-			} else if remaining := strings.TrimSpace(line[pos:]); remaining == "-" || strings.HasPrefix(remaining, "c4") {
-				// Hard link (ungrouped) — remaining is null C4 ID or a C4 ID
+			} else if remaining := strings.TrimSpace(line[pos:]); isLoneIDField(remaining) {
+				// Hard link (ungrouped): the C4 ID field (or its null) is
+				// the only field after the operator. The C4 ID is always the
+				// last field and a target never holds an unescaped space
+				// (SPECIFICATION.md, entry format and "Symlinks"), so a
+				// second field means the first is a target. A target that
+				// merely starts with "c4", or is a C4 ID's text, under a
+				// mode that does not say symlink (a null mode, as views
+				// carry links) was read as a hard link and the rest of the
+				// line as its ID, and refused (found by the storage
+				// project's git importer, 2026-11-10).
 				hardLink = -1
 			} else if pos < n {
 				// Fallback: treat as symlink target
@@ -622,6 +631,29 @@ func hasUnescapedSequenceNotation(raw string) bool {
 	return sequencePattern.MatchString(buf.String())
 }
 
+// isLoneIDField reports whether s, the rest of a line after a link
+// operator, is exactly one field that is a C4 ID or the null "-". A
+// field ends at an unescaped space.
+func isLoneIDField(s string) bool {
+	if s == "-" {
+		return true
+	}
+	if !strings.HasPrefix(s, "c4") {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' {
+			i++
+			continue
+		}
+		if s[i] == ' ' {
+			return false
+		}
+	}
+	_, err := c4.Parse(s)
+	return err == nil
+}
+
 // parseTarget parses a symlink target starting at pos.
 // Unlike parseNameOrTarget, this does NOT treat / as a boundary because
 // symlink targets can be absolute paths or contain path separators.
@@ -652,14 +684,11 @@ func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 			}
 		}
 
-		if ch == ' ' {
-			rest := line[pos:]
-			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
-				return buf.String(), pos, nil
-			}
-			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
-				return buf.String(), pos, nil
-			}
+		// The pretty form pads before the C4 ID field; testing only the
+		// next character let the padding in front of a null "-" join the
+		// target (found with the link-target vector, 2026-11-10).
+		if ch == ' ' && startsIDField(line, pos) {
+			return buf.String(), pos, nil
 		}
 		buf.WriteByte(ch)
 		pos++
@@ -702,19 +731,23 @@ func (d *Decoder) parseFlowTarget(line string, pos int) (string, int, error) {
 	}
 	start := pos
 	for pos < n {
-		ch := line[pos]
-		if ch == ' ' {
-			rest := line[pos:]
-			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
-				return line[start:pos], pos, nil
-			}
-			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
-				return line[start:pos], pos, nil
-			}
+		if line[pos] == ' ' && startsIDField(line, pos) {
+			return line[start:pos], pos, nil
 		}
 		pos++
 	}
 	return line[start:pos], pos, nil
+}
+
+// startsIDField reports whether the run of spaces at pos is followed by
+// the C4 ID field: a C4 ID, or the null "-" as the last field. The pretty
+// form pads before that field, so the whole run is skipped first.
+func startsIDField(line string, pos int) bool {
+	for pos < len(line) && line[pos] == ' ' {
+		pos++
+	}
+	rest := line[pos:]
+	return strings.HasPrefix(rest, "c4") || rest == "-" || strings.HasPrefix(rest, "- ")
 }
 
 // readLine reads a line from the input

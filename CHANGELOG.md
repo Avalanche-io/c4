@@ -2,6 +2,26 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A link line reads back as it was written
+
+Two decoder faults, both on lines the encoder writes. **A target that
+starts with `c4`** (a C4 ID's text, `<C4 ID>.exr`, `c4studio`), under a
+mode that does not say symlink (the null mode views carry links with),
+was read as an ungrouped hard link and the rest of the line as its C4
+ID, and the line was refused (found by the storage project's git
+importer, 2026-11-10). After a link operator a single field is now the
+C4 ID field and two fields are a target and the C4 ID field, as the
+entry format already implies: the C4 ID is always the last field and a
+target escapes its spaces. **The pretty form's padding** before the C4
+ID field joined the target of any link on a line with a null timestamp,
+was escaped on the next write, and changed the tree's ID with no error;
+`c4 id -e` reached it on any tree holding a symlink whose own mtime is
+the epoch (measured on 1.0.24 and master). The target and flow-target
+parsers now skip the run of spaces before asking whether the C4 ID field
+starts. Pinned by `c4m/testdata/link-target-vector/` for every
+implementation. Unruled and not pinned: a null-mode link whose target is
+shaped like a flow target (`host:path`) still reads as a flow link.
+
 ### Every Sink checks a write before it names it (the Sink contract)
 
 The check and the Abort that `TreeStore` gained (below) are now the
