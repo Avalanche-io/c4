@@ -2,6 +2,21 @@
 
 ## Unreleased (1.0.27)
 
+### A link whose target starts with `c4` reads back as written
+
+A target that starts with `c4` (a C4 ID's text, `<C4 ID>.exr`, `c4studio`),
+under a mode that does not say symlink (the null mode views carry links
+with), was read as an ungrouped hard link and the rest of the line as its
+C4 ID, and the line was refused. Through 1.0.26 this line refused three of
+the shared link-target vector's ten lines that every other implementation
+reads. After a link operator a single field is now the C4 ID field and two
+fields are a target and the C4 ID field, as the entry format already
+implies: the C4 ID is always the last field and a target escapes its
+spaces. Pinned by `c4m/testdata/link-target-vector/`. (The pretty-padding
+half of this rule shipped in 1.0.25.) Unruled and not pinned: a null-mode
+link whose target is shaped like a flow target (`host:path`) still reads as
+a flow link.
+
 ### A raw space, quote or control byte in a name is refused
 
 A written name escapes a space as `\ `, a double quote as `\"`, and control

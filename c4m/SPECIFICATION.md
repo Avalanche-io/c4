@@ -149,7 +149,8 @@ The target is a location reference: `<location-name>:<path>`. Location names mat
 2. **Non-symlink mode**: examine what follows `->`:
    - A digit 1-9 immediately (no space): hard link group
    - A location reference (`name:...`): outbound flow link
-   - `-` or `c4...` (the C4 ID): ungrouped hard link
+   - `-` or `c4...` (the C4 ID) as the only field left on the line: ungrouped hard link
+   - anything else is a symlink target, followed by the C4 ID field: the C4 ID is always the last field and a target never holds an unescaped space, so a second field means the first is a target, even when it starts with `c4` (a null mode, as views carry links, is not a symlink mode)
 
 ## Canonical Form
 
