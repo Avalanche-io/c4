@@ -484,6 +484,12 @@ cannot contain its own ID and still be the file its ID summons.
   `trailing root ID removed` on stderr and writes the valid form.
   `c4 id -l` lists such files; `c4 id -d` shows the deletion.
   (`Decoder.AllowTrailingID` and `DroppedTrailingID` expose this.)
+- Consumers holding immutable old objects (a changeset in a signed
+  record) use `c4m.DecodePatchChainMigrating`, which takes the trailing
+  ID off and returns it for the caller to verify against the resolved
+  state; nothing writes it back. The chain reader also now refuses two
+  consecutive checkpoints that disagree (`ErrPatchIDMismatch`) instead
+  of keeping the second silently.
 - The conformance vectors `chain-vector/{vector,bad-checkpoint}.c4m`
   and `deepen-vector/{deepen,remove}.c4m` lose their final line; their
   root IDs are unchanged. `bad-validator.c4m` now pins both rejections.

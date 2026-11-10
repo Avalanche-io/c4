@@ -20,7 +20,26 @@ type PatchSection struct {
 // DecodePatchChain reads a c4m file and returns each section separately
 // without resolving patches. The first section is the base manifest;
 // subsequent sections are patch deltas separated by bare C4 ID lines.
+// A bare C4 ID at end of input is ErrTrailingID.
 func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
+	sections, _, err := decodePatchChain(r, false)
+	return sections, err
+}
+
+// DecodePatchChainMigrating is DecodePatchChain for objects written
+// before 2026-11-08 that cannot be rewritten: changesets and chains that
+// are immutable and named by ID (a signed record, a stored object). A
+// bare C4 ID at end of input is taken off and returned as trailing
+// instead of refused; it is the ID of the state the sections resolve to,
+// and the caller MUST verify it against the resolved state, as the
+// resolving Decoder would (this reader does not resolve). trailing is
+// nil when the stream ends on entries. Nothing may write the trailing ID
+// back out: the migrated form ends on its last section.
+func DecodePatchChainMigrating(r io.Reader) (sections []*PatchSection, trailing c4.ID, err error) {
+	return decodePatchChain(r, true)
+}
+
+func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, error) {
 	d := &Decoder{
 		reader:      bufio.NewReader(r),
 		indentWidth: -1,
@@ -37,7 +56,7 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			return nil, c4.ID{}, err
 		}
 
 		trimmed := strings.TrimSpace(line)
@@ -54,17 +73,23 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 		if isBareC4ID(trimmed) {
 			id, parseErr := c4.Parse(trimmed)
 			if parseErr != nil {
-				return nil, fmt.Errorf("line %d: invalid C4 ID: %w", d.lineNum, parseErr)
+				return nil, c4.ID{}, fmt.Errorf("line %d: invalid C4 ID: %w", d.lineNum, parseErr)
 			}
 
 			if firstLine && len(current.Entries) == 0 {
 				// First bare ID: external base reference on first section.
 				current.BaseID = id
 			} else if len(current.Entries) == 0 && len(sections) > 0 {
-				// Consecutive bare IDs with no entries between them
-				// (checkpoint repetition). The second supersedes — just
-				// update the current base.
-				current.BaseID = id
+				// Consecutive bare IDs with no entries between them are
+				// checkpoint repetition: both name the same accumulated
+				// state, so they must be the same ID. This reader cannot
+				// verify either against the state (it does not resolve),
+				// but it can refuse a pair that disagrees instead of
+				// silently keeping the second (found by c4d, 2026-11-09).
+				if current.BaseID != id {
+					return nil, c4.ID{}, fmt.Errorf("%w (line %d): consecutive checkpoints disagree: %s then %s",
+						ErrPatchIDMismatch, d.lineNum, current.BaseID, id)
+				}
 				lastWasID = true
 			} else {
 				// Flush current section.
@@ -80,12 +105,12 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 		lastWasID = false
 
 		if strings.HasPrefix(trimmed, "@") {
-			return nil, fmt.Errorf("directives not supported (line %d): %s", d.lineNum, line)
+			return nil, c4.ID{}, fmt.Errorf("directives not supported (line %d): %s", d.lineNum, line)
 		}
 
 		entry, parseErr := d.parseEntryFromLine(line)
 		if parseErr != nil {
-			return nil, fmt.Errorf("parse error: %v", parseErr)
+			return nil, c4.ID{}, fmt.Errorf("parse error: %v", parseErr)
 		}
 		if entry != nil {
 			current.Entries = append(current.Entries, entry)
@@ -98,9 +123,17 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 	// it silently as a "closing validator"; now every shape-level verb
 	// (patch, log, split, explain) refuses the file and names the fix,
 	// the same as the resolving Decoder. The normaliser migrates it.
+	var trailing c4.ID
 	if lastWasID {
-		return nil, fmt.Errorf("%w (line %d): delete that line, or rewrite the file with `c4 id FILE.c4m > fixed.c4m`",
-			ErrTrailingID, d.lineNum)
+		if !allowTrailing {
+			return nil, c4.ID{}, fmt.Errorf("%w (line %d): delete that line, or rewrite the file with `c4 id FILE.c4m > fixed.c4m`",
+				ErrTrailingID, d.lineNum)
+		}
+		// Migrating: the trailing ID names the state the sections resolve
+		// to. It is handed back for the caller to verify, never kept as a
+		// section.
+		trailing = current.BaseID
+		current = &PatchSection{}
 	}
 
 	// Flush the final section.
@@ -108,7 +141,7 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 		sections = append(sections, current)
 	}
 
-	return sections, nil
+	return sections, trailing, nil
 }
 
 // ResolvePatchChain resolves a series of patch sections into a final manifest.
