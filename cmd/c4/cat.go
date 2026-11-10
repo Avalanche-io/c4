@@ -254,7 +254,7 @@ var emptyListingID = c4.Identify(bytes.NewReader(nil))
 // the right depth, recursively. It returns the expanded manifest and
 // every directory it could not expand. Until 2026-11-08 a missing or
 // damaged listing was skipped silently and the caller exited 0 on a
-// partial tree; that hid a real bug in a c4d prototype whose check read
+// partial tree; that hid a real bug in a storage-daemon prototype whose check read
 // only the exit status.
 func expandRecursive(m *c4m.Manifest, s store.Store) (*c4m.Manifest, []missingRecord) {
 	result := c4m.NewManifest()

@@ -9,7 +9,7 @@ package c4m
 // directory, and a directory's known zero is "d---------", never
 // "----------", which on a directory line is the legacy null. So an
 // Entry{Mode: ZeroMode, Name: "d/"} is written "d---------"; without this
-// it encoded as "----------" and decoded back as null (found by absfs,
+// it encoded as "----------" and decoded back as null (found in c4fs,
 // 2026-11-09). Only the known zero is rewritten: it is the one spelling
 // the decoder reads two ways. Any other known mode is written as given,
 // type character included (a flow link on a directory is written with

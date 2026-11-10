@@ -31,7 +31,7 @@ import (
 // the collapsed records from the store afterwards (cmd/c4's
 // expandIfRecord does this and names every record the store lacks).
 // Storing the fold as if it were the full tree writes listings whose
-// children were never read (a c4d prototype did exactly this, 2026-11-08).
+// children were never read (a storage-daemon prototype did exactly this, 2026-11-08).
 func ResolveBase(m *Manifest, src store.Source) (*Manifest, error) {
 	if m == nil {
 		return NewManifest(), nil
