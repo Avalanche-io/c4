@@ -47,7 +47,7 @@ func TestApplyPatchFromEqualsApplyPatchOnItsOwnBase(t *testing.T) {
 	)
 	want := ApplyPatch(base, patch)
 	Normalize(want) // ApplyPatchFrom derives directory values; compare on the same footing
-	got := ApplyPatchFrom(base, base, patch)
+	got := mustApplyPatchFrom(t, base, base, patch)
 	if got.Canonical() != want.Canonical() {
 		t.Fatalf("ApplyPatchFrom(base, base, p) must equal ApplyPatch(base, p) up to derived directory values:\n--- got\n%s--- want\n%s", got.Canonical(), want.Canonical())
 	}
@@ -65,7 +65,7 @@ func TestApplyPatchFromIsIdempotentForSameAdds(t *testing.T) {
 	base := apfManifest(apfEntry("keep.txt", "K", 0))
 	patch := apfManifest(apfEntry("out.txt", "same bytes", 0)) // diffed from base: an addition
 
-	once := ApplyPatchFrom(base, base, patch)
+	once := mustApplyPatchFrom(t, base, base, patch)
 	if apfPaths(once)["out.txt"] == nil {
 		t.Fatal("first add must land")
 	}
@@ -74,7 +74,7 @@ func TestApplyPatchFromIsIdempotentForSameAdds(t *testing.T) {
 	if apfPaths(ApplyPatch(once, patch))["out.txt"] != nil {
 		t.Fatal("precondition: plain ApplyPatch on the wrong base must remove the path (that is the bug this fixes)")
 	}
-	twice := ApplyPatchFrom(once, base, patch)
+	twice := mustApplyPatchFrom(t, once, base, patch)
 	if apfPaths(twice)["out.txt"] == nil {
 		t.Fatal("replaying the add against its own base must keep the path")
 	}
@@ -95,7 +95,7 @@ func TestApplyPatchFromCarriesMeaningToAForeignTarget(t *testing.T) {
 		apfEntry("edit.txt", "E-target", 0),            // differs from base: patch wins
 		apfEntry("other.txt", "T", 0),                  // untouched
 	)
-	got := apfPaths(ApplyPatchFrom(target, base, patch))
+	got := apfPaths(mustApplyPatchFrom(t, target, base, patch))
 	if got["gone.txt"] != nil {
 		t.Fatal("a removal must remove the path in the target")
 	}
@@ -106,7 +106,7 @@ func TestApplyPatchFromCarriesMeaningToAForeignTarget(t *testing.T) {
 		t.Fatal("paths the patch does not name are untouched")
 	}
 	// A removal of a path the target never held is a no-op.
-	empty := apfPaths(ApplyPatchFrom(apfManifest(apfEntry("other.txt", "T", 0)), base, patch))
+	empty := apfPaths(mustApplyPatchFrom(t, apfManifest(apfEntry("other.txt", "T", 0)), base, patch))
 	if empty["gone.txt"] != nil || empty["other.txt"] == nil || empty["edit.txt"] == nil {
 		t.Fatalf("foreign target: %v", keysOf(empty))
 	}
@@ -130,7 +130,7 @@ func TestApplyPatchFromDeepensIntoATargetLackingTheDirectory(t *testing.T) {
 	patch := apfManifest(dir, apfEntry("old.txt", "O", 1), apfEntry("new.txt", "N", 1)) // deepen: remove old, add new
 	target := apfManifest(apfEntry("other.txt", "T", 0))
 
-	got := apfPaths(ApplyPatchFrom(target, base, patch))
+	got := apfPaths(mustApplyPatchFrom(t, target, base, patch))
 	if got["d/"] == nil || !got["d/"].IsDir() {
 		t.Fatalf("the deepened directory must be created in the target: %v", keysOf(got))
 	}
@@ -156,7 +156,7 @@ func TestApplyPatchFromRemovalOnlyDeepeningDoesNotRecreateTheDirectory(t *testin
 	patch := apfManifest(dir, apfEntry("f", "F", 1)) // d/ restated, f restated: remove d/f
 	target := apfManifest(apfEntry("other.txt", "T", 0))
 
-	got := ApplyPatchFrom(target, base, patch)
+	got := mustApplyPatchFrom(t, target, base, patch)
 	if apfPaths(got)["d/"] != nil {
 		t.Fatalf("a removal-only deepening must not recreate d/ in a target that lacks it:\n%s", got.Canonical())
 	}
@@ -179,7 +179,7 @@ func TestApplyPatchFromKeepsTheTargetsDirectoryLineAndDerivesAggregates(t *testi
 	targetDir := &Entry{Name: "d/", Mode: 0755 | os.ModeDir, Size: -1, Timestamp: ts.Add(2 * time.Hour), Depth: 0}
 	target := apfManifest(targetDir, apfEntry("f", "F", 1), apfEntry("x", "X", 1))
 
-	got := apfPaths(ApplyPatchFrom(target, base, patch))
+	got := apfPaths(mustApplyPatchFrom(t, target, base, patch))
 	d := got["d/"]
 	if d == nil || !d.Timestamp.Equal(ts.Add(2*time.Hour)) {
 		t.Fatalf("the target's own directory line must be kept, got %v", d)
@@ -197,7 +197,7 @@ func TestApplyPatchFromKeepsTheTargetsDirectoryLineAndDerivesAggregates(t *testi
 	// Where the target's line is still the base's, the patch's line is the
 	// same observation continued and replaces it (so target == base gives
 	// ApplyPatch's answer).
-	same := apfPaths(ApplyPatchFrom(base, base, patch))
+	same := apfPaths(mustApplyPatchFrom(t, base, base, patch))
 	if sd := same["d/"]; sd == nil || !sd.Timestamp.Equal(ts.Add(time.Hour)) {
 		t.Fatalf("on its own base the patch's directory line applies, got %v", sd)
 	}
@@ -226,7 +226,7 @@ func TestApplyPatchFromRederivesAnEmptiedDirectory(t *testing.T) {
 	target := apfManifest(dir(-1, c4.ID{}), modelX)
 	Normalize(target) // target's weights/ line differs from base's (its child differs)
 
-	got := ApplyPatchFrom(target, base, patch)
+	got := mustApplyPatchFrom(t, target, base, patch)
 	paths := apfPaths(got)
 	if paths["weights/model.bin"] != nil {
 		t.Fatal("model.bin must be removed")
@@ -241,4 +241,14 @@ func TestApplyPatchFromRederivesAnEmptiedDirectory(t *testing.T) {
 	if w.C4ID == apfPaths(target)["weights/"].C4ID {
 		t.Fatal("the target's stale directory ID must not survive the removal")
 	}
+}
+
+// mustApplyPatchFrom is ApplyPatchFrom for cases that must not be refused.
+func mustApplyPatchFrom(t *testing.T, target, base, patch *Manifest) *Manifest {
+	t.Helper()
+	m, err := ApplyPatchFrom(target, base, patch)
+	if err != nil {
+		t.Fatalf("ApplyPatchFrom: %v", err)
+	}
+	return m
 }

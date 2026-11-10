@@ -467,6 +467,20 @@ and its subtree; a write under `x/`, or of `x/` itself, removes a file
 or symlink `x`; the later write wins by kind as it does by bytes.
 Pinned as the `kind-conflict` case of `c4m/testdata/apply-from-vector/`.
 
+Three further rules for a patch carried to another tree, each pinned by
+a vector case: a removal removes only the kind the base held, so a
+directory that replaced a removed file stays
+(`removal-meets-replaced-kind`); a directory written by ID alone over
+a directory the target holds is refused, `ErrDirByIDOverHeld` naming the
+path, unless the target is the patch's own base (`dir-by-id-refused`); and a childless line carrying the empty
+listing's ID, which is what a scan writes for a unit that made a
+directory and put nothing in it, means the directory exists and removes
+nothing under it, so one unit's `mkdir` cannot delete another unit's
+files (`empty-dir-over-existing`; before this the empty listing replaced
+like any other). `ApplyPatchFrom` now returns `(*Manifest, error)`; it
+has not shipped in a release, so no released API changes. (Decided
+2026-11-13 by the release lead; reversible.)
+
 ### A known-zero mode on a directory name encodes as `d---------`
 
 An entry built in memory with `Mode == c4m.ZeroMode` on a name ending in

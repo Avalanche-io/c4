@@ -32,7 +32,10 @@ still the base's. With target equal to base the result is `ApplyPatch`'s.
 
 A name is one thing: writing file `x` removes directory `x/` and its
 subtree; a write under `x/`, or of `x/` itself, removes a file or
-symlink `x`; the later write wins by kind as it does by bytes.
+symlink `x`; the later write wins by kind as it does by bytes. A
+removal removes only the kind the base held. A directory written by ID
+alone replaces the target's listing, except the empty listing, which
+means the directory exists and removes nothing under it.
 
 ## Cases, and what each broke
 
@@ -47,6 +50,9 @@ symlink `x`; the later write wins by kind as it does by bytes.
 | `kind-conflict`              | the result held both a file `x` and a directory `x/` (75 of 601 applications with kind swaps); the later write wins by kind                                                                                                                                                                    |
 | `metadata-only`              | a restatement with the same C4 ID and size but a different mode, time or both is a write ("all fields identical" is the removal rule); a reader comparing only ID and mode removed `notes.txt`, whose only change is its time. The target is the base, so this is also plain patch application |
 | `metadata-only-other-target` | the same patch carried to a target that is not its base; the target's own `extra.txt` stays                                                                                                                                                                                                    |
+| `removal-meets-replaced-kind` | removing file `x` where the target replaced it with `x/`: the directory stays (pinned so both forms agree) |
+| `dir-by-id-refused` | a directory written by ID alone over a directory the target holds is refused (`ErrDirByIDOverHeld`): replacing would drop the target's subtree, keeping its children would discard the written ID (decided 2026-11-13 by the release lead; reversible) |
+| `empty-dir-over-existing` | a unit that only ran mkdir: its childless empty-listing line over another unit's `logs/b.log` kept b.log; the same line over nothing creates the empty directory |
 
 The operator's record-tree form was cross-checked against the library on
 1,000 steps over 300 random two-unit histories with 0 differences before

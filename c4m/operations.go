@@ -238,12 +238,15 @@ func ApplyPatch(base, patch *Manifest) *Manifest {
 // (see applyPatchFromTree). With target equal to base it is ApplyPatch
 // up to those derived values, and it is idempotent. SPECIFICATION.md
 // "Patch Entry Semantics": a patch is meaningful only over its own base.
-func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
+func ApplyPatchFrom(target, base, patch *Manifest) (*Manifest, error) {
 	targetTree := buildPatchTree(target)
 	baseTree := buildPatchTree(base)
 	patchTree := buildPatchTree(patch)
 	descended := make(map[*patchNode]bool)
-	applyPatchFromTree(targetTree, baseTree, patchTree, descended)
+	ownBase := target.ComputeC4ID() == base.ComputeC4ID()
+	if _, err := applyPatchFromTree(targetTree, baseTree, patchTree, descended, ownBase, ""); err != nil {
+		return nil, err
+	}
 
 	// Every directory the walk went inside has children this call may have
 	// changed, so its size and ID are stale by construction: re-derive them
@@ -286,7 +289,7 @@ func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 			result.RangeData[k] = v
 		}
 	}
-	return result
+	return result, nil
 }
 
 // applyPatchFromTree walks patch beside base to learn each entry's
@@ -312,11 +315,19 @@ func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 // in the storage project's review, 2026-11-09). A write of x removes
 // x/ and everything under it; a write that lands under x/, or writes
 // x/ itself, removes a file or symlink x: the later write wins by kind
-// as it does by bytes. (What a removal does to an entry of the other
-// kind, and what a directory written by ID alone does to a directory
-// the target holds, are choices awaiting a ruling; the code's current
-// reading of each is pinned by no vector.)
-func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode]bool) (wrote bool) {
+// as it does by bytes. A removal removes only the entry it names, of
+// the kind the base held, so where the target has since replaced file
+// x with directory x/ (or the reverse), removing x leaves the new
+// thing. A directory written by ID alone, with no children listed, over
+// a directory the target holds is refused (ErrDirByIDOverHeld) unless the
+// target is the patch's own base, where it replaces the directory as
+// ApplyPatch does: replacing would drop the target's subtree, and keeping
+// its children would discard the written ID (decided 2026-11-13 by the
+// release lead under the maintainer's standing instruction to decide;
+// reversible). The empty listing is the exception: its ID names zero
+// children, so an empty directory line means the directory exists and
+// removes nothing under it.
+func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode]bool, ownBase bool, prefix string) (wrote bool, err error) {
 	for name, pNode := range patch.children {
 		var bNode *patchNode
 		if base != nil {
@@ -326,7 +337,11 @@ func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode
 			tNode, exists := target.children[name]
 			if !exists {
 				fresh := &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
-				if applyPatchFromTree(fresh, bNode, pNode, descended) {
+				w, err := applyPatchFromTree(fresh, bNode, pNode, descended, ownBase, prefix+name)
+				if err != nil {
+					return false, err
+				}
+				if w {
 					target.children[name] = fresh
 					delete(target.children, otherKind(name))
 					descended[fresh] = true
@@ -338,7 +353,11 @@ func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode
 				tNode.entry = pNode.entry
 			}
 			descended[tNode] = true
-			if applyPatchFromTree(tNode, bNode, pNode, descended) {
+			w, err := applyPatchFromTree(tNode, bNode, pNode, descended, ownBase, prefix+name)
+			if err != nil {
+				return false, err
+			}
+			if w {
 				delete(target.children, otherKind(name))
 				wrote = true
 			}
@@ -349,13 +368,47 @@ func applyPatchFromTree(target, base, patch *patchNode, descended map[*patchNode
 			delete(target.children, name)
 			continue
 		}
+		// An empty directory: a childless line carrying the empty
+		// listing's ID, which is what capture writes for a unit that made
+		// a directory and put nothing in it. The empty listing is the one
+		// listing known without lookup, so this is a directory line with
+		// its (zero) children listed: the directory exists, and anything
+		// the target already holds under it is merged beside nothing, not
+		// removed. A unit that ran mkdir never observed another unit's
+		// files there, so it cannot remove them (the storage project's
+		// fold case, 2026-11-10). Over no directory it creates the empty
+		// one; over the target's directory it keeps the target's line
+		// unless that line is still the base's.
+		if pNode.entry.IsDir() && pNode.entry.C4ID == emptyListingID {
+			delete(target.children, otherKind(name))
+			tNode, exists := target.children[name]
+			if !exists {
+				target.children[name] = &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
+				wrote = true
+				continue
+			}
+			if bNode != nil && entriesIdentical(tNode.entry, bNode.entry) {
+				tNode.entry = pNode.entry
+			}
+			descended[tNode] = true
+			wrote = true
+			continue
+		}
 		// Written: the path now holds this entry, and nothing else of
-		// its name.
+		// its name. For a directory this is a listing given by ID alone:
+		// over the patch's own base it replaces the directory, children
+		// and all; carried to another tree that holds a directory there,
+		// it is refused.
+		if pNode.entry.IsDir() && !ownBase {
+			if tNode, held := target.children[name]; held && tNode.entry.IsDir() {
+				return false, fmt.Errorf("%w: %s", ErrDirByIDOverHeld, prefix+name)
+			}
+		}
 		delete(target.children, otherKind(name))
 		target.children[name] = &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
 		wrote = true
 	}
-	return wrote
+	return wrote, nil
 }
 
 // otherKind returns the key of the entry a write at name displaces:

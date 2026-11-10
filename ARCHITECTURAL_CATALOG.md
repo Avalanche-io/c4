@@ -59,7 +59,7 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | `Resolver`       | Resolves patch chains via content store.                                                                                                                                  |
 | `ManifestCache`  | Caches resolved manifests by C4 ID.                                                                                                                                       |
 
-`ApplyPatchFrom(target, base, patch)` reads each entry against the patch's own base (removal or written) and applies that meaning to another tree; idempotent; equals `ApplyPatch` when target is the base (2026-11-09).
+`ApplyPatchFrom(target, base, patch) (*Manifest, error)` (refuses a directory by ID alone over one the target holds, `ErrDirByIDOverHeld`, unless target is the base) reads each entry against the patch's own base (removal or written) and applies that meaning to another tree; idempotent; equals `ApplyPatch` when target is the base (2026-11-09).
 `ApplyPatch` clobbers by name, grafts additions, and treats a restated
 entry as a removal — **unless that entry carries children in the same
 section**, which makes it a deepening. Breadth-first discovery learns a

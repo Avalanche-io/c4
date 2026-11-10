@@ -36,6 +36,15 @@ var (
 	// error, never a manifest presented as complete.
 	ErrUnresolvedBase = errors.New("c4m: unresolved external base")
 
+	// ErrDirByIDOverHeld indicates ApplyPatchFrom met a directory written
+	// by ID alone (no children listed) over a directory the target holds,
+	// with the target not the patch's own base. Replacing would drop the
+	// target's subtree and keeping its children would discard the written
+	// ID, so it is refused, naming the path (decided 2026-11-13 by the
+	// release lead under the maintainer's standing instruction to decide;
+	// reversible).
+	ErrDirByIDOverHeld = errors.New("c4m: a directory written by ID alone over a directory the target holds")
+
 	// ErrBaseCycle indicates a chain of external base references revisits
 	// an ID it already resolved.
 	ErrBaseCycle = errors.New("c4m: external base reference cycle")
