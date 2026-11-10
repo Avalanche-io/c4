@@ -11,7 +11,9 @@ two units writing the same bytes to the same path left the path empty,
 and replaying a fold undid it (found in the operator's fold, 2026-11-09).
 `c4m.ApplyPatchFrom(target, base, patch)` reads each entry against the
 patch's base and does to the target what it means, removing the path or
-writing the entry; it equals `ApplyPatch` when target is the base, and is
+writing the entry; a directory line with children is context, never a
+write, and directory aggregates in the result are derived, never copied.
+It equals `ApplyPatch` on its own base (up to those derived values) and is
 idempotent. No conflict policy of its own (Merge keeps those).
 SPECIFICATION.md "Patch Entry Semantics" states the rule.
 

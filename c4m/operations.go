@@ -226,8 +226,12 @@ func ApplyPatch(base, patch *Manifest) *Manifest {
 // 2026-11-09). ApplyPatchFrom reads each entry against base first, then
 // does to target what the entry means: removes the path, or writes the
 // entry (overwriting whatever target holds there; a caller wanting a
-// conflict policy compares first, Merge keeps its own rules). With target
-// equal to base it is ApplyPatch, and it is idempotent. SPECIFICATION.md
+// conflict policy compares first, Merge keeps its own rules). A directory
+// line with children under it is context for those children, not a
+// write: it never creates a directory on its own, and directory sizes
+// and IDs in the result are derived from the children listed, not copied
+// (see applyPatchFromTree). With target equal to base it is ApplyPatch
+// up to those derived values, and it is idempotent. SPECIFICATION.md
 // "Patch Entry Semantics": a patch is meaningful only over its own base.
 func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 	targetTree := buildPatchTree(target)
@@ -241,6 +245,10 @@ func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 	result := NewManifest()
 	result.Entries = entries
 	result.SortEntries()
+	// Directory sizes and IDs are derived from the children the result
+	// lists, never copied from the patch: a directory that now holds
+	// other units' children would otherwise carry this unit's aggregate.
+	Normalize(result)
 
 	if len(target.RangeData) > 0 || len(patch.RangeData) > 0 {
 		result.RangeData = make(map[c4.ID]string)
@@ -256,35 +264,60 @@ func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
 
 // applyPatchFromTree walks patch beside base to learn each entry's
 // meaning, and edits target accordingly. base may be nil below a
-// directory the base never held.
-func applyPatchFromTree(target, base, patch *patchNode) {
+// directory the base never held. It reports whether it wrote anything
+// into target (a removal that found nothing is not a write).
+//
+// A directory line with children under it means nothing by itself: it
+// is the deepening line of the 2026-07-31 erratum, context for the
+// children, which are read against the base's children. So a directory
+// the target lacks is created only when a write lands under it, never by
+// a line that only carries removals (a unit that deleted a file never
+// made that directory), and a directory the target already holds keeps
+// its own line unless that line is still the base's, in which case the
+// patch's line is the same observation continued. A directory line with
+// no children is read like a file. Derived directory values (size, ID)
+// are re-derived by the caller; nothing copies them from the patch onto
+// a directory whose children now differ.
+func applyPatchFromTree(target, base, patch *patchNode) (wrote bool) {
 	for name, pNode := range patch.children {
 		var bNode *patchNode
 		if base != nil {
 			bNode = base.children[name]
 		}
+		if pNode.entry.IsDir() && len(pNode.children) > 0 {
+			tNode, exists := target.children[name]
+			if !exists {
+				fresh := &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
+				if applyPatchFromTree(fresh, bNode, pNode) {
+					target.children[name] = fresh
+					wrote = true
+				}
+				continue
+			}
+			if !tNode.entry.IsDir() {
+				// A file where the patch deepens a directory: the directory
+				// replaces it, as a write.
+				tNode.entry = pNode.entry
+				tNode.children = make(map[string]*patchNode)
+				wrote = true
+			} else if bNode != nil && entriesIdentical(tNode.entry, bNode.entry) {
+				tNode.entry = pNode.entry
+			}
+			if applyPatchFromTree(tNode, bNode, pNode) {
+				wrote = true
+			}
+			continue
+		}
 		// Removal: identical to the base's entry, with no children listed.
-		if bNode != nil && len(pNode.children) == 0 && entriesIdentical(bNode.entry, pNode.entry) {
+		if bNode != nil && entriesIdentical(bNode.entry, pNode.entry) {
 			delete(target.children, name)
 			continue
 		}
-		// Written: the path now holds this entry (a deepened directory
-		// restates its own line and lists children; the line is written
-		// as given and the children read against the base's children).
-		tNode, exists := target.children[name]
-		if !exists {
-			tNode = &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
-			target.children[name] = tNode
-		} else {
-			tNode.entry = pNode.entry
-		}
-		if pNode.entry.IsDir() && len(pNode.children) > 0 {
-			if !tNode.entry.IsDir() {
-				tNode.children = make(map[string]*patchNode)
-			}
-			applyPatchFromTree(tNode, bNode, pNode)
-		}
+		// Written: the path now holds this entry.
+		target.children[name] = &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
+		wrote = true
 	}
+	return wrote
 }
 
 // patchNode is a tree node for patch application.
