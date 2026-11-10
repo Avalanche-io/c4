@@ -2,6 +2,19 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `ApplyPatchFrom`: a patch is meaningful only over its own base
+
+Removal is spelled by exact restatement, so what a patch entry means
+depends on the state its boundary names. Applying a patch's text to any
+other tree reads an addition that meets an identical entry as a removal:
+two units writing the same bytes to the same path left the path empty,
+and replaying a fold undid it (found by c4d in the operator, 2026-11-09).
+`c4m.ApplyPatchFrom(target, base, patch)` reads each entry against the
+patch's base and does to the target what it means, removing the path or
+writing the entry; it equals `ApplyPatch` when target is the base, and is
+idempotent. No conflict policy of its own (Merge keeps those).
+SPECIFICATION.md "Patch Entry Semantics" states the rule.
+
 ### A known-zero mode on a directory name encodes as `d---------`
 
 An entry built in memory with `Mode == c4m.ZeroMode` on a name ending in

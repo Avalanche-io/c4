@@ -213,6 +213,80 @@ func ApplyPatch(base, patch *Manifest) *Manifest {
 	return result
 }
 
+// ApplyPatchFrom applies to target the patch that was diffed from base.
+//
+// A patch's entries mean "removal" or "this entry" only against the state
+// the patch's boundary names: an entry identical to base's with no
+// children is a removal there, anything else is what the path now holds.
+// Applying a patch directly to a tree other than its base reads those
+// meanings against the wrong state: an "add" that meets an identical
+// entry already present in the target reads as a removal, so two units
+// writing the same bytes to the same path leave the path empty, and
+// replaying a fold removes what it added (found by c4d in the operator,
+// 2026-11-09). ApplyPatchFrom reads each entry against base first, then
+// does to target what the entry means: removes the path, or writes the
+// entry (overwriting whatever target holds there; a caller wanting a
+// conflict policy compares first, Merge keeps its own rules). With target
+// equal to base it is ApplyPatch, and it is idempotent. SPECIFICATION.md
+// "Patch Entry Semantics": a patch is meaningful only over its own base.
+func ApplyPatchFrom(target, base, patch *Manifest) *Manifest {
+	targetTree := buildPatchTree(target)
+	baseTree := buildPatchTree(base)
+	patchTree := buildPatchTree(patch)
+	applyPatchFromTree(targetTree, baseTree, patchTree)
+
+	var entries []*Entry
+	flattenPatchTree(targetTree, 0, &entries)
+
+	result := NewManifest()
+	result.Entries = entries
+	result.SortEntries()
+
+	if len(target.RangeData) > 0 || len(patch.RangeData) > 0 {
+		result.RangeData = make(map[c4.ID]string)
+		for k, v := range target.RangeData {
+			result.RangeData[k] = v
+		}
+		for k, v := range patch.RangeData {
+			result.RangeData[k] = v
+		}
+	}
+	return result
+}
+
+// applyPatchFromTree walks patch beside base to learn each entry's
+// meaning, and edits target accordingly. base may be nil below a
+// directory the base never held.
+func applyPatchFromTree(target, base, patch *patchNode) {
+	for name, pNode := range patch.children {
+		var bNode *patchNode
+		if base != nil {
+			bNode = base.children[name]
+		}
+		// Removal: identical to the base's entry, with no children listed.
+		if bNode != nil && len(pNode.children) == 0 && entriesIdentical(bNode.entry, pNode.entry) {
+			delete(target.children, name)
+			continue
+		}
+		// Written: the path now holds this entry (a deepened directory
+		// restates its own line and lists children; the line is written
+		// as given and the children read against the base's children).
+		tNode, exists := target.children[name]
+		if !exists {
+			tNode = &patchNode{entry: pNode.entry, children: make(map[string]*patchNode)}
+			target.children[name] = tNode
+		} else {
+			tNode.entry = pNode.entry
+		}
+		if pNode.entry.IsDir() && len(pNode.children) > 0 {
+			if !tNode.entry.IsDir() {
+				tNode.children = make(map[string]*patchNode)
+			}
+			applyPatchFromTree(tNode, bNode, pNode)
+		}
+	}
+}
+
 // patchNode is a tree node for patch application.
 type patchNode struct {
 	entry    *Entry
