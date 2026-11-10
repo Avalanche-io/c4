@@ -73,9 +73,11 @@ func TestCreateAbortNamesNothingAndLeavesNoFile(t *testing.T) {
 			if left := leftovers(t, s.root); len(left) != 0 {
 				t.Fatalf("an aborted write must leave no file, found %v", left)
 			}
-			if _, err := s.Create(id); err != nil {
+			again, err := s.Create(id)
+			if err != nil {
 				t.Fatalf("the ID must be creatable again after Abort: %v", err)
 			}
+			again.(Aborter).Abort() // an open temp file blocks TempDir cleanup on Windows
 		})
 	}
 }
