@@ -239,7 +239,7 @@ func applyIngestSync(s store.Store) store.Store {
 // that fails is fatal: every caller journals and prints a claim right
 // after it, and a claim names bytes that are on stable media, so nothing
 // may be claimed when the barrier did not hold. Until 2026-11-09 this
-// only warned and the claim went out anyway (found in c4d's review).
+// only warned and the claim went out anyway (found in the storage project's review).
 func syncStore(s store.Store) {
 	if err := storeBarrier(s); err != nil {
 		fatalf("Error: store sync failed; nothing claimed: %v", err)
