@@ -2,6 +2,23 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### Every Sink checks a write before it names it (the Sink contract)
+
+The check and the Abort that `TreeStore` gained (below) are now the
+`Sink` contract, held by every store in the package rather than by a
+wrapper the caller must remember: Folder, MAP, ShardedFolder, RAM, S3
+and TreeStore all hash as they write and refuse on Close with
+`ErrInvalidID`, naming nothing and leaving nothing, when the bytes do
+not hash to the ID; all implement `Aborter`; all report it through the
+new `Checked` interface (`ChecksID() bool`), which `Validating` honours
+by returning such a writer as it is instead of hashing a second time.
+`Validating` still holds the contract on behalf of a Sink from
+elsewhere that cannot. `TestSinkContract` runs every Sink and wrapper
+through the contract, and `TestEverySinkIsInTheContractTable` parses the
+package for `Create` methods so a new Sink cannot be added without a
+row. Four older tests that wrote bytes under the ID of other bytes now
+write what their IDs name.
+
 ### A store write is checked before it is named, and can be given up
 
 `TreeStore.Create(id)` bound whatever bytes arrived to the ID the caller

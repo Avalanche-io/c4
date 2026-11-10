@@ -1,6 +1,9 @@
 package store
 
 import (
+	"bytes"
+	"crypto/sha512"
+	"hash"
 	"io"
 	"os"
 	"sync"
@@ -26,6 +29,8 @@ type ramfile struct {
 	id       c4.ID
 	readonly bool
 	buf      []byte
+	h        hash.Hash // writers only: the bytes are checked on Close
+	done     bool
 }
 
 func (f *ramfile) Read(b []byte) (int, error) {
@@ -42,12 +47,27 @@ func (f *ramfile) Write(b []byte) (int, error) {
 		return 0, os.ErrPermission
 	}
 	f.buf = append(f.buf, b...)
+	f.h.Write(b)
 	return len(b), nil
 }
 
+func (f *ramfile) ChecksID() bool { return true }
+
+// Abort discards the buffer; nothing is stored.
+func (f *ramfile) Abort() error {
+	f.done = true
+	f.buf = nil
+	return nil
+}
+
 func (f *ramfile) Close() error {
-	if f.readonly {
+	if f.readonly || f.done {
 		return nil
+	}
+	f.done = true
+	if !bytes.Equal(f.h.Sum(nil), f.id[:]) {
+		f.buf = nil
+		return ErrInvalidID
 	}
 	f.ram.mu.Lock()
 	f.ram.data[f.id] = f.buf
@@ -66,7 +86,7 @@ func (s *RAM) Open(id c4.ID) (io.ReadCloser, error) {
 	// Copy so reads don't alias the stored slice
 	cp := make([]byte, len(data))
 	copy(cp, data)
-	return &ramfile{s, id, true, cp}, nil
+	return &ramfile{ram: s, id: id, readonly: true, buf: cp}, nil
 }
 
 // Create creates an io.WriteCloser interface to a ram buffer.
@@ -77,7 +97,7 @@ func (s *RAM) Create(id c4.ID) (io.WriteCloser, error) {
 	if ok {
 		return nil, &os.PathError{Op: "create", Path: id.String(), Err: os.ErrExist}
 	}
-	return &ramfile{s, id, false, []byte{}}, nil
+	return &ramfile{ram: s, id: id, buf: []byte{}, h: sha512.New()}, nil
 }
 
 func (s *RAM) Has(id c4.ID) bool {

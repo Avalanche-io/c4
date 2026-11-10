@@ -67,6 +67,7 @@ type validatingWriter struct {
 	id     c4.ID
 	w      io.WriteCloser
 	remove func(id c4.ID) error
+	done   bool
 }
 
 func (v *validatingWriter) Write(b []byte) (int, error) {
@@ -97,8 +98,12 @@ func (v *validatingWriter) discard() {
 	v.remove(v.id)
 }
 
-// Abort gives the write up; nothing is named.
+// Abort gives the write up; nothing is named. Close after it is a no-op.
 func (v *validatingWriter) Abort() error {
+	if v.done {
+		return nil
+	}
+	v.done = true
 	if a, ok := v.w.(Aborter); ok {
 		return a.Abort()
 	}
@@ -106,6 +111,8 @@ func (v *validatingWriter) Abort() error {
 	v.remove(v.id)
 	return err
 }
+
+func (v *validatingWriter) ChecksID() bool { return true }
 
 func (v *validatingWriter) isValid() bool {
 	if bytes.Compare(v.id[:], v.h.Sum(nil)) == 0 {
@@ -119,6 +126,10 @@ func (v *validatingWriter) isValid() bool {
 // (through 1.0.x the inner Close came first and the remove after it,
 // found in the storage project's review, 2026-11-09).
 func (v *validatingWriter) Close() error {
+	if v.done {
+		return nil
+	}
+	v.done = true
 	if !v.isValid() {
 		v.discard()
 		return ErrInvalidID
@@ -136,15 +147,20 @@ func (v *Validating) Open(id c4.ID) (io.ReadCloser, error) {
 	return &validatingReader{sha512.New(), id, r}, nil
 }
 
-// Create creates and opens for writting a file with the given c4 id as it's
-// name if the file does not already exist. If it cannot open the file or the
-// file already exists is returns an error.
+// Create opens a writer for the given C4 ID in the wrapped store. A
+// writer that checks its own bytes (Checked) is returned as it is: the
+// wrapped store already refuses wrong bytes before naming them, and
+// hashing twice would buy nothing. Any other writer is wrapped so the
+// check happens here, before the inner Close names the object.
 func (v *Validating) Create(id c4.ID) (io.WriteCloser, error) {
 	w, err := v.s.Create(id)
 	if err != nil {
 		return nil, err
 	}
-	return &validatingWriter{sha512.New(), id, w, v.s.Remove}, nil
+	if c, ok := w.(Checked); ok && c.ChecksID() {
+		return w, nil
+	}
+	return &validatingWriter{h: sha512.New(), id: id, w: w, remove: v.s.Remove}, nil
 }
 
 func (v *Validating) Has(id c4.ID) bool { return v.s.Has(id) }

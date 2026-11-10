@@ -6,6 +6,7 @@ import (
 	"crypto/sha512"
 	"encoding/xml"
 	"fmt"
+	"hash"
 	"io"
 	"math/rand"
 	"net/http"
@@ -183,6 +184,7 @@ func (s *S3Store) Create(id c4.ID) (io.WriteCloser, error) {
 		store: s,
 		id:    id,
 		tmp:   tmp,
+		h:     sha512.New(),
 	}, nil
 }
 
@@ -578,13 +580,42 @@ type s3Writer struct {
 	store *S3Store
 	id    c4.ID
 	tmp   *os.File
+	h     hash.Hash
+	done  bool
 }
 
 func (w *s3Writer) Write(b []byte) (int, error) {
-	return w.tmp.Write(b)
+	n, err := w.tmp.Write(b)
+	w.h.Write(b[:n])
+	return n, err
 }
 
+func (w *s3Writer) ChecksID() bool { return true }
+
+// Abort closes and removes the staged temp file; nothing is uploaded.
+func (w *s3Writer) Abort() error {
+	if w.done {
+		return nil
+	}
+	w.done = true
+	err := w.tmp.Close()
+	if rerr := os.Remove(w.tmp.Name()); err == nil {
+		err = rerr
+	}
+	return err
+}
+
+// Close checks the staged bytes against the ID before anything is
+// uploaded: the key never exists for bytes that do not hash to it.
 func (w *s3Writer) Close() error {
+	if w.done {
+		return nil
+	}
+	if !bytes.Equal(w.h.Sum(nil), w.id[:]) {
+		w.Abort()
+		return ErrInvalidID
+	}
+	w.done = true
 	tmpName := w.tmp.Name()
 	defer os.Remove(tmpName)
 

@@ -214,35 +214,7 @@ func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 	s.mu.Lock()
 	s.dirty = true
 	s.mu.Unlock()
-	return &checkedWriter{w: w, id: id, h: sha512.New()}, nil
-}
-
-// checkedWriter is Create's writer outside batch mode: a DurableWriter
-// whose Close first checks the bytes against the ID the caller chose.
-// It does not forward ReadFrom: every byte must pass the hash.
-type checkedWriter struct {
-	w  *DurableWriter
-	id c4.ID
-	h  hash.Hash
-}
-
-func (w *checkedWriter) Write(b []byte) (int, error) {
-	n, err := w.w.Write(b)
-	w.h.Write(b[:n])
-	return n, err
-}
-
-func (w *checkedWriter) Abort() error { return w.w.Abort() }
-
-func (w *checkedWriter) Close() error {
-	if w.w.done {
-		return nil
-	}
-	if !bytes.Equal(w.h.Sum(nil), w.id[:]) {
-		w.w.Abort()
-		return ErrInvalidID
-	}
-	return w.w.Close()
+	return newChecked(w, id), nil
 }
 
 // pendingWriter is Create's batch-mode writer: bytes land in a temp
@@ -262,6 +234,8 @@ func (w *pendingWriter) Write(b []byte) (int, error) {
 	w.h.Write(b[:n])
 	return n, err
 }
+
+func (w *pendingWriter) ChecksID() bool { return true }
 
 // Abort closes and removes the temp file; nothing is registered.
 func (w *pendingWriter) Abort() error {

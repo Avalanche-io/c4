@@ -26,7 +26,11 @@ func (s MAP) Open(id c4.ID) (io.ReadCloser, error) {
 // Create creates an io.WriteCloser that atomically writes to the mapped path.
 // If the data for `id` already exists, an error of type `*os.PathError` is returned.
 func (s MAP) Create(id c4.ID) (io.WriteCloser, error) {
-	return NewDurableWriter(s[id])
+	w, err := NewDurableWriter(s[id])
+	if err != nil {
+		return nil, err
+	}
+	return newChecked(w, id), nil
 }
 
 // Remove removes the c4 id and it's assoceated data from memory, an error is

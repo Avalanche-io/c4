@@ -247,6 +247,12 @@ func (l *loggingWriter) Write(b []byte) (int, error) {
 }
 
 // Close closes and logs to the contained io.WriteCloser.
+// ChecksID reports whether the wrapped writer checks its bytes.
+func (l *loggingWriter) ChecksID() bool {
+	c, ok := l.r.(Checked)
+	return ok && c.ChecksID()
+}
+
 // Abort passes through to the wrapped writer where it offers Abort, and
 // closes it otherwise.
 func (l *loggingWriter) Abort() error {

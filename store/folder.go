@@ -28,7 +28,11 @@ func (f Folder) Create(id c4.ID) (io.WriteCloser, error) {
 	if _, err := os.Stat(path); err == nil {
 		return nil, &os.PathError{Op: "create", Path: path, Err: os.ErrExist}
 	}
-	return NewDurableWriter(path)
+	w, err := NewDurableWriter(path)
+	if err != nil {
+		return nil, err
+	}
+	return newChecked(w, id), nil
 }
 
 // ContentPath returns the local filesystem path for id when present.

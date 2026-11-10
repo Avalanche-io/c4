@@ -16,7 +16,7 @@ func TestRAMStoreComprehensive(t *testing.T) {
 	store := NewRAM()
 
 	// Test Create and Write
-	id := c4.Identify(strings.NewReader("ram test"))
+	id := c4.Identify(strings.NewReader("ram test content")) // the ID of the bytes written: Create checks them
 	writer, err := store.Create(id)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestRAMStoreComprehensive(t *testing.T) {
 func TestRAMStoreMultipleWrites(t *testing.T) {
 	store := NewRAM()
 
-	id := c4.Identify(strings.NewReader("multi"))
+	id := c4.Identify(strings.NewReader("chunk1chunk2chunk3")) // the ID of the bytes written
 	writer, err := store.Create(id)
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +269,7 @@ func TestFolderStoreComprehensive(t *testing.T) {
 	store := Folder(tmpDir)
 
 	// Test Create and Write
-	id := c4.Identify(strings.NewReader("folder test"))
+	id := c4.Identify(strings.NewReader("folder test content")) // the ID of the bytes written
 	writer, err := store.Create(id)
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +359,7 @@ func TestMAPStoreComprehensive(t *testing.T) {
 
 	// Test Create (creates a new file at the path)
 	newFile := filepath.Join(tmpDir, "new.dat")
-	newID := c4.Identify(strings.NewReader("new"))
+	newID := c4.Identify(strings.NewReader("new content")) // the ID of the bytes written
 	m[newID] = newFile
 
 	writer, err := store.Create(newID)

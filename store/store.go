@@ -15,13 +15,16 @@ type Source interface {
 // Sink - is an interface that defines a destination for data identified by c4
 // id.
 //
-// Create's writer names the object on Close. Because the caller chose
-// the ID, the bytes are checked, never trusted: a store that can hash
-// what it is given refuses on Close with ErrInvalidID and names nothing
-// when the bytes do not hash to id (TreeStore does; wrap a store that
-// cannot in Validating). A writer that also implements Aborter can give
-// up part way; a caller whose source fails should Abort rather than
-// Close, so that nothing is named and nothing leaks.
+// Create's writer names the object on Close, and the contract is that
+// it never names bytes that do not hash to id: because the caller chose
+// the ID, the bytes are checked, never trusted. Close of wrong bytes,
+// or of a write that stopped part way, returns ErrInvalidID and leaves
+// nothing named and nothing behind. The writer implements Aborter, so a
+// caller whose source fails gives the write up and names nothing, and
+// Checked, so Validating does not hash it a second time. Every Sink in
+// this package holds this contract (TestSinkContract runs each through
+// it); a Sink from elsewhere that cannot is wrapped in Validating,
+// which then holds it on the store's behalf.
 type Sink interface {
 	Create(id c4.ID) (io.WriteCloser, error)
 }

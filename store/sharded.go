@@ -52,7 +52,11 @@ func (f ShardedFolder) Create(id c4.ID) (io.WriteCloser, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return nil, err
 	}
-	return NewDurableWriter(p)
+	w, err := NewDurableWriter(p)
+	if err != nil {
+		return nil, err
+	}
+	return newChecked(w, id), nil
 }
 
 // Remove removes a file from sharded or flat layout.
