@@ -43,6 +43,14 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
       - run: go vet ./...
+      - name: gofmt
+        # Formatting is platform-independent; the Windows runner checks out
+        # with CRLF, which gofmt would flag on every file.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l $(git ls-files "*.go"))
+          if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
       - name: Test
         run: go test ./...
       - name: Test with race detector
