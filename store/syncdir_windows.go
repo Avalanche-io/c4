@@ -11,3 +11,8 @@ package store
 func SyncDir(path string) error {
 	return nil
 }
+
+// fsyncDir is a no-op on Windows for the same reason as SyncDir.
+func fsyncDir(path string) error {
+	return nil
+}

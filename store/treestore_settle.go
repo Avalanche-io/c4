@@ -55,6 +55,8 @@ func (s *TreeStore) Settle(move bool) ([]Misplaced, error) {
 			if _, err := s.statPath(want); os.IsNotExist(err) {
 				if err := os.Rename(p, want); err == nil {
 					m.Moved = true
+					s.markTouched(filepath.Dir(want))
+					s.markTouched(filepath.Dir(p))
 				}
 			}
 			s.mu.Unlock()

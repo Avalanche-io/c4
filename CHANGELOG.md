@@ -2,6 +2,23 @@
 
 ## Unreleased (1.0.27)
 
+### The batch barrier makes the names it publishes durable ⚠
+
+**Data loss fixed.** `c4 id -s` stores in a batch, runs the barrier, then
+prints the snapshot's ID. On this line the barrier flushed the device,
+renamed each object to its C4 ID, and returned without syncing a single
+directory. A name is a directory entry, so every object the batch had just
+published could vanish in a power cut after the ID was printed. Now every
+directory the barrier renamed into, the shard directories it made, and
+their ancestors up to the store root get a plain fsync after the renames,
+then one more device flush. The ancestor walk is bounded by the store
+root, which is cleaned on open, so no spelling of the root can make the
+barrier open directories above the store. This is master's change of
+2026-11-09 (12b8fc9), which never reached 1.0.x.
+`TestBatchPublishSurvivesAPowerCut` models the cut: every entry not
+synced since it appeared is lost, and `c4 cat` of each object must still
+find it. It fails with the old barrier.
+
 ### Repairing a chain an older `c4 diff >>` grew
 
 A chain grown with `c4 diff … >> FILE.c4m` on 1.0.26 or earlier may end
