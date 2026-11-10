@@ -151,6 +151,13 @@ func TestParserRoundTrip(t *testing.T) {
 }
 
 func TestParserErgonomicForms(t *testing.T) {
+	// A zone abbreviation parses only when this process knows it: UTC, or
+	// the local zone's own. Pin the local zone so "CDT" below is the local
+	// abbreviation on every machine, and a foreign one is refused.
+	if chicago, err := time.LoadLocation("America/Chicago"); err == nil {
+		defer func(l *time.Location) { time.Local = l }(time.Local)
+		time.Local = chicago
+	}
 	tests := []struct {
 		name        string
 		input       string
@@ -174,6 +181,11 @@ func TestParserErgonomicForms(t *testing.T) {
 			input:       `-rw-r--r-- Sep  1 12:30:00 2024 CDT 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
 			expectError: false,
 			checkSize:   100,
+		},
+		{
+			name:        "pretty timestamp with a foreign zone abbreviation is refused",
+			input:       `-rw-r--r-- Sep  1 12:30:00 2024 XYZ 100 file.txt c41j3C6Jqga95PL2zmZVBWixAUhoWDNmwamiWiNTDAMRL1UWqe4WdtYjSozRijRSokEsaTnYyxoCBt43u4sfqWG2uB`,
+			expectError: true,
 		},
 		{
 			name:        "size with spaces (padding)",
