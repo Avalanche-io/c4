@@ -2,6 +2,21 @@
 
 ## Unreleased (1.0.x)
 
+### A pretty line with a null timestamp no longer reads its padding into a link target ⚠
+
+The same fault as the name fix below, in the link-target and flow-target
+parsers. A pretty line whose timestamp is null keeps its alignment
+padding, and through 1.0.24 that padding joined the target of any link
+on the line, symlink or flow, whether its C4 ID was null or present. The
+target was then escaped (`real.txt\ \ \ ...`) on the next write, so
+the tree's ID changed with exit 0. `c4 id -e` reaches it on any tree
+holding a symlink whose own mtime is the epoch, which is what a
+materialiser sets when it creates a link from a null timestamp; `c4 id`
+and `c4 patch` of that pretty file then describe links that point
+somewhere else (measured 2026-11-10 with real binaries on a real tree).
+Both parsers now skip the whole run of spaces before asking whether the
+C4 ID field starts.
+
 ### A pretty line with a null C4 ID no longer reads its padding into the name ⚠
 
 Through 1.0.24 the decoder tested a single space for the field boundary,

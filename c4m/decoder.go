@@ -641,14 +641,11 @@ func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 			}
 		}
 
-		if ch == ' ' {
-			rest := line[pos:]
-			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
-				return buf.String(), pos, nil
-			}
-			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
-				return buf.String(), pos, nil
-			}
+		// The pretty form pads before the C4 ID field; testing only the
+		// next character let the padding in front of a null "-" join the
+		// target (found with the link-target vector, 2026-11-10).
+		if ch == ' ' && startsIDField(line, pos) {
+			return buf.String(), pos, nil
 		}
 		buf.WriteByte(ch)
 		pos++
@@ -691,19 +688,23 @@ func (d *Decoder) parseFlowTarget(line string, pos int) (string, int, error) {
 	}
 	start := pos
 	for pos < n {
-		ch := line[pos]
-		if ch == ' ' {
-			rest := line[pos:]
-			if len(rest) > 1 && rest[1] == 'c' && len(rest) > 2 && rest[2] == '4' {
-				return line[start:pos], pos, nil
-			}
-			if len(rest) >= 2 && rest[1] == '-' && (len(rest) == 2 || rest[2] == ' ') {
-				return line[start:pos], pos, nil
-			}
+		if line[pos] == ' ' && startsIDField(line, pos) {
+			return line[start:pos], pos, nil
 		}
 		pos++
 	}
 	return line[start:pos], pos, nil
+}
+
+// startsIDField reports whether the run of spaces at pos is followed by
+// the C4 ID field: a C4 ID, or the null "-" as the last field. The pretty
+// form pads before that field, so the whole run is skipped first.
+func startsIDField(line string, pos int) bool {
+	for pos < len(line) && line[pos] == ' ' {
+		pos++
+	}
+	rest := line[pos:]
+	return strings.HasPrefix(rest, "c4") || rest == "-" || strings.HasPrefix(rest, "- ")
 }
 
 // readLine reads a line from the input
