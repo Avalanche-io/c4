@@ -2,6 +2,18 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### The store barrier syncs the directories it renames into
+
+`TreeStore.Sync` flushed the device, renamed each pending object to its
+hash name, and never synced the directories that received those names or
+the new shard directories it made, so a claim's durability leaned on the
+journal's own flush carrying unrelated directory entries (true on APFS,
+ext4 and XFS, promised nowhere, and not on exFAT). Found in the storage
+project's review, 2026-11-09. Every touched directory and its ancestors
+up to the store root are now synced after the renames. `Normalize`'s
+documentation gains the rule for writers that update a tree in place:
+store every listing the patch restates or the derivation changes.
+
 ### `ApplyPatchFrom`: a patch is meaningful only over its own base
 
 Removal is spelled by exact restatement, so what a patch entry means

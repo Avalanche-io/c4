@@ -90,6 +90,17 @@ func (s *TreeStore) Sync() error {
 	if err := SyncDir(s.root); err != nil {
 		return err
 	}
+	// Directories whose entries change below: each rename adds a name to
+	// its leaf directory, and MkdirAll may add new directories under the
+	// root. A rename is durable only once the directory holding the new
+	// name is synced, and a new directory only once its parent is; POSIX
+	// promises neither for free. Until 2026-11-10 only the root was synced,
+	// before the renames, so a claim's durability leaned on the journal's
+	// own flush happening to carry unrelated directory entries (true on
+	// APFS, ext4 and XFS; not promised, and not on exFAT). Every touched
+	// directory and its ancestors up to the root are synced after the
+	// renames (found in the storage project's review).
+	touched := make(map[string]bool)
 	for id, tmpName := range s.pending {
 		p := s.path(id)
 		if _, err := os.Stat(p); err == nil {
@@ -105,6 +116,17 @@ func (s *TreeStore) Sync() error {
 		}
 		s.noteAdd(filepath.Dir(p))
 		delete(s.pending, id)
+		for d := filepath.Dir(p); ; d = filepath.Dir(d) {
+			touched[d] = true
+			if d == s.root || d == filepath.Dir(d) {
+				break
+			}
+		}
+	}
+	for d := range touched {
+		if err := SyncDir(d); err != nil {
+			return fmt.Errorf("sync %s: %w", d, err)
+		}
 	}
 	s.dirty = false
 	return nil

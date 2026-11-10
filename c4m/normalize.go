@@ -67,6 +67,17 @@ type Change struct {
 // derivation replaced, in entry order; filled nulls are not changes.
 // Projection only ever removes knowledge, and a value the listed children
 // cannot support (a null child) derives to null: dropped, and reported.
+//
+// For writers that update a tree in place: Normalize re-derives every
+// directory with listed children, not only the ones a patch touched, so
+// a stored tree whose folder listings were produced under an earlier
+// derivation rule (before 2026-03-26 a folder's size excluded its
+// subdirectories' records) will have those listings re-derived to new
+// IDs. A writer that stores only the listings above the files it edited
+// then holds a head naming listings that are not in the store; store
+// every listing the patch restates, or every listing the derivation
+// changes (the returned Changes name them). Found in the storage
+// project's commit prototype, 2026-11-09.
 func Normalize(m *Manifest) []Change {
 	type stated struct {
 		size int64
