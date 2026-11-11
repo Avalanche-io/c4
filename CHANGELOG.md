@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (1.0.x)
+## v1.0.25
 
 ### A pretty line with a null timestamp no longer reads its padding into a link target ⚠
 
