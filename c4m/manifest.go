@@ -577,23 +577,22 @@ func PropagateMetadata(entries []*Entry) {
 		stack = stack[:len(stack)-1]
 		d := entries[top.idx]
 
-		// Resolve Size if null. Nil-infectious; a directory with no listed
-		// children is empty (size 0) only when its ID says so: an empty
-		// listing hashes to the empty-content ID. A childless directory
-		// with no ID is one nobody read (a chmod 000 directory in a scan,
-		// or a hand-written line): its size stays null, because 0 beside
-		// no ID is a known empty, and nothing here knows that (2026-11-09).
-		// A childless directory with any other ID is collapsed: its
-		// listing lives under that ID, not here, so nothing here can
-		// derive its size and a null stays null. Through 2026-11-11 any
-		// non-nil ID gave 0, an invented value ComputeC4ID then hashed
-		// (childless-dir vector).
+		// Resolve Size if null. Nil-infectious. A childless directory with
+		// a C4 ID other than the empty listing's is collapsed: its listing
+		// lives under that ID, not here, so nothing here can derive its
+		// size and a null stays null. Through 1.0.26 any childless
+		// directory gave 0, an invented value ComputeC4ID then hashed
+		// (childless-dir vector). On this line a childless directory with
+		// no ID still gives 0: a metadata-mode scan sizes every directory
+		// before it has an ID, so an observed empty directory looks like
+		// that. Master keeps such a size null; that case is a known 1.0.x
+		// difference, pinned by the vector's unread/ directory.
 		if d.Size < 0 {
 			switch {
-			case !top.hadChildren && d.C4ID == emptyListingID:
-				d.Size = 0
-			case !top.hadChildren:
+			case !top.hadChildren && !d.C4ID.IsNil() && d.C4ID != emptyListingID:
 				d.Size = -1
+			case !top.hadChildren:
+				d.Size = 0
 			case top.nullSize:
 				d.Size = -1
 			default:
