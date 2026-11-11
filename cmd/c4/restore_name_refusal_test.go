@@ -37,17 +37,23 @@ func TestRestoreRefusesNamesThePlatformCannotHold(t *testing.T) {
 		t.Fatal(err)
 	}
 	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	// Modes this platform holds, so the rest verifies exactly: Windows
+	// reads a writable file back as 0666 and a directory as 0777.
+	fileMode, dirMode := os.FileMode(0o644), os.ModeDir|0o755
+	if runtime.GOOS == "windows" {
+		fileMode, dirMode = 0o666, os.ModeDir|0o777
+	}
 	file := func(name, content string, depth int) *c4m.Entry {
 		id, err := s.Put(strings.NewReader(content))
 		if err != nil {
 			t.Fatal(err)
 		}
-		return &c4m.Entry{Name: name, Depth: depth, Mode: 0o644, Timestamp: ts, Size: int64(len(content)), C4ID: id}
+		return &c4m.Entry{Name: name, Depth: depth, Mode: fileMode, Timestamp: ts, Size: int64(len(content)), C4ID: id}
 	}
 	target := c4m.NewManifest()
 	target.AddEntry(file("ok.txt", "ok\n", 0))
 	target.AddEntry(file(bad, "bad\n", 0))
-	target.AddEntry(&c4m.Entry{Name: "sub/", Mode: os.ModeDir | 0o755, Timestamp: ts, Size: -1})
+	target.AddEntry(&c4m.Entry{Name: "sub/", Mode: dirMode, Timestamp: ts, Size: -1})
 	target.AddEntry(file("kept.txt", "kept\n", 1))
 	target.SortEntries()
 	c4m.Normalize(target)
