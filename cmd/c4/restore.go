@@ -172,6 +172,9 @@ func runRestore(args []string) {
 		for _, op := range plan.Operations {
 			fmt.Fprintf(os.Stderr, "  %s %s\n", opName(op.Type), op.Path)
 		}
+		if n := reportRefused(plan.Refused); n > 0 {
+			fmt.Fprintf(os.Stderr, "dry run: %d entries refused (names this platform cannot hold); the rest is planned\n", n)
+		}
 		return
 	}
 
@@ -266,6 +269,15 @@ func runRestore(args []string) {
 		builtScan = scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
 	}
 	verifyTarget := linkTimesAsBuilt(target, builtScan, destArg, result.LinkTimesUnset)
+	// Entries this platform cannot hold were refused, not written: the
+	// rest is verified exactly, on both sides without them, and the
+	// refused set is named in full so "verified" never reads as
+	// "complete".
+	refusedCount := reportRefused(plan.Refused)
+	if refusedCount > 0 {
+		verifyTarget = withoutRefused(verifyTarget, plan.Refused)
+		builtScan = withoutRefused(builtScan, plan.Refused)
+	}
 	built := projectToKnowledge(builtScan, verifyTarget)
 	builtID := built.ComputeC4ID()
 	targetID := verifyTarget.ComputeC4ID()
@@ -276,7 +288,10 @@ func runRestore(args []string) {
 	}
 	fmt.Println(builtID) // line 2: the as-built ID, verified
 
-	if len(incomplete) > 0 {
+	if refusedCount > 0 {
+		fmt.Fprintf(os.Stderr, "partial: %d entries refused (names this platform cannot hold); the rest is written and verified\n", refusedCount)
+	}
+	if len(incomplete) > 0 || refusedCount > 0 {
 		os.Exit(2)
 	}
 }
@@ -487,6 +502,59 @@ func projectToKnowledge(built, target *c4m.Manifest) *c4m.Manifest {
 	// changes the record), so every directory with listed children is
 	// re-derived from the projected children, exactly as the normaliser
 	// derives it.
+	c4m.Normalize(out)
+	return out
+}
+
+// reportRefused names, on stderr, every target entry the platform cannot
+// hold: the path, why, and for a directory how many entries went with it.
+// It returns the number of entries refused.
+func reportRefused(refused []reconcile.Refusal) int {
+	n := 0
+	for _, r := range refused {
+		n += r.Entries
+		if r.Entries > 1 {
+			fmt.Fprintf(os.Stderr, "refused: %s (%d entries): %s\n", r.Path, r.Entries, r.Reason)
+		} else {
+			fmt.Fprintf(os.Stderr, "refused: %s: %s\n", r.Path, r.Reason)
+		}
+	}
+	return n
+}
+
+// withoutRefused returns m without the refused entries and their
+// subtrees, with every directory above one re-derived from what remains.
+// Verification applies it to both the target and the as-built tree, so
+// the rest is compared exactly and the refused entries are not; the
+// refused set is reported in full beside it.
+func withoutRefused(m *c4m.Manifest, refused []reconcile.Refusal) *c4m.Manifest {
+	out := m.Copy()
+	paths := c4m.EntryPaths(out.Entries)
+	drop := make(map[*c4m.Entry]bool)
+	ancestors := make(map[string]bool)
+	for _, r := range refused {
+		for p, e := range paths {
+			if p == r.Path || (strings.HasSuffix(r.Path, "/") && strings.HasPrefix(p, r.Path)) {
+				drop[e] = true
+			}
+		}
+		parts := strings.Split(strings.TrimSuffix(r.Path, "/"), "/")
+		for i := 1; i < len(parts); i++ {
+			ancestors[strings.Join(parts[:i], "/")+"/"] = true
+		}
+	}
+	for p, e := range paths {
+		if ancestors[p] && !drop[e] {
+			e.C4ID, e.Size = c4.ID{}, -1
+		}
+	}
+	kept := out.Entries[:0]
+	for _, e := range out.Entries {
+		if !drop[e] {
+			kept = append(kept, e)
+		}
+	}
+	out.Entries = kept
 	c4m.Normalize(out)
 	return out
 }

@@ -24,6 +24,22 @@ pre-image is still hashed in full, as the durable backup, and content
 copied from the destination still comes from it. Without `-c` every
 file is hashed, as before.
 
+### Restore refuses a name the platform cannot hold, and writes the rest
+
+A c4m name is any bytes but `/` and NUL. On Windows, `c4 restore` turned
+a name holding a backslash into a path through `filepath.FromSlash`, so
+`a\b.txt` was written as `b.txt` inside a directory `a`; names Windows
+reserves or forbids (`CON`, `a:b`, a trailing dot) and, on macOS, names
+that are not UTF-8 failed part way. Such a name is now refused: never
+renamed, mapped or split. Restore names each refusal on stderr
+(`refused: <path>: <reason>`, a directory once with the count of
+entries under it), writes the rest, verifies the rest exactly, and exits
+2. The rule is git v2.47.0's for Windows (backslash, `: < > " | ? *`,
+control bytes, a trailing space or dot, the reserved device names) and
+a measurement for macOS (UTF-8 only); Linux refuses nothing. A link's
+target is checked on Windows only. Pinned by
+`c4m/testdata/name-refusal-vector/`, which c4-operator reads too.
+
 ### Restore never writes through a symbolic link in the destination
 
 `c4 restore --force` into a destination holding a symbolic link to a
