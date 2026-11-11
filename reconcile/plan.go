@@ -81,6 +81,47 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 		})
 	}
 
+	// A target path missing under its exact spelling may still be on disk:
+	// a folder that folds names resolves it to an entry listed under
+	// another spelling (Readme.md for readme.md). That entry is the
+	// target's, by identity, measured with a read-only lookup (so a dry run
+	// sees it too): it is never removed, and after Apply it is respelled to
+	// the target's exact name. Through 1.0.25 it counted as unlisted and
+	// was removed after the target's bytes were written into it, so a
+	// description that only changed a file's case left the folder empty.
+	aliasOf := make(map[string]string) // current path -> the target path it is
+	for relPath := range targetPaths {
+		if refusedSkip[relPath] {
+			continue
+		}
+		if _, exact := currentFiles[relPath]; exact {
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(dirPath, filepath.FromSlash(strings.TrimSuffix(relPath, "/"))))
+		if err != nil {
+			continue
+		}
+		for cur, ci := range currentFiles {
+			if _, taken := aliasOf[cur]; taken || targetPaths[cur] != nil {
+				continue
+			}
+			if os.SameFile(ci, info) {
+				aliasOf[cur] = relPath
+				respell = append(respell, relPath)
+				break
+			}
+		}
+	}
+	// Respell top-down, so a directory has its exact name before its
+	// children are respelled inside it.
+	sort.Slice(respell, func(i, j int) bool {
+		di, dj := depthOf(respell[i]), depthOf(respell[j])
+		if di != dj {
+			return di < dj
+		}
+		return respell[i] < respell[j]
+	})
+
 	// 3. Classify each path.
 	var (
 		mkdirs   []Operation
@@ -224,7 +265,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 		return targetAccountedFor[base] || targetAccountedFor[base+"/"]
 	}
 	for relPath, info := range currentFiles {
-		if accounted(relPath) {
+		if accounted(relPath) || aliasOf[relPath] != "" {
 			continue
 		}
 		absPath := filepath.Join(dirPath, filepath.FromSlash(relPath))

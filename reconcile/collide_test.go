@@ -210,3 +210,128 @@ func TestApplyRespellsTheWinnerOverALeftoverSpelling(t *testing.T) {
 		t.Errorf("readme.md = %q", b)
 	}
 }
+
+// planApply plans and applies target onto dest with every content in src.
+func planApply(t *testing.T, src *store.RAM, target *c4m.Manifest, dest string) *Plan {
+	t.Helper()
+	r := New(WithSource(src))
+	plan, err := r.Plan(target, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := r.Apply(plan, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("apply errors: %v", res.Errors)
+	}
+	return plan
+}
+
+// listing returns dir's names, with "/" after a directory, recursively.
+func listing(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || p == dir {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, p)
+		rel = filepath.ToSlash(rel)
+		if info.IsDir() {
+			rel += "/"
+		}
+		out = append(out, rel)
+		return nil
+	})
+	sort.Strings(out)
+	return out
+}
+
+// A description that only changes a file's case: on a folding folder the
+// existing Readme.md is the target's readme.md (the same entry), so it is
+// kept, given the target's bytes and respelled. Through 1.0.25 it counted
+// as unlisted and was removed after the target's bytes were written into
+// it, leaving the folder empty with exit 0.
+func TestCaseOnlyRenameKeepsTheFile(t *testing.T) {
+	dest := t.TempDir()
+	if !pairFolds(t, dest, "Readme.md", "readme.md") {
+		t.Skip("this volume tells Readme.md and readme.md apart")
+	}
+	os.WriteFile(filepath.Join(dest, "Readme.md"), []byte("old\n"), 0o644)
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	src := store.NewRAM()
+	id, _ := src.Put(strings.NewReader("new\n"))
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{Name: "readme.md", Mode: 0o644, Timestamp: ts, Size: 4, C4ID: id})
+	planApply(t, src, target, dest)
+	if got := listing(t, dest); !reflect.DeepEqual(got, []string{"readme.md"}) {
+		t.Fatalf("folder lists %q, want exactly readme.md", got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dest, "readme.md")); string(b) != "new\n" {
+		t.Errorf("readme.md = %q, want the target's bytes", b)
+	}
+}
+
+// Both spellings in the target, over an existing third: the byte-order
+// last is written whole and respelled, the other refused; nothing is lost.
+func TestBothSpellingsOverAThirdKeepTheWinner(t *testing.T) {
+	dest := t.TempDir()
+	if !pairFolds(t, dest, "Readme.md", "readme.md") {
+		t.Skip("this volume tells case apart")
+	}
+	os.WriteFile(filepath.Join(dest, "Readme.md"), []byte("old\n"), 0o644)
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	src := store.NewRAM()
+	target := c4m.NewManifest()
+	for _, n := range []string{"README.md", "readme.md"} {
+		c := "bytes of " + n + "\n"
+		id, _ := src.Put(strings.NewReader(c))
+		target.AddEntry(&c4m.Entry{Name: n, Mode: 0o644, Timestamp: ts, Size: int64(len(c)), C4ID: id})
+	}
+	target.SortEntries()
+	plan := planApply(t, src, target, dest)
+	if len(plan.Refused) != 1 || plan.Refused[0].Path != "README.md" {
+		t.Errorf("refused %+v, want README.md", plan.Refused)
+	}
+	if got := listing(t, dest); !reflect.DeepEqual(got, []string{"readme.md"}) {
+		t.Fatalf("folder lists %q, want exactly readme.md", got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dest, "readme.md")); string(b) != "bytes of readme.md\n" {
+		t.Errorf("readme.md = %q", b)
+	}
+}
+
+// A case-only rename of a directory that holds files: every file survives,
+// under the target's exact spellings, and a file the target does not list
+// under any spelling is still removed.
+func TestCaseOnlyRenameOfADirectoryKeepsItsFiles(t *testing.T) {
+	dest := t.TempDir()
+	if !pairFolds(t, dest, "Docs", "docs") {
+		t.Skip("this volume tells case apart")
+	}
+	os.MkdirAll(filepath.Join(dest, "Docs"), 0o755)
+	for n, c := range map[string]string{"A.txt": "a\n", "b.txt": "b\n", "gone.txt": "gone\n"} {
+		os.WriteFile(filepath.Join(dest, "Docs", n), []byte(c), 0o644)
+	}
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	src := store.NewRAM()
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{Name: "docs/", Mode: os.ModeDir | 0o755, Timestamp: ts, Size: -1})
+	for _, n := range []string{"a.txt", "b.txt"} {
+		c := strings.ToLower(n[:1]) + "\n"
+		id, _ := src.Put(strings.NewReader(c))
+		target.AddEntry(&c4m.Entry{Name: n, Depth: 1, Mode: 0o644, Timestamp: ts, Size: int64(len(c)), C4ID: id})
+	}
+	target.SortEntries()
+	planApply(t, src, target, dest)
+	if got, want := listing(t, dest), []string{"docs/", "docs/a.txt", "docs/b.txt"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("folder lists %q, want %q", got, want)
+	}
+	for n, c := range map[string]string{"a.txt": "a\n", "b.txt": "b\n"} {
+		if b, _ := os.ReadFile(filepath.Join(dest, "docs", n)); string(b) != c {
+			t.Errorf("docs/%s = %q, want %q", n, b, c)
+		}
+	}
+}

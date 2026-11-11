@@ -22,7 +22,14 @@ readme.md (measured)`), a directory with its subtree, and the run exits
 2; a folder that already listed it under a losing spelling is renamed
 to its exact one. A dry run writes nothing and only hints at case
 collisions, unmeasured. On a volume that tells the names apart nothing
-changes.
+changes. A description that only changes an entry's case (`Readme.md` on disk,
+`readme.md` in the target) no longer deletes it: through 1.0.25 the
+existing entry counted as unlisted and was removed after the target's
+bytes were written into it, leaving the folder empty with exit 0. A
+lookup on the destination recognises it as the target's own entry, by
+identity; it is kept, given the target's bytes and respelled, and a
+directory renamed this way keeps every file in it. An entry the target
+does not list under any spelling is still removed.
 
 ### `c4 patch` no longer empties a directory the target lists only as one line ⚠
 
