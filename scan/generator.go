@@ -787,6 +787,17 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 			c4m.PropagateMetadata(scope)
 
 			dirEntry.C4ID = g.dirID(directChildren)
+		} else if g.mode == ModeMetadata && len(directChildren) == 0 {
+			// The walk listed this directory and saw no children: it is
+			// empty by observation, in every mode that records sizes. Its
+			// size is 0 and its C4 ID is the empty listing's, a known
+			// constant rather than a hash of anything read. Without this, a
+			// metadata scan left it with no ID, which PropagateMetadata
+			// reads as unread, so the size went null and the null spread to
+			// every directory above it. Only a directory the walk could not
+			// read is unread (the branch at the top of this function).
+			dirEntry.Size = 0
+			dirEntry.C4ID = emptyListingID
 		}
 		if err := g.emit(dirEntry); err != nil {
 			return out, err
@@ -798,6 +809,9 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 
 	return out, nil
 }
+
+// emptyListingID is the C4 ID of an empty listing: the ID of zero bytes.
+var emptyListingID = c4.Identify(bytes.NewReader(nil))
 
 // dirID derives a directory's C4 ID from its direct children. It dispatches
 // to the installed dirIdentity seam, falling back to the spec's canonical

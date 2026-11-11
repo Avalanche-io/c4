@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A metadata scan records an observed empty directory as empty
+
+`c4 id -m m` computes no directory IDs, so a directory it listed and found
+no children in carried no ID. Metadata propagation reads a childless
+directory with no ID as unread, so its size went null, and the null spread
+to every directory above it: a tree with one empty folder printed `-` for
+every ancestor's size. The scan saw that directory empty, so it now records
+it as empty, as full mode does: size 0 and the empty listing's C4 ID, a
+known constant. Only a directory the scan could not read stays unread, with
+a null size and ID. Structure mode, which records no sizes, is unchanged.
+
 ### A raw space, quote or control byte in a name is refused
 
 A written name escapes a space as `\ `, a double quote as `\"`, and control
