@@ -35,6 +35,19 @@ it (wrapping `ErrInvalidEntry`) instead of a bare index error. Release
 1.0.x has had this since 2026-10-02 (59ce7cc, 6cfba2c); master never
 took it.
 
+### A folded sequence's ID list is stored, and restore never writes it as a file
+
+`c4 id -s -S` stored a folded sequence's members but not the ID list its
+entry names, so `c4 cat <folded ID>` found nothing. And with the list in
+the store, `c4 restore --force` of a folded description deleted the real
+members and wrote the ID list as a file named `frame.[0001-0003].exr`.
+`-s -S` now stores the list (rebuilt from the members and checked
+against the entry's ID), and restore refuses a folded entry by name,
+exit 1, with nothing touched; a plan that cannot materialise every entry
+now refuses before applying anything, where it used to apply nothing and
+fail its verification with exit 3. Release 1.0.x has had both since
+2026-07-24 and 2026-10-02 (7bac715, 7afd4d8); master never took them.
+
 ### A symlink to an ancestor no longer crashes the scan
 
 `c4 id` on a tree holding a link to one of its own ancestors or to its

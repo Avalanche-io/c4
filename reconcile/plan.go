@@ -89,6 +89,12 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 
 	// Track which target C4 IDs need content for creates.
 	needsContent := make(map[c4.ID]bool)
+	// Folded sequence entries name an ID-list object, not file bytes, and
+	// this reconciler cannot expand them into member files. Writing the ID
+	// list under the range pattern's name (and removing the real members it
+	// does not account for) is silent corruption, so a folded entry is
+	// reported as missing and the plan does nothing (release 1.0.x: 7afd4d8).
+	var unexpandable []c4.ID
 	// Track which current paths are accounted for by the target.
 	targetAccountedFor := make(map[string]bool)
 
@@ -152,6 +158,11 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 				Path:  absPath,
 				Entry: entry,
 			})
+			continue
+		}
+
+		if entry.IsSequence {
+			unexpandable = append(unexpandable, entry.C4ID)
 			continue
 		}
 
@@ -353,7 +364,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	}
 
 	// 6. Content availability check.
-	var missingIDs []c4.ID
+	missingIDs := unexpandable
 	for id := range needsContent {
 		found := false
 		// Check registered sources.

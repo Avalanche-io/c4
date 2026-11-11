@@ -68,11 +68,20 @@ func runRestore(args []string) {
 	var missing []c4.ID
 	var incomplete []string
 	seen := make(map[c4.ID]bool)
+	var folded []string
 	for _, e := range target.Entries {
 		if e.IsDir() {
 			continue
 		}
 		if e.Target != "" { // symlink: no store object needed
+			continue
+		}
+		if e.IsSequence {
+			// A folded entry names its members' ID list, not file bytes;
+			// restore does not expand it. Writing the ID list under the
+			// pattern's name and removing the real members was silent
+			// corruption (release 1.0.x: 7afd4d8).
+			folded = append(folded, e.Name)
 			continue
 		}
 		if e.C4ID.IsNil() {
@@ -86,6 +95,13 @@ func runRestore(args []string) {
 		if !s.Has(e.C4ID) {
 			missing = append(missing, e.C4ID)
 		}
+	}
+	if len(folded) > 0 {
+		fmt.Fprintf(os.Stderr, "Cannot restore %d folded sequence entries; nothing restored (restore a description made without -S):\n", len(folded))
+		for _, name := range folded {
+			fmt.Fprintf(os.Stderr, "  %s\n", name)
+		}
+		os.Exit(1)
 	}
 	// Content the destination already holds counts, by its ID: every file
 	// is hashed here, never matched by size and time, since a move must
@@ -308,6 +324,17 @@ func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.
 	plan, err := r.Plan(target, dest)
 	if err != nil {
 		fatalf("Error planning restore: %v", err)
+	}
+	// Content the planner cannot materialise (a folded sequence entry, which
+	// names an ID list rather than file bytes) refuses before anything is
+	// applied. An incomplete plan used to apply as zero operations and then
+	// fail its own verification with exit 3.
+	if !plan.IsComplete() {
+		fmt.Fprintf(os.Stderr, "Cannot restore %d entries; nothing restored:\n", len(plan.Missing))
+		for _, id := range plan.Missing {
+			fmt.Fprintf(os.Stderr, "  %s\n", id)
+		}
+		os.Exit(1)
 	}
 	return plan
 }
