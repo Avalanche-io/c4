@@ -166,15 +166,16 @@ func runRestore(args []string) {
 		}
 		fmt.Println(diff.NewID)
 
-		plan := planRestore(s, target, destArg, current, scanStart, current, *continueFlag != "")
+		plan := planRestore(s, target, destArg, current, scanStart, current, *continueFlag != "", true)
 		fmt.Fprintf(os.Stderr, "dry run: %d operations planned for %s (use --force to apply)\n",
 			len(plan.Operations), destArg)
 		for _, op := range plan.Operations {
 			fmt.Fprintf(os.Stderr, "  %s %s\n", opName(op.Type), op.Path)
 		}
 		if n := reportRefused(plan.Refused); n > 0 {
-			fmt.Fprintf(os.Stderr, "dry run: %d entries refused (names this platform cannot hold); the rest is planned\n", n)
+			fmt.Fprintf(os.Stderr, "dry run: %d entries refused (names this destination cannot hold); the rest is planned\n", n)
 		}
+		reportCollisionCandidates(plan)
 		return
 	}
 
@@ -236,7 +237,7 @@ func runRestore(args []string) {
 		planStart = time.Now().UTC()
 		planCurrent = scanForCompare(destArg, level, *continueFlag)
 	}
-	plan := planRestore(s, target, destArg, planCurrent, planStart, preManifest, trust)
+	plan := planRestore(s, target, destArg, planCurrent, planStart, preManifest, trust, false)
 	r := restoreReconciler(s, planCurrent, planStart, preManifest, destArg, trust)
 	result, err := r.Apply(plan, destArg)
 	if err != nil {
@@ -274,6 +275,7 @@ func runRestore(args []string) {
 	// refused set is named in full so "verified" never reads as
 	// "complete".
 	refusedCount := reportRefused(plan.Refused)
+	reportCollisionCandidates(plan)
 	if refusedCount > 0 {
 		verifyTarget = withoutRefused(verifyTarget, plan.Refused)
 		builtScan = withoutRefused(builtScan, plan.Refused)
@@ -289,7 +291,7 @@ func runRestore(args []string) {
 	fmt.Println(builtID) // line 2: the as-built ID, verified
 
 	if refusedCount > 0 {
-		fmt.Fprintf(os.Stderr, "partial: %d entries refused (names this platform cannot hold); the rest is written and verified\n", refusedCount)
+		fmt.Fprintf(os.Stderr, "partial: %d entries refused (names this destination cannot hold); the rest is written and verified\n", refusedCount)
 	}
 	if len(incomplete) > 0 || refusedCount > 0 {
 		os.Exit(2)
@@ -355,14 +357,14 @@ func isContentLevel(m *c4m.Manifest) bool {
 // mtime by default, so a same-size, same-mtime byte change planned no
 // operation, and --force then failed its own verification with the
 // changed bytes still in place.
-func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.Manifest, scanStart time.Time, source *c4m.Manifest, trust bool) *reconcile.Plan {
+func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.Manifest, scanStart time.Time, source *c4m.Manifest, trust, dryRun bool) *reconcile.Plan {
 	if current == nil {
 		current = c4m.NewManifest()
 	}
 	if source == nil {
 		source = current
 	}
-	r := restoreReconciler(s, current, scanStart, source, dest, trust)
+	r := restoreReconciler(s, current, scanStart, source, dest, trust, reconcile.WithDryRun(dryRun))
 	plan, err := r.Plan(target, dest)
 	if err != nil {
 		fatalf("Error planning restore: %v", err)
@@ -387,14 +389,15 @@ func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.
 // source is the hashed scan whose IDs name the destination's bytes when
 // they are copied or moved: the same as current unless current trusts a
 // guide.
-func restoreReconciler(s store.Store, current *c4m.Manifest, scanStart time.Time, source *c4m.Manifest, dest string, trust bool) *reconcile.Reconciler {
-	return reconcile.New(
+func restoreReconciler(s store.Store, current *c4m.Manifest, scanStart time.Time, source *c4m.Manifest, dest string, trust bool, extra ...reconcile.Option) *reconcile.Reconciler {
+	opts := []reconcile.Option{
 		reconcile.WithKnownState(current, scanStart),
 		reconcile.WithTrustedMetadata(trust),
 		reconcile.WithSyncMode(store.SyncBatch),
 		reconcile.WithSource(reconcile.NewDirSource(source, dest)),
 		reconcile.WithSource(s),
-	)
+	}
+	return reconcile.New(append(opts, extra...)...)
 }
 
 // validateRevertTarget refuses a target whose description is
@@ -506,8 +509,29 @@ func projectToKnowledge(built, target *c4m.Manifest) *c4m.Manifest {
 	return out
 }
 
-// reportRefused names, on stderr, every target entry the platform cannot
-// hold: the path, why, and for a directory how many entries went with it.
+// reportCollisionCandidates names, on stderr, what a dry run could not
+// measure: sibling names that differ only in case (a hint; a dry run
+// writes nothing, so it makes no probe), and any folder a real run could
+// not probe, whose names are then written as named.
+func reportCollisionCandidates(plan *reconcile.Plan) {
+	for _, c := range plan.MayCollide {
+		fmt.Fprintf(os.Stderr, "may collide: %s with %s (not measured)\n", c.Path, c.With)
+	}
+	if len(plan.MayCollide) > 0 {
+		fmt.Fprintf(os.Stderr, "a real run measures every folder, and also catches folds this hint cannot predict (Unicode forms)\n")
+	}
+	for _, c := range plan.Unmeasured {
+		dir := c.Path
+		if dir == "" {
+			dir = "the destination"
+		}
+		fmt.Fprintf(os.Stderr, "not measured: %s: %s; its names are written as named\n", dir, c.Err)
+	}
+}
+
+// reportRefused names, on stderr, every target entry the destination cannot
+// hold (a name the platform refuses, or one the folder folds onto a
+// sibling's): the path, why, and for a directory how many entries went with it.
 // It returns the number of entries refused.
 func reportRefused(refused []reconcile.Refusal) int {
 	n := 0
