@@ -166,7 +166,7 @@ func runRestore(args []string) {
 		}
 		fmt.Println(diff.NewID)
 
-		plan := planRestore(s, target, destArg, current, scanStart, *continueFlag != "")
+		plan := planRestore(s, target, destArg, current, scanStart, current, *continueFlag != "")
 		fmt.Fprintf(os.Stderr, "dry run: %d operations planned for %s (use --force to apply)\n",
 			len(plan.Operations), destArg)
 		for _, op := range plan.Operations {
@@ -218,8 +218,23 @@ func runRestore(args []string) {
 	// is made from the pre-image scan just taken (every file hashed):
 	// its C4 IDs are the plan's current state, so the destination is
 	// read once, and a file written since that scan is rehashed.
-	plan := planRestore(s, target, destArg, preManifest, preScanStart, *continueFlag != "")
-	r := restoreReconciler(s, preManifest, preScanStart, destArg, *continueFlag != "")
+	// With -c the plan is made from the same view the dry run plans from:
+	// the guide-trusted scan, which reuses a guide entry's ID when size
+	// and mtime match under the racy rule. --force used to plan from the
+	// fully hashed pre-image instead, so the dry run planned nothing and
+	// --force then rewrote the file the client had said to trust. The
+	// pre-image is still hashed in full (it is the durable backup and must
+	// hold the real bytes), and content taken from the destination still
+	// comes from it, so a trusted ID never vouches for bytes copied to
+	// another path.
+	trust := *continueFlag != ""
+	planCurrent, planStart := preManifest, preScanStart
+	if trust && destExists {
+		planStart = time.Now().UTC()
+		planCurrent = scanForCompare(destArg, level, *continueFlag)
+	}
+	plan := planRestore(s, target, destArg, planCurrent, planStart, preManifest, trust)
+	r := restoreReconciler(s, planCurrent, planStart, preManifest, destArg, trust)
 	result, err := r.Apply(plan, destArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error applying restore: %v\n", err)
@@ -240,7 +255,16 @@ func runRestore(args []string) {
 	// null mode on a created file took the platform default), so those
 	// fields legitimately differ from the target and are not compared.
 	// Line 2 prints only when recomputation reproduces the target.
-	builtScan := scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
+	// Verification is made at the same stated trust: with -c, a file the
+	// guide vouches for (size and mtime unchanged, racy-safe) is the
+	// guide's, as it was for the plan; every file this restore wrote is
+	// newer than the guide and is hashed.
+	var builtScan *c4m.Manifest
+	if trust {
+		builtScan = scanForCompare(destArg, level, *continueFlag)
+	} else {
+		builtScan = scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
+	}
 	verifyTarget := linkTimesAsBuilt(target, builtScan, destArg, result.LinkTimesUnset)
 	built := projectToKnowledge(builtScan, verifyTarget)
 	builtID := built.ComputeC4ID()
@@ -316,11 +340,14 @@ func isContentLevel(m *c4m.Manifest) bool {
 // mtime by default, so a same-size, same-mtime byte change planned no
 // operation, and --force then failed its own verification with the
 // changed bytes still in place.
-func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.Manifest, scanStart time.Time, trust bool) *reconcile.Plan {
+func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.Manifest, scanStart time.Time, source *c4m.Manifest, trust bool) *reconcile.Plan {
 	if current == nil {
 		current = c4m.NewManifest()
 	}
-	r := restoreReconciler(s, current, scanStart, dest, trust)
+	if source == nil {
+		source = current
+	}
+	r := restoreReconciler(s, current, scanStart, source, dest, trust)
 	plan, err := r.Plan(target, dest)
 	if err != nil {
 		fatalf("Error planning restore: %v", err)
@@ -342,12 +369,15 @@ func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.
 // restoreReconciler plans and applies against current, the caller's own
 // hashed scan of dest started at scanStart: the plan reuses its IDs for
 // files that scan provably hashed and reads nothing twice.
-func restoreReconciler(s store.Store, current *c4m.Manifest, scanStart time.Time, dest string, trust bool) *reconcile.Reconciler {
+// source is the hashed scan whose IDs name the destination's bytes when
+// they are copied or moved: the same as current unless current trusts a
+// guide.
+func restoreReconciler(s store.Store, current *c4m.Manifest, scanStart time.Time, source *c4m.Manifest, dest string, trust bool) *reconcile.Reconciler {
 	return reconcile.New(
 		reconcile.WithKnownState(current, scanStart),
 		reconcile.WithTrustedMetadata(trust),
 		reconcile.WithSyncMode(store.SyncBatch),
-		reconcile.WithSource(reconcile.NewDirSource(current, dest)),
+		reconcile.WithSource(reconcile.NewDirSource(source, dest)),
 		reconcile.WithSource(s),
 	)
 }

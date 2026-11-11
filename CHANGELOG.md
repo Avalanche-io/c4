@@ -13,6 +13,17 @@ object that was there. Lookups that miss at the exact path now search
 the shard path case-insensitively. Release 1.0.x has had this since
 2026-10-02 (9a40c14); master never took it.
 
+### `c4 restore --force -c` honours the guide as the dry run does
+
+With `-c GUIDE`, the dry run trusted a file whose size and mtime match
+the guide (racy-safe) and planned nothing for it, but `--force` planned
+from the fully hashed pre-image and rewrote it. Trust is the client's
+stated choice, so `--force -c` now plans and verifies from the same
+guide-trusted view as the dry run, and leaves such a file as it is. The
+pre-image is still hashed in full, as the durable backup, and content
+copied from the destination still comes from it. Without `-c` every
+file is hashed, as before.
+
 ### Restore never writes through a symbolic link in the destination
 
 `c4 restore --force` into a destination holding a symbolic link to a
