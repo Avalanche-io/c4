@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased (1.0.x)
+
+### A name or link target ending in a backslash reads back as itself ⚠
+
+A backslash is a literal in a c4m name, written `\\` by SafeName. Through
+1.0.25 the decoder consumed only the backslash of that escape, so its
+second byte started a new escape with the field separator after it. A
+real file named `trail\` scanned as `trail\\` and read back as `trail\ `,
+a different name. `c4 patch` of a scan holding it and `end\\` silently
+left both files out of the materialised tree, and a symlink whose target
+ended in a backslash was created pointing at `target\ -` (measured with
+the 1.0.25 binary on a real tree, 2026-11-11). Every backslash escape is
+now consumed as a two-byte unit, in names and in link targets. Pinned by
+`c4m/testdata/backslash-name-vector/`, byte-identical to master's.
+
 ## v1.0.25
 
 ### A pretty line with a null timestamp no longer reads its padding into a link target ⚠
