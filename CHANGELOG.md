@@ -12,6 +12,17 @@ destination without passing through a link, and a link standing where
 the snapshot records a directory is replaced by the directory. Release
 1.0.x has had this since 2026-07-29 (56c4416); master never took it.
 
+### Restore never writes store bytes that do not match their ID
+
+A store object whose bytes no longer hash to its ID (tampered, or
+damaged on disk) was copied over the destination file, and restore only
+then failed its verification with exit 3, leaving the wrong bytes in
+place. Content is now hashed as it is copied and published only when it
+matches its ID; otherwise the destination file is left untouched and the
+error says which content failed. A copy-on-write clone is attempted only
+when there is no ID to check against. Release 1.0.x has had this since
+2026-10-02 (5b05207); master never took it.
+
 ### A symlink to an ancestor no longer crashes the scan
 
 `c4 id` on a tree holding a link to one of its own ancestors or to its
