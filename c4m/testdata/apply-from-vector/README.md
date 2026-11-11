@@ -36,17 +36,27 @@ symlink `x`; the later write wins by kind as it does by bytes.
 
 ## Cases, and what each broke
 
-| Case                         | What happened before the rule                                                                                               |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `same-add`                   | plain `ApplyPatch` on the target read the second add of the same bytes as a removal; the path vanished                      |
-| `removal-under-removed-dir`  | the restated `d/` line was written, recreating a directory the target had removed                                           |
-| `emptied-dir-differing-line` | the target's `weights/` line, with a stale ID, survived the removal of its last child and read as a directory "known by ID" |
-| `later-write-wins`           | the operator's documented rule; pinned so both forms agree                                                                  |
-| `own-base`                   | equality with `ApplyPatch` across addition, modification, removal and deepening                                             |
-| `dir-own-line-kept`          | a directory's observed time in the target is kept (reading A); size and ID derive from f, g and x                           |
-| `kind-conflict`              | the result held both a file `x` and a directory `x/` (75 of 601 applications with kind swaps); the later write wins by kind |
+| Case                         | What happened before the rule                                                                                                                                                                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `same-add`                   | plain `ApplyPatch` on the target read the second add of the same bytes as a removal; the path vanished                                                                                                                                                                                         |
+| `removal-under-removed-dir`  | the restated `d/` line was written, recreating a directory the target had removed                                                                                                                                                                                                              |
+| `emptied-dir-differing-line` | the target's `weights/` line, with a stale ID, survived the removal of its last child and read as a directory "known by ID"                                                                                                                                                                    |
+| `later-write-wins`           | the operator's documented rule; pinned so both forms agree                                                                                                                                                                                                                                     |
+| `own-base`                   | equality with `ApplyPatch` across addition, modification, removal and deepening                                                                                                                                                                                                                |
+| `dir-own-line-kept`          | a directory's observed time in the target is kept (reading A); size and ID derive from f, g and x                                                                                                                                                                                              |
+| `kind-conflict`              | the result held both a file `x` and a directory `x/` (75 of 601 applications with kind swaps); the later write wins by kind                                                                                                                                                                    |
+| `metadata-only`              | a restatement with the same C4 ID and size but a different mode, time or both is a write ("all fields identical" is the removal rule); a reader comparing only ID and mode removed `notes.txt`, whose only change is its time. The target is the base, so this is also plain patch application |
+| `metadata-only-other-target` | the same patch carried to a target that is not its base; the target's own `extra.txt` stays                                                                                                                                                                                                    |
 
 The operator's record-tree form was cross-checked against the library on
 1,000 steps over 300 random two-unit histories with 0 differences before
 this vector was pinned (2026-11-09). Each case here is a shape that broke
 one of the two during that work.
+
+`metadata-only` was found by a c4m consumer (2026-11-11): its view reader
+treated a mode- or time-only restatement as a removal. Measured the same
+day, plain application of `base.c4m` then `patch.c4m` as one chain: Go
+(master and 1.0.25), c4py, c4m-swift and libc4 (main and release/1.0.x)
+reach `expected-root-id.txt`; c4ts (main and release/1.0.x) removes
+`notes.txt`. c4ts's own `patchDiff` also leaves `notes.txt` out of the
+patch it writes, so its patch does not reach the new state either.

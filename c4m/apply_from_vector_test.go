@@ -25,6 +25,32 @@ type applyFromCase struct {
 	check               func(t *testing.T, got *Manifest)
 }
 
+// metadataOnlyCheck checks the metadata-only cases: every restated entry
+// is still present, with the patch's mode and timestamp and its own C4 ID.
+func metadataOnlyCheck(name string, t1, t2, t3 time.Time) func(t *testing.T, got *Manifest) {
+	return func(t *testing.T, got *Manifest) {
+		paths := EntryPaths(got.Entries)
+		for _, w := range []struct {
+			path, content string
+			mode          os.FileMode
+			ts            time.Time
+		}{
+			{"run.sh", "echo", 0755, t1},
+			{"notes.txt", "N", 0644, t2},
+			{"both.txt", "B", 0600, t3},
+			{"d/x.txt", "X", 0600, t2},
+		} {
+			e := paths[w.path]
+			if e == nil {
+				t.Fatalf("%s: %s was removed; a restatement with different metadata is a write", name, w.path)
+			}
+			if e.Mode != w.mode || !e.Timestamp.Equal(w.ts) || e.C4ID != c4.Identify(strings.NewReader(w.content)) {
+				t.Fatalf("%s: %s = %v %s %s, want the patch's %v %s and its own ID", name, w.path, e.Mode, e.Timestamp, e.C4ID, w.mode, w.ts)
+			}
+		}
+	}
+}
+
 func applyFromCases() []applyFromCase {
 	t1 := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	t2 := t1.Add(time.Hour)
@@ -99,6 +125,31 @@ func applyFromCases() []applyFromCase {
 			check: func(t *testing.T, got *Manifest) {
 				if e := has(got, "p.txt"); e == nil || e.C4ID != c4.Identify(strings.NewReader("ours")) {
 					t.Fatal("later-write-wins: the patch's entry must win")
+				}
+			},
+		},
+		{
+			// The patch restates entries with the same C4 ID and size but a
+			// different mode, timestamp or both, at the top and under a
+			// directory. "All fields identical" is the removal rule, so
+			// each is a write: the path stays, with the patch's metadata.
+			// The target is the base, so this is ordinary patch application.
+			name:   "metadata-only",
+			base:   m(file("run.sh", "echo", 0, 0644, t1), file("notes.txt", "N", 0, 0644, t1), file("both.txt", "B", 0, 0644, t1), dir("d/", 0, t1), file("x.txt", "X", 1, 0644, t1)),
+			after:  m(file("run.sh", "echo", 0, 0755, t1), file("notes.txt", "N", 0, 0644, t2), file("both.txt", "B", 0, 0600, t3), dir("d/", 0, t1), file("x.txt", "X", 1, 0600, t2)),
+			target: m(file("run.sh", "echo", 0, 0644, t1), file("notes.txt", "N", 0, 0644, t1), file("both.txt", "B", 0, 0644, t1), dir("d/", 0, t1), file("x.txt", "X", 1, 0644, t1)),
+			check:  metadataOnlyCheck("metadata-only", t1, t2, t3),
+		},
+		{
+			// The same patch carried to a target that is not its base.
+			name:   "metadata-only-other-target",
+			base:   m(file("run.sh", "echo", 0, 0644, t1), file("notes.txt", "N", 0, 0644, t1), file("both.txt", "B", 0, 0644, t1), dir("d/", 0, t1), file("x.txt", "X", 1, 0644, t1)),
+			after:  m(file("run.sh", "echo", 0, 0755, t1), file("notes.txt", "N", 0, 0644, t2), file("both.txt", "B", 0, 0600, t3), dir("d/", 0, t1), file("x.txt", "X", 1, 0600, t2)),
+			target: m(file("run.sh", "echo", 0, 0644, t1), file("notes.txt", "N", 0, 0644, t1), file("both.txt", "B", 0, 0644, t1), file("extra.txt", "E", 0, 0644, t2), dir("d/", 0, t1), file("x.txt", "X", 1, 0644, t1)),
+			check: func(t *testing.T, got *Manifest) {
+				metadataOnlyCheck("metadata-only-other-target", t1, t2, t3)(t, got)
+				if has(got, "extra.txt") == nil {
+					t.Fatal("metadata-only-other-target: the target's own extra.txt stays")
 				}
 			},
 		},
