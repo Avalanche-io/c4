@@ -307,6 +307,14 @@ func (d *Decoder) parseEntryFromLine(line string) (*Entry, error) {
 
 	entry.Size = size
 	entry.Name = UnsafeName(name)
+	// A name is a bare entry name: only a directory's trailing "/" is
+	// allowed, and ".", "..", "./", "../" and "/" are path components
+	// (SPECIFICATION.md "Invalid names"; parsers MUST reject path
+	// traversal). Checked on the decoded name, so an escaped "/" is
+	// refused as surely as a raw one (name-rule vector).
+	if isPathName(entry.Name) {
+		return nil, fmt.Errorf("line %d: name %q is a path, not an entry name (only a directory's trailing / is allowed)", d.lineNum, entry.Name)
+	}
 	entry.Target = UnsafeName(target)
 	entry.C4ID = id
 	entry.HardLink = hardLink
@@ -563,10 +571,17 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 			hasUnescapedBrackets = true
 		}
 
-		// Directory name ends at / (inclusive)
+		// A "/" ends a directory's name, and only there: the field must end
+		// with it. Anything after it but a space was part of the name, so
+		// the name holds a "/" and is refused. Before, the name was cut at
+		// its first "/" and the rest of the line, C4 ID included, dropped:
+		// "sub/real.txt" on a file line read as a directory "sub/".
 		if ch == '/' {
 			buf.WriteByte('/')
 			pos++
+			if pos < n && line[pos] != ' ' {
+				return "", pos, false, fmt.Errorf("name %q holds '/' (only a directory's trailing / is allowed)", buf.String()+line[pos:nameFieldEnd(line, pos)])
+			}
 			return buf.String(), pos, hasUnescapedBrackets, nil
 		}
 
@@ -913,4 +928,20 @@ func parseMode(s string) (os.FileMode, error) {
 	mode |= os.FileMode(perms)
 
 	return mode, nil
+}
+
+// nameFieldEnd returns where the name field that holds pos would end for
+// an error message: the next unescaped space, or the end of the line.
+func nameFieldEnd(line string, pos int) int {
+	for pos < len(line) {
+		if line[pos] == '\\' && pos+1 < len(line) {
+			pos += 2
+			continue
+		}
+		if line[pos] == ' ' {
+			return pos
+		}
+		pos++
+	}
+	return pos
 }

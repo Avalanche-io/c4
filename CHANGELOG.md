@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased (1.0.27)
+
+### A name is never a path: read and write
+
+The decoder cut a name at its first `/` and dropped the rest of the line,
+C4 ID included. So `sub/real.txt` on a file line read as a directory `sub/`
+with no ID, with exit 0. `restore` then made a directory `sub` with the
+file's mode and failed its own verification. The names `.`, `..`, `./`,
+`../` and `/` decoded as names. The encoder wrote all of these raw, so the
+library broke its own round trip.
+
+Now:
+- **The decoder** refuses a line whose name holds a `/` other than a
+  directory's trailing one, or is a path component, with an error naming
+  the line. The check runs on the decoded name, so an escaped `/` is refused
+  too.
+- **`Encoder.Encode` and `EncodePatch`** refuse to write such a name, with
+  `ErrPathTraversal`, before writing anything.
+
+Pinned by the shared `c4m/testdata/name-rule-vector/`, made by the library.
+No CLI path writes such a name, since a filesystem cannot hold one.
+
 ## Unreleased (1.0.x)
 
 ### `c4 patch` no longer pairs one file's name with another's bytes on a case-insensitive volume ⚠

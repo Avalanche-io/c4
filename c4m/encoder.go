@@ -45,6 +45,9 @@ func (e *Encoder) SetIndent(width int) *Encoder {
 // Output is entry-only: no header, no directives.
 // The manifest is not modified; a sorted copy is used for output.
 func (e *Encoder) Encode(m *Manifest) error {
+	if err := refusePathNames(m); err != nil {
+		return err
+	}
 	// Sort a copy to avoid mutating the caller's manifest.
 	m = m.Copy()
 	m.SortEntries()
@@ -203,6 +206,9 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 // line followed by the patch entries. The result is a valid c4m stream that,
 // when decoded, produces the patched manifest.
 func (e *Encoder) EncodePatch(pr *PatchResult) error {
+	if err := refusePathNames(pr.Patch); err != nil {
+		return err
+	}
 	// Write the base C4 ID as a bare line.
 	if _, err := fmt.Fprintf(e.w, "%s\n", pr.OldID); err != nil {
 		return err
@@ -261,4 +267,23 @@ func FormatPretty(src []byte) ([]byte, error) {
 		return nil, err
 	}
 	return MarshalPretty(m)
+}
+
+// refusePathNames refuses a manifest holding a name the format forbids: a
+// name holding "/" other than a directory's trailing one, or ".", "..",
+// "./", "../", "/" or the empty name (SPECIFICATION.md "Invalid names").
+// Every decoder refuses such a line, so writing one would be writing a c4m
+// no reader accepts; through 1.0.26 the encoder wrote it raw and the
+// decoder cut it at its first "/" (name-rule vector). It is checked before
+// anything is written.
+func refusePathNames(m *Manifest) error {
+	if m == nil {
+		return nil
+	}
+	for _, entry := range m.Entries {
+		if isPathName(entry.Name) {
+			return fmt.Errorf("%w: name %q is a path, not an entry name (only a directory's trailing / is allowed)", ErrPathTraversal, entry.Name)
+		}
+	}
+	return nil
 }
