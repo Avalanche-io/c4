@@ -2,6 +2,18 @@
 
 ## Unreleased (1.0.x)
 
+### `c4 patch` no longer empties a directory the target lists only as one line ⚠
+
+A one-level record shows each subdirectory as one line carrying its own
+C4 ID, with nothing listed under it; c4 1.1 stores trees that way, and
+the library writes such files. Through 1.0.25 `c4 patch record.c4m dir`
+read every such line as "this directory is empty" and removed all the
+files under it, with exit 0 (measured on a real tree: `sub/child.txt`
+and `sub/deep/` removed). A directory with no children listed is now
+emptied only when its C4 ID is the empty listing's; with any other ID
+(collapsed) or none (unread) it is left as it is, and nothing under it
+is walked or removed.
+
 ### A name or link target ending in a backslash reads back as itself ⚠
 
 A backslash is a literal in a c4m name, written `\\` by SafeName. Through

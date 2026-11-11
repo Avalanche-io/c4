@@ -24,6 +24,16 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	// 1. Build target path map from manifest entries.
 	targetPaths := c4m.EntryPaths(target.Entries)
 
+	// A target directory with no children listed under it says nothing
+	// about its contents unless its C4 ID is the empty listing's: with any
+	// other ID it is collapsed (its listing lives under that ID, as in a
+	// one-level record), and with none it is unread. Such a directory is
+	// left as it is: nothing under it is walked, so nothing under it is
+	// planned for removal. Through 1.0.25 every file under it was removed,
+	// so `c4 patch` of a one-level record emptied each subdirectory it
+	// showed as one line, with exit 0.
+	opaque := opaqueDirs(targetPaths)
+
 	// 2. Scan current directory state.
 	currentFiles := make(map[string]os.FileInfo) // relative path -> info
 	currentIDs := make(map[string]c4.ID)          // relative path -> C4 ID
@@ -44,6 +54,9 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 				rel += "/"
 			}
 			currentFiles[rel] = info
+			if info.IsDir() && opaque[rel] {
+				return filepath.SkipDir
+			}
 
 			// Compute C4 ID for regular files.
 			if info.Mode().IsRegular() && info.Size() >= 0 {
@@ -433,6 +446,29 @@ func (r *Reconciler) trustedID(e *c4m.Entry, info os.FileInfo) (c4.ID, bool) {
 		return c4.ID{}, false
 	}
 	return e.C4ID, true
+}
+
+// emptyListingID is the C4 ID of an empty listing: the ID of zero bytes.
+var emptyListingID = c4.Identify(strings.NewReader(""))
+
+// opaqueDirs returns the target directories whose contents the target does
+// not state: no path is listed under them and their C4 ID is not the empty
+// listing's (collapsed, with another ID, or unread, with none).
+func opaqueDirs(targetPaths map[string]*c4m.Entry) map[string]bool {
+	hasChild := make(map[string]bool)
+	for p := range targetPaths {
+		parent := strings.TrimSuffix(p, "/")
+		if i := strings.LastIndex(parent, "/"); i >= 0 {
+			hasChild[parent[:i+1]] = true
+		}
+	}
+	out := make(map[string]bool)
+	for p, e := range targetPaths {
+		if strings.HasSuffix(p, "/") && !hasChild[p] && e.C4ID != emptyListingID {
+			out[p] = true
+		}
+	}
+	return out
 }
 
 // depthOf counts path separators to determine nesting depth.
