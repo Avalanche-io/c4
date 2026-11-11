@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // The shared conformance fixture for names and link targets that hold a
@@ -77,4 +78,51 @@ func TestBackslashNameVector(t *testing.T) {
 		t.Fatalf("patch.c4m: %v", err)
 	}
 	check("patch.c4m", sections[0].Entries)
+}
+
+func keys(m map[string]string) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// Only "/" separates paths in c4m (Joshua, 2026-11-10): a backslash or a
+// colon is a literal character in a name. Manifest.Validate refused a name
+// holding a backslash as "path traversal", and the line Validator refused
+// it in the raw field and in the decoded name, so the library rejected
+// names a scan writes for real files. Both now accept them.
+func TestBackslashAndColonNamesAreValid(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "backslash-name-vector", "canonical.c4m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Unmarshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.AddEntry(&Entry{Name: "c:d.txt", Mode: 0o644, Size: 0, Timestamp: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), C4ID: NewManifest().ComputeC4ID()})
+	m.SortEntries()
+	if err := m.Validate(); err != nil {
+		t.Errorf("Manifest.Validate: %v", err)
+	}
+	for _, form := range []string{"canonical.c4m", "pretty.c4m"} {
+		f, err := os.Open(filepath.Join("testdata", "backslash-name-vector", form))
+		if err != nil {
+			t.Fatal(err)
+		}
+		v := NewValidator(false)
+		err = v.ValidateManifest(f)
+		f.Close()
+		if err != nil {
+			t.Errorf("Validator %s: %v", form, err)
+		}
+	}
+	// "/" is still refused inside a name.
+	bad := NewManifest()
+	bad.AddEntry(&Entry{Name: "a/b.txt", Mode: 0o644, Size: 0, Timestamp: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)})
+	if err := bad.Validate(); err == nil {
+		t.Error(`Manifest.Validate accepted "a/b.txt"`)
+	}
 }
