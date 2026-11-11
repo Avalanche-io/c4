@@ -2,21 +2,25 @@
 
 ## Unreleased (1.0.27)
 
-### A collapsed directory's null size is no longer hashed as 0 ⚠
+### A childless directory's null size is no longer hashed as 0 ⚠
 
-A directory with no children listed under it and a C4 ID other than the
-empty listing's is collapsed: its listing lives under that ID. When its
-size was null, `ComputeC4ID` gave it size 0 before hashing, because any
-childless directory was taken to be empty. The C4 ID therefore hashed a
-size the file does not state and nothing observed. A collapsed
-directory's null size now stays null. **C4 IDs change for a description
-holding a directory known only by its C4 ID with a null size.** No CLI
-path writes such a line; a description from the library or another tool
-can hold one, and `c4 id -q` and the boundary IDs of `c4 diff` hashed it.
-`c4 id` output is unchanged in every mode. A childless directory with no
-C4 ID still gets size 0 on this line; master keeps that size null, and
-the shared vector's `unread/` directory pins the difference. Pinned by
-`c4m/testdata/childless-dir-vector/`, byte-identical to master's.
+A directory with no children listed under it and a null size was given
+size 0 before hashing, whatever its C4 ID said. Only the empty listing's
+ID means the directory holds nothing. With any other ID the directory is
+collapsed: its listing lives under that ID. With no ID nobody listed it.
+In both cases the C4 ID hashed a size the file does not state and
+nothing observed. Such a size now stays null, and only the empty
+listing's ID gives 0. **C4 IDs change for a description holding a
+directory with no listed children, a null size, and a C4 ID other than
+the empty listing's or none.** No CLI path writes such a line: `c4 id`
+stops at an unreadable directory, and a scan in any mode states size 0
+for a directory it listed as empty. `c4 id` output is byte-identical to
+1.0.26's in every mode (pinned by `cmd/c4/testdata/blind-upgrade/`,
+written by the 1.0.26 binary). In `-m s` and `-m m` this line leaves an
+observed empty directory's C4 ID null where 1.1 states the empty
+listing's ID; both are true descriptions, and full mode is identical.
+Pinned by `c4m/testdata/childless-dir-vector/`, byte-identical to
+master's.
 
 ### A link whose target starts with `c4` reads back as written
 

@@ -56,73 +56,52 @@ func TestChildlessDirVector(t *testing.T) {
 		}
 		return b.Bytes()
 	}
-	read := func(name string) []byte {
-		b, err := os.ReadFile(filepath.Join(dir, name))
+	files := map[string][]byte{
+		"stated.c4m":     encode(stated),
+		"normalized.c4m": encode(normalized),
+		"root-id.txt":    []byte(stated.ComputeC4ID().String() + "\n"),
+	}
+	if os.Getenv("C4M_UPDATE_VECTORS") != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range files {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for name, want := range files {
+		got, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		return b
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s differs from what the library writes:\n--- file\n%s--- library\n%s", name, got, want)
+		}
 	}
 
-	// The stated form is the same on every line.
-	if got, want := read("stated.c4m"), encode(stated); !bytes.Equal(got, want) {
-		t.Errorf("stated.c4m differs from what the library writes:\n--- file\n%s--- library\n%s", got, want)
-	}
-
-	// Sizes derive from the ID alone. collapsed/ (any ID but the empty
-	// listing's) stays null, as on master. unread/ (no ID) is the known
-	// 1.0.x difference: this line still gives it 0, where master keeps it
-	// null, because a metadata-mode scan sizes an observed empty directory
-	// before it has an ID.
-	want := map[string]int64{"empty/": 0, "collapsed/": -1, "unread/": 0}
+	want := map[string]int64{"empty/": 0, "collapsed/": -1, "unread/": -1}
 	for _, form := range []string{"stated.c4m", "normalized.c4m"} {
-		m, err := Unmarshal(read(form))
+		m, err := Unmarshal(files[form])
 		if err != nil {
 			t.Fatalf("%s: %v", form, err)
+		}
+		// The ID hashes the derived sizes: the stated file and its
+		// normalised form are the same description.
+		if got := m.ComputeC4ID().String() + "\n"; got != string(files["root-id.txt"]) {
+			t.Errorf("%s resolves to %s, want %s", form, got, files["root-id.txt"])
 		}
 		PropagateMetadata(m.Entries)
 		for _, e := range m.Entries {
 			if e.Size != want[e.Name] {
-				t.Errorf("%s: %s derives to size %d, want %d", form, e.Name, e.Size, want[e.Name])
+				t.Errorf("%s: %s normalises to size %d, want %d", form, e.Name, e.Size, want[e.Name])
 			}
 		}
 	}
-
-	// The committed normalised file is master's. It differs from this
-	// line's only in unread/'s size: set that one value through the API and
-	// the bytes must match what this line writes.
-	master, err := Unmarshal(read("normalized.c4m"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range master.Entries {
-		if e.Name == "unread/" {
-			e.Size = 0
-		}
-	}
-	lineNormalized := encode(normalized)
-	if got := encode(master); !bytes.Equal(got, lineNormalized) {
-		t.Errorf("master's normalized.c4m differs from this line's beyond unread/'s size:\n--- master, unread/ at 0\n%s--- this line\n%s", got, lineNormalized)
-	}
-
-	// The committed root ID is master's: the C4 ID of master's normalised
-	// file. This line's ID differs by unread/'s size and agrees with itself:
-	// the stated form, its normalised form and that form's own bytes.
-	if got := c4.Identify(bytes.NewReader(read("normalized.c4m"))).String() + "\n"; got != string(read("root-id.txt")) {
-		t.Errorf("normalized.c4m's own C4 ID is %s, want root-id.txt's %s", got, read("root-id.txt"))
-	}
-	lineID := stated.ComputeC4ID()
-	// The 1.0.x root ID, pinned in every implementation's 1.0.27 line.
-	if got := lineID.String(); got != "c43hjzfaERSHQSgDYwRPabKdXuC1gbHSW1BnXPVhvCm8LNgYj5LEH6a3VoV2gckqiLNMBQEh4dTVKszriwrmZryUkh" {
-		t.Errorf("this line's root ID is %s, want the pinned 1.0.x ID c43hjzfa…", got)
-	}
-	if got := normalized.ComputeC4ID(); got != lineID {
-		t.Errorf("the normalised form resolves to %s, the stated form to %s", got, lineID)
-	}
-	if got := c4.Identify(bytes.NewReader(lineNormalized)); got != lineID {
-		t.Errorf("this line's normalised bytes hash to %s, want %s", got, lineID)
-	}
-	if lineID.String()+"\n" == string(read("root-id.txt")) {
-		t.Errorf("this line's root ID equals master's; the unread/ difference is gone, so update this test")
+	// The normalised file is canonical: its bytes are the description, so
+	// its own C4 ID is the root ID.
+	if got := c4.Identify(bytes.NewReader(files["normalized.c4m"])).String() + "\n"; got != string(files["root-id.txt"]) {
+		t.Errorf("normalized.c4m's own C4 ID is %s, want the root ID %s", got, files["root-id.txt"])
 	}
 }

@@ -682,6 +682,16 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 	if dirEntry != nil {
 		if g.mode == ModeFull {
 			g.resolveDir(dirEntry, directChildren)
+		} else if len(directChildren) == 0 {
+			// The walk listed this directory and saw no children: it is
+			// empty by observation, so its size is a stated 0. In the modes
+			// without IDs its C4 ID stays null, ordinary partial knowledge
+			// (master states the empty listing's ID here; 1.1 and 1.0.x
+			// differ only in that column, and full mode is identical). The
+			// stated 0 is kept by PropagateMetadata, which leaves a childless
+			// directory with no ID null only when no size is stated, so this
+			// line's output is byte-identical to 1.0.26's in every mode.
+			dirEntry.Size = 0
 		}
 		if err := g.emit(dirEntry); err != nil {
 			return out, err
