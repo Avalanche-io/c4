@@ -73,7 +73,7 @@ File size in bytes as a decimal integer. No leading zeros except for `0` itself.
 
 ### Name
 
-The bare filename (not a path). Entry names never contain `/` or `\` as separators — nesting is expressed through indentation and depth. Directory names end with a trailing `/`.
+The bare filename (not a path). Entry names never contain `/`: nesting is expressed through indentation and depth. `/` is the only path separator in c4m. A backslash, a colon and every other byte is a literal character in a name, encoded by SafeName where needed (a backslash is written `\\`); a platform that cannot hold such a name maps or refuses it when it materialises the tree, and the c4m keeps the name as it is. Directory names end with a trailing `/`.
 
 **Filename encoding (SafeName)**: Names are first encoded using the Universal Filename Encoding (see `SafeName`/`UnsafeName` in the c4m package), a three-tier system that represents arbitrary byte sequences as printable UTF-8:
 
@@ -92,7 +92,7 @@ The bare filename (not a path). Entry names never contain `/` or `\` as separato
 
 No quoting mechanism exists. All field-boundary characters are backslash-escaped.
 
-**Invalid names**: `.`, `..`, `/`, empty string, names containing null bytes or path separators.
+**Invalid names**: `.`, `..`, `/`, empty string, names containing null bytes or `/`.
 
 ### C4 ID
 
@@ -491,7 +491,7 @@ Parsers MAY:
 
 ## Security Considerations
 
-- No path traversal: `../`, `./`, names containing path separators
+- No path traversal: `../`, `./`, names containing `/`
 - No null bytes in names
 - Control characters forbidden (0x00-0x1F) — encoded via Universal Filename Encoding
 - Maximum line length: implementation-defined (suggested 1MB)
