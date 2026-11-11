@@ -39,8 +39,10 @@ func TestProgressiveScanner(t *testing.T) {
 			t.Fatalf("Failed to start scanner: %v", err)
 		}
 
-		// Poll until the scan has found something; a fixed sleep is
-		// poll-luck on a loaded CI runner.
+		// Poll until the scan has found all four files the checks below
+		// expect, then stop; a fixed sleep is poll-luck on a loaded CI
+		// runner, and stopping at the first file found (as this poll did
+		// at first) leaves too few.
 		var status *ScanStatus
 		deadline := time.Now().Add(10 * time.Second)
 		for {
@@ -48,7 +50,7 @@ func TestProgressiveScanner(t *testing.T) {
 			if status == nil {
 				t.Fatal("Failed to get status")
 			}
-			if status.TotalFound > 0 || time.Now().After(deadline) {
+			if status.TotalFound >= 4 || time.Now().After(deadline) {
 				break
 			}
 			time.Sleep(time.Millisecond)
@@ -475,10 +477,12 @@ func TestWorkerPools(t *testing.T) {
 
 		scanner.Start()
 
-		// Poll until the 50 entries are found, then stop; a fixed
+		// Poll until the 50 entries are found and metadata collection
+		// has begun, the two things checked below, then stop; a fixed
 		// 300 ms was too short on a loaded CI runner.
 		deadline := time.Now().Add(10 * time.Second)
-		for atomic.LoadInt64(&scanner.totalFound) < 50 && time.Now().Before(deadline) {
+		for (atomic.LoadInt64(&scanner.totalFound) < 50 || atomic.LoadInt64(&scanner.metadataScanned) == 0) &&
+			time.Now().Before(deadline) {
 			time.Sleep(time.Millisecond)
 		}
 
