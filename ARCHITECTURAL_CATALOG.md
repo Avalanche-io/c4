@@ -270,16 +270,18 @@ Filesystem reconciliation. Depends on `c4`, `c4m`, and `store`.
 | `LocalSource`   | Optional interface: `ContentPath(ID) (string, bool)`. Apply prefers local paths for file-to-file copies (CoW clone hook point — see design/reconcile-performance.md). |
 | `DirSource`     | Wraps a directory + manifest as a `ContentSource` (also a `LocalSource`).                                                                                             |
 | `Saver`         | Interface: `Put(io.Reader) (ID, error)` + `Has(ID) bool`.                                                                                                             |
-| `Plan`          | Ordered operation list with missing-content check.                                                                                                                    |
+| `Plan`          | Ordered operation list with missing-content check; `Refused`, `MayCollide`, `Unmeasured`, and `Respell` (entries listed under exactly their own name after Apply).                                                                                                                 |
 | `Operation`     | Single filesystem operation (mkdir, create, move, remove, chmod, chtimes).                                                                                            |
 | `Result`        | Outcome counts and errors from `Apply`.                                                                                                                               |
+| `Refusal`       | A target entry the destination cannot hold under its name (a platform-refused name, `names.go`, or one the folder folds onto a sibling, `collide.go`); a directory once, with its entry count. |
+| `Collision`     | Two sibling names that may be one in the destination: a dry run's unmeasured case hint, or a folder the probe could not measure. |
 
 Options:
 
 | Option                | Purpose                                                                                                                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `WithSource`          | add a content source                                                                                                                                                                                   |
-| `WithDryRun`          | plan-only Apply                                                                                                                                                                                        |
+| `WithDryRun`          | plan-only Apply; Plan makes no fold probe and reports case pairs unmeasured                                                                                                                                                                                     |
 | `WithStoreRemovals`   | store content before removal                                                                                                                                                                           |
 | `WithSyncMode`        | created-file durability, mirroring `store.SyncMode`: `SyncEach` default (durable per file); `SyncBatch` = atomic writes + one device barrier at end of Apply (the CLI's mode); `SyncNone` scratch only |
 | `WithMaxConcurrency`  | Apply create workers: 0 = auto (min(GOMAXPROCS, 16)), 1 = sequential                                                                                                                                   |
@@ -290,6 +292,16 @@ merging counters and errors in operation order (deterministic output).
 Creates prefer a `LocalSource` path — file-to-file copy with OS
 acceleration, falling back to streaming `Open` on any failure.
 
+Names a folder folds together (case, Unicode forms, any fold) are
+measured, never predicted (`collide.go`): `measureFolds` makes a
+directory's names as empty files in a `.c4-fold-probe-*` folder in byte
+order, and a name whose lookup is the same file (`os.SameFile`) as an
+earlier one joins its set. The byte-order last is written; the others are
+refused with their subtrees. A target path missing under its exact
+spelling but found by identity is the target's own entry, kept and
+respelled (`respell`, through `.c4-respell-<name>`). Plan and Distribute
+share it; a dry run measures nothing.
+
 Distribution (single-pass multi-target):
 
 | Type               | Description                            |
@@ -297,7 +309,7 @@ Distribution (single-pass multi-target):
 | `Target`           | Interface: `Kind() string`.            |
 | `DirTarget`        | Writes files to a directory.           |
 | `StoreTarget`      | Stores content by C4 ID.               |
-| `DistributeResult` | Per-target outcomes from `Distribute`. |
+| `DistributeResult` | Per-target outcomes from `Distribute`, each with the entries its folder folds (`Refused`, measured before writing) and folders it could not measure. |
 
 ## cmd/c4 (CLI)
 

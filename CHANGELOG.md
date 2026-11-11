@@ -24,6 +24,30 @@ pre-image is still hashed in full, as the durable backup, and content
 copied from the destination still comes from it. Without `-c` every
 file is hashed, as before.
 
+### Names a disk folds together are measured and refused, never paired or deleted
+
+A case-insensitive volume (default APFS, NTFS) takes `README.md` and
+`readme.md` for one name, and APFS takes the NFC and NFD forms of `é`
+for one. `c4 restore` wrote both such names, so the second write went
+through the first's name, leaving one file with the other's bytes. A
+description that changed only a file's case did worse: restore wrote the
+target's bytes into the existing `Readme.md`, then removed it as
+unlisted, leaving the folder empty and failing its own verification
+(exit 3).
+
+Each folder's names are now measured on the destination before anything
+is written, by identity in a throwaway probe folder, with no rule and no
+new dependency. In each folded set the last name in byte order is written
+whole, and the others are refused and named (`refused: <path>: this
+folder takes it for <name> (measured)`, a directory once with its entry
+count); restore writes the rest, verifies it and exits 2. A file whose
+name changes only in case is recognised as the same entry, kept and
+respelled, exit 0. A dry run writes nothing, not even a probe, and names
+case pairs as `may collide: … (not measured)`. `reconcile.Distribute`
+measures each source directory's names at every dir target before writing
+them, refuses folds per target (`TargetResult.Refused`), and respells
+what it wrote. Release 1.0.x has had this for `c4 patch` since #118.
+
 ### Restore refuses a name the platform cannot hold, and writes the rest
 
 A c4m name is any bytes but `/` and NUL. On Windows, `c4 restore` turned
