@@ -139,8 +139,29 @@ type Plan struct {
 	// Refused lists the target entries this platform cannot hold under
 	// their names (see nameRefusal), in path order. Nothing is planned for
 	// them or under them, and nothing on disk is removed on their account;
-	// the rest of the target is planned as usual.
+	// the rest of the target is planned as usual. It also lists the
+	// entries the destination folds onto a sibling's name (measured there;
+	// see foldCollisions).
 	Refused []Refusal
+	// MayCollide lists, in a dry run, sibling names that differ only in
+	// case: a dry run writes nothing, so whether the destination folds them
+	// is not measured.
+	MayCollide []Collision
+	// Unmeasured lists sibling names a real run could not measure (the
+	// probe could not run); nothing is refused for them.
+	Unmeasured []Collision
+	// Respell lists the byte-order last of each measured collision set, and
+	// each target entry the folder already held under another spelling:
+	// after Apply, each is listed under exactly its own name.
+	Respell []string
+}
+
+// Collision is two sibling target names that may name one entry in the
+// destination folder.
+type Collision struct {
+	Path string // the name that would be refused
+	With string // the byte-order last, which would be written
+	Err  string // why it was not measured, for Unmeasured
 }
 
 // Refusal is one target entry a platform cannot hold as named: a
