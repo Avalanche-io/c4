@@ -2,8 +2,12 @@ package reconcile
 
 import (
 	"fmt"
+	"runtime"
+	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 // A c4m name is any bytes but "/" and NUL (Joshua, 2026-11-10: "C4m files
@@ -108,4 +112,72 @@ func windowsDevice(name string) string {
 		return stem
 	}
 	return ""
+}
+
+// platform is the GOOS whose name rules the reconciler applies.
+func (r *Reconciler) platform() string {
+	if r.goos != "" {
+		return r.goos
+	}
+	return runtime.GOOS
+}
+
+// refusedPaths finds the target paths this platform cannot hold. A path
+// is refused when one of its segments is, or when it is a symbolic link
+// whose target is (Windows only). A refused directory carries its whole
+// subtree: it is reported once, with the count of entries under it, and
+// every path beneath it is returned in skip. The refusals come back in
+// path order.
+func refusedPaths(goos string, targetPaths map[string]*c4m.Entry) (refusals []Refusal, skip map[string]bool) {
+	paths := make([]string, 0, len(targetPaths))
+	for p := range targetPaths {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	skip = make(map[string]bool)
+	byRoot := make(map[string]*Refusal)
+	var roots []string
+	for _, p := range paths {
+		root, reason := "", ""
+		if seg, why := pathRefusal(goos, p); seg != "" {
+			// The refused entry is the path up to and including the
+			// first refused segment; a directory's ends in "/".
+			parts := strings.Split(strings.TrimSuffix(p, "/"), "/")
+			for i, s := range parts {
+				if s == seg {
+					root = strings.Join(parts[:i+1], "/")
+					if i < len(parts)-1 || strings.HasSuffix(p, "/") {
+						root += "/"
+					}
+					break
+				}
+			}
+			reason = why
+		} else if e := targetPaths[p]; e.Target != "" {
+			if seg, why := targetRefusal(goos, e.Target); seg != "" {
+				root, reason = p, fmt.Sprintf("its link target %q: %s", e.Target, why)
+			}
+		}
+		if root == "" {
+			continue
+		}
+		skip[p] = true
+		if r, ok := byRoot[root]; ok {
+			r.Entries++
+			continue
+		}
+		byRoot[root] = &Refusal{Path: root, Reason: reason, Entries: 1}
+		roots = append(roots, root)
+	}
+	for _, root := range roots {
+		refusals = append(refusals, *byRoot[root])
+	}
+	return refusals, skip
+}
+
+// withPlatform makes the reconciler apply goos's name rules instead of the
+// running platform's: a test seam, so Windows's rules are tested on every
+// platform.
+func withPlatform(goos string) Option {
+	return func(r *Reconciler) { r.goos = goos }
 }

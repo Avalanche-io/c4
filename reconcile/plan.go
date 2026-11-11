@@ -98,8 +98,18 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	// Track which current paths are accounted for by the target.
 	targetAccountedFor := make(map[string]bool)
 
+	// Names this platform cannot hold are refused before any is joined into
+	// a path: never renamed, never mapped, never split at a backslash. The
+	// refused entry and its subtree are accounted for, so nothing on disk is
+	// removed on their account.
+	refused, refusedSkip := refusedPaths(r.platform(), targetPaths)
+
 	// Process target entries.
 	for relPath, entry := range targetPaths {
+		if refusedSkip[relPath] {
+			targetAccountedFor[relPath] = true
+			continue
+		}
 		absPath := filepath.Join(dirPath, filepath.FromSlash(relPath))
 		targetAccountedFor[relPath] = true
 
@@ -386,7 +396,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	}
 
 	if len(missingIDs) > 0 {
-		return &Plan{Missing: missingIDs}, nil
+		return &Plan{Missing: missingIDs, Refused: refused}, nil
 	}
 
 	// 7. Order operations.
@@ -413,7 +423,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	ops = append(ops, removes...)
 	ops = append(ops, rmdirs...)
 
-	return &Plan{Operations: ops}, nil
+	return &Plan{Operations: ops, Refused: refused}, nil
 }
 
 // trustedID returns the target entry's C4 ID without hashing when

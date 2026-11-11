@@ -136,6 +136,19 @@ type Operation struct {
 type Plan struct {
 	Operations []Operation
 	Missing    []c4.ID
+	// Refused lists the target entries this platform cannot hold under
+	// their names (see nameRefusal), in path order. Nothing is planned for
+	// them or under them, and nothing on disk is removed on their account;
+	// the rest of the target is planned as usual.
+	Refused []Refusal
+}
+
+// Refusal is one target entry a platform cannot hold as named: a
+// directory is reported once, for its whole subtree.
+type Refusal struct {
+	Path    string // slash-separated path relative to the destination; a directory ends in "/"
+	Reason  string // why, citing git's rule or a measurement
+	Entries int    // entries refused with it: 1, or the directory and everything under it
 }
 
 // IsComplete returns true when all required content is available.
@@ -174,6 +187,7 @@ type Reconciler struct {
 	known          map[string]*c4m.Entry // the caller's own hashed scan of the directory, by relative path
 	knownStart     time.Time             // when that scan started; files not strictly older are rehashed
 	root           string                // Apply's directory: no write may escape it
+	goos           string                // platform whose name rules the plan applies; "" = runtime.GOOS (a test seam)
 }
 
 // Option configures a Reconciler.
