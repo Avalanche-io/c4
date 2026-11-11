@@ -49,10 +49,10 @@ changes. The Validator keeps only what the decoder does not do:
   directories, natural sort among siblings, as `SortEntries` orders them)
   within a section. The spec lets a parser accept non-sorted input ("Parsers
   MAY: Accept non-sorted entries"), so lax mode does not report it.
-- **Names that are paths:** `.`, `..`, `./`, `../`, `/`, empty, or holding
-  a `/` other than a directory's trailing one, by the library's own
-  `isPathName` (the check `Manifest.Validate` makes). The spec says parsers
-  MUST reject them; the decoder does not (below).
+- **Names that are paths:** checked here at first, by the library's
+  `isPathName`. Since the name rule (`c4m/testdata/name-rule-vector/`, the
+  same day) the decoder refuses them itself, so the Validator reports the
+  decoder's error and keeps no check of its own: one implementation.
 - **An entry deeper than its parent directory allows.**
 - **Flow targets**, checked on the decoded value: `<location>:<path>`, the
   location matching `[a-zA-Z][a-zA-Z0-9_-]*` (spec, "Flow Links"), the path
@@ -101,7 +101,8 @@ expectation, and it skips with the reason printed.
   encoder writes such a name without error, so the library breaks its own
   round trip. Decided (2026-11-11): every decoder refuses such a line and
   every encoder refuses to write such a name, pinned by a shared vector,
-  in 1.0.27. That change un-skips the first group.
+  in 1.0.27. That change un-skipped the first group (now
+  `TestValidatorRefusesNamesHoldingSlash`).
 - **Lenient readings of names and indentation.** The decoder accepts an
   unescaped space in a name (so a damaged ID field such as `invalid-c4-id`
   or a 90-character `x4…` token becomes part of the name), a raw double

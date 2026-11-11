@@ -10,24 +10,33 @@ import (
 // (design/validator-reads-through-decoder.md). Each group is the correct
 // expectation, held with the reason printed until the decoder change named
 // beside it lands; then delete that group's t.Skip.
+// A name holding "/" other than a directory's trailing one: the decoder
+// used to cut it at its first "/" and drop the rest of the line, so the
+// Validator, reading through the decoder, could not see it. The name rule
+// (shared name-rule vector) made the decoder refuse it, which un-held this
+// group; the Validator now reports the decoder's error at line 1.
+func TestValidatorRefusesNamesHoldingSlash(t *testing.T) {
+	for _, line := range []string{
+		"-rw-r--r-- 2025-09-19T12:00:00Z 100 sub/file.txt\n",
+		"-rw-r--r-- 2025-09-19T12:00:00Z 100 foo/../bar\n",
+		"drwxr-xr-x 2025-09-19T12:00:00Z 0 \"dirname/\"\n",
+	} {
+		v := NewValidator(true)
+		if err := v.ValidateManifest(strings.NewReader(line)); err == nil {
+			t.Errorf("%q must be refused", line)
+			continue
+		}
+		if errs := v.GetErrors(); errs[len(errs)-1].Line != 1 {
+			t.Errorf("%q: the error must name line 1: %v", line, errs)
+		}
+	}
+}
+
 func TestValidatorHeldForDecoderRules(t *testing.T) {
 	groups := []struct {
 		name, unskip string
 		lines        []string
 	}{
-		{
-			// Measured 2026-11-11: the decoder cuts a name at its first
-			// "/" and drops the rest of the line, ID included, so
-			// "sub/file.txt" reads as a directory "sub/". Go, c4py, c4ts
-			// and libc4 all do; c4-swift refuses.
-			name:   "a name holding /",
-			unskip: "the 1.0.27 name rule: every decoder refuses a name holding \"/\" anywhere but a directory's trailing one (shared vector made like damaged-line)",
-			lines: []string{
-				"-rw-r--r-- 2025-09-19T12:00:00Z 100 sub/file.txt\n",
-				"-rw-r--r-- 2025-09-19T12:00:00Z 100 foo/../bar\n",
-				"drwxr-xr-x 2025-09-19T12:00:00Z 0 \"dirname/\"\n",
-			},
-		},
 		{
 			// Measured 2026-11-11: the decoder accepts these, though the
 			// spec escapes a space (`\ `) and a double quote (`\"`) in a

@@ -51,11 +51,11 @@ type ValidationStats struct {
 // decoder.md). On the entries as written, the Validator adds what the
 // decoder does not check:
 //
-//   - a name that is a path or a path component ("./", "../", "/"; the
-//     spec says parsers MUST reject them, and the decoder does not);
 //   - a path listed twice in one section (an error; the spec says parsers
 //     MUST reject duplicates, and the decoder keeps only the last);
 //   - an entry deeper than its parent directory allows (an error);
+//   - a flow target that is not <location>:<path> by the spec, or whose
+//     path is absolute or holds "..";
 //   - with Strict, siblings out of canonical order, files before
 //     directories then natural sort (the spec lets a parser accept
 //     unsorted input, so only Strict reports it).
@@ -111,12 +111,6 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 		}
 		if e.Depth > len(dirs) {
 			report(line, "depth", fmt.Sprintf("entry %q at depth %d has no parent directory at depth %d", e.Name, e.Depth, e.Depth-1))
-			return
-		}
-		if isPathName(e.Name) {
-			// The spec: parsers MUST reject path traversal ("../", "./",
-			// names containing "/"). Manifest.Validate's check, one rule.
-			report(line, "name", fmt.Sprintf("name %q is a path or a path component, not an entry name", e.Name))
 			return
 		}
 		dirs = dirs[:e.Depth]

@@ -16,14 +16,14 @@ error at the decoder's line, so on every vector file the two agree, strict
 and lax. On the entries as written, the Validator adds the checks the
 decoder does not make:
 - duplicate paths, in both modes (the spec says parsers MUST reject them);
-- names that are paths (`./`, `../`, `/`);
 - an entry deeper than its parent allows;
 - flow targets;
 - with `Strict`, canonical order: files before directories, then natural order.
 
 Messages for format faults are the decoder's. The exported API is
-unchanged. Lines the decoder misreads (a name holding `/`, lenient name
-escapes) are held in a skipped test until the decoder rules land; see
+unchanged. Lines the decoder reads leniently (unescaped spaces, raw quotes
+and control bytes in names, odd indentation) are held in a skipped test
+until a decoder rule lands; see
 `design/validator-reads-through-decoder.md`.
 
 ### A name is never a path: read and write

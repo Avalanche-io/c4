@@ -255,13 +255,13 @@ func TestInvalidDirectoryNames(t *testing.T) {
 			name:    "current directory",
 			line:    "drwxr-xr-x 2025-09-19T12:00:00Z 0 ./",
 			wantErr: true,
-			errMsg:  "path component",
+			errMsg:  "is a path",
 		},
 		{
 			name:    "parent directory",
 			line:    "drwxr-xr-x 2025-09-19T12:00:00Z 0 ../",
 			wantErr: true,
-			errMsg:  "path component",
+			errMsg:  "is a path",
 		},
 		{
 			name:    "root directory",
@@ -286,7 +286,7 @@ func TestInvalidDirectoryNames(t *testing.T) {
 			name:    "leading slash in name",
 			line:    "-rw-r--r-- 2025-09-19T12:00:00Z 100 /etc/passwd",
 			wantErr: true,
-			errMsg:  "is a path",
+			errMsg:  "holds '/'",
 		},
 		{
 			name:    "valid directory",

@@ -85,8 +85,6 @@ func TestValidatorReportsWhatTheDecoderAccepts(t *testing.T) {
 	}{
 		{"duplicate path", file("a.txt", 0) + file("a.txt", 0), false, 2, "duplicate"},
 		{"duplicate under a directory", dir("d/", 0) + file("x", 1) + file("x", 1), false, 3, "duplicate"},
-		{"parent directory name", dir("../", 0), false, 1, "name"},
-		{"dot name", file(".", 0), false, 1, "name"},
 		{"flow target with ..", flow, false, 1, "flow"},
 		{"out of order, strict", file("b.txt", 0) + file("a.txt", 0), true, 2, "ordering"},
 		{"directory before a file, strict", dir("d/", 0) + file("a.txt", 0), true, 2, "ordering"},
