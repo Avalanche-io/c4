@@ -149,6 +149,11 @@ type Result struct {
 	Updated int
 	Skipped int
 	Errors  []error
+	// LinkTimesUnset lists symlinks whose own time the plan wanted set but
+	// this platform cannot set without following the link (see
+	// linkTimeSupported). Each keeps the time it was created with; the
+	// caller reports them and must not verify their timestamps as set.
+	LinkTimesUnset []string
 }
 
 // Saver stores content by C4 ID. Used to preserve content before removal.

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/store"
@@ -298,8 +299,25 @@ func (r *Reconciler) applySymlink(op Operation, res *Result) error {
 	if err := os.Symlink(op.Entry.Target, op.Path); err != nil {
 		return err
 	}
+	// A link's own time, as setMetadata does for a file: the entry's time,
+	// or the epoch for a link created from a null time (scans back null).
+	// os.Chtimes would follow the link and change its target instead.
+	t := op.Entry.Timestamp
+	if err := r.setLinkTimeOrRecord(op.Path, t, res); err != nil {
+		return err
+	}
 	res.Created++
 	return nil
+}
+
+// setLinkTimeOrRecord sets a symlink's own time. Where the platform cannot,
+// the path is recorded in res.LinkTimesUnset rather than silently left.
+func (r *Reconciler) setLinkTimeOrRecord(path string, t time.Time, res *Result) error {
+	if !linkTimeSupported {
+		res.LinkTimesUnset = append(res.LinkTimesUnset, path)
+		return nil
+	}
+	return setLinkTime(path, t)
 }
 
 func (r *Reconciler) applyChmod(op Operation, res *Result) error {
@@ -334,6 +352,13 @@ func (r *Reconciler) applyChtimes(op Operation, res *Result) error {
 		return nil
 	}
 	if r.dryRun {
+		res.Updated++
+		return nil
+	}
+	if op.Entry.IsSymlink() {
+		if err := r.setLinkTimeOrRecord(op.Path, op.Entry.Timestamp, res); err != nil {
+			return err
+		}
 		res.Updated++
 		return nil
 	}

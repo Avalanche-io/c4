@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -223,9 +224,11 @@ func runRestore(args []string) {
 	// null mode on a created file took the platform default), so those
 	// fields legitimately differ from the target and are not compared.
 	// Line 2 prints only when recomputation reproduces the target.
-	built := projectToKnowledge(scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false), target)
+	builtScan := scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
+	verifyTarget := linkTimesAsBuilt(target, builtScan, destArg, result.LinkTimesUnset)
+	built := projectToKnowledge(builtScan, verifyTarget)
 	builtID := built.ComputeC4ID()
-	targetID := target.ComputeC4ID()
+	targetID := verifyTarget.ComputeC4ID()
 	if builtID != targetID {
 		fmt.Fprintf(os.Stderr, "verification failed: as-built %s != target %s\nre-run the restore; the pre-image %s is durable\n",
 			builtID, targetID, preID)
@@ -368,6 +371,39 @@ func opName(op reconcile.Op) string {
 // still a difference. Directory aggregates the target leaves null are
 // nulled too; ComputeC4ID then derives them the same way on both sides.
 // Projection only ever removes knowledge.
+// linkTimesAsBuilt returns the target to verify against when this platform
+// could not set some symlinks' own times (reconcile.Result.LinkTimesUnset;
+// os.Chtimes would follow a link and change its target instead). Each such
+// link keeps the time it was created with: it is named on stderr, and the
+// verification target takes that link's time from the as-built tree, so
+// verification checks everything that was set and says which times were
+// not, rather than failing on them or skipping them silently. With nothing
+// unset it returns target unchanged.
+func linkTimesAsBuilt(target, built *c4m.Manifest, dest string, unset []string) *c4m.Manifest {
+	if len(unset) == 0 {
+		return target
+	}
+	out := target.Copy()
+	want := c4m.EntryPaths(out.Entries)
+	have := c4m.EntryPaths(built.Entries)
+	for _, abs := range unset {
+		rel, err := filepath.Rel(dest, abs)
+		if err != nil {
+			continue
+		}
+		rel = filepath.ToSlash(rel)
+		t, b := want[rel], have[rel]
+		if t == nil || b == nil {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "restore: %s: this platform cannot set a symlink's own time; it keeps its creation time %s (target %s), and is verified at that time\n",
+			rel, b.Timestamp.UTC().Format(time.RFC3339), t.Timestamp.UTC().Format(time.RFC3339))
+		t.Timestamp = b.Timestamp
+	}
+	c4m.Normalize(out)
+	return out
+}
+
 func projectToKnowledge(built, target *c4m.Manifest) *c4m.Manifest {
 	want := c4m.EntryPaths(target.Entries)
 	out := built.Copy()

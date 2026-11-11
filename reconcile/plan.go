@@ -133,7 +133,18 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 				// Check if symlink target matches.
 				curTarget, lerr := os.Readlink(filepath.Join(dirPath, filepath.FromSlash(relPath)))
 				if lerr == nil && curTarget == entry.Target {
-					continue // already correct
+					// The target is right; the link's own time may not be.
+					// A null time never overwrites (null rules), so only a
+					// stated time that differs is set.
+					if !entry.Timestamp.Equal(c4m.NullTimestamp()) &&
+						!curInfo.ModTime().Truncate(time.Second).Equal(entry.Timestamp.Truncate(time.Second)) {
+						chtimes = append(chtimes, Operation{
+							Type:  OpChtimes,
+							Path:  absPath,
+							Entry: entry,
+						})
+					}
+					continue
 				}
 			}
 			symlinks = append(symlinks, Operation{

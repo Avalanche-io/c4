@@ -2,6 +2,20 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `c4 restore` sets a symlink's own time
+
+Restore recreated a symlink but never set the link's own modification
+time, so its verification failed (exit 3, "verification failed: as-built
+… != target") on any tree holding a symlink; a link whose target was
+already right but whose time differed was left alone. Restore now sets a
+link's own time without following it: on Linux with utimensat and
+AT_SYMLINK_NOFOLLOW, on darwin by opening the link itself (O_SYMLINK) and
+setting its times through the descriptor, both with the standard library
+only. A link created from a null time gets the epoch, as a file does.
+Where the platform cannot set a link's time (Windows and others, where
+os.Chtimes follows the link and would change its target), restore names
+each such link on stderr with its kept creation time, and verification
+checks the tree at that time instead of failing or skipping it silently.
 ### A name or link target ending in a backslash reads back as itself
 
 A backslash is a literal in a c4m name (only `/` separates paths), written
