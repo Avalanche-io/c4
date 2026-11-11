@@ -2,6 +2,22 @@
 
 ## Unreleased (1.0.27)
 
+### A childless directory's null size is no longer hashed as 0 ⚠
+
+A directory with no children listed under it and a null size was given
+size 0 before hashing, whatever its C4 ID said. Only the empty listing's
+ID means the directory holds nothing. With any other ID the directory is
+collapsed: its listing lives under that ID, not here. With no ID nobody
+read it. In both cases the C4 ID hashed a size the file does not state
+and nothing observed. Such a size now stays null, and only the empty
+listing's ID gives 0. **C4 IDs change for a description holding a
+directory with no listed children, a null size and a C4 ID other than
+the empty listing's, or no C4 ID.** No CLI path on this line writes such
+a line (a scan that meets an unreadable directory stops with an error);
+a description from the library or another tool can hold one, and
+`c4 id -q` and the boundary IDs of `c4 diff` hashed it. Pinned by
+`c4m/testdata/childless-dir-vector/`, byte-identical to master's.
+
 ### A link whose target starts with `c4` reads back as written
 
 A target that starts with `c4` (a C4 ID's text, `<C4 ID>.exr`, `c4studio`),
