@@ -1,0 +1,61 @@
+# Cross-implementation vector: one name, one written form (2026-11-11)
+
+The shared conformance fixture for SafeName, the Universal Filename
+Encoding. Every c4m implementation MUST pass it. One name must be written
+the same way, and so give the same C4 ID, in every implementation.
+
+## The rule, quoted
+
+C4M-STANDARD.md §2.1: `UTF8-PRINT = <any codepoint where unicode.IsPrint() is true>`.
+
+C4M-STANDARD.md §4.4.2:
+- "**Tier 1 — Printable passthrough**: Printable UTF-8 codepoints (where `unicode.IsPrint()` is true) pass through unchanged, except for `¤` (U+00A4) which is the Tier 3 escape delimiter and `\` (U+005C) which is the Tier 2 escape sigil."
+- "**Tier 2**": NUL, tab, LF, CR and backslash are written `\0`, `\t`, `\n`, `\r`, `\\`.
+- "**Tier 3 — Byte-level braille encoding**: All other non-printable bytes are encoded as Braille Pattern codepoints (U+2800–U+28FF) between `¤` … delimiters. … Invalid UTF-8 sequences are encoded byte-by-byte in Tier 3."
+- "**Canonical encoding priority**: Tier 1 > Tier 2 > Tier 3 … ensuring a unique canonical representation for every input."
+
+Go's `unicode.IsPrint` is true for letters, marks, numbers, punctuation and
+symbols, and for the ASCII space only. It is false for every other space
+separator, for control and format characters (soft hyphen, zero-width space,
+zero-width joiner, byte order mark), for the line and paragraph separators,
+for private use, unassigned code points and noncharacters.
+
+## Files
+
+Every file is written by the Go library (`TestSafeNameVector`;
+`C4M_UPDATE_VECTORS=1 go test ./c4m -run TestSafeNameVector` rewrites them,
+and the test fails if a file differs from what the library writes).
+
+| File                  | Content                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `names.c4m`           | one entry per case, named `<label>-<payload>.txt`, null timestamps                   |
+| `cases.txt`           | per case: the label, the raw name's bytes in hex, and the name field as Go writes it |
+| `root-id.txt`         | the description C4 ID of `names.c4m`                                                 |
+| `unicode-version.txt` | the Unicode version of the tables the vector was written with (`unicode.Version`)    |
+
+## What a conforming implementation MUST do
+
+- **Writer.** For each case, encode the raw name (`cases.txt` column 2) to
+  exactly the field in column 3.
+- **Reader.** Decode `names.c4m` to exactly the raw names, byte for byte, and
+  to the C4 ID in `root-id.txt`.
+
+## Measured 2026-11-11, before any fix (main and release/1.0.x alike)
+
+| Implementation | Writer matches                                                                                            | Reader exact | Root ID                            |
+| -------------- | --------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------- |
+| Go             | 31 / 31                                                                                                   | 31 / 31      | match                              |
+| c4py           | 24 / 31: three non-ASCII spaces written raw; the four invalid-UTF-8 names crash the writer                | 31 / 31      | crashes on the invalid-UTF-8 names |
+| c4ts           | 15 / 31: twelve non-printables at or above U+00A0 written raw; invalid UTF-8 can't be held in a JS string | 27 / 31      | differs                            |
+| c4m-swift      | 14 / 31: the same twelve plus U+FFFE; invalid UTF-8 can't be held in a Swift String                       | 27 / 31      | differs                            |
+| libc4          | 18 / 31: the same thirteen written raw                                                                    | 31 / 31      | differs                            |
+
+## Open questions (with Joshua)
+
+- **The Unicode version.** "where `unicode.IsPrint()` is true" follows the
+  tables of whichever Go release runs. This vector was written with Unicode
+  `17.0.0`. A code point unassigned there (`U+0378`, encoded today) passes
+  through once a later version assigns it, and the name's C4 ID changes with
+  it.
+- **Names that are not valid UTF-8** in implementations whose string type
+  cannot hold them (c4ts, c4m-swift).
