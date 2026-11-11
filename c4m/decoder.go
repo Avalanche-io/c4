@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -34,7 +35,19 @@ func NewDecoder(r io.Reader) *Decoder {
 //   - First line: references an external base manifest (set on Manifest.Base)
 //   - Subsequent lines: must match the canonical C4 ID of all content above.
 //     Entries after the boundary are applied as a patch (add/modify/delete).
-func (d *Decoder) Decode() (*Manifest, error) {
+func (d *Decoder) Decode() (result *Manifest, err error) {
+	// Patch application panics with an error wrapping ErrInvalidEntry on an
+	// entry whose depth skips past its parent (see ApplyPatch); decoding
+	// text reports it as that error instead. Any other panic is re-raised.
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(error); ok && errors.Is(e, ErrInvalidEntry) {
+				result, err = nil, e
+				return
+			}
+			panic(r)
+		}
+	}()
 	m := &Manifest{
 		Version: "1.0",
 		Entries: make([]*Entry, 0),

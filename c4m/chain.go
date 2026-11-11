@@ -112,6 +112,10 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 // observable: applyPatchTree and flattenPatchTree never read Entry.Depth, and
 // Entry.IsDir depends only on Mode and Name, so the accumulated tree carries
 // the same (path -> entry) mapping either way.
+//
+// ResolvePatchChain panics with an error wrapping ErrInvalidEntry, naming
+// the entry, if a section holds an entry whose depth skips past its parent
+// directory.
 func ResolvePatchChain(sections []*PatchSection, stopAt int) *Manifest {
 	if len(sections) == 0 {
 		return NewManifest()

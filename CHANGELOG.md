@@ -23,6 +23,18 @@ error says which content failed. A copy-on-write clone is attempted only
 when there is no ID to check against. Release 1.0.x has had this since
 2026-10-02 (5b05207); master never took it.
 
+### A c4m entry that skips its parent directory is an error, not a panic
+
+A c4m whose entry sits at a depth with no parent directory above it (a
+corrupt, truncated or hand-edited file) made patch, restore, log, diff,
+split, merge, paths and id exit 2 with `panic: runtime error: index out
+of range`. Each now exits 1 with `invalid entry: entry "y.txt" at depth 1
+has no parent directory at depth 0`. In the library, `Decoder.Decode`
+returns that error, and `ApplyPatch` and `ResolvePatchChain` panic with
+it (wrapping `ErrInvalidEntry`) instead of a bare index error. Release
+1.0.x has had this since 2026-10-02 (59ce7cc, 6cfba2c); master never
+took it.
+
 ### A symlink to an ancestor no longer crashes the scan
 
 `c4 id` on a tree holding a link to one of its own ancestors or to its

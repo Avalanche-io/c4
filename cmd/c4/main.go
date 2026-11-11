@@ -1,15 +1,33 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/Avalanche-io/c4/c4m"
 )
 
 const version = "1.0.16"
 
 func main() {
+	// A c4m whose entry skips past its parent directory (corrupt, truncated
+	// or hand-edited) makes patch application panic with an error wrapping
+	// c4m.ErrInvalidEntry. Every verb that reads such a file exits 1 with
+	// that error, not 2 with a goroutine dump: one guard here, rather than
+	// one per call site, covers every verb present and future. Any other
+	// panic is re-raised.
+	defer func() {
+		if r := recover(); r != nil {
+			if err, ok := r.(error); ok && errors.Is(err, c4m.ErrInvalidEntry) {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			panic(r)
+		}
+	}()
 	// A dying stdout (EPIPE) must never kill the process mid-claim:
 	// with SIGPIPE ignored, writes return errors the verbs handle —
 	// under -s the snapshot completes and journals; readers exit 1.

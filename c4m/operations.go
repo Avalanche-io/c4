@@ -187,6 +187,10 @@ func diffUnionNames(a, b map[string]*Entry) []string {
 //   - Exact duplicate of a base entry → removal (entry and children deleted)
 //   - Same path, different content → clobber (replace entry, recurse for dirs)
 //   - New path → addition
+//
+// ApplyPatch panics with an error wrapping ErrInvalidEntry, naming the
+// entry, if either manifest holds an entry whose depth skips past its
+// parent directory; Decoder.Decode reports the same condition as an error.
 func ApplyPatch(base, patch *Manifest) *Manifest {
 	baseTree := buildPatchTree(base)
 	patchTree := buildPatchTree(patch)
@@ -376,6 +380,18 @@ func buildPatchTree(m *Manifest) *patchNode {
 	stack[0] = root
 
 	for _, e := range m.Entries {
+		// An entry whose depth skips past its parent directory (a corrupt,
+		// truncated or hand-edited c4m) used to index past the stack and
+		// panic with a bare "index out of range" from every verb. It is a
+		// named error wrapping ErrInvalidEntry: Decoder.Decode returns it,
+		// and the CLI exits 1 with it (release 1.0.x: 59ce7cc, 6cfba2c).
+		if e.Depth < 0 {
+			panic(fmt.Errorf("%w: entry %q has negative depth %d", ErrInvalidEntry, e.Name, e.Depth))
+		}
+		if e.Depth >= len(stack) || stack[e.Depth] == nil {
+			panic(fmt.Errorf("%w: entry %q at depth %d has no parent directory at depth %d",
+				ErrInvalidEntry, e.Name, e.Depth, e.Depth-1))
+		}
 		if e.Depth+1 < len(stack) {
 			stack = stack[:e.Depth+1]
 		}
