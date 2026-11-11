@@ -383,6 +383,18 @@ func (d *Decoder) parseEntryFields(line string, mode os.FileMode) (size int64, n
 			return
 		}
 	}
+	// The size token ends at a space. Without this check "6x a.txt" read
+	// as size 6 and the name "x a.txt", a different entry with no error:
+	// a damaged field became a value (found 2026-11-10, shared
+	// damaged-line vector).
+	if pos < n && line[pos] != ' ' {
+		end := pos
+		for end < n && line[end] != ' ' {
+			end++
+		}
+		err = fmt.Errorf("invalid size %q", line[sizeStart:end])
+		return
+	}
 
 	// Skip whitespace between size and name
 	for pos < n && line[pos] == ' ' {
@@ -871,9 +883,34 @@ func parseMode(s string) (os.FileMode, error) {
 		return 0, fmt.Errorf("unknown file type: %c", s[0])
 	}
 
-	// Permission bits (standard rwx)
-	perms := uint32(0)
+	// Permission bits (standard rwx). Each position holds its own letter
+	// or '-', and the execute positions may also carry the special bits
+	// the encoder writes (s/S for setuid and setgid, t/T for sticky). Any
+	// other character is refused: it used to read as a clear bit, so a
+	// damaged mode became a different mode with no error (found
+	// 2026-11-10, shared damaged-line vector).
 	permChars := s[1:]
+	for i := 0; i < 9; i++ {
+		c := permChars[i]
+		ok := c == '-'
+		switch i % 3 {
+		case 0:
+			ok = ok || c == 'r'
+		case 1:
+			ok = ok || c == 'w'
+		case 2:
+			ok = ok || c == 'x'
+			if i == 8 {
+				ok = ok || c == 't' || c == 'T'
+			} else {
+				ok = ok || c == 's' || c == 'S'
+			}
+		}
+		if !ok {
+			return 0, fmt.Errorf("invalid permission character %q at position %d", c, i+2)
+		}
+	}
+	perms := uint32(0)
 
 	// User permissions
 	if permChars[0] == 'r' {

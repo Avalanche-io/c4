@@ -14,6 +14,20 @@ then refused the file `c4 id` had just written. A link target ending in a
 backslash had the same fault. Every backslash escape is now consumed as a
 two-byte unit, in names and in link targets. Pinned by
 `c4m/testdata/backslash-name-vector/`.
+### A damaged size or mode field is an error, not a different value
+
+The decoder read `6x real.txt` as size 6 and the name `x real.txt`, and a
+mode with a character in the wrong place (`-rw-r--r-z`, `-rr-r--r--`,
+`-rwtr--r--`) as a clear bit, so a damaged line became a different entry
+with no error. A size token now ends at a space, and each permission
+position holds its own letter or `-` (with `s`/`S` at the owner- and
+group-execute positions and `t`/`T` at the other-execute position); any
+other character is an error naming the line. Every encoder in the suite,
+the Go CLI at v1.0.21 and v1.0.25 and c4py and c4ts included, writes only
+what this accepts (measured on a real tree with setuid and sticky bits).
+Pinned for every implementation by `c4m/testdata/damaged-line-vector/`,
+which also carries the damaged-C4-ID and impossible-date cases the
+decoder already refused.
 
 ### A link line reads back as it was written
 
