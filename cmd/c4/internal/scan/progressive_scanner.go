@@ -54,10 +54,22 @@ type ProgressiveScanner struct {
 	slowMode       bool // Add artificial delays for testing
 
 	// Scan state
-	stageMu   sync.RWMutex
-	stage     ScanStage
-	entries   sync.Map // path -> *ScanEntry
+	stageMu sync.RWMutex
+	stage   ScanStage
+	entries sync.Map // path -> *ScanEntry
+	// rootEntry is set by Start and read by OutputCurrentState, which a
+	// snapshot request can call from another goroutine while Start runs;
+	// rootMu guards it (go test -race found the unguarded read).
+	rootMu    sync.Mutex
 	rootEntry *ScanEntry
+
+	// lifeMu orders Start against Stop. Start adds its goroutines to wg
+	// while the count may be zero, and a concurrent Stop may already be
+	// in wg.Wait, which sync.WaitGroup forbids (go test -race reported
+	// it when a snapshot test stopped the CLI while it started). Start
+	// registers under lifeMu and does nothing once Stop has run.
+	lifeMu  sync.Mutex
+	stopped bool
 
 	// Progress tracking
 	totalFound      int64
@@ -133,6 +145,21 @@ func NewProgressiveScanner(rootPath string) *ProgressiveScanner {
 
 // Start begins the progressive scanning process
 func (ps *ProgressiveScanner) Start() error {
+	ps.lifeMu.Lock()
+	defer ps.lifeMu.Unlock()
+	if ps.stopped {
+		// Stopped before it started: nothing to scan. Nothing else will
+		// close done (only the scan goroutine does), so close it here for
+		// Wait to return; the check keeps a second Start from closing it
+		// twice.
+		select {
+		case <-ps.done:
+		default:
+			close(ps.done)
+		}
+		return nil
+	}
+
 	// Set up signal handling
 	// On macOS/BSD, SIGINFO (Ctrl+T) is perfect for status updates
 	signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM}
@@ -157,12 +184,15 @@ func (ps *ProgressiveScanner) Start() error {
 		return fmt.Errorf("failed to stat root path: %w", err)
 	}
 	rootMD := NewFileMetadata(ps.rootPath, rootInfo, 0)
-	ps.rootEntry = &ScanEntry{
+	root := &ScanEntry{
 		FileMetadata: rootMD,
 		Path:         ps.rootPath,
 		Stage:        StageStructure,
 	}
-	ps.entries.Store(ps.rootPath, ps.rootEntry)
+	ps.rootMu.Lock()
+	ps.rootEntry = root
+	ps.rootMu.Unlock()
+	ps.entries.Store(ps.rootPath, root)
 
 	// Start scanning stages
 	ps.wg.Add(1)
@@ -580,11 +610,14 @@ func (ps *ProgressiveScanner) OutputCurrentState(w io.Writer) error {
 	}
 
 	// Add root's children directly (don't include root itself)
-	if ps.rootEntry != nil {
-		ps.rootEntry.mu.RLock()
-		children := make([]*ScanEntry, len(ps.rootEntry.children))
-		copy(children, ps.rootEntry.children)
-		ps.rootEntry.mu.RUnlock()
+	ps.rootMu.Lock()
+	root := ps.rootEntry
+	ps.rootMu.Unlock()
+	if root != nil {
+		root.mu.RLock()
+		children := make([]*ScanEntry, len(root.children))
+		copy(children, root.children)
+		root.mu.RUnlock()
 
 		// Sort children using natural sort
 		sortScanEntries(children)
@@ -686,6 +719,9 @@ func (ps *ProgressiveScanner) Wait() {
 
 // Stop gracefully stops the scanner
 func (ps *ProgressiveScanner) Stop() {
+	ps.lifeMu.Lock()
+	ps.stopped = true
+	ps.lifeMu.Unlock()
 	ps.cancel()
 	ps.wg.Wait()
 }

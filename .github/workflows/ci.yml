@@ -28,6 +28,12 @@ jobs:
           - os: macos-latest
             go: '1.21'
         include:
+          # The race detector runs on this one leg, which is required, so
+          # a race blocks a land. The key is set explicitly; the step
+          # tests race == true, so a leg without the key never runs it.
+          - os: ubuntu-latest
+            go: stable
+            race: true
           # Test Go 1.16 compatibility without race detector
           # (vet + build only on macos-latest — see LC_UUID note)
           - os: ubuntu-latest
@@ -54,5 +60,10 @@ jobs:
       - name: Test
         run: go test ./...
       - name: Test with race detector
-        if: matrix.race != false
+        # Runs only where the matrix sets race: true (ubuntu stable). The
+        # step used to read `if: matrix.race != false`, which skipped it on
+        # every leg: an unset matrix.race is null, and GitHub expressions
+        # treat null as equal to false, so the race detector never ran here
+        # (found 2026-11-11).
+        if: matrix.race == true
         run: go test -race ./...

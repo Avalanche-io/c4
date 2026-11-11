@@ -19,6 +19,26 @@ type ProgressiveCLI struct {
 	showProgress bool
 	slowMode     bool           // Add artificial delays for testing
 	wg           sync.WaitGroup // tracks background goroutines (e.g. progressReporter)
+
+	// lifeMu orders adding the progress reporter against Stop's wait, as
+	// ProgressiveScanner.lifeMu does for the scanner: an Add at count
+	// zero may not run concurrently with a Wait.
+	lifeMu  sync.Mutex
+	stopped bool
+}
+
+// startReporter runs the progress reporter unless Stop has already run.
+func (pc *ProgressiveCLI) startReporter() {
+	pc.lifeMu.Lock()
+	defer pc.lifeMu.Unlock()
+	if pc.stopped {
+		return
+	}
+	pc.wg.Add(1)
+	go func() {
+		defer pc.wg.Done()
+		pc.progressReporter()
+	}()
 }
 
 // NewProgressiveCLI creates a new CLI interface
@@ -114,11 +134,7 @@ func (pc *ProgressiveCLI) Run() error {
 
 	// Start progress reporter if enabled
 	if pc.showProgress {
-		pc.wg.Add(1)
-		go func() {
-			defer pc.wg.Done()
-			pc.progressReporter()
-		}()
+		pc.startReporter()
 	}
 
 	// Wait for completion or interrupt
@@ -383,11 +399,7 @@ func (pc *ProgressiveCLI) RunWithTimeout(timeout time.Duration) error {
 
 	// Start progress reporter if enabled
 	if pc.showProgress {
-		pc.wg.Add(1)
-		go func() {
-			defer pc.wg.Done()
-			pc.progressReporter()
-		}()
+		pc.startReporter()
 	}
 
 	// Wait for completion or timeout
@@ -427,6 +439,9 @@ func (pc *ProgressiveCLI) OutputSnapshot(w io.Writer) error {
 
 // Stop gracefully stops the scanner and waits for all CLI goroutines
 func (pc *ProgressiveCLI) Stop() {
+	pc.lifeMu.Lock()
+	pc.stopped = true
+	pc.lifeMu.Unlock()
 	pc.scanner.Stop()
 	pc.wg.Wait()
 }
