@@ -16,6 +16,10 @@ Now:
   directory's trailing one, or is a path component, with an error naming
   the line. The check runs on the decoded name, so an escaped `/` is refused
   too.
+- **`Manifest.ComputeC4ID`** gives the nil C4 ID for a manifest holding such
+  a name, at any depth, since no conforming text exists to hash. `Canonical`
+  gives "", and `WriteCanonical` writes nothing and errs. `Validate` names
+  the entry.
 - **`Encoder.Encode` and `EncodePatch`** refuse to write such a name, with
   `ErrPathTraversal`, before writing anything.
 
