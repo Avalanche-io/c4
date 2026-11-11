@@ -116,9 +116,17 @@ func (m *Manifest) SortEntries() {
 // Canonical returns the canonical form for C4 ID computation.
 // For large manifests prefer WriteCanonical to avoid materializing the
 // full canonical text in memory.
+//
+// A manifest holding a name the format forbids (a name holding "/" other
+// than a directory's trailing one, or ".", "..", "./", "../", "/") has no
+// canonical text: no conforming c4m spells it, and every decoder refuses
+// such a line. Canonical returns "" for it, never text a reader would
+// refuse; Validate names the entry.
 func (m *Manifest) Canonical() string {
 	var buf bytes.Buffer
-	_ = m.WriteCanonical(&buf)
+	if err := m.WriteCanonical(&buf); err != nil {
+		return ""
+	}
 	return buf.String()
 }
 
@@ -126,7 +134,14 @@ func (m *Manifest) Canonical() string {
 // entry per line. The bytes written are byte-identical to Canonical().
 // This lets very large manifests be hashed (or otherwise consumed)
 // without allocating the full canonical text as a single string.
+//
+// A manifest holding a name the format forbids has no canonical form:
+// WriteCanonical writes nothing and returns an error wrapping
+// ErrPathTraversal that names the entry.
 func (m *Manifest) WriteCanonical(w io.Writer) error {
+	if err := refusePathNames(m); err != nil {
+		return err
+	}
 	// Find the minimum depth — only entries at that depth render at the
 	// top level of this manifest's canonical form.
 	minDepth := -1
@@ -185,7 +200,14 @@ func (m *Manifest) WriteCanonical(w io.Writer) error {
 // The canonical bytes are streamed through an io.Pipe into c4.Identify
 // rather than materialized as a single string — for manifests with
 // millions of entries this avoids a multi-hundred-MB allocation.
+//
+// A manifest holding a name the format forbids, at any depth, has no C4 ID:
+// no conforming c4m text exists to hash. ComputeC4ID returns the nil ID,
+// the format's "unavailable", and Validate names the entry.
 func (m *Manifest) ComputeC4ID() c4.ID {
+	if refusePathNames(m) != nil {
+		return c4.ID{}
+	}
 	// Make a copy to avoid modifying the original.
 	canonical := m.Copy()
 	canonical.Canonicalize()

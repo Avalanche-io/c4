@@ -156,3 +156,39 @@ func TestEncoderRefusesNamesThatArePaths(t *testing.T) {
 		t.Errorf("a directory name ending in / must be written: %v", err)
 	}
 }
+
+// A manifest built in code with a name the format forbids has no C4 ID and
+// no canonical text: no conforming c4m spells it. ComputeC4ID gives the nil
+// ID (the format's "unavailable"), Canonical gives "", WriteCanonical
+// writes nothing and errs, and Validate names the entry. A forbidden name
+// nested under a directory takes the whole tree's ID with it.
+func TestForbiddenNameHasNoC4ID(t *testing.T) {
+	ts := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	flat := NewManifest()
+	flat.AddEntry(&Entry{Mode: 0o644, Timestamp: ts, Size: 6, Name: "sub/real.txt", C4ID: c4.Identify(strings.NewReader("hello\n"))})
+	nested := NewManifest()
+	nested.AddEntry(&Entry{Mode: os.ModeDir | 0o755, Timestamp: ts, Size: -1, Name: "d/"})
+	nested.AddEntry(&Entry{Mode: 0o644, Timestamp: ts, Size: 6, Name: "../real.txt", Depth: 1, C4ID: c4.Identify(strings.NewReader("hello\n"))})
+	for label, m := range map[string]*Manifest{"flat": flat, "nested": nested} {
+		if id := m.ComputeC4ID(); !id.IsNil() {
+			t.Errorf("%s: ComputeC4ID = %s, want the nil ID", label, id)
+		}
+		if text := m.Canonical(); text != "" {
+			t.Errorf("%s: Canonical = %q, want no text", label, text)
+		}
+		var b bytes.Buffer
+		if err := m.WriteCanonical(&b); err == nil || b.Len() != 0 {
+			t.Errorf("%s: WriteCanonical wrote %q, err %v; want nothing and an error", label, b.String(), err)
+		}
+		err := m.Validate()
+		if err == nil || !strings.Contains(err.Error(), "real.txt") {
+			t.Errorf("%s: Validate must name the entry, got %v", label, err)
+		}
+	}
+	// The same tree with a sound name keeps its ID.
+	ok := NewManifest()
+	ok.AddEntry(&Entry{Mode: 0o644, Timestamp: ts, Size: 6, Name: "real.txt", C4ID: c4.Identify(strings.NewReader("hello\n"))})
+	if ok.ComputeC4ID().IsNil() || ok.Canonical() == "" {
+		t.Error("a sound manifest must keep its ID and text")
+	}
+}
