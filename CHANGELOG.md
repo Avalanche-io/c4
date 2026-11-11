@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A name holding a backslash is valid
+
+Only `/` separates paths in c4m. A backslash, a colon and every other
+byte is a literal character in a name, written `\\` by SafeName where
+needed. The scanner, the decoder and `c4 restore` already handled such
+names, but the library refused them: `Manifest.Validate` reported a name
+like `trail\` as path traversal, and the line Validator rejected any
+backslash in a name, so a description of a real tree failed validation.
+Both now accept it; `/` and null bytes are still refused.
+SPECIFICATION.md's name rules say `/` where they said "path separators".
+
 ### A collapsed directory's null size is no longer hashed as 0 ⚠
 
 A directory with no children listed under it and a C4 ID other than the

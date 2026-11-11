@@ -1210,7 +1210,6 @@ func TestValidateNameCoverage(t *testing.T) {
 		{"null bytes in name", "-rw-r--r-- 2025-01-01T00:00:00Z 100 file\x00.txt\n"},
 		{"directory name just /", "drwxr-xr-x 2025-01-01T00:00:00Z 4096 /\n"},
 		{"embedded path separator", "-rw-r--r-- 2025-01-01T00:00:00Z 100 sub/file.txt\n"},
-		{"windows backslash", "-rw-r--r-- 2025-01-01T00:00:00Z 100 sub\\file.txt\n"},
 		{"dot directory", "drwxr-xr-x 2025-01-01T00:00:00Z 0 ./\n"},
 		{"dotdot directory", "drwxr-xr-x 2025-01-01T00:00:00Z 0 ../\n"},
 		{"dot file", "-rw-r--r-- 2025-01-01T00:00:00Z 100 .\n"},
@@ -1908,5 +1907,16 @@ func TestOperationsBasic(t *testing.T) {
 	}
 	if diff == nil {
 		t.Error("Diff returned nil results")
+	}
+}
+
+// TestValidateNameAcceptsBackslash: only "/" separates paths in c4m, so a
+// backslash (written "\\" by SafeName) is a literal in a name and accepted
+// (2026-11-11). It used to be refused as a "windows backslash".
+func TestValidateNameAcceptsBackslash(t *testing.T) {
+	v := NewValidator(true)
+	input := "-rw-r--r-- 2025-01-01T00:00:00Z 100 sub\\\\file.txt -\n"
+	if err := v.ValidateManifest(strings.NewReader(input)); err != nil {
+		t.Errorf("a name holding a backslash was refused: %v", err)
 	}
 }

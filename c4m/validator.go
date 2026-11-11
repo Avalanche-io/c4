@@ -228,9 +228,6 @@ func (v *Validator) validateEntry(line string) {
 			v.addError(v.lineNum, 0, "name", fmt.Sprintf("file name contains path separator '/': '%s' — use depth/indentation for hierarchy", rawName), false)
 		}
 	}
-	if strings.Contains(rawName, "\\") {
-		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains backslash: '%s' — backslash is not allowed in c4m names", rawName), false)
-	}
 
 	// Extract name (handle quoted names)
 	name, symTarget, flowOp, flowTgt, c4id := v.parseNameAndRest(fields[nameStart:])
@@ -416,9 +413,9 @@ func (v *Validator) validateName(name string, depth int) {
 		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains path separator '/': '%s' — use depth/indentation for hierarchy", name), false)
 	}
 
-	if strings.Contains(base, "\\") {
-		v.addError(v.lineNum, 0, "name", fmt.Sprintf("name contains backslash: '%s' — backslash is not allowed in c4m names", name), false)
-	}
+	// A backslash is a literal character in a name (only "/" separates
+	// paths), written "\\" by SafeName; it is not refused here
+	// (backslash-name vector, 2026-11-11).
 
 	if strings.Contains(base, "\x00") {
 		v.addError(v.lineNum, 0, "name", "null bytes not allowed in names", false)

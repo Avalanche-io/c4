@@ -311,10 +311,11 @@ func TestInvalidDirectoryNames(t *testing.T) {
 			errMsg:  "path separator",
 		},
 		{
-			name:    "windows backslash",
-			line:    "-rw-r--r-- 2025-09-19T12:00:00Z 100 sub\\file.txt",
-			wantErr: true,
-			errMsg:  "backslash",
+			// Only "/" separates paths in c4m: a backslash is a literal
+			// character, written "\\" by SafeName (2026-11-11).
+			name:    "backslash is a literal",
+			line:    "-rw-r--r-- 2025-09-19T12:00:00Z 100 sub\\\\file.txt",
+			wantErr: false,
 		},
 		{
 			name:    "leading slash in name",

@@ -69,8 +69,10 @@ func (m *Manifest) AddEntry(e *Entry) {
 // A valid c4m entry name is a bare filename optionally followed by a
 // trailing "/" to mark directories. The base name (without trailing slash)
 // must not be empty, must not be "." or "..", and must not contain "/" or
-// "\" or null bytes. This is fully decidable because c4m unifies all
-// paths to Unix-style separators.
+// null bytes. Only "/" separates paths in c4m: a backslash is a literal
+// character in a name, written "\\" by SafeName (a platform that cannot
+// hold it maps or refuses it when it materialises the tree). Refusing it
+// here rejected names real filesystems hold, such as "trail\" (2026-11-11).
 func isPathName(name string) bool {
 	if name == "" {
 		return true
@@ -83,7 +85,7 @@ func isPathName(name string) bool {
 	if base == "." || base == ".." {
 		return true
 	}
-	if strings.ContainsAny(base, "/\\\x00") {
+	if strings.ContainsAny(base, "/\x00") {
 		return true
 	}
 	return false
