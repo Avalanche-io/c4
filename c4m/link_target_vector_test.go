@@ -94,10 +94,19 @@ func TestLinkTargetVector(t *testing.T) {
 			}
 		}
 	}
+	committed := map[string][]byte{}
 	for name, want := range files {
 		got, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			t.Fatal(err)
+		}
+		committed[name] = got
+		// This line's pretty writer prints a null mode as ten dashes, where
+		// master prints "-" (the zero-versus-null rule is held off 1.0.x),
+		// so only the pretty file's bytes may differ; it must still decode
+		// exactly, below.
+		if name == "pretty.c4m" {
+			continue
 		}
 		if !bytes.Equal(got, want) {
 			t.Errorf("%s differs from what the library writes:\n--- file\n%s--- library\n%s", name, got, want)
@@ -123,7 +132,7 @@ func TestLinkTargetVector(t *testing.T) {
 		}
 	}
 	for _, form := range []string{"canonical.c4m", "pretty.c4m"} {
-		dec, err := Unmarshal(files[form])
+		dec, err := Unmarshal(committed[form])
 		if err != nil {
 			t.Fatalf("%s: %v", form, err)
 		}
