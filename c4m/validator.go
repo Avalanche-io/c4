@@ -82,11 +82,12 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	v.currentPath = ""
 
 	var (
-		section = -1
-		dirs    []string          // open directory names by depth
-		lineOf  map[string]int    // path -> line, this section
-		lastKid map[string]*Entry // parent path -> previous sibling, this section
-		stopped bool
+		section       = -1
+		dirs          []string          // open directory names by depth
+		lineOf        map[string]int    // path -> line, this section
+		lastKid       map[string]*Entry // parent path -> previous sibling, this section
+		stopped       bool
+		firstIndented int // line of the first entry below the top level
 	)
 	report := func(line int, field, msg string) {
 		if stopped {
@@ -103,6 +104,9 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	d := NewDecoder(r)
 	d.quiet = true
 	d.onEntry = func(line, sec int, e *Entry) {
+		if e.Depth > 0 && firstIndented == 0 {
+			firstIndented = line
+		}
 		if sec != section {
 			section = sec
 			dirs = dirs[:0]
@@ -140,6 +144,18 @@ func (v *Validator) ValidateManifest(r io.Reader) error {
 	}
 	if _, err := d.Decode(); err != nil {
 		v.errors = append(v.errors, ValidationError{Line: d.lineNum, Field: "decode", Message: err.Error(), Fatal: true})
+	}
+	// The decoder accepts any consistent indent unit, since the library's
+	// own public APIs can write one (Encoder.SetIndent, Entry.Format);
+	// canonical output always indents by 2. A unit other than 2 is a
+	// warning, and with Strict an error, at the first indented line.
+	if d.indentWidth > 0 && d.indentWidth != 2 {
+		msg := fmt.Sprintf("indent unit is %d spaces; canonical c4m indents by 2", d.indentWidth)
+		if v.Strict {
+			report(firstIndented, "indentation", msg)
+		} else {
+			v.warnings = append(v.warnings, ValidationError{Line: firstIndented, Field: "indentation", Message: msg})
+		}
 	}
 	return v.getResult()
 }

@@ -14,7 +14,8 @@ import (
 // The Validator reads through the decoder: on every shared vector file, in
 // strict and lax mode, it refuses exactly the files the decoder refuses, at
 // the decoder's line, and accepts every file the decoder reads (each is
-// library-written, so in canonical order). Before, its own parser disagreed
+// library-written, so in canonical order; strict mode also refuses a
+// non-canonical indent unit). Before, its own parser disagreed
 // with the decoder on 18 of the 31 vector files then present.
 func TestValidatorAgreesWithTheDecoderOnEveryVector(t *testing.T) {
 	var files []string
@@ -36,6 +37,13 @@ func TestValidatorAgreesWithTheDecoderOnEveryVector(t *testing.T) {
 		for _, strict := range []bool{true, false} {
 			v := NewValidator(strict)
 			verr := v.ValidateManifest(bytes.NewReader(b))
+			// Strict also requires canonical indentation, which the decoder
+			// does not (ok-indent-3 in the name-escape vector is written by
+			// the library with SetIndent(3)): that is its only addition on a
+			// file the decoder reads.
+			if derr == nil && strict && verr != nil && onlyIndentation(v.GetErrors()) {
+				continue
+			}
 			if (derr != nil) != (verr != nil) {
 				t.Errorf("%s (strict %v): decoder %v, Validator %v", f, strict, derr, verr)
 				continue
@@ -115,4 +123,13 @@ func TestValidatorReportsWhatTheDecoderAccepts(t *testing.T) {
 	if err := NewValidator(true).ValidateManifest(strings.NewReader(file("f9", 0) + file("f10", 0))); err != nil {
 		t.Errorf("strict mode refused natural order: %v", err)
 	}
+}
+
+func onlyIndentation(errs []ValidationError) bool {
+	for _, e := range errs {
+		if e.Field != "indentation" {
+			return false
+		}
+	}
+	return len(errs) > 0
 }

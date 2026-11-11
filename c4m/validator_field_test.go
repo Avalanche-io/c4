@@ -117,14 +117,21 @@ func TestDirectoryNameParsing(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "directory with spaces",
-			line:     "drwxr-xr-x 2025-09-19T12:00:00Z 0 my directory name/",
+			// A name's spaces are written "\ "; unescaped, they are
+			// refused (name-escape vector).
+			name:    "directory with unescaped spaces",
+			line:    "drwxr-xr-x 2025-09-19T12:00:00Z 0 my directory name/",
+			wantErr: true,
+		},
+		{
+			name:     "directory with escaped spaces",
+			line:     `drwxr-xr-x 2025-09-19T12:00:00Z 0 my\ directory\ name/`,
 			wantName: "my directory name/",
 			wantErr:  false,
 		},
 		{
 			name:     "directory starting with number",
-			line:     "drwxr-xr-x 2025-09-19T12:00:00Z 100 0 dirname/",
+			line:     `drwxr-xr-x 2025-09-19T12:00:00Z 100 0\ dirname/`,
 			wantName: "0 dirname/",
 			wantErr:  false,
 		},
@@ -142,7 +149,7 @@ func TestDirectoryNameParsing(t *testing.T) {
 		},
 		{
 			name:     "directory with complex name",
-			line:     "drwxr-xr-x 2025-09-19T12:00:00Z 256 my-project_v2.0 (beta)/",
+			line:     `drwxr-xr-x 2025-09-19T12:00:00Z 256 my-project_v2.0\ (beta)/`,
 			wantName: "my-project_v2.0 (beta)/",
 			wantErr:  false,
 		},

@@ -330,9 +330,12 @@ func escapeC4MName(s string, isSequence bool) string {
 func formatSequenceName(name string) string {
 	matches := sequencePattern.FindStringIndex(name)
 	if matches == nil {
-		// No range notation found — shouldn't happen for isSequence entries,
-		// but fall back to returning name as-is
-		return name
+		// No range notation: not a sequence after all, so it is written as
+		// an ordinary name, SafeName then field escaping, brackets
+		// included. Through 1.0.26 this returned the raw name, the one path
+		// that could write an unescaped space, quote or control byte
+		// (an API caller setting IsSequence on a name without a range).
+		return escapeC4MName(SafeName(name), false)
 	}
 	prefix := name[:matches[0]]
 	rangePart := name[matches[0]:matches[1]]

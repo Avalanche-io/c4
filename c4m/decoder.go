@@ -624,6 +624,18 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 			hasUnescapedBrackets = true
 		}
 
+		// A double quote is reserved and written \" in a name, and a control
+		// byte is encoded by SafeName (\t, \n, or braille between ¤), so a
+		// raw one never comes from a conforming writer: it is damage, and
+		// is refused rather than read as part of the name (name-escape
+		// vector; SPECIFICATION.md "c4m field-boundary escaping").
+		if ch == '"' {
+			return "", pos, false, fmt.Errorf("name %q holds a raw '\"' (written \\\" in a name)", buf.String()+line[pos:nameFieldEnd(line, pos)])
+		}
+		if ch < 0x20 {
+			return "", pos, false, fmt.Errorf("name %q holds a raw control byte 0x%02X (SafeName encodes it)", buf.String()+line[pos:nameFieldEnd(line, pos)], ch)
+		}
+
 		// A "/" ends a directory's name, and only there: the field must end
 		// with it. Anything after it but a space was part of the name, so
 		// the name holds a "/" and is refused. Before, the name was cut at
@@ -666,6 +678,11 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 			if rest[0] == '-' && (len(rest) == 1 || rest[1] == ' ') {
 				return buf.String(), pos, hasUnescapedBrackets, nil
 			}
+			// A space that is not a field boundary would be part of the
+			// name, but a name's space is written "\ ": an unescaped one
+			// is damage, often a damaged C4 ID field that would otherwise
+			// join the name ("real.txt invalid-c4-id"). Refused.
+			return "", pos, false, fmt.Errorf("name %q holds an unescaped space (written \"\\ \" in a name), or its C4 ID field is damaged", buf.String()+" "+rest[:nameFieldEnd(rest, 0)])
 		}
 		buf.WriteByte(ch)
 		pos++
