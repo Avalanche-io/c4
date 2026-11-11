@@ -573,10 +573,11 @@ func (ps *ProgressiveScanner) computeC4ID(entry *ScanEntry) {
 		return
 	}
 
-	// Set the C4 ID in FileMetadata
-	entry.FileMetadata.SetID(id)
-
+	// Set the C4 ID and the stage under the entry's lock: a snapshot
+	// (scanEntryToEntry) reads both under its read lock while the scan
+	// runs (go test -race, the snapshot-during-Start test, Linux CI).
 	entry.mu.Lock()
+	entry.FileMetadata.SetID(id)
 	entry.Stage = StageC4ID
 	entry.mu.Unlock()
 
