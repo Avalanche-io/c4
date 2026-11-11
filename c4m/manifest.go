@@ -503,6 +503,10 @@ func (m *Manifest) sortSiblingsHierarchically() {
 // Metadata Propagation
 // ----------------------------------------------------------------------------
 
+// emptyListingID is the C4 ID of an empty listing: the ID of zero bytes.
+// A directory with no listed children and this ID is known to be empty.
+var emptyListingID = c4.Identify(bytes.NewReader(nil))
+
 // PropagateMetadata resolves null directory Size and Timestamp by accumulating
 // from descendants in a single pass. This is the canonical, spec-compliant
 // implementation — the scan package and any other producer of c4m.Manifest
@@ -594,12 +598,17 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 		// with no ID is one nobody read (a chmod 000 directory in a scan,
 		// or a hand-written line): its size stays null, because 0 beside
 		// no ID is a known empty, and nothing here knows that (2026-11-09).
+		// A childless directory with any other ID is collapsed: its
+		// listing lives under that ID, not here, so nothing here can
+		// derive its size and a null stays null. Through 2026-11-11 any
+		// non-nil ID gave 0, an invented value ComputeC4ID then hashed
+		// (childless-dir vector).
 		if d.Size < 0 {
 			switch {
-			case !top.hadChildren && d.C4ID.IsNil():
-				d.Size = -1
-			case !top.hadChildren:
+			case !top.hadChildren && d.C4ID == emptyListingID:
 				d.Size = 0
+			case !top.hadChildren:
+				d.Size = -1
 			case top.nullSize:
 				d.Size = -1
 			default:

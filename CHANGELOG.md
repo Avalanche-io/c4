@@ -2,6 +2,23 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A collapsed directory's null size is no longer hashed as 0 ⚠
+
+A directory with no children listed under it and a C4 ID other than the
+empty listing's is collapsed: its listing lives under that ID. When its
+size was null, `ComputeC4ID` gave it size 0 before hashing, because any
+non-nil ID was taken to mean empty. The C4 ID therefore hashed a size
+the file does not state and nothing observed. A collapsed directory's
+null size now stays null, and only the empty listing's ID gives 0. **C4
+IDs change for a description holding a directory known only by its C4
+ID with a null size.** No CLI path writes such a line; a description
+from the library or another tool can hold one, and `c4 id -q` and the
+boundary IDs of `c4 diff` hashed it. `Normalize` now also fills 0 for an
+empty-listing directory in a tree with no other directory to re-derive,
+where it used to leave null and disagree with `ComputeC4ID`. Pinned by
+`c4m/testdata/childless-dir-vector/`; SPECIFICATION.md "Empty and Unread
+Directories" names the collapsed case.
+
 ### `c4 restore` sets a symlink's own time
 
 Restore recreated a symlink but never set the link's own modification

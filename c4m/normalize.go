@@ -92,10 +92,15 @@ func Normalize(m *Manifest) []Change {
 		e.Size = -1
 		e.C4ID = c4.ID{}
 	}
+	// Always propagate: a childless directory's null size is filled when
+	// its ID is the empty listing's (it is known empty, size 0), even in a
+	// tree with no directory to re-derive. Returning early here left that
+	// size null, so Normalize disagreed with ComputeC4ID (childless-dir
+	// vector).
+	propagateMetadata(m.Entries, true)
 	if len(before) == 0 {
 		return nil
 	}
-	propagateMetadata(m.Entries, true)
 
 	paths := make(map[*Entry]string, len(m.Entries))
 	for p, e := range EntryPaths(m.Entries) {
