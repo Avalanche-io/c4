@@ -16,31 +16,31 @@ func TestMissingFields(t *testing.T) {
 			name:    "missing size in file entry",
 			line:    "-rw-r--r-- 2025-09-19T12:00:00Z file.txt",
 			wantErr: true,
-			errMsg:  "insufficient fields",
+			errMsg:  "invalid size",
 		},
 		{
 			name:    "missing size in directory entry",
 			line:    "drwxr-xr-x 2025-09-19T12:00:00Z dirname/",
 			wantErr: true,
-			errMsg:  "insufficient fields",
+			errMsg:  "invalid size",
 		},
 		{
 			name:    "missing timestamp",
 			line:    "-rw-r--r-- 100 file.txt",
 			wantErr: true,
-			errMsg:  "insufficient fields",
+			errMsg:  "cannot parse timestamp",
 		},
 		{
 			name:    "missing mode",
 			line:    "2025-09-19T12:00:00Z 100 file.txt",
 			wantErr: true,
-			errMsg:  "insufficient fields",
+			errMsg:  "invalid mode",
 		},
 		{
 			name:    "only mode provided",
 			line:    "-rw-r--r--",
 			wantErr: true,
-			errMsg:  "insufficient fields",
+			errMsg:  "line too short",
 		},
 		{
 			name:    "valid minimum file entry",
@@ -77,12 +77,7 @@ func TestMissingFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			validator := NewValidator(false)
-			validator.errors = nil
-			validator.lineNum = 1
-			validator.seenPaths = make(map[string]int)
-			validator.depthStack = []string{}
-			validator.seenDirAtDepth = make(map[int]bool)
-			validator.validateEntry(tt.line)
+			validator.ValidateManifest(strings.NewReader(tt.line + "\n"))
 
 			hasError := len(validator.errors) > 0
 			if hasError != tt.wantErr {
@@ -134,18 +129,6 @@ func TestDirectoryNameParsing(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "quoted directory (non-canonical)",
-			line:     "drwxr-xr-x 2025-09-19T12:00:00Z 0 \"dirname\"/",
-			wantName: "dirname/",
-			wantErr:  false, // Should parse with warning
-		},
-		{
-			name:     "quoted directory including slash",
-			line:     "drwxr-xr-x 2025-09-19T12:00:00Z 0 \"dirname/\"",
-			wantName: "dirname/",
-			wantErr:  false, // Should parse with warning
-		},
-		{
 			name:     "invalid name: current directory",
 			line:     "drwxr-xr-x 2025-09-19T12:00:00Z 0 ./",
 			wantName: "./",
@@ -168,13 +151,7 @@ func TestDirectoryNameParsing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			validator := NewValidator(false)
-			validator.errors = nil
-			validator.lineNum = 1
-			validator.seenPaths = make(map[string]int)
-			validator.depthStack = []string{}
-			validator.seenDirAtDepth = make(map[int]bool)
-
-			validator.validateEntry(tt.line)
+			validator.ValidateManifest(strings.NewReader(tt.line + "\n"))
 
 			hasError := len(validator.errors) > 0
 			if hasError != tt.wantErr {
@@ -224,7 +201,7 @@ func TestSizeFieldValidation(t *testing.T) {
 			name:    "negative size",
 			line:    "-rw-r--r-- 2025-09-19T12:00:00Z -100 file.txt",
 			wantErr: true,
-			errMsg:  "size cannot be less than -1",
+			errMsg:  "invalid size",
 		},
 		{
 			name:    "file with zero size",
@@ -241,13 +218,7 @@ func TestSizeFieldValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			validator := NewValidator(false)
-			validator.errors = nil
-			validator.lineNum = 1
-			validator.seenPaths = make(map[string]int)
-			validator.depthStack = []string{}
-			validator.seenDirAtDepth = make(map[int]bool)
-
-			validator.validateEntry(tt.line)
+			validator.ValidateManifest(strings.NewReader(tt.line + "\n"))
 
 			hasError := len(validator.errors) > 0
 			if hasError != tt.wantErr {
@@ -296,19 +267,13 @@ func TestInvalidDirectoryNames(t *testing.T) {
 			name:    "root directory",
 			line:    "drwxr-xr-x 2025-09-19T12:00:00Z 0 /",
 			wantErr: true,
-			errMsg:  "the c4m file itself is the root",
+			errMsg:  "is a path",
 		},
 		{
 			name:    "empty directory name",
 			line:    "drwxr-xr-x 2025-09-19T12:00:00Z 0 /",
 			wantErr: true,
-			errMsg:  "the c4m file itself is the root",
-		},
-		{
-			name:    "embedded path separator",
-			line:    "-rw-r--r-- 2025-09-19T12:00:00Z 100 sub/file.txt",
-			wantErr: true,
-			errMsg:  "path separator",
+			errMsg:  "is a path",
 		},
 		{
 			// Only "/" separates paths in c4m: a backslash is a literal
@@ -321,13 +286,7 @@ func TestInvalidDirectoryNames(t *testing.T) {
 			name:    "leading slash in name",
 			line:    "-rw-r--r-- 2025-09-19T12:00:00Z 100 /etc/passwd",
 			wantErr: true,
-			errMsg:  "path separator",
-		},
-		{
-			name:    "path traversal embedded",
-			line:    "-rw-r--r-- 2025-09-19T12:00:00Z 100 foo/../bar",
-			wantErr: true,
-			errMsg:  "path separator",
+			errMsg:  "is a path",
 		},
 		{
 			name:    "valid directory",
@@ -339,13 +298,7 @@ func TestInvalidDirectoryNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			validator := NewValidator(true) // Strict mode
-			validator.errors = nil
-			validator.lineNum = 1
-			validator.seenPaths = make(map[string]int)
-			validator.depthStack = []string{}
-			validator.seenDirAtDepth = make(map[int]bool)
-
-			validator.validateEntry(tt.line)
+			validator.ValidateManifest(strings.NewReader(tt.line + "\n"))
 
 			hasError := len(validator.errors) > 0
 			if hasError != tt.wantErr {

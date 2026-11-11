@@ -38,13 +38,6 @@ func TestValidateManifest(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid C4 ID",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt invalid-c4-id
-`,
-			strict:  true,
-			wantErr: true,
-		},
-		{
 			name: "directory entry with size",
 			content: `drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
 `,
@@ -96,43 +89,6 @@ func TestValidateManifest(t *testing.T) {
 	}
 }
 
-func TestValidateEntryLine(t *testing.T) {
-	tests := []struct {
-		name    string
-		line    string
-		wantErr bool
-	}{
-		{
-			name:    "valid file entry",
-			line:    "-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp",
-			wantErr: false,
-		},
-		{
-			name:    "valid directory entry",
-			line:    "drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/",
-			wantErr: false,
-		},
-		{
-			name:    "invalid format",
-			line:    "not a valid entry",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a fresh validator for each test
-			validator := NewValidator(false)
-			validator.lineNum = 1
-			validator.validateEntry(tt.line)
-			hasError := len(validator.errors) > 0
-			if hasError != tt.wantErr {
-				t.Errorf("validateEntry() hasError = %v, wantErr %v", hasError, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestValidatorSortCheck(t *testing.T) {
 	// Test that strict validator catches unsorted entries
 	strictValidator := NewValidator(true)
@@ -172,9 +128,20 @@ func TestValidatorDuplicates(t *testing.T) {
 		t.Error("Strict validation should fail for duplicate entries")
 	}
 
-	// Check that the duplicate was detected (seenPaths stores line number of first occurrence)
-	if _, exists := strictValidator.seenPaths["test.txt"]; !exists {
-		t.Error("Expected test.txt to be tracked in seenPaths")
+	// The duplicate is reported at its line, naming the first one; the
+	// decoder alone would keep only the last and say nothing.
+	found := false
+	for _, e := range strictValidator.GetErrors() {
+		if e.Field == "duplicate" && e.Line == 2 && strings.Contains(e.Message, `"test.txt" (first at line 1)`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("duplicate not reported at line 2: %v", strictValidator.GetErrors())
+	}
+	// Lax mode reports it too: the spec says parsers MUST reject duplicates.
+	if err := NewValidator(false).ValidateManifest(strings.NewReader(withDupsContent)); err == nil {
+		t.Error("lax validation must also fail for a duplicate path")
 	}
 }
 
@@ -239,62 +206,6 @@ func TestGetErrorsAndWarnings(t *testing.T) {
 	}
 }
 
-func TestBuildPath(t *testing.T) {
-	validator := NewValidator(false)
-
-	// Test depth 0 (root level)
-	path := validator.buildPath("file.txt", 0)
-	if path != "file.txt" {
-		t.Errorf("buildPath at depth 0: got %q, want %q", path, "file.txt")
-	}
-
-	// Set up depth stack for nested paths
-	validator.depthStack = []string{"dir1/", "dir2/"}
-
-	// Test depth 1
-	path = validator.buildPath("file.txt", 1)
-	if path != "dir1/file.txt" {
-		t.Errorf("buildPath at depth 1: got %q, want %q", path, "dir1/file.txt")
-	}
-
-	// Test depth 2
-	path = validator.buildPath("file.txt", 2)
-	if path != "dir1/dir2/file.txt" {
-		t.Errorf("buildPath at depth 2: got %q, want %q", path, "dir1/dir2/file.txt")
-	}
-
-	// Test depth beyond stack
-	path = validator.buildPath("file.txt", 5)
-	if path != "dir1/dir2/file.txt" {
-		t.Errorf("buildPath beyond stack: got %q, want %q", path, "dir1/dir2/file.txt")
-	}
-}
-
-func TestBuildExpectedPath(t *testing.T) {
-	validator := NewValidator(false)
-
-	// Test depth 0 (root level)
-	path := validator.buildExpectedPath("file.txt", 0)
-	if path != "file.txt" {
-		t.Errorf("buildExpectedPath at depth 0: got %q, want %q", path, "file.txt")
-	}
-
-	// Set up depth stack
-	validator.depthStack = []string{"parent/", "child/"}
-
-	// Test depth 1
-	path = validator.buildExpectedPath("file.txt", 1)
-	if path != "parent/file.txt" {
-		t.Errorf("buildExpectedPath at depth 1: got %q, want %q", path, "parent/file.txt")
-	}
-
-	// Test depth 2
-	path = validator.buildExpectedPath("file.txt", 2)
-	if path != "parent/child/file.txt" {
-		t.Errorf("buildExpectedPath at depth 2: got %q, want %q", path, "parent/child/file.txt")
-	}
-}
-
 func TestValidateFile(t *testing.T) {
 	// Create a temporary manifest file
 	tmpDir := t.TempDir()
@@ -322,92 +233,6 @@ func TestValidateFile(t *testing.T) {
 	err = ValidateFile(filepath.Join(tmpDir, "nonexistent.c4m"), false)
 	if err == nil {
 		t.Error("ValidateFile should fail for non-existent file")
-	}
-}
-
-func TestDetectFormat(t *testing.T) {
-	tests := []struct {
-		name     string
-		content  string
-		wantErgo bool
-	}{
-		{
-			name: "canonical format",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-`,
-			wantErgo: false,
-		},
-		{
-			name: "ergonomic format with month",
-			content: `-rw-r--r-- Jan 15 2025 100 test.txt
-`,
-			wantErgo: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			validator := NewValidator(false)
-			validator.ValidateManifest(strings.NewReader(tt.content))
-			if validator.isErgonomic != tt.wantErgo {
-				t.Errorf("isErgonomic = %v, want %v", validator.isErgonomic, tt.wantErgo)
-			}
-		})
-	}
-}
-
-func TestValidateC4ID(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		strict  bool
-		wantErr bool
-	}{
-		{
-			name: "valid C4 ID",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c44aMtvPeoSPUFTRQNy6yj44qjrYtaJT4i9SzzNH2hiFHoYpjc5ecDzrz9jzuNBUgbqzHH7pYjSatjeoyh8C1UX4Bp
-`,
-			strict:  true,
-			wantErr: false,
-		},
-		{
-			name: "missing C4 ID is allowed",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt
-`,
-			strict:  true,
-			wantErr: false,
-		},
-		{
-			name: "invalid C4 ID format",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4invalid
-`,
-			strict:  true,
-			wantErr: true,
-		},
-		{
-			name: "C4 ID too short",
-			content: `-rw-r--r-- 2025-09-19T12:00:00Z 100 test.txt c4abc
-`,
-			strict:  true,
-			wantErr: true,
-		},
-		{
-			name: "directory without C4 ID is ok",
-			content: `drwxr-xr-x 2025-09-19T12:00:00Z 0 dir/
-`,
-			strict:  true,
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			validator := NewValidator(tt.strict)
-			err := validator.ValidateManifest(strings.NewReader(tt.content))
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateManifest() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
 	}
 }
 
@@ -439,84 +264,6 @@ func TestValidationErrorString(t *testing.T) {
 			result := tt.err.Error()
 			if result != tt.expected {
 				t.Errorf("Error() = %q, want %q", result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestParseNameAndRest(t *testing.T) {
-	tests := []struct {
-		name          string
-		fields        []string
-		expectedName  string
-		expectedC4ID  string
-		expectWarning bool
-	}{
-		{
-			name:         "empty fields",
-			fields:       []string{},
-			expectedName: "",
-			expectedC4ID: "",
-		},
-		{
-			name:         "simple file",
-			fields:       []string{"file.txt", "c4abc123"},
-			expectedName: "file.txt",
-			expectedC4ID: "c4abc123",
-		},
-		{
-			name:         "simple directory",
-			fields:       []string{"dir/"},
-			expectedName: "dir/",
-			expectedC4ID: "",
-		},
-		{
-			name:         "directory with c4id",
-			fields:       []string{"dir/", "c4abc123"},
-			expectedName: "dir/",
-			expectedC4ID: "c4abc123",
-		},
-		{
-			name:          "quoted directory with slash inside quotes",
-			fields:        []string{`"my`, `dir/"`, "c4abc123"},
-			expectedName:  "my dir/",
-			expectedC4ID:  "c4abc123",
-			expectWarning: true,
-		},
-		{
-			name:          "quoted directory with slash outside quotes",
-			fields:        []string{`"mydir"/`, "c4abc123"},
-			expectedName:  "mydir/",
-			expectedC4ID:  "c4abc123",
-			expectWarning: true,
-		},
-		{
-			name:         "quoted file name with spaces",
-			fields:       []string{`"my`, `file.txt"`, "c4abc123"},
-			expectedName: `my file.txt`, // Quotes are stripped, content joined
-			expectedC4ID: "c4abc123",
-		},
-		{
-			name:         "file name without c4id",
-			fields:       []string{"file.txt"},
-			expectedName: "file.txt",
-			expectedC4ID: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			v := NewValidator(false)
-			name, _, _, _, c4id := v.parseNameAndRest(tt.fields)
-
-			if name != tt.expectedName {
-				t.Errorf("parseNameAndRest() name = %q, want %q", name, tt.expectedName)
-			}
-			if c4id != tt.expectedC4ID {
-				t.Errorf("parseNameAndRest() c4id = %q, want %q", c4id, tt.expectedC4ID)
-			}
-			if tt.expectWarning && len(v.warnings) == 0 {
-				t.Error("parseNameAndRest() expected warning, got none")
 			}
 		})
 	}

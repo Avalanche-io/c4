@@ -457,11 +457,7 @@ func (m *Manifest) sortSiblingsHierarchically() {
 			deduped = append(deduped, idx)
 		}
 		sort.Slice(deduped, func(a, b int) bool {
-			ea, eb := m.Entries[deduped[a]], m.Entries[deduped[b]]
-			if ea.IsDir() != eb.IsDir() {
-				return !ea.IsDir() // files first
-			}
-			return NaturalLess(ea.Name, eb.Name)
+			return siblingLess(m.Entries[deduped[a]], m.Entries[deduped[b]])
 		})
 		children[parent] = deduped
 	}
@@ -908,4 +904,14 @@ func (m *Manifest) MoveEntry(e *Entry, newParent *Entry, newName string) {
 
 	m.invalidateIndex()
 	m.SortEntries()
+}
+
+// siblingLess is canonical order among siblings: files before directories,
+// then NaturalLess on the name. SortEntries orders by it, and the Validator
+// checks written order against it.
+func siblingLess(a, b *Entry) bool {
+	if a.IsDir() != b.IsDir() {
+		return !a.IsDir() // files first
+	}
+	return NaturalLess(a.Name, b.Name)
 }

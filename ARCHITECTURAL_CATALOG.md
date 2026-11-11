@@ -47,7 +47,7 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes.           |
 | `Decoder`      | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. |
 | `PatchSection` | One section of a patch chain (base or delta).                                         |
-| `Validator`    | Validates manifest structure, field ranges, and sort order.                           |
+| `Validator`    | Reads through the Decoder (an unexported per-entry hook), so a format fault is the decoder's error at its line; adds duplicate paths, path-like names (`isPathName`), depth past a parent, flow targets, and with Strict canonical order (`siblingLess`). |
 
 ### Operations (c4m/operations.go)
 

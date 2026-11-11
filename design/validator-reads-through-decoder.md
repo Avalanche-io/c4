@@ -49,12 +49,26 @@ changes. The Validator keeps only what the decoder does not do:
   directories, natural sort among siblings, as `SortEntries` orders them)
   within a section. The spec lets a parser accept non-sorted input ("Parsers
   MAY: Accept non-sorted entries"), so lax mode does not report it.
+- **Names that are paths:** `.`, `..`, `./`, `../`, `/`, empty, or holding
+  a `/` other than a directory's trailing one, by the library's own
+  `isPathName` (the check `Manifest.Validate` makes). The spec says parsers
+  MUST reject them; the decoder does not (below).
+- **An entry deeper than its parent directory allows.**
+- **Flow targets**, checked on the decoded value: `<location>:<path>`, the
+  location matching `[a-zA-Z][a-zA-Z0-9_-]*` (spec, "Flow Links"), the path
+  neither absolute nor holding `..`.
 - **Stats** from decoded entries: types from the mode, sizes, times, depth.
 
 Retired with the old parser: the ergonomic-format detector (it guessed the
-form from month names, a form no encoder writes) and the flow-label
-pattern (the decoder's `parseFlowTarget` owns flow targets). The Validator's
-messages for format faults become the decoder's.
+form from month names, a form no encoder writes). The Validator's messages
+for format faults become the decoder's.
+
+> **Corrected 2026-11-11, same day.** This note first said the flow-label
+> pattern was retired too, because "the decoder's `parseFlowTarget` owns
+> flow targets". That was an untested premise, and it was wrong: measured,
+> `parseFlowTarget` only splits the target off its line, and the decoder
+> accepts `nas:../escape/` and `nas:/absolute`. The check stays, on the
+> decoded `FlowTarget`. That is a check of a value, not a second parse.
 
 ## The test
 
@@ -72,3 +86,28 @@ discarding: `SortEntries` deduplicates siblings by name and keeps the last
 first entry's size, time and C4 ID vanish. Making the decoder
 refuse them changes what every verb reads, and every port's decoder, so it
 is Joshua's call. Until then the Validator is where a duplicate is caught.
+
+## What reading through the decoder found it cannot see
+
+Some lines the Validator must refuse arrive from the decoder already read as
+something else, so no check of decoded values can catch them. They are held
+in `TestValidatorHeldForDecoderRules`. Each case there is the correct
+expectation, and it skips with the reason printed.
+
+- **A name holding `/` is cut at its first slash** and the rest of the line,
+  C4 ID included, is dropped: `sub/file.txt` on a file line decodes as a
+  directory `sub/`, with exit 0. Measured on Go (master and 1.0.25), c4py,
+  c4ts and libc4 (main and release/1.0.x); c4m-swift refuses. The Go
+  encoder writes such a name without error, so the library breaks its own
+  round trip. Decided (2026-11-11): every decoder refuses such a line and
+  every encoder refuses to write such a name, pinned by a shared vector,
+  in 1.0.27. That change un-skips the first group.
+- **Lenient readings of names and indentation.** The decoder accepts an
+  unescaped space in a name (so a damaged ID field such as `invalid-c4-id`
+  or a 90-character `x4…` token becomes part of the name), a raw double
+  quote (reserved, escaped `\"` by the spec), a raw control byte (encoded by
+  the spec), and odd indentation (the spec: parsers MAY accept it "with
+  warning"). An escaped control byte decodes to the same name as a raw one,
+  so only the decoder can tell them apart. Whether the decoder refuses
+  these or reports them to the Validator is not yet ruled; that ruling
+  un-skips the second group.

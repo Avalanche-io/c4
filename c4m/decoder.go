@@ -18,6 +18,14 @@ type Decoder struct {
 	reader      *bufio.Reader
 	lineNum     int
 	indentWidth int // detected indent width
+
+	// onEntry, when set, is handed each entry as its line is parsed, with
+	// the line number and the patch section it belongs to (0 before the
+	// first checkpoint), before any sorting or patch application. The
+	// Validator reads through it, so it never parses a line itself.
+	onEntry func(line, section int, e *Entry)
+	// quiet suppresses the decoder's narration on stderr.
+	quiet bool
 }
 
 // NewDecoder creates a new Decoder that reads from r.
@@ -58,6 +66,7 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 	firstLine := true
 	patchMode := false
 	externalBase := false
+	sectionIdx := 0 // patch sections seen, for onEntry
 
 	for {
 		line, err := d.readLine()
@@ -113,6 +122,7 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 					m.Base = base // ApplyPatch builds a fresh manifest; the reference survives
 				}
 				section = nil
+				sectionIdx++
 				patchMode = true
 
 				// A resolving decoder MUST verify checkpoints — except
@@ -144,6 +154,9 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 		}
 		if entry != nil {
 			section = append(section, entry)
+			if d.onEntry != nil {
+				d.onEntry(d.lineNum, sectionIdx, entry)
+			}
 		}
 		firstLine = false
 	}
@@ -167,7 +180,9 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 	copy(before, m.Entries)
 	m.SortEntries()
 	if !entriesOrderEqual(before, m.Entries) {
-		fmt.Fprintln(os.Stderr, "c4m: note: entries reordered to canonical order")
+		if !d.quiet {
+			fmt.Fprintln(os.Stderr, "c4m: note: entries reordered to canonical order")
+		}
 	}
 
 	return m, nil

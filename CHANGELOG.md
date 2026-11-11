@@ -2,6 +2,30 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### The Validator reads through the decoder
+
+`c4m.Validator` split each line with its own parser, and on 18 of the 31
+shared vector files its verdict differed from the decoder's:
+- It rejected every patch chain and the pretty form's timestamps.
+- It read link targets into names.
+- It called the library's own canonical order unsorted.
+- It accepted damaged mode letters and, in lax mode, torn C4 IDs.
+
+It now decodes with `c4m.Decoder`. A line the decoder refuses is one fatal
+error at the decoder's line, so on every vector file the two agree, strict
+and lax. On the entries as written, the Validator adds the checks the
+decoder does not make:
+- duplicate paths, in both modes (the spec says parsers MUST reject them);
+- names that are paths (`./`, `../`, `/`);
+- an entry deeper than its parent allows;
+- flow targets;
+- with `Strict`, canonical order: files before directories, then natural order.
+
+Messages for format faults are the decoder's. The exported API is
+unchanged. Lines the decoder misreads (a name holding `/`, lenient name
+escapes) are held in a skipped test until the decoder rules land; see
+`design/validator-reads-through-decoder.md`.
+
 ### A store made on a case-insensitive volume is readable on a case-sensitive one
 
 TreeStore shards objects into directories named from the ID's leading

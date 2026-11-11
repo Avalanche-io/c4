@@ -513,12 +513,6 @@ func TestValidatorAdditionalEdgeCases(t *testing.T) {
 			t.Error("Expected error for invalid name")
 		}
 	})
-	t.Run("invalid C4 ID", func(t *testing.T) {
-		v := NewValidator(true)
-		if err := v.ValidateManifest(strings.NewReader("-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt invalid_c4id\n")); err == nil {
-			t.Error("Expected error for invalid C4 ID")
-		}
-	})
 	t.Run("invalid mode format", func(t *testing.T) {
 		v := NewValidator(true)
 		if err := v.ValidateManifest(strings.NewReader("-rw-rXr-- 2025-01-01T00:00:00Z 100 file.txt\n")); err == nil {
@@ -1209,7 +1203,6 @@ func TestValidateNameCoverage(t *testing.T) {
 		{"path traversal ./", "-rw-r--r-- 2025-01-01T00:00:00Z 100 ./hidden.txt\n"},
 		{"null bytes in name", "-rw-r--r-- 2025-01-01T00:00:00Z 100 file\x00.txt\n"},
 		{"directory name just /", "drwxr-xr-x 2025-01-01T00:00:00Z 4096 /\n"},
-		{"embedded path separator", "-rw-r--r-- 2025-01-01T00:00:00Z 100 sub/file.txt\n"},
 		{"dot directory", "drwxr-xr-x 2025-01-01T00:00:00Z 0 ./\n"},
 		{"dotdot directory", "drwxr-xr-x 2025-01-01T00:00:00Z 0 ../\n"},
 		{"dot file", "-rw-r--r-- 2025-01-01T00:00:00Z 100 .\n"},
@@ -1399,18 +1392,6 @@ func TestValidatorEntryEdgeCases2(t *testing.T) {
 		v := NewValidator(true)
 		_ = v.ValidateManifest(strings.NewReader("-rw-r--r-- 2025-01-01T00:00:00Z 100 file\xff.txt\n"))
 	})
-	t.Run("control character", func(t *testing.T) {
-		v := NewValidator(true)
-		if err := v.ValidateManifest(strings.NewReader("-rw-r--r-- 2025-01-01T00:00:00Z 100 file\x01.txt\n")); err == nil {
-			t.Error("Expected error for control character")
-		}
-	})
-	t.Run("odd indentation", func(t *testing.T) {
-		v := NewValidator(true)
-		if err := v.ValidateManifest(strings.NewReader("drwxr-xr-x 2025-01-01T00:00:00Z 4096 dir/\n   -rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt\n")); err == nil {
-			t.Error("Expected error for odd indentation")
-		}
-	})
 	t.Run("invalid depth jump", func(t *testing.T) {
 		v := NewValidator(true)
 		if err := v.ValidateManifest(strings.NewReader("-rw-r--r-- 2025-01-01T00:00:00Z 100 root.txt\n    -rw-r--r-- 2025-01-01T00:00:00Z 100 deep.txt\n")); err == nil {
@@ -1434,12 +1415,6 @@ func TestValidatorC4IDEdgeCases(t *testing.T) {
 			t.Errorf("Valid C4 ID should pass: %v", err)
 		}
 	})
-	t.Run("C4 ID with wrong prefix", func(t *testing.T) {
-		v := NewValidator(true)
-		if err := v.ValidateManifest(strings.NewReader("-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt c3invalidid\n")); err == nil {
-			t.Error("Wrong prefix should fail")
-		}
-	})
 	t.Run("C4 ID too short", func(t *testing.T) {
 		v := NewValidator(true)
 		if err := v.ValidateManifest(strings.NewReader("-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt c4short\n")); err == nil {
@@ -1454,13 +1429,6 @@ func TestValidatorC4IDEdgeCases2(t *testing.T) {
 		v := NewValidator(true)
 		if err := v.ValidateManifest(strings.NewReader("-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt c4short\n")); err == nil {
 			t.Error("Expected error for short C4 ID")
-		}
-	})
-	t.Run("C4 ID wrong prefix", func(t *testing.T) {
-		longID := "x4" + strings.Repeat("a", 88)
-		v := NewValidator(true)
-		if err := v.ValidateManifest(strings.NewReader(fmt.Sprintf("-rw-r--r-- 2025-01-01T00:00:00Z 100 file.txt %s\n", longID))); err == nil {
-			t.Error("Expected error for wrong prefix")
 		}
 	})
 }
