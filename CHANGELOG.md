@@ -2,6 +2,21 @@
 
 ## Unreleased (1.0.27)
 
+### A raw space, quote or control byte in a name is refused
+
+A written name escapes a space as `\ `, a double quote as `\"`, and control
+bytes through SafeName. The decoder used to read a raw one as part of the
+name. So a damaged C4 ID field joined the name: `real.txt junk` read as one
+name, and the line's ID was dropped. It now refuses such a line, naming it.
+Pinned by the shared `c4m/testdata/name-escape-vector/`.
+
+Indentation stays readable in any consistent unit, because the library's
+own `Encoder.SetIndent` and `Entry.Format` can write one.
+
+An entry marked `IsSequence` whose name holds no range was written raw,
+with no SafeName: the one writer path that could leave these characters
+unescaped. It is now written as an ordinary escaped name.
+
 ### A name holding a backslash is valid
 
 Only `/` separates paths in c4m. A backslash, a colon and every other
@@ -10,7 +25,8 @@ needed. The scanner, the decoder and `c4 restore` already handled such
 names, but the library refused them: `Manifest.Validate` reported a name
 like `trail\` as path traversal, and the line Validator rejected any
 backslash in a name, so a description of a real tree failed validation.
-Both now accept it; `/` and null bytes are still refused.
+Both now accept it; `/` and null bytes are still refused. Through 1.0.26
+this was library-only: the CLI does not call `Validate`.
 SPECIFICATION.md's name rules say `/` where they said "path separators".
 
 ### A name is never a path: read and write
