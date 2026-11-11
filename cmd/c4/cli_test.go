@@ -394,10 +394,7 @@ func TestCatFromStore(t *testing.T) {
 func runC4WithEnv(t *testing.T, bin string, env map[string]string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
-	cmd.Env = os.Environ()
-	for k, v := range env {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
+	cmd.Env = childEnv(env)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

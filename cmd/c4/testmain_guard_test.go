@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,5 +49,28 @@ func TestSuiteNeverTouchesTheRealHome(t *testing.T) {
 
 	if after := count(); after != before {
 		t.Fatalf("the runner's real store went from %d to %d objects: a c4 started by the suite stored into it", before, after)
+	}
+}
+
+// A test's own home is its home on every platform: childEnv carries HOME
+// into USERPROFILE (what os.UserHomeDir reads on Windows) unless the test
+// set USERPROFILE itself.
+func TestChildEnvGivesAHomeToBothPlatforms(t *testing.T) {
+	last := func(env []string, k string) string {
+		v := ""
+		for _, kv := range env {
+			if strings.HasPrefix(kv, k+"=") {
+				v = strings.TrimPrefix(kv, k+"=")
+			}
+		}
+		return v
+	}
+	env := childEnv(map[string]string{"HOME": "/tmp/own-home"})
+	if got := last(env, "USERPROFILE"); got != "/tmp/own-home" {
+		t.Errorf("USERPROFILE = %q, want the test's own HOME", got)
+	}
+	env = childEnv(map[string]string{"HOME": "/tmp/h", "USERPROFILE": "/tmp/p"})
+	if got := last(env, "USERPROFILE"); got != "/tmp/p" {
+		t.Errorf("USERPROFILE = %q, want the test's own USERPROFILE", got)
 	}
 }
