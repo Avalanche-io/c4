@@ -139,6 +139,21 @@ type Plan struct {
 	// sibling's name (case), in path order. Nothing is planned for them or
 	// under them, and nothing on disk is removed on their account.
 	Refused []Refusal
+	// MayCollide lists, in a dry run, sibling names that differ only in
+	// case: a dry run writes nothing, so whether the destination folds them
+	// is not measured.
+	MayCollide []Collision
+	// Unmeasured lists sibling names a real run could not measure (the
+	// probe could not run); nothing is refused for them.
+	Unmeasured []Collision
+}
+
+// Collision is two sibling target names that may name one entry in the
+// destination folder.
+type Collision struct {
+	Path string // the name that would be refused
+	With string // the byte-order last, which would be written
+	Err  string // why it was not measured, for Unmeasured
 }
 
 // Refusal is one target entry the destination cannot hold under its name:

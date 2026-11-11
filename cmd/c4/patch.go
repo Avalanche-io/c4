@@ -196,6 +196,7 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 	// Build content sources. The plan trusts size+mtime only when -c
 	// asked for it, consistent with the scan above.
 	var opts []reconcile.Option
+	opts = append(opts, reconcile.WithDryRun(dryRun))
 	opts = append(opts, reconcile.WithTrustedMetadata(guidePath != ""))
 	opts = append(opts, reconcile.WithSyncMode(store.SyncBatch))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(currentManifest, dirPath)))
@@ -229,6 +230,7 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 	}
 
 	refused := reportRefused(plan.Refused)
+	reportCollisionCandidates(plan)
 
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "%d operations planned\n", len(plan.Operations))
@@ -299,6 +301,7 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 	}
 
 	var opts []reconcile.Option
+	opts = append(opts, reconcile.WithDryRun(dryRun))
 	opts = append(opts, reconcile.WithTrustedMetadata(trust))
 	opts = append(opts, reconcile.WithSyncMode(store.SyncBatch))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(targetManifest, srcDir)))
@@ -333,6 +336,7 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 	}
 
 	refused := reportRefused(plan.Refused)
+	reportCollisionCandidates(plan)
 
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "%d operations planned\n", len(plan.Operations))
@@ -517,6 +521,7 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 
 	// Build content sources and reconcile.
 	var opts []reconcile.Option
+	opts = append(opts, reconcile.WithDryRun(dryRun))
 	opts = append(opts, reconcile.WithTrustedMetadata(trust))
 	opts = append(opts, reconcile.WithSyncMode(store.SyncBatch))
 	opts = append(opts, reconcile.WithSource(reconcile.NewDirSource(currentManifest, dirPath)))
@@ -547,6 +552,7 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 	}
 
 	refused := reportRefused(plan.Refused)
+	reportCollisionCandidates(plan)
 
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "%d operations planned\n", len(plan.Operations))
@@ -748,5 +754,17 @@ func exitIfRefused(n int) {
 	if n > 0 {
 		fmt.Fprintf(os.Stderr, "partial: %d entries refused (names this folder takes for another's); the rest is written\n", n)
 		os.Exit(2)
+	}
+}
+
+// reportCollisionCandidates names, on stderr, sibling names that differ
+// only in case and were not measured: in a dry run, which writes nothing
+// and so does not probe the destination; or where the probe could not run.
+func reportCollisionCandidates(plan *reconcile.Plan) {
+	for _, c := range plan.MayCollide {
+		fmt.Fprintf(os.Stderr, "may collide: %s with %s (not measured)\n", c.Path, c.With)
+	}
+	for _, c := range plan.Unmeasured {
+		fmt.Fprintf(os.Stderr, "not measured: %s with %s: %s; written as named\n", c.Path, c.With, c.Err)
 	}
 }

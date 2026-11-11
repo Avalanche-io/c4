@@ -22,7 +22,12 @@ import (
 // foldCollisions finds the target paths the destination folds onto a
 // sibling's name. It returns the refused entries (a directory once, with
 // its entry count) and every path to skip.
-func foldCollisions(dirPath string, targetPaths map[string]*c4m.Entry) (refusals []Refusal, skip map[string]bool) {
+//
+// A dry run writes nothing, so it measures nothing: each candidate pair is
+// returned in maybe, unmeasured, and nothing is refused. A real run
+// measures; a pair it could not measure is returned in unmeasured, with
+// why, and nothing is refused on a guess.
+func foldCollisions(dirPath string, targetPaths map[string]*c4m.Entry, measure bool) (refusals []Refusal, skip map[string]bool, maybe, unmeasured []Collision) {
 	skip = make(map[string]bool)
 	groups := make(map[string][]string) // parent + folded name -> sibling paths
 	for p := range targetPaths {
@@ -42,7 +47,16 @@ func foldCollisions(dirPath string, targetPaths map[string]*c4m.Entry) (refusals
 		sort.Strings(members)
 		winner := members[len(members)-1]
 		for _, m := range members[:len(members)-1] {
-			if foldsTogether(dirPath, winner, m) {
+			if !measure {
+				maybe = append(maybe, Collision{Path: m, With: winner})
+				continue
+			}
+			folds, err := foldsTogether(dirPath, winner, m)
+			if err != nil {
+				unmeasured = append(unmeasured, Collision{Path: m, With: winner, Err: err.Error()})
+				continue
+			}
+			if folds {
 				losers = append(losers, m)
 			}
 		}
@@ -61,7 +75,13 @@ func foldCollisions(dirPath string, targetPaths map[string]*c4m.Entry) (refusals
 		r.Entries++
 		refusals = append(refusals, r)
 	}
-	return refusals, skip
+	sortCollisions(maybe)
+	sortCollisions(unmeasured)
+	return refusals, skip, maybe, unmeasured
+}
+
+func sortCollisions(c []Collision) {
+	sort.Slice(c, func(i, j int) bool { return c[i].Path < c[j].Path })
 }
 
 // winnerOf returns the byte-order last member of path's collision group.
@@ -88,8 +108,8 @@ func lastSegment(p string) string {
 // (siblings) takes their names for one: in a throwaway directory beside
 // it, it creates a's name and looks up b's. A probe that cannot run (an
 // unwritable volume, say) measures nothing, and nothing is refused on a
-// guess.
-func foldsTogether(dirPath, a, b string) bool {
+// guess: the error says why.
+func foldsTogether(dirPath, a, b string) (bool, error) {
 	nameA, nameB := lastSegment(a), lastSegment(b)
 	parent := filepath.Dir(filepath.Join(dirPath, filepath.FromSlash(strings.TrimSuffix(a, "/"))))
 	for {
@@ -98,20 +118,20 @@ func foldsTogether(dirPath, a, b string) bool {
 		}
 		next := filepath.Dir(parent)
 		if next == parent {
-			return false
+			return false, os.ErrNotExist
 		}
 		parent = next
 	}
 	probe, err := os.MkdirTemp(parent, ".c4-fold-probe-")
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer os.RemoveAll(probe)
 	f, err := os.Create(filepath.Join(probe, nameA))
 	if err != nil {
-		return false
+		return false, err
 	}
 	f.Close()
 	_, err = os.Lstat(filepath.Join(probe, nameB))
-	return err == nil
+	return err == nil, nil
 }

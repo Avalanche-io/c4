@@ -36,7 +36,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 
 	// Names the destination folds onto a sibling's (measured there) are
 	// refused before planning: the last in byte order is written whole.
-	refused, refusedSkip := foldCollisions(dirPath, targetPaths)
+	refused, refusedSkip, mayCollide, unmeasured := foldCollisions(dirPath, targetPaths, !r.dryRun)
 
 	// 2. Scan current directory state.
 	currentFiles := make(map[string]os.FileInfo) // relative path -> info
@@ -372,7 +372,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	}
 
 	if len(missingIDs) > 0 {
-		return &Plan{Missing: missingIDs, Refused: refused}, nil
+		return &Plan{Missing: missingIDs, Refused: refused, MayCollide: mayCollide, Unmeasured: unmeasured}, nil
 	}
 
 	// 7. Restore parent directory times. Every create, move, symlink,
@@ -437,7 +437,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 	ops = append(ops, removes...)
 	ops = append(ops, rmdirs...)
 
-	return &Plan{Operations: ops, Refused: refused}, nil
+	return &Plan{Operations: ops, Refused: refused, MayCollide: mayCollide, Unmeasured: unmeasured}, nil
 }
 
 // trustedID returns the target entry's C4 ID without hashing when

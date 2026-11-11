@@ -55,6 +55,27 @@ func TestPlanRefusesNamesTheFolderFoldsTogether(t *testing.T) {
 
 	dest := t.TempDir()
 	folding := folds(t, dest)
+
+	// A dry run writes nothing to the destination, so it measures
+	// nothing: both pairs are reported as candidates, nothing is refused.
+	dry, err := New(WithSource(src), WithDryRun(true)).Plan(target, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cands []string
+	for _, c := range dry.MayCollide {
+		cands = append(cands, c.Path+" with "+c.With)
+	}
+	if want := []string{"Docs/ with docs/", "README.md with readme.md"}; !reflect.DeepEqual(cands, want) {
+		t.Errorf("dry run candidates %v, want %v", cands, want)
+	}
+	if len(dry.Refused) != 0 {
+		t.Errorf("dry run refused %v; a dry run measures nothing", dry.Refused)
+	}
+	if entries, _ := os.ReadDir(dest); len(entries) != 0 {
+		t.Errorf("dry run wrote into the destination: %v", entries)
+	}
+
 	r := New(WithSource(src))
 	plan, err := r.Plan(target, dest)
 	if err != nil {
