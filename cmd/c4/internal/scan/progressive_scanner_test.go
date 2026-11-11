@@ -39,13 +39,19 @@ func TestProgressiveScanner(t *testing.T) {
 			t.Fatalf("Failed to start scanner: %v", err)
 		}
 
-		// Let it run for a bit
-		time.Sleep(100 * time.Millisecond)
-
-		// Check progress
-		status := scanner.RequestStatus()
-		if status == nil {
-			t.Fatal("Failed to get status")
+		// Poll until the scan has found something; a fixed sleep is
+		// poll-luck on a loaded CI runner.
+		var status *ScanStatus
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			status = scanner.RequestStatus()
+			if status == nil {
+				t.Fatal("Failed to get status")
+			}
+			if status.TotalFound > 0 || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(time.Millisecond)
 		}
 
 		if status.TotalFound == 0 {
@@ -76,9 +82,14 @@ func TestProgressiveScanner(t *testing.T) {
 			t.Fatalf("Failed to start scanner: %v", err)
 		}
 
-		// Send interrupt signal after short delay
+		// Interrupt once the scan has found something: the test is that
+		// results found before an interrupt are kept, and a fixed delay
+		// can fire before the first file on a loaded runner.
 		go func() {
-			time.Sleep(50 * time.Millisecond)
+			deadline := time.Now().Add(10 * time.Second)
+			for atomic.LoadInt64(&scanner.totalFound) == 0 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
 			scanner.signalChan <- syscall.SIGINT
 		}()
 
@@ -105,15 +116,23 @@ func TestProgressiveScanner(t *testing.T) {
 		r, w, _ := os.Pipe()
 		os.Stdout = w
 
+		// Read the status output as it arrives, up to a deadline,
+		// instead of reading whatever a fixed sleep happened to allow.
+		got := make(chan []byte, 1)
+		go func() {
+			buf := make([]byte, 1024)
+			n, _ := r.Read(buf)
+			got <- buf[:n]
+		}()
 		scanner.signalChan <- SIGINFO
-		time.Sleep(200 * time.Millisecond)
+		select {
+		case b := <-got:
+			statusOutput.Write(b)
+		case <-time.After(10 * time.Second):
+		}
 
 		w.Close()
 		os.Stdout = oldStdout
-
-		buf := make([]byte, 1024)
-		n, _ := r.Read(buf)
-		statusOutput.Write(buf[:n])
 
 		scanner.Stop()
 		scanner.Wait()
@@ -136,13 +155,20 @@ func TestProgressiveScanner(t *testing.T) {
 		scanner := NewProgressiveScanner(testDir)
 		scanner.Start()
 
-		// Get partial output while scanning
-		time.Sleep(50 * time.Millisecond)
-
+		// Poll until the scan has state to output; a fixed sleep is
+		// poll-luck on a loaded CI runner.
 		var buf bytes.Buffer
-		err := scanner.OutputCurrentState(&buf)
-		if err != nil {
-			t.Errorf("Failed to output state: %v", err)
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			buf.Reset()
+			if err := scanner.OutputCurrentState(&buf); err != nil {
+				t.Errorf("Failed to output state: %v", err)
+				break
+			}
+			if buf.Len() > 0 || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(time.Millisecond)
 		}
 
 		output := buf.String()
@@ -449,8 +475,12 @@ func TestWorkerPools(t *testing.T) {
 
 		scanner.Start()
 
-		// Let it run
-		time.Sleep(300 * time.Millisecond)
+		// Poll until the 50 entries are found, then stop; a fixed
+		// 300 ms was too short on a loaded CI runner.
+		deadline := time.Now().Add(10 * time.Second)
+		for atomic.LoadInt64(&scanner.totalFound) < 50 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
 
 		scanner.Stop()
 		scanner.Wait()
