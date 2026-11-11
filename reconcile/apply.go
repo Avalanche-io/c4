@@ -89,6 +89,18 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	}
 	flush()
 
+	// A collision set's winner is listed under exactly its own spelling,
+	// even where the folder already held the same file under another one
+	// (a leftover of an earlier run, say): writing through a folding
+	// lookup keeps the old spelling.
+	if !r.dryRun {
+		for _, p := range plan.Respell {
+			if err := respell(filepath.Join(dirPath, filepath.FromSlash(strings.TrimSuffix(p, "/")))); err != nil {
+				res.Errors = append(res.Errors, err)
+			}
+		}
+	}
+
 	// Post-pass: set directory metadata. Process deepest first so that
 	// setting a child directory's timestamp doesn't reset its parent's.
 	if !r.dryRun {

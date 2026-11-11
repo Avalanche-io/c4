@@ -9,91 +9,186 @@ import (
 	"github.com/Avalanche-io/c4/c4m"
 )
 
-// A folder on a case-insensitive volume (default APFS, NTFS) takes two
-// names that differ only in case for one. Writing both paired one file's
-// name with the other's bytes, or merged two directories into one, and
-// through 1.0.25 `c4 patch` did that with exit 0. Two names the
-// destination folds together are measured there, not predicted from the
-// platform: the last in byte order is written whole (name and bytes), and
-// the others are refused and reported, with their subtrees. Unicode-form
-// collisions (NFC and NFD) are not detected here: finding the candidates
-// needs normalisation, which the standard library lacks.
+// A folder may take two different names for one: a case-insensitive
+// volume folds case (README.md, readme.md), APFS folds Unicode forms (the
+// NFC and NFD spellings of é), and some volumes fold ß and ss or σ and ς.
+// Writing both paired one file's name with the other's bytes, or merged
+// two directories into one, and through 1.0.25 `c4 patch` did that with
+// exit 0.
+//
+// The collision is measured on the destination before anything is
+// written, never predicted from a rule: in a throwaway folder at each
+// destination directory (or its nearest existing ancestor), that
+// directory's names are made as empty files in byte order, and a name that
+// resolves to a file already made for an earlier name (the same file, by
+// os.SameFile) is folded onto it. Nothing is removed while measuring, so a
+// file system that reuses inodes cannot fake a match. In each set the last
+// name in byte order is written whole (name and bytes); the others are
+// refused and reported, with their subtrees, and are never written.
 
 // foldCollisions finds the target paths the destination folds onto a
 // sibling's name. It returns the refused entries (a directory once, with
 // its entry count) and every path to skip.
 //
-// A dry run writes nothing, so it measures nothing: each candidate pair is
-// returned in maybe, unmeasured, and nothing is refused. A real run
-// measures; a pair it could not measure is returned in unmeasured, with
-// why, and nothing is refused on a guess.
-func foldCollisions(dirPath string, targetPaths map[string]*c4m.Entry, measure bool) (refusals []Refusal, skip map[string]bool, maybe, unmeasured []Collision) {
+// A dry run writes nothing, so it measures nothing: names that differ only
+// in case are returned in maybe as a hint, unmeasured, and nothing is
+// refused. A real run measures every directory; a directory it could not
+// measure is returned in unmeasured, with why, and nothing in it is
+// refused on a guess.
+func foldCollisions(dirPath string, targetPaths map[string]*c4m.Entry, measure bool) (refusals []Refusal, skip map[string]bool, maybe, unmeasured []Collision, winners []string) {
 	skip = make(map[string]bool)
-	groups := make(map[string][]string) // parent + folded name -> sibling paths
+	siblings := make(map[string][]string) // parent path -> its children's paths
 	for p := range targetPaths {
-		base := strings.TrimSuffix(p, "/")
-		parent, name := "", base
-		if i := strings.LastIndex(base, "/"); i >= 0 {
-			parent, name = base[:i+1], base[i+1:]
-		}
-		key := parent + "\x00" + strings.ToLower(name)
-		groups[key] = append(groups[key], p)
+		siblings[parentOf(p)] = append(siblings[parentOf(p)], p)
 	}
+
+	winnerOf := make(map[string]string) // loser path -> winner path
 	var losers []string
-	for _, members := range groups {
+	for parent, members := range siblings {
 		if len(members) < 2 {
 			continue
 		}
 		sort.Strings(members)
-		winner := members[len(members)-1]
-		for _, m := range members[:len(members)-1] {
-			if !measure {
-				maybe = append(maybe, Collision{Path: m, With: winner})
-				continue
-			}
-			folds, err := foldsTogether(dirPath, winner, m)
-			if err != nil {
-				unmeasured = append(unmeasured, Collision{Path: m, With: winner, Err: err.Error()})
-				continue
-			}
-			if folds {
-				losers = append(losers, m)
+		if !measure {
+			maybe = append(maybe, caseHints(members)...)
+			continue
+		}
+		sets, err := measureFolds(filepath.Join(dirPath, filepath.FromSlash(parent)), members)
+		if err != nil {
+			unmeasured = append(unmeasured, Collision{Path: parent, Err: err.Error()})
+			continue
+		}
+		for _, set := range sets {
+			winner := set[len(set)-1]
+			winners = append(winners, winner)
+			for _, l := range set[:len(set)-1] {
+				winnerOf[l] = winner
+				losers = append(losers, l)
 			}
 		}
 	}
+
 	sort.Strings(losers)
 	for _, l := range losers {
-		r := Refusal{Path: l, Reason: "this folder takes it for " + strings.TrimSuffix(lastSegment(winnerOf(l, groups)), "/") + " (measured)"}
+		if skip[l] {
+			continue // already refused under a refused ancestor
+		}
+		r := Refusal{Path: l, Reason: "this folder takes it for " + lastSegment(winnerOf[l]) + " (measured)"}
 		for p := range targetPaths {
 			if p == l || (strings.HasSuffix(l, "/") && strings.HasPrefix(p, l)) {
 				skip[p] = true
-				if p != l {
-					r.Entries++
-				}
+				r.Entries++
 			}
 		}
-		r.Entries++
 		refusals = append(refusals, r)
 	}
 	sortCollisions(maybe)
 	sortCollisions(unmeasured)
-	return refusals, skip, maybe, unmeasured
+	sort.Strings(winners)
+	return refusals, skip, maybe, unmeasured, winners
 }
 
-func sortCollisions(c []Collision) {
-	sort.Slice(c, func(i, j int) bool { return c[i].Path < c[j].Path })
-}
-
-// winnerOf returns the byte-order last member of path's collision group.
-func winnerOf(path string, groups map[string][]string) string {
-	for _, members := range groups {
-		for _, m := range members {
-			if m == path {
-				return members[len(members)-1]
-			}
+// caseHints returns, for a dry run, the sibling names that differ only in
+// case: a hint, not a measurement. Folds the hint cannot predict (Unicode
+// forms) are caught by a real run.
+func caseHints(members []string) []Collision {
+	byFold := make(map[string][]string)
+	for _, m := range members {
+		k := strings.ToLower(lastSegment(m))
+		byFold[k] = append(byFold[k], m)
+	}
+	var out []Collision
+	for _, set := range byFold {
+		if len(set) < 2 {
+			continue
+		}
+		sort.Strings(set)
+		for _, m := range set[:len(set)-1] {
+			out = append(out, Collision{Path: m, With: set[len(set)-1]})
 		}
 	}
-	return path
+	return out
+}
+
+// measureFolds makes members' names (siblings, in byte order) as empty
+// files in a throwaway folder at destDir, or at its nearest existing
+// ancestor, and returns the sets of two or more names the folder takes for
+// one, each in byte order. A name whose lookup already resolves to a file
+// made for an earlier name joins that name's set; nothing is removed
+// until the measurement is done.
+func measureFolds(destDir string, members []string) ([][]string, error) {
+	at := destDir
+	for {
+		info, err := os.Lstat(at)
+		if err == nil && info.IsDir() {
+			break
+		}
+		if err == nil {
+			// A link or file stands where a directory goes: measure beside
+			// it, never through it.
+			at = filepath.Dir(at)
+			continue
+		}
+		next := filepath.Dir(at)
+		if next == at {
+			return nil, os.ErrNotExist
+		}
+		at = next
+	}
+	probe, err := os.MkdirTemp(at, ".c4-fold-probe-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(probe)
+
+	type made struct {
+		path string
+		info os.FileInfo
+	}
+	var files []made
+	setOf := make(map[string]int) // made path -> index into sets
+	var sets [][]string
+	for _, m := range members {
+		name := lastSegment(m)
+		p := filepath.Join(probe, name)
+		if info, err := os.Lstat(p); err == nil {
+			// The folder already lists a file this probe made for an
+			// earlier name: find which, by identity.
+			for _, f := range files {
+				if os.SameFile(f.info, info) {
+					i, ok := setOf[f.path]
+					if !ok {
+						i = len(sets)
+						sets = append(sets, []string{f.path})
+						setOf[f.path] = i
+					}
+					sets[i] = append(sets[i], m)
+					setOf[m] = i
+					break
+				}
+			}
+			continue
+		}
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return nil, err
+		}
+		f.Close()
+		info, err := os.Lstat(p)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, made{m, info})
+	}
+	return sets, nil
+}
+
+func parentOf(p string) string {
+	b := strings.TrimSuffix(p, "/")
+	if i := strings.LastIndex(b, "/"); i >= 0 {
+		return b[:i+1]
+	}
+	return ""
 }
 
 func lastSegment(p string) string {
@@ -104,34 +199,39 @@ func lastSegment(p string) string {
 	return b
 }
 
-// foldsTogether measures whether the destination folder for paths a and b
-// (siblings) takes their names for one: in a throwaway directory beside
-// it, it creates a's name and looks up b's. A probe that cannot run (an
-// unwritable volume, say) measures nothing, and nothing is refused on a
-// guess: the error says why.
-func foldsTogether(dirPath, a, b string) (bool, error) {
-	nameA, nameB := lastSegment(a), lastSegment(b)
-	parent := filepath.Dir(filepath.Join(dirPath, filepath.FromSlash(strings.TrimSuffix(a, "/"))))
-	for {
-		if info, err := os.Stat(parent); err == nil && info.IsDir() {
-			break
-		}
-		next := filepath.Dir(parent)
-		if next == parent {
-			return false, os.ErrNotExist
-		}
-		parent = next
-	}
-	probe, err := os.MkdirTemp(parent, ".c4-fold-probe-")
+func sortCollisions(c []Collision) {
+	sort.Slice(c, func(i, j int) bool { return c[i].Path < c[j].Path })
+}
+
+// respell makes the folder list path's entry under exactly path's name.
+// When the folder lists the same file under another spelling, it is
+// renamed in two steps through a temporary name, since a rename between
+// two spellings of one name is not reliably a rename everywhere.
+func respell(path string) error {
+	dir, want := filepath.Split(path)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return false, err
+		return err
 	}
-	defer os.RemoveAll(probe)
-	f, err := os.Create(filepath.Join(probe, nameA))
+	target, err := os.Lstat(path)
 	if err != nil {
-		return false, err
+		return nil // not written; nothing to respell
 	}
-	f.Close()
-	_, err = os.Lstat(filepath.Join(probe, nameB))
-	return err == nil, nil
+	for _, e := range entries {
+		if e.Name() == want {
+			return nil // already listed exactly
+		}
+	}
+	for _, e := range entries {
+		info, err := os.Lstat(filepath.Join(dir, e.Name()))
+		if err != nil || !os.SameFile(info, target) {
+			continue
+		}
+		tmp := filepath.Join(dir, ".c4-respell-"+want)
+		if err := os.Rename(filepath.Join(dir, e.Name()), tmp); err != nil {
+			return err
+		}
+		return os.Rename(tmp, path)
+	}
+	return nil
 }

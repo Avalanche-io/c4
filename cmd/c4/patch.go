@@ -764,7 +764,14 @@ func reportCollisionCandidates(plan *reconcile.Plan) {
 	for _, c := range plan.MayCollide {
 		fmt.Fprintf(os.Stderr, "may collide: %s with %s (not measured)\n", c.Path, c.With)
 	}
+	if len(plan.MayCollide) > 0 {
+		fmt.Fprintf(os.Stderr, "a real run measures every folder, and also catches folds this hint cannot predict (Unicode forms)\n")
+	}
 	for _, c := range plan.Unmeasured {
-		fmt.Fprintf(os.Stderr, "not measured: %s with %s: %s; written as named\n", c.Path, c.With, c.Err)
+		dir := c.Path
+		if dir == "" {
+			dir = "the destination"
+		}
+		fmt.Fprintf(os.Stderr, "not measured: %s: %s; its names are written as named\n", dir, c.Err)
 	}
 }

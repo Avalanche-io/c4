@@ -146,6 +146,10 @@ type Plan struct {
 	// Unmeasured lists sibling names a real run could not measure (the
 	// probe could not run); nothing is refused for them.
 	Unmeasured []Collision
+	// Respell lists the byte-order last of each measured collision set:
+	// after Apply, each is listed under exactly its own spelling, even
+	// where the folder already held it under another one.
+	Respell []string
 }
 
 // Collision is two sibling target names that may name one entry in the

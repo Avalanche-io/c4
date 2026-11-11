@@ -7,15 +7,22 @@
 A description made on Linux or a case-sensitive volume can hold names
 that differ only in case (`README.md` and `readme.md`; `Docs/` and
 `docs/`). On a case-insensitive volume (default APFS, NTFS) the folder
-takes them for one, and through 1.0.25 `c4 patch` wrote one over the
+takes them for one (APFS also folds Unicode forms: the NFC and NFD
+spellings of `é.txt`), and through 1.0.25 `c4 patch` wrote one over the
 other with exit 0: measured on macOS, one file named `readme.md` holding
 `README.md`'s bytes, and the two directories merged into one. Now the
-collision is measured on the destination folder: the last name in byte
-order is written whole (name and bytes), the others are refused and
+collision is measured on each destination folder before anything is
+written (its names are made as empty files in byte order in a throwaway
+folder there, and names that resolve to one file are one set), with no
+rule for how the volume folds: case, Unicode forms, ß and ss all show.
+The last name in byte order is written whole (name and bytes), the
+others are refused and
 named on stderr (`refused: README.md: this folder takes it for
 readme.md (measured)`), a directory with its subtree, and the run exits
-2. On a volume that tells the names apart nothing changes.
-Unicode-form collisions (NFC and NFD) are not detected.
+2; a folder that already listed it under a losing spelling is renamed
+to its exact one. A dry run writes nothing and only hints at case
+collisions, unmeasured. On a volume that tells the names apart nothing
+changes.
 
 ### `c4 patch` no longer empties a directory the target lists only as one line ⚠
 
