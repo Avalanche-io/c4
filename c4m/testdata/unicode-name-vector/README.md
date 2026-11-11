@@ -53,3 +53,12 @@ The fix also exposed a second c4m-swift fault: Swift `String` equality,
 ordering and hashing use canonical equivalence, so wherever it keyed names
 as `String` the NFC and NFD spellings were one name. Its encoder dropped one
 of the two `café.txt` entries, and the chain above resolved to one entry.
+
+## On release lines before 1.0.27
+
+`root-id.txt` is master's. The childless directory `发送/` has a null size
+and no ID, and before the collapsed-directory size rule (1.0.27) a release
+line canonicalises that null size as `0`. So on release/1.0.x the tree's ID
+is `c42noMAFKPujc3cScMyQtzuUVo3rPWcrUAcNse8RLteLaJA7UEBWgUczw6b7v6KKeucTed8zxJmCt9aqyHY1A6B4dZ`,
+measured with Go release/1.0.x's library (2026-11-11). Every other
+expectation is the same on both lines.
