@@ -95,6 +95,15 @@ func TestSafeNameVector(t *testing.T) {
 			}
 		}
 	}
+	// The vector pins the Unicode version it was written with. A Go release
+	// with other tables (CI runs several) still writes every case the same
+	// way, since none of these code points changed class between versions;
+	// only the recorded version differs. Whether the format pins a version
+	// is an open question (README).
+	if pinned, err := os.ReadFile(filepath.Join(dir, "unicode-version.txt")); err == nil && strings.TrimSpace(string(pinned)) != unicode.Version {
+		t.Logf("written with Unicode %s; this Go has %s", strings.TrimSpace(string(pinned)), unicode.Version)
+		delete(files, "unicode-version.txt")
+	}
 	for name, want := range files {
 		got, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
