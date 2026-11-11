@@ -112,6 +112,10 @@ func TestChildlessDirVector(t *testing.T) {
 		t.Errorf("normalized.c4m's own C4 ID is %s, want root-id.txt's %s", got, read("root-id.txt"))
 	}
 	lineID := stated.ComputeC4ID()
+	// The 1.0.x root ID, pinned in every implementation's 1.0.27 line.
+	if got := lineID.String(); got != "c43hjzfaERSHQSgDYwRPabKdXuC1gbHSW1BnXPVhvCm8LNgYj5LEH6a3VoV2gckqiLNMBQEh4dTVKszriwrmZryUkh" {
+		t.Errorf("this line's root ID is %s, want the pinned 1.0.x ID c43hjzfa…", got)
+	}
 	if got := normalized.ComputeC4ID(); got != lineID {
 		t.Errorf("the normalised form resolves to %s, the stated form to %s", got, lineID)
 	}
