@@ -2,6 +2,23 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A raw space, quote or control byte in a name is refused
+
+A written name escapes a space as `\ `, a double quote as `\"`, and control
+bytes through SafeName. The decoder used to read a raw one as part of the
+name. So a damaged C4 ID field joined the name: `real.txt junk` read as one
+name, and the line's ID was dropped. It now refuses such a line, naming it.
+Pinned by the shared `c4m/testdata/name-escape-vector/`.
+
+Indentation stays readable in any consistent unit, because the library's
+own `Encoder.SetIndent` and `Entry.Format` can write one. The Validator
+reports a unit other than canonical's 2: a warning in lax mode, an error
+with `Strict`.
+
+An entry marked `IsSequence` whose name holds no range was written raw,
+with no SafeName: the one writer path that could leave these characters
+unescaped. It is now written as an ordinary escaped name.
+
 ### The Validator reads through the decoder
 
 `c4m.Validator` split each line with its own parser, and on 18 of the 31

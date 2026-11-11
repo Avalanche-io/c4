@@ -109,6 +109,12 @@ expectation, and it skips with the reason printed.
   quote (reserved, escaped `\"` by the spec), a raw control byte (encoded by
   the spec), and odd indentation (the spec: parsers MAY accept it "with
   warning"). An escaped control byte decodes to the same name as a raw one,
-  so only the decoder can tell them apart. Whether the decoder refuses
-  these or reports them to the Validator is not yet ruled; that ruling
-  un-skips the second group.
+  so only the decoder can tell them apart. Ruled (2026-11-11): the decoder
+  refuses an unescaped space, a raw quote and a raw control byte in a name
+  (no released encoder writes them in normal use; the shared name-escape
+  vector), and accepts any consistent indent unit, which the Validator
+  reports: a warning, and with Strict an error. That un-held the second
+  group (now `TestValidatorRefusesLenientNameReadings`).
+
+
+
