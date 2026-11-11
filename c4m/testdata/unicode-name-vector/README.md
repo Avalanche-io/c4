@@ -9,7 +9,9 @@ pass it.
 Every file is written by the Go library (`TestUnicodeNameVector`;
 `C4M_UPDATE_VECTORS=1 go test ./c4m -run TestUnicodeNameVector` rewrites
 them, and the test fails if a file differs from what the library writes).
-No line was written by hand.
+No line was written by hand. Every timestamp is null: the pretty form writes
+a stated time in the local zone, so stated times would make the file depend
+on the machine that wrote it.
 
 | File                        | Content                                                                |
 | --------------------------- | ---------------------------------------------------------------------- |
@@ -59,6 +61,6 @@ of the two `café.txt` entries, and the chain above resolved to one entry.
 `root-id.txt` is master's. The childless directory `发送/` has a null size
 and no ID, and before the collapsed-directory size rule (1.0.27) a release
 line canonicalises that null size as `0`. So on release/1.0.x the tree's ID
-is `c42noMAFKPujc3cScMyQtzuUVo3rPWcrUAcNse8RLteLaJA7UEBWgUczw6b7v6KKeucTed8zxJmCt9aqyHY1A6B4dZ`,
+is `c411tr2n8AwGyvHsERmffCE38dcjqPaY92KjizyxW9iafuxh3eJ53R9upuWH5MprvogtoM9nNm8j4Fde7L3vCZtj81`,
 measured with Go release/1.0.x's library (2026-11-11). Every other
 expectation is the same on both lines.

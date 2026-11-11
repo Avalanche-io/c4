@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Avalanche-io/c4"
 )
@@ -33,7 +32,10 @@ const (
 )
 
 func unicodeNameManifest() *Manifest {
-	ts := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	// Null timestamps: the pretty form writes a stated time in the local zone,
+	// so a vector with stated times would differ by the machine that wrote it
+	// (the link-target vector does the same).
+	ts := NullTimestamp()
 	id := func(s string) c4.ID { return c4.Identify(strings.NewReader(s)) }
 	m := NewManifest()
 	for _, n := range []string{uniNFC, uniNFD, uniCJK, uniEmoji} {
@@ -66,7 +68,7 @@ func TestUnicodeNameVector(t *testing.T) {
 	// A chain whose base holds café.txt in NFC and whose patch adds the NFD
 	// spelling: two names, so the result holds both (a reader keying names
 	// by canonically equivalent text merges them into one).
-	ts := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	ts := NullTimestamp()
 	nfcOnly := NewManifest()
 	nfcOnly.AddEntry(&Entry{Mode: 0o644, Timestamp: ts, Size: 3, Name: uniNFC, C4ID: c4.Identify(strings.NewReader("one"))})
 	both := nfcOnly.Copy()
