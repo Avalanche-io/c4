@@ -228,6 +228,8 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 		os.Exit(1)
 	}
 
+	refused := reportRefused(plan.Refused)
+
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "%d operations planned\n", len(plan.Operations))
 		for _, op := range plan.Operations {
@@ -245,6 +247,7 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 	reportResult(dirPath, result)
 	reportPreState(preID, dirPath)
 	exitIfFailed(result)
+	exitIfRefused(refused)
 }
 
 // runPatchDirToC4m scans a directory, stores content, and writes a c4m file.
@@ -329,6 +332,8 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 		os.Exit(1)
 	}
 
+	refused := reportRefused(plan.Refused)
+
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "%d operations planned\n", len(plan.Operations))
 		for _, op := range plan.Operations {
@@ -346,6 +351,7 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 	reportResult(destDir, result)
 	reportPreState(preID, destDir)
 	exitIfFailed(result)
+	exitIfRefused(refused)
 }
 
 // runPatchChain handles 3+ args: multi-file chain resolution (original behavior).
@@ -540,6 +546,8 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 		os.Exit(1)
 	}
 
+	refused := reportRefused(plan.Refused)
+
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "%d operations planned\n", len(plan.Operations))
 		for _, op := range plan.Operations {
@@ -557,6 +565,7 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 	reportResult(dirPath, result)
 	reportPreState(preID, dirPath)
 	exitIfFailed(result)
+	exitIfRefused(refused)
 }
 
 // reconcileStore returns the store handle for a reconcile: the prompting
@@ -714,5 +723,30 @@ func reportResult(dirPath string, result *reconcile.Result) {
 
 	for _, e := range result.Errors {
 		fmt.Fprintf(os.Stderr, "  error: %v\n", e)
+	}
+}
+
+// reportRefused names, on stderr, every target entry the destination
+// folds onto a sibling's name, and returns how many entries were refused.
+func reportRefused(refused []reconcile.Refusal) int {
+	n := 0
+	for _, r := range refused {
+		n += r.Entries
+		if r.Entries > 1 {
+			fmt.Fprintf(os.Stderr, "refused: %s (%d entries): %s\n", r.Path, r.Entries, r.Reason)
+		} else {
+			fmt.Fprintf(os.Stderr, "refused: %s: %s\n", r.Path, r.Reason)
+		}
+	}
+	return n
+}
+
+// exitIfRefused ends a run that wrote everything it could but refused some
+// entries with exit 2, the code for a description the run could not fully
+// realise.
+func exitIfRefused(n int) {
+	if n > 0 {
+		fmt.Fprintf(os.Stderr, "partial: %d entries refused (names this folder takes for another's); the rest is written\n", n)
+		os.Exit(2)
 	}
 }

@@ -2,6 +2,21 @@
 
 ## Unreleased (1.0.x)
 
+### `c4 patch` no longer pairs one file's name with another's bytes on a case-insensitive volume ⚠
+
+A description made on Linux or a case-sensitive volume can hold names
+that differ only in case (`README.md` and `readme.md`; `Docs/` and
+`docs/`). On a case-insensitive volume (default APFS, NTFS) the folder
+takes them for one, and through 1.0.25 `c4 patch` wrote one over the
+other with exit 0: measured on macOS, one file named `readme.md` holding
+`README.md`'s bytes, and the two directories merged into one. Now the
+collision is measured on the destination folder: the last name in byte
+order is written whole (name and bytes), the others are refused and
+named on stderr (`refused: README.md: this folder takes it for
+readme.md (measured)`), a directory with its subtree, and the run exits
+2. On a volume that tells the names apart nothing changes.
+Unicode-form collisions (NFC and NFD) are not detected.
+
 ### `c4 patch` no longer empties a directory the target lists only as one line ⚠
 
 A one-level record shows each subdirectory as one line carrying its own

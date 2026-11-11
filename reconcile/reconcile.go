@@ -135,6 +135,18 @@ type Operation struct {
 type Plan struct {
 	Operations []Operation
 	Missing    []c4.ID
+	// Refused lists target entries the destination folds onto a
+	// sibling's name (case), in path order. Nothing is planned for them or
+	// under them, and nothing on disk is removed on their account.
+	Refused []Refusal
+}
+
+// Refusal is one target entry the destination cannot hold under its name:
+// a directory is reported once, for its whole subtree.
+type Refusal struct {
+	Path    string // slash-separated path relative to the destination; a directory ends in "/"
+	Reason  string
+	Entries int // entries refused with it: 1, or the directory and everything under it
 }
 
 // IsComplete returns true when all required content is available.
