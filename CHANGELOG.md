@@ -2,6 +2,19 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A name or link target ending in a backslash reads back as itself
+
+A backslash is a literal in a c4m name (only `/` separates paths), written
+`\\` by SafeName. The decoder consumed only the backslash of that escape,
+so its second byte started a new escape with the field separator after it:
+a real file named `trail\` scanned as `trail\\` and read back as
+`trail\ `, a different name, re-encoded `trail\\\ ` with a different C4
+ID and exit 0; in a tree with a subdirectory the scan's own checkpoint
+then refused the file `c4 id` had just written. A link target ending in a
+backslash had the same fault. Every backslash escape is now consumed as a
+two-byte unit, in names and in link targets. Pinned by
+`c4m/testdata/backslash-name-vector/`.
+
 ### A link line reads back as it was written
 
 Two decoder faults, both on lines the encoder writes. **A target that

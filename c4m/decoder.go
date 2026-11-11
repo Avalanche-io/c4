@@ -553,14 +553,23 @@ func (d *Decoder) parseNameOrTarget(line string, pos int) (string, int, bool, er
 	for pos < n {
 		ch := line[pos]
 
-		// c4m field-boundary escapes.
+		// A backslash always starts a two-byte escape. A c4m field-boundary
+		// escape (\<space>, \", \[, \]) becomes its literal; any other
+		// (a SafeName escape such as \\) passes through whole for
+		// UnsafeName. Consuming only the backslash of a SafeName escape let
+		// its second byte start a new escape with the next character, so a
+		// name ending in a backslash ("trail\\" then the field separator)
+		// read back as "trail\ ", a different name (found 2026-11-11).
 		if ch == '\\' && pos+1 < n {
 			next := line[pos+1]
 			if next == ' ' || next == '"' || next == '[' || next == ']' {
 				buf.WriteByte(next)
-				pos += 2
-				continue
+			} else {
+				buf.WriteByte(ch)
+				buf.WriteByte(next)
 			}
+			pos += 2
+			continue
 		}
 
 		if ch == '[' || ch == ']' {
@@ -674,14 +683,20 @@ func (d *Decoder) parseTarget(line string, pos int) (string, int, error) {
 	for pos < n {
 		ch := line[pos]
 
-		// Backslash escapes: consume space and quote escapes.
+		// A backslash always starts a two-byte escape: \<space> and \" are
+		// literals, any other (a SafeName escape such as \\) passes through
+		// whole for UnsafeName, so its second byte never starts an escape
+		// of its own (the trailing-backslash fix in parseNameOrTarget).
 		if ch == '\\' && pos+1 < n {
 			next := line[pos+1]
 			if next == ' ' || next == '"' {
 				buf.WriteByte(next)
-				pos += 2
-				continue
+			} else {
+				buf.WriteByte(ch)
+				buf.WriteByte(next)
 			}
+			pos += 2
+			continue
 		}
 
 		// The pretty form pads before the C4 ID field; testing only the
