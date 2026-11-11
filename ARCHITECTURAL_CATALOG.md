@@ -12,8 +12,7 @@ github.com/Avalanche-io/c4
   scan/            Directory scanner: Generator, ScanMode, reuse guides
   store/           Content-addressed storage: Store interface + implementations
   reconcile/       Filesystem reconciliation: Plan, Apply, Distribute
-  cmd/c4/          CLI binary (12 verbs)
-    internal/scan/ Progressive CLI scanner (platform-specific)
+  cmd/c4/          CLI binary (12 verbs); it scans through `scan/` only
 ```
 
 ## Root Package (`c4`)
@@ -145,7 +144,7 @@ Platform locks: `journal_lock_unix.go` (flock, EINTR loop) /
 
 `c4m.PropagateMetadata([]*Entry)` is the **One True Implementation** for
 resolving null directory `Size` and `Timestamp` from descendants. Producers
-of `*c4m.Manifest` — including `scan` and `cmd/c4/internal/scan` — call it
+of `*c4m.Manifest` — including `scan` — call it
 directly rather than maintaining parallel copies (the duplicates were
 removed in v1.0.13 along with the underlying O(D × N) algorithm).
 
@@ -369,8 +368,11 @@ Supporting files: `flags.go` (custom flag parser + `--help` pages),
 `claimOrigin`), `help.go` (the reference pages), `main.go` (dispatch +
 bare read-only shortcuts; `-s` is the only write opt-in).
 
-`cmd/c4/internal/scan/` contains the progressive CLI scanner with platform-specific
-implementations (darwin, linux, windows).
+The CLI scans through the public `scan` package only. A second scanner,
+`cmd/c4/internal/scan/` (the v1.0 CLI scanner, with SIGINFO status and
+per-platform walkers), was left unlinked when every verb moved to `scan`
+on 2026-03-19 and was removed on 2026-11-13 (decided by the release lead,
+under Joshua's instruction to decide; reversible).
 
 ## Dependency Graph
 

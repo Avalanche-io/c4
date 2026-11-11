@@ -2,6 +2,19 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `cmd/c4/internal/scan` is removed
+
+It was the CLI's scanner at v1.0. On 2026-03-19 every verb moved to the
+public `scan` package (616e211) and this one was left behind: nothing has
+imported it since, and `go list -deps ./cmd/c4` does not include it. Its
+later fixes (a cancel panic, four data races, test deflakes, a
+propagation pass) therefore changed no CLI behaviour; their entries
+below are corrected to say so. The one capability it had that the CLI
+does not offer is status on SIGINFO and SIGUSR1; that would be an
+addition to `scan`, not a reason to keep a second scanner. No CLI
+behaviour changes. (Decided 2026-11-13 by the release lead, under Joshua's
+instruction to decide; reversible.)
+
 ### The decoder reads a collapsed directory's listing before a chain deepens it
 
 A self-contained chain whose first section lists a directory as one
@@ -698,6 +711,12 @@ CI and reachable from Ctrl-C mid-scan. On cancel the monitor now only
 signals completion; every worker already leaves on the context.
 Regression test: `TestStopDuringStructureScanDoesNotPanic`.
 
+*Correction (2026-11-11):* this fix was to `cmd/c4/internal/scan`, a
+package the `c4` CLI has not linked since 2026-03-19, when every verb
+moved to the public `scan` package (`go list -deps ./cmd/c4` does not
+include it). It was not reachable from Ctrl-C or from any command, and
+it changed no behaviour of the CLI. The package is removed below.
+
 ### `c4 -S` stores the frames of a nested sequence
 
 Folding put each folded range, then the directories, at the end of the
@@ -1234,6 +1253,10 @@ inside `OutputCurrentState`, after the recursive `addEntriesToManifest`
 walk and before encoding. The streaming property of the producer pipeline
 is preserved — propagation runs only at emit, not during streaming.
 
+*Correction (2026-11-11):* `cmd/c4/internal/scan` has not been linked by
+the `c4` CLI since 2026-03-19, so this changed no output of any command.
+The package was removed in the Unreleased section.
+
 ### Breaking changes
 
 None for the c4m wire format or C4 ID values. Canonical bytes are
@@ -1265,7 +1288,7 @@ the One True Implementation).
 
 ### Bug fixes
 
-- Fix data races in ProgressiveScanner: added mutex for stage field and proper goroutine tracking for progressReporter
+- Fix data races in ProgressiveScanner: added mutex for stage field and proper goroutine tracking for progressReporter (*correction, 2026-11-11:* in `cmd/c4/internal/scan`, which the CLI does not link; no CLI behaviour changed)
 - Fix directory size calculation in internal scan: add c4m content size to match the public library behavior
 
 ### Code quality
