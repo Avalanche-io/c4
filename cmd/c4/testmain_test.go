@@ -52,3 +52,21 @@ func TestMain(m *testing.M) {
 	os.RemoveAll(dir)
 	os.Exit(code)
 }
+
+// childEnv is the environment for a c4 a test starts with env on top of the
+// suite's own. A test that names a home of its own names it for both
+// platforms: os.UserHomeDir reads HOME on Unix but USERPROFILE on Windows,
+// so a test that set only HOME still shared the suite's home there and
+// found a store an earlier test had set up (Windows CI, 2026-11-11).
+func childEnv(env map[string]string) []string {
+	out := os.Environ()
+	for k, v := range env {
+		out = append(out, k+"="+v)
+	}
+	if home, ok := env["HOME"]; ok {
+		if _, set := env["USERPROFILE"]; !set {
+			out = append(out, "USERPROFILE="+home)
+		}
+	}
+	return out
+}

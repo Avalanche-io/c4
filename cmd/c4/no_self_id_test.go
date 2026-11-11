@@ -248,10 +248,7 @@ func TestPatchReadsStdin(t *testing.T) {
 func runC4StdinWithEnv(t *testing.T, bin string, env map[string]string, stdin []byte, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
-	cmd.Env = os.Environ()
-	for k, v := range env {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
+	cmd.Env = childEnv(env)
 	cmd.Stdin = bytes.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
