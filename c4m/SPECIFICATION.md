@@ -340,6 +340,8 @@ A bare C4 ID on the **first non-blank line** of the stream (before any entries) 
 
 This is stored on `Manifest.Base`.
 
+The base may itself be a block whose first line names its own base: a consumer follows the references back until it reaches a block with none, so a chain of small blocks, each naming the one before, resolves from the newest block's ID alone. *(Wording added 2026-11-11, describing what the reference resolver, `c4m.ResolveBase`, already does; not a format change.)*
+
 #### Subsequent Bare C4 ID (Block Link)
 
 ```
@@ -384,13 +386,28 @@ For directories, patch entries may contain children. The children are applied re
 > parent line is necessarily restated unchanged. To remove a subtree,
 > restate the directory entry alone with no children.
 
-### The Closing Validator
+### No Closing Validator
 
-> **ERRATUM (2026-07-13).** This section previously rejected a bare
-> C4 ID at EOF and consecutive checkpoints as `ErrEmptyPatch`. Those
-> shapes are legal: shipped tools have always emitted them.
+> **ERRATUM (2026-11-11).** This section previously called a bare C4 ID
+> at EOF the chain's "closing validator" and said it was legal, which
+> contradicted the rule below and "Multiple Patches". Joshua ruled on
+> 2026-11-08: "A bare C4 ID at the end of a c4m file is a format error",
+> and on 2026-11-03 that no file can contain its own ID
+> (design/no-self-id.md). The 2026-07-13 erratum that made a trailing ID
+> legal is withdrawn; its ruling on consecutive checkpoints stands.
 
-A bare C4 ID at EOF is the chain's **closing validator**: it names the resolved manifest, and a resolving decoder MUST verify it (`ErrPatchIDMismatch` on mismatch). Consecutive checkpoints are checkpoint repetition — each names the same accumulated state; a resolving decoder verifies both. `ErrEmptyPatch` is retired; the identifier remains reserved.
+**A bare C4 ID at the end of a c4m file is a format error.** A c4m that
+ended with the ID of its own resolved state would be a different file from
+the one that ID names, and a reader cannot tell such a line from data that
+happens to be an ID. Bare IDs appear only as boundaries, naming the state
+of the sections before them, where a patch follows. Writers MUST NOT end a
+c4m with a bare C4 ID. (How a reader treats such a line in files that
+earlier tools wrote, refusing it or accepting it during a migration, is
+not settled here.)
+
+Consecutive checkpoints are checkpoint repetition: each names the same
+accumulated state, and a resolving decoder verifies both. `ErrEmptyPatch`
+is retired; the identifier remains reserved.
 
 ### Multiple Patches
 
@@ -479,7 +496,7 @@ Parsers MUST:
 - Reject CR (carriage return) characters
 - Apply canonical transformation consistently
 - Verify bare C4 IDs match accumulated content (except first-line base reference)
-- Verify the closing validator (a bare C4 ID at EOF) against the resolved manifest
+- Treat a bare C4 ID at the end of a file as a format error, never as a validator (see "No Closing Validator")
 - Accept null values as specified
 - Reject path traversal attempts (`../`, `./`, names containing `/` or `\`)
 - Reject duplicate paths within the same scope

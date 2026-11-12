@@ -710,18 +710,19 @@ This means a patch can modify files deep in a hierarchy by including only
 the changed path: the parent directory entries provide context, and the
 unchanged siblings are preserved from the base.
 
-### 10.5 Checkpoint Repetition and the Closing Validator
+### 10.5 Checkpoint Repetition; No Closing Validator
 
-> **ERRATUM (2026-07-13, snapshot-loop round 3).** This section
-> previously rejected a bare C4 ID at EOF and consecutive bare C4 IDs
-> as `ErrEmptyPatch`, contradicting the NOTE in Section 10.7 (which
-> RECOMMENDS a closing bare C4 ID) and the emitted output of shipped
-> tools. The rules below replace the rejection; `ErrEmptyPatch` is
-> retired (the error identifier remains reserved for API stability).
+> **ERRATUM (2026-11-11).** This section previously made a bare C4 ID at
+> EOF the chain's "closing validator", and Section 10.7's NOTE recommended
+> producers append one. Joshua ruled on 2026-11-08: "A bare C4 ID at the
+> end of a c4m file is a format error", and on 2026-11-03 that no file can
+> contain its own ID. The closing-validator rule of the 2026-07-13 erratum
+> is withdrawn; its rulings on consecutive checkpoints and on retiring
+> `ErrEmptyPatch` stand.
 
-- A bare C4 ID at EOF is the chain's **closing validator**: it names
-  the resolved manifest state, and per Section 10.3 a resolving
-  decoder MUST verify it (`ErrPatchIDMismatch` on mismatch).
+- A bare C4 ID at the end of a c4m file is a **format error**. Writers
+  MUST NOT end a c4m with one. (How a reader treats such a line in files
+  earlier tools wrote is not settled here.)
 - Two consecutive bare C4 IDs are **checkpoint repetition**: both name
   the accumulated state at that point. A resolving decoder verifies
   each; a shape-level (non-resolving) reader treats the second as
@@ -729,7 +730,8 @@ unchanged siblings are preserved from the base.
 - Checkpoint verification applies to self-contained streams. After an
   unresolved external base reference (Section 10.2), the accumulated
   state is unknowable to a non-fetching decoder; verification defers
-  to the resolver that fetches the base.
+  to the resolver that fetches the base, which verifies each checkpoint
+  against the state accumulated on top of it.
 
 ### 10.6 Multiple Patches
 
@@ -748,12 +750,15 @@ preceding content and patches applied).
 
 ### 10.7 Unclosed Patch at EOF
 
-A patch section that reaches EOF without a closing bare C4 ID is valid.
-The entries are applied as a patch, but no final verification occurs.
+A patch section that reaches EOF is the normal end of a chain. The
+entries are applied as a patch; the final state is not named in the
+file, because no file can contain its own ID (Section 10.5).
 
-> **NOTE**: This means the final patch in a stream is not verified by a
-> checkpoint. If stream integrity verification is required at the end, the
-> producer SHOULD append a closing bare C4 ID after the final patch entries.
+> **NOTE** *(corrected 2026-11-11)*: this previously recommended that a
+> producer append a closing bare C4 ID for end-of-stream integrity. That
+> line is a format error (Section 10.5). The integrity of a whole file is
+> its own byte ID wherever the file travels by ID; a reader that needs
+> the final state's ID computes it.
 
 ### 10.8 Inline Range Data
 
