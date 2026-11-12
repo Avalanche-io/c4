@@ -498,7 +498,7 @@ Parsers MUST:
 - Verify bare C4 IDs match accumulated content (except first-line base reference)
 - Treat a bare C4 ID at the end of a file as a format error, never as a validator (see "No Closing Validator")
 - Accept null values as specified
-- Reject path traversal attempts (`../`, `./`, names containing `/` or `\`)
+- Reject path traversal attempts (`../`, `./`, a name containing `/` other than a directory's trailing one). A backslash is a literal name character, never a separator *(corrected 2026-11-11: this listed `\` as a separator; only `/` separates paths, Joshua, 2026-11-10)*
 - Reject duplicate paths within the same scope
 
 Parsers MAY:
