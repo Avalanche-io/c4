@@ -397,7 +397,9 @@ DESCRIPTION
     record: one line per claim it has made (each c4 id -s snapshot, each stdin blob, every
     pre-image taken by restore --force). An absent journal is an empty history: log lists
     nothing, exits 0. A journal file passed as an argument (a copied store's journal included)
-    lists the same way; c4m chain arguments list their sections with summary statistics.
+    lists the same way; c4m chain arguments list their sections with summary statistics. A
+    chain whose first line names an external base lists that base first, as layer 0, resolved
+    from the store (an error naming it when the store lacks it), and its own sections from 1.
 OUTPUT
     One line per claim, append order, oldest first: the 1-based index, the claim's scan start,
     then the claim ID. Fields never contain spaces, so field extraction is safe. First field =

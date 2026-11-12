@@ -2,6 +2,14 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `c4 log` follows an external base
+
+On a c4m whose first line names an external base, `c4 log` printed the
+file's own first section as "(base)", presenting a block as a base state.
+It now resolves the base from the store and lists it as layer 0,
+`0  <ID>  (external base <block ID>)`, then the file's sections from 1 as
+patches against it, so the indices `c4 split` takes are unchanged. A base
+the store cannot supply is an error naming it, as in `c4 patch`.
 ### A block on an external base is resolved section by section, its checkpoints verified
 
 A c4m whose first line names an external base was resolved by folding the

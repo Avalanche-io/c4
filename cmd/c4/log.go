@@ -79,9 +79,34 @@ func runLog(args []string) {
 	// one patch — so a long history costs one apply per section, not a
 	// from-scratch resolution per section.
 	var prev *c4m.Manifest
+
+	// A first-line bare ID names an external base: the block this chain
+	// refines, outside these files. List the base as layer 0, resolved from
+	// the store (transitively), and every section of the files as a patch
+	// against it, so no block is presented as a base state. The indices of
+	// the files' own sections are unchanged (c4 split takes them). A base
+	// the store cannot supply is an error naming it, as in c4 patch.
+	external := !allSections[0].BaseID.IsNil()
+	if external {
+		baseID := allSections[0].BaseID
+		s, _ := store.OpenStore()
+		var src store.Source
+		if s != nil {
+			src = s
+		}
+		resolved, err := c4m.ResolveBaseID(baseID, src)
+		if err != nil {
+			fatalf("Error: %v\n"+
+				"The first line names a base block this chain refines; it must be in the store.", err)
+		}
+		files, dirs := countEntriesBy(resolved.Entries)
+		fmt.Printf("0  %s  (external base %s)  %d files, %d dirs\n", resolved.ComputeC4ID(), baseID, files, dirs)
+		prev = resolved
+	}
+
 	for i, sec := range allSections {
 		var current *c4m.Manifest
-		if i == 0 {
+		if i == 0 && !external {
 			current = c4m.ResolvePatchChain(allSections[:1], 1)
 		} else {
 			patch := &c4m.Manifest{Version: "1.0", Entries: sec.Entries}
@@ -89,7 +114,7 @@ func runLog(args []string) {
 		}
 		id := current.ComputeC4ID()
 
-		if i == 0 {
+		if i == 0 && !external {
 			// Base manifest.
 			files, dirs := countEntriesBy(sec.Entries)
 			fmt.Printf("%d  %s  (base)  %d files, %d dirs\n", i+1, id, files, dirs)
