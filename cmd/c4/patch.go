@@ -219,7 +219,6 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 		if !diff.IsEmpty() {
 			fmt.Println(diff.OldID)
 			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
-			fmt.Println(diff.NewID)
 		}
 	}
 
@@ -326,7 +325,6 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 		if !diff.IsEmpty() {
 			fmt.Println(diff.OldID)
 			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
-			fmt.Println(diff.NewID)
 		}
 	}
 
@@ -554,7 +552,6 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 		if !diff.IsEmpty() {
 			fmt.Println(diff.OldID)
 			c4m.NewEncoder(os.Stdout).Encode(diff.Patch)
-			fmt.Println(diff.NewID)
 		}
 	}
 

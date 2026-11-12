@@ -188,5 +188,4 @@ func outputDiff(oldManifest, newManifest *c4m.Manifest, ergonomic bool) {
 	}
 	enc.Encode(result.Patch)
 
-	fmt.Println(result.NewID)
 }

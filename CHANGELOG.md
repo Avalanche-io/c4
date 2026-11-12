@@ -2,6 +2,16 @@
 
 ## Unreleased (1.0.27)
 
+### `c4 diff` no longer ends its output with a bare C4 ID
+
+`c4 diff`, and the changeset that `c4 patch` prints when it applies or
+reverts, ended with the new state's bare C4 ID. A c4m file never ends with
+a bare C4 ID (a format error, ruled 2026-11-08), and this line's decoder
+refuses one ("empty patch section"), so a chain grown with
+`c4 diff FILE.c4m DIR >> FILE.c4m` could not be read back by the same
+release. The output now ends on its last entry; the new state's ID is what
+the chain resolves to. Scripts that read the last line of `c4 diff` as
+the new ID should identify the new side instead.
 ### A c4m whose first line names a base is resolved from the store, or refused
 
 A bare C4 ID on a c4m's first line names an external base: the prior block
