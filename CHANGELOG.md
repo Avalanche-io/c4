@@ -2,6 +2,21 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A block that deepens a directory of its base reads that directory's listing first
+
+A stored base is a one-level record: a subdirectory is one line carrying
+its listing's ID. Folding a block onto it treated such a directory as
+empty, so a later block that removed a file under it (by restating the
+file exactly) added the file instead. The result's root ID came out
+right, because it rests on the restated directory lines, while the
+entries under them were wrong: `c4 patch` printed a description that
+disagreed with its own directory IDs, exit 0 (found 2026-11-12 by an
+independent review of shape-B output chains). Now, before each section
+applies, every collapsed directory of the accumulated state that the
+section restates with children has its listing fetched, verified against
+its ID and inlined. A listing the source lacks is an unresolved base,
+named in the error; the fold refuses rather than guess.
+
 ### `c4 log` follows an external base
 
 On a c4m whose first line names an external base, `c4 log` printed the

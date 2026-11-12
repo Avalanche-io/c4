@@ -77,7 +77,7 @@ defers checkpoint verification; it does not fetch.
 
 | Function                 | Description                                                                                                                                       |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ResolveBase(m, src)`    | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. |
+| `ResolveBase(m, src)`    | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. Before each section applies, every collapsed base directory it deepens has its listing fetched, verified and inlined (`deepenRestated`, base_deepen.go); a listing `src` lacks is `ErrUnresolvedBase`. |
 | `ResolveBaseID(id, src)` | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID.                       |
 | `DecodeResolved(r, src)` | Decode plus `ResolveBase` in one step.                                                                                                            |
 

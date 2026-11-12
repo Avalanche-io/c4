@@ -135,6 +135,9 @@ func foldSectionsOntoBase(m *Manifest, sections []*PatchSection, src store.Sourc
 					ErrPatchIDMismatch, i+1, m.Base, got, sec.BaseID)
 			}
 		}
+		if resolved, err = deepenRestated(resolved, sec.Entries, src); err != nil {
+			return nil, err
+		}
 		resolved = ResolvePatchChain([]*PatchSection{
 			{Entries: resolved.Entries},
 			{Entries: sec.Entries},
