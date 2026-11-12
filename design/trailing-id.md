@@ -90,7 +90,7 @@ Vectors and text:
   line never contributed to the state. `bad-validator.c4m` keeps its
   wrong trailing ID and now pins both rejections. The READMEs record
   the edit as the one exception to "never regenerate".
-- SPECIFICATION.md "The Closing Validator" becomes "No Trailing ID";
+- SPECIFICATION.md "The Closing Validator" becomes "No Closing Validator";
   C4M-STANDARD.md §10.5 and §10.7 are amended, the §10.7 NOTE that
   RECOMMENDED a closing ID now forbids it, Appendix C.1 is rewritten,
   and `ErrTrailingID` joins both error tables.

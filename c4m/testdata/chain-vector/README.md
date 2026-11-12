@@ -1,7 +1,7 @@
 # Cross-implementation chain vector (grammar erratum, 2026-07-13; amended 2026-11-08)
 
 The shared conformance fixture for the chain grammar
-(SPECIFICATION.md "No Trailing ID" / C4M-STANDARD §10.5).
+(SPECIFICATION.md "No Closing Validator" / C4M-STANDARD §10.5).
 Every c4m implementation (Go `c4m`, c4py, c4ts, c4m-swift, libc4,
 and c4sh's vendored decoder) MUST pass all three cases before the
 coordinated release that ships the erratum.
