@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -160,23 +159,6 @@ func guidedScan(dirPath string, ref *c4m.Manifest, mode scan.ScanMode) *c4m.Mani
 	return metaManifest
 }
 
-// looksLikeC4m returns true if the raw bytes look like they might be a c4m file.
-// Detection heuristic: if the first non-blank line starts with a valid mode
-// character (-, d, l, or a 10-char Unix permission string), or whitespace
-// followed by such characters, it's worth trying to parse.
-func looksLikeC4m(data []byte) bool {
-	// Find first non-blank line.
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		trimmed := bytes.TrimLeft(line, " ")
-		if len(trimmed) == 0 {
-			continue
-		}
-		ch := trimmed[0]
-		return ch == '-' || ch == 'd' || ch == 'l' || ch == 'p' || ch == 's' || ch == 'b' || ch == 'c'
-	}
-	return false
-}
-
 // storeMismatchError reports a store object whose bytes do not hash to
 // the ID it is stored under.
 type storeMismatchError struct{ id c4.ID }
@@ -216,90 +198,40 @@ func tryParseC4m(data []byte) *c4m.Manifest {
 	return m
 }
 
-// canonicalizeC4mBytes takes raw bytes, tries to parse as c4m, and if
-// successful returns the canonical form bytes and the manifest. If parsing
-// fails, returns nil, nil.
-func canonicalizeC4mBytes(data []byte) ([]byte, *c4m.Manifest) {
-	m := tryParseC4m(data)
-	if m == nil {
-		return nil, nil
-	}
-	canonical, err := c4m.Marshal(m)
-	if err != nil {
-		return nil, nil
-	}
-	return canonical, m
-}
-
-// identifyC4mFile reads a file, detects if it's c4m, and returns the
-// canonical C4 ID. For c4m files, the ID is computed from the canonical form.
-// For non-c4m files, the ID is computed from raw bytes.
-// Returns the C4 ID and canonical bytes (non-nil only for c4m files).
-func identifyC4mFile(path string) (c4.ID, []byte) {
-	data, err := os.ReadFile(path)
+// identifyFileBytes returns the C4 ID of a file's bytes. A file holding c4m
+// text is bytes like any other: its ID is the ID that summons it. Through
+// 1.0.26 a file whose bytes parsed as c4m (any name) was identified by its
+// re-rendered text, so a pretty (-e) c4m file got an ID that named other
+// bytes (design/no-self-id.md on master; Joshua, 2026-11-03).
+func identifyFileBytes(path string) c4.ID {
+	f, err := os.Open(path)
 	if err != nil {
 		fatalf("Error reading %s: %v", path, err)
 	}
-
-	// Try c4m detection: check extension first, then heuristic.
-	if strings.HasSuffix(path, ".c4m") || looksLikeC4m(data) {
-		canonical, _ := canonicalizeC4mBytes(data)
-		if canonical != nil {
-			id := c4.Identify(bytes.NewReader(canonical))
-			return id, canonical
-		}
-	}
-
-	// Not c4m — identify raw bytes.
-	id := c4.Identify(bytes.NewReader(data))
-	return id, nil
+	defer f.Close()
+	return c4.Identify(f)
 }
 
-// storeC4mAware stores content in the store with c4m canonicalization.
-// If the content is c4m, stores the canonical form. Returns the C4 ID.
-func storeC4mAware(s store.Store, path string) c4.ID {
-	data, err := os.ReadFile(path)
+// storeFileBytes stores a file's bytes and returns their C4 ID. Through
+// 1.0.26 a file whose bytes parsed as c4m was stored re-rendered, so
+// c4 cat of its ID returned other bytes than the file.
+func storeFileBytes(s store.Store, path string) c4.ID {
+	f, err := os.Open(path)
 	if err != nil {
 		fatalf("Error reading %s: %v", path, err)
 	}
-
-	// Try c4m detection.
-	if strings.HasSuffix(path, ".c4m") || looksLikeC4m(data) {
-		canonical, _ := canonicalizeC4mBytes(data)
-		if canonical != nil {
-			id, err := s.Put(bytes.NewReader(canonical))
-			if err != nil {
-				fatalf("Error storing %s: %v", path, err)
-			}
-			return id
-		}
-	}
-
-	// Not c4m — store raw bytes.
-	id, err := s.Put(bytes.NewReader(data))
+	defer f.Close()
+	id, err := s.Put(f)
 	if err != nil {
 		fatalf("Error storing %s: %v", path, err)
 	}
 	return id
 }
 
-// storeContentC4mAware stores content from a reader in the store with c4m
-// canonicalization. Reads all content into memory first to detect c4m.
-// Returns the C4 ID.
-func storeContentC4mAware(s store.Store, r io.Reader) (c4.ID, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return c4.ID{}, err
-	}
-
-	if looksLikeC4m(data) {
-		canonical, _ := canonicalizeC4mBytes(data)
-		if canonical != nil {
-			return s.Put(bytes.NewReader(canonical))
-		}
-	}
-
-	return s.Put(bytes.NewReader(data))
+// storeContentBytes stores a reader's bytes and returns their C4 ID.
+// Nothing is parsed: identify and store mean the bytes.
+func storeContentBytes(s store.Store, r io.Reader) (c4.ID, error) {
+	return s.Put(r)
 }
 
 // fatalOnInvalidEntry runs fn, which calls a c4m patch operation, and

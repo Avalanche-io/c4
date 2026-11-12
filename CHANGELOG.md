@@ -2,6 +2,22 @@
 
 ## Unreleased (1.0.27)
 
+### A file's C4 ID is its bytes on every path ⚠
+
+A file's C4 ID must summon exactly that file. A file whose bytes parsed as
+c4m (under any name) was identified by its re-rendered text, not its
+bytes, by `c4 id FILE`, by `c4 id` on stdin and by `c4 id -s`, and `-s`
+stored the re-rendered text, so `c4 cat` of that ID returned other bytes
+than the file; `c4 cat FILE` also wrote it re-rendered. Only a file inside
+a scanned folder got its byte ID. Canonical c4m text (plain `c4 id`
+output) was unaffected, since re-rendering it changes nothing; the pretty
+form that `-e` writes on `c4 id`, `cat`, `diff`, `merge` and `patch` was
+not. **C4 IDs change for a non-canonical c4m file identified as a file,
+on stdin or through the store.** Every path now hashes and stores the
+bytes, and `c4 cat FILE` without `-e` or `-r` writes the file's bytes. A
+`.c4m` file given to `c4 id` as an argument is still read as a
+description and printed in canonical form, as on master.
+
 ### A childless directory's null size is no longer hashed as 0 ⚠
 
 A directory with no children listed under it and a null size was given

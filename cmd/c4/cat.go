@@ -66,9 +66,16 @@ func catFile(path string, ergonomic, recursive bool) {
 		fatalf("Error reading %s: %v", path, err)
 	}
 
+	// Without a rendering flag, cat is the bytes (design/no-self-id.md on
+	// master). Through 1.0.26 a file whose bytes parsed as c4m was written
+	// re-rendered, so cat of a pretty (-e) file did not return the file.
+	if !ergonomic && !recursive {
+		os.Stdout.Write(data)
+		return
+	}
 	m := tryParseC4m(data)
 	if m == nil {
-		// Not c4m — output raw bytes.
+		// Not c4m — the formatting flags have nothing to act on.
 		os.Stdout.Write(data)
 		return
 	}

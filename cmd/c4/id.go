@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -160,7 +159,7 @@ func doStdin(storeFlag bool) {
 	if storeFlag {
 		s := getOrSetupStore()
 		if s != nil {
-			id, err := storeContentC4mAware(s, os.Stdin)
+			id, err := storeContentBytes(s, os.Stdin)
 			if err != nil {
 				fatalf("Error storing: %v", err)
 			}
@@ -170,21 +169,10 @@ func doStdin(storeFlag bool) {
 		}
 	}
 
-	// Read all stdin to detect c4m.
-	data, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		fatalf("Error reading stdin: %v", err)
-	}
-	if looksLikeC4m(data) {
-		canonical, _ := canonicalizeC4mBytes(data)
-		if canonical != nil {
-			id := c4.Identify(bytes.NewReader(canonical))
-			fmt.Println(id)
-			return
-		}
-	}
-	id := c4.Identify(bytes.NewReader(data))
-	fmt.Println(id)
+	// The ID of exactly the bytes read: stdin holding c4m text is no
+	// exception, so the ID summons that text (design/no-self-id.md on
+	// master). Through 1.0.26 c4m text was identified re-rendered.
+	fmt.Println(c4.Identify(os.Stdin))
 }
 
 func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool, excludes []string, excludeFile string, guide *c4m.Manifest) *c4m.Manifest {
@@ -263,14 +251,12 @@ func describeFile(entry *c4m.Entry, path string, info os.FileInfo, mode scan.Sca
 		if shouldStore {
 			s := getOrSetupStore()
 			if s != nil {
-				entry.C4ID = storeC4mAware(s, path)
+				entry.C4ID = storeFileBytes(s, path)
 			} else {
-				id, _ := identifyC4mFile(path)
-				entry.C4ID = id
+				entry.C4ID = identifyFileBytes(path)
 			}
 		} else {
-			id, _ := identifyC4mFile(path)
-			entry.C4ID = id
+			entry.C4ID = identifyFileBytes(path)
 		}
 	}
 }
