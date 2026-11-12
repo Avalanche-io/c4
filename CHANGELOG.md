@@ -2,6 +2,19 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A block on an external base is resolved section by section, its checkpoints verified
+
+A c4m whose first line names an external base was resolved by folding the
+whole block onto the fetched base as one patch. The decoder, not knowing
+the base, had deferred every checkpoint inside the block, and nothing
+verified them afterwards, so a block whose checkpoint named the wrong state
+resolved without complaint. It had also applied the block's later sections
+against its first section alone: a section that restated an entry an
+earlier section wrote, removing it, was read against the wrong state, and
+the base's entry survived. Resolving now fetches the base, applies each
+section in order and verifies every checkpoint against the state so far
+(`ErrPatchIDMismatch` on a mismatch).
+
 ### A metadata scan records an observed empty directory as empty
 
 `c4 id -m m` computes no directory IDs, so a directory it listed and found

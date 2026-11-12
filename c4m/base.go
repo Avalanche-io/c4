@@ -1,6 +1,8 @@
 package c4m
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -64,20 +66,58 @@ func resolveBlock(id c4.ID, src store.Source, seen map[c4.ID]bool) (*Manifest, e
 	if err != nil {
 		return nil, fmt.Errorf("%w %s: %v", ErrUnresolvedBase, id, err)
 	}
-	defer rc.Close()
-
-	m, err := NewDecoder(rc).Decode()
+	data, err := io.ReadAll(rc)
+	rc.Close()
 	if err != nil {
 		return nil, fmt.Errorf("%w %s: %v", ErrUnresolvedBase, id, err)
+	}
+	m, err := resolveBytes(data, src, seen)
+	if err != nil && !isUnresolvedOrCycle(err) {
+		return nil, fmt.Errorf("%w %s: %v", ErrUnresolvedBase, id, err)
+	}
+	return m, err
+}
+
+// resolveBytes decodes one block and, when it names an external base,
+// resolves it section by section against the fetched prior: each section
+// is applied in order, and each checkpoint between sections is verified
+// against the state accumulated so far (SPECIFICATION.md, "Subsequent Bare
+// C4 ID"). The decoder alone cannot do this: with the base unknown it
+// defers every checkpoint, and it applies a block's later sections against
+// the block's first section only. Removal by exact restatement means
+// something only against the right state, so a block is folded here, base
+// first, never as one flattened patch.
+func resolveBytes(data []byte, src store.Source, seen map[c4.ID]bool) (*Manifest, error) {
+	m, err := NewDecoder(bytes.NewReader(data)).Decode()
+	if err != nil {
+		return nil, err
 	}
 	if m.Base.IsNil() {
 		return m, nil
 	}
-	return foldOntoBase(m, src, seen)
+	sections, err := DecodePatchChain(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return foldSectionsOntoBase(m, sections, src, seen)
 }
 
-// foldOntoBase resolves m.Base and folds m on top of it.
+func isUnresolvedOrCycle(err error) bool {
+	return errors.Is(err, ErrUnresolvedBase) || errors.Is(err, ErrBaseCycle) || errors.Is(err, ErrPatchIDMismatch)
+}
+
+// foldOntoBase resolves m.Base and folds m on top of it. It is the path for
+// a manifest already decoded (ResolveBase); its sections are gone, so its
+// internal checkpoints cannot be checked here. Bytes go through
+// resolveBytes, which verifies them.
 func foldOntoBase(m *Manifest, src store.Source, seen map[c4.ID]bool) (*Manifest, error) {
+	return foldSectionsOntoBase(m, []*PatchSection{{BaseID: m.Base, Entries: m.Entries}}, src, seen)
+}
+
+// foldSectionsOntoBase fetches m.Base, then applies sections in order,
+// verifying every checkpoint (the BaseID of each section after the first)
+// against the accumulated state.
+func foldSectionsOntoBase(m *Manifest, sections []*PatchSection, src store.Source, seen map[c4.ID]bool) (*Manifest, error) {
 	if src == nil {
 		return nil, fmt.Errorf("%w %s: no content source to read it from",
 			ErrUnresolvedBase, m.Base)
@@ -87,10 +127,19 @@ func foldOntoBase(m *Manifest, src store.Source, seen map[c4.ID]bool) (*Manifest
 		return nil, err
 	}
 
-	resolved := ResolvePatchChain([]*PatchSection{
-		{Entries: prior.Entries},
-		{Entries: m.Entries},
-	}, 0)
+	resolved := prior
+	for i, sec := range sections {
+		if i > 0 {
+			if got := resolved.ComputeC4ID(); got != sec.BaseID {
+				return nil, fmt.Errorf("%w: section %d of the block on base %s: accumulated %s, checkpoint %s",
+					ErrPatchIDMismatch, i+1, m.Base, got, sec.BaseID)
+			}
+		}
+		resolved = ResolvePatchChain([]*PatchSection{
+			{Entries: resolved.Entries},
+			{Entries: sec.Entries},
+		}, 0)
+	}
 
 	// Carry range data forward; the newer block wins on collision.
 	for _, layer := range []*Manifest{prior, m} {
@@ -109,9 +158,9 @@ func foldOntoBase(m *Manifest, src store.Source, seen map[c4.ID]bool) (*Manifest
 // the store should use. With a nil src it is Decode plus a loud failure on
 // an unresolved base, never a silently truncated manifest.
 func DecodeResolved(r io.Reader, src store.Source) (*Manifest, error) {
-	m, err := NewDecoder(r).Decode()
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
-	return ResolveBase(m, src)
+	return resolveBytes(data, src, map[c4.ID]bool{})
 }
