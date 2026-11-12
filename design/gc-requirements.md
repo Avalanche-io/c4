@@ -529,8 +529,10 @@ fixture). Each line is exactly one of:
 - **L1 — bare-ID line**: exactly 90 bytes forming one conformant ID.
 - **L2 — ID-concatenation line**: length > 90, a multiple of 90, every
   consecutive 90-byte chunk a conformant ID.
-- **L3 — canonical entry line**: single 0x20 between fields, no leading
-  indentation:
+- **L3 — canonical entry line**: single 0x20 between fields, optionally
+  preceded by leading 0x20 indentation of any width, which is ignored
+  (edges are per line and never depend on depth; *amended 2026-11-12*,
+  see "Patch-shaped objects" below):
   `<mode> <timestamp> <size> <name>[ <link-op>[ <target>]] <id>`
   with mode `-` or a 10-character mode string (first char in `-dlpsbc`,
   remainder in the pinned rwxsStT- classes); timestamp `-` or exactly
@@ -550,15 +552,18 @@ fixture). Each line is exactly one of:
 Anything else → the whole object is a leaf.
 
 **Shape (i) — description**: a sequence of L0/L1/L2/L3 lines satisfying
-SPECIFICATION.md §Patch Format, with §Empty Patch Rejection strictness
-adopted verbatim (normative): a non-empty description contains at least one
-L3 entry line, and every patch section contains at least one L3 entry line.
-An L1 as the first non-blank line is the external base reference; a later L1
-is a block checkpoint; two consecutive L1 lines, or an L1 with no preceding
-L3 in its section, fail the shape. This strictness is load-bearing: it is
-what makes a one-ID-per-line list — and a single-L2-line object, which
-contains no L3 — fail shape (i) and fall through to shape (ii), so the same
-bytes can never classify differently at two arrival sites. The empty object
+SPECIFICATION.md §Patch Format: a non-empty description contains at least
+one L3 entry line. An L1 as the first non-blank line is the external base
+reference; every later L1 is a block checkpoint, including consecutive L1
+lines (checkpoint repetition, legal since the 2026-07-13 erratum) and an L1
+at the end of the object (a format error since 2026-11-08, but written by
+`c4 diff` through 1.0.26 and immutable once stored). *(Amended 2026-11-12:
+this previously failed the shape on two consecutive L1 lines or an L1 with
+no L3 after it in its section, which made both of those stored shapes
+leaves.)* The one load-bearing requirement is the object-wide one: a
+one-ID-per-line list, and a single-L2-line object, contain no L3, so they
+fail shape (i) and fall through to shape (ii), and the same bytes can never
+classify differently at two arrival sites. The empty object
 (zero bytes) IS a description — the empty-description constant — with zero
 edges. Natural-sort order and duplicate names are NOT checked (leniency);
 duplicates contribute the union of their edges.
@@ -573,12 +578,31 @@ accepts both).
 description as a leaf under-marks its children — the catastrophic direction
 — so the walk accepts a pinned SUPERSET of everything any conforming c4
 writer ever stored as a description: blank lines ignored, sort order
-unchecked, duplicates unioned, final LF optional. Every leniency widens
-acceptance only (over-marking, safe) and the list above is exhaustive.
-Ergonomic forms (padded sizes, comma separators, non-UTC timestamps,
-indentation, alignment) are NOT accepted: store-created descriptions are
-canonical by construction, so ergonomic text is user file bytes and
-correctly classifies leaf.
+unchecked, duplicates unioned, final LF optional, leading indentation
+ignored, consecutive and trailing L1 lines read as checkpoints. Every
+leniency widens acceptance only (over-marking, safe) and the list above is
+exhaustive. Ergonomic forms (padded sizes, comma separators, non-UTC
+timestamps, column alignment) are NOT accepted: no c4 writer stores them,
+so ergonomic text is user file bytes and correctly classifies leaf.
+
+**Patch-shaped objects (amendment, 2026-11-12).** The rule above said
+store-created descriptions are canonical by construction and listed
+indentation among the ergonomic forms. That holds for a stored directory
+listing, which is one-level canonical text (SPECIFICATION.md §Canonical
+Form, the text an ID is computed from). It does not hold for the other
+descriptions the store holds by their bytes: a changeset from `c4 diff`, a
+whole chain, the refinement stream `c4 id DIR` writes, and a block of a
+shape-B output chain, whose first line names the previous block. The
+shipped encoder (`c4m.Encoder.EncodePatch`) writes nested patch entries
+indented, so every such object with a nested path classified leaf, and the
+walk followed neither its base edge nor its entries' IDs. That is the
+catastrophic direction this principle exists to prevent (found 2026-11-12
+by an independent review of shape-B output chains, before any sweeper
+shipped). Two readings were considered: treat a first-line L1 as an edge
+whatever follows, or classify the object as a description and walk it in
+full. The second is adopted; it subsumes the first, and a block's entry IDs
+are content its view may not name, between rests. V-10 loses its indented
+case, and V-25 pins the shapes.
 
 ### 5.4 Edge extraction (total, per structural position)
 
@@ -1020,9 +1044,10 @@ Classification and edges:
   catalog roots; the archive object is substrate; it is never edge-walked;
   aggregate-trash of an archived era + empty actually FREES the era's bytes
   while the archive object and dropped-claim tombstones survive.
-- V-10 each ergonomic/nonconforming mutation → whole object leaf: indented
-  entry; padded/comma size; leading-zero size; non-UTC timestamp; CR; CRLF;
-  `@` line; invalid UTF-8; one malformed line amid valid ones.
+- V-10 each ergonomic/nonconforming mutation → whole object leaf:
+  padded/comma size; leading-zero size; non-UTC timestamp; CR; CRLF;
+  `@` line; invalid UTF-8; one malformed line amid valid ones. *(Amended
+  2026-11-12: "indented entry" is no longer a leaf case; see V-25.)*
 - V-11 lenient accepts: blank lines; unsorted entries; duplicate names
   (edge union); missing final LF — all still descriptions.
 - V-12 symlink entries, null-ID and legacy non-null-ID → zero edges; bytes
@@ -1042,7 +1067,18 @@ Classification and edges:
   walk-class; legacy symlink-mode fold → no edge; list object strays.
 - V-24 encoder fixture: capture the shipped canonical encoder's actual
   final-LF and blank-line emission as the leniency fixture; assert the §5.3
-  superset covers it exactly (gates V-10/V-11).
+  superset covers it exactly (gates V-10/V-11). The fixture includes
+  `EncodePatch` output with a nested path, not only listings (amended
+  2026-11-12).
+- V-25 patch-shaped objects are descriptions and walk in full (2026-11-12):
+  (a) a shape-B block, first line the previous block's byte ID, then a
+  restated directory with an indented child → walk edge to the previous
+  block, walk edge to the directory's ID, leaf edge to the child's;
+  (b) a `c4 diff` changeset with a nested path → same; (c) a 1.0.x
+  changeset ending with a bare ID → description, the trailing ID a
+  checkpoint edge; (d) consecutive checkpoints followed by a patch →
+  description, both checkpoint edges; (e) a one-ID-per-line list and a
+  single-L2 object still classify shape (ii).
 
 Adoption and the ~100× pin:
 - V-19 adopted list containing a member whose bytes ARE a stored
