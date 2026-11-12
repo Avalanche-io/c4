@@ -29,7 +29,7 @@ type Decoder struct {
 	// allowTrailingID makes a bare C4 ID at end of input a verified
 	// checkpoint that is then dropped, instead of ErrTrailingID. Only
 	// the normaliser sets it: it is the migration for files written by
-	// c4 1.0.13 through 1.0.24, whose `c4 diff` ended its output with
+	// c4 1.0.13 through 1.0.26, whose `c4 diff` ended its output with
 	// the new state's ID. droppedTrailingID reports that it happened.
 	allowTrailingID   bool
 	droppedTrailingID bool
@@ -183,7 +183,7 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 
 	// A bare C4 ID at end of input is a format error: a c4m file never
 	// ends with its own ID (a bare ID is a boundary before a patch, and
-	// a file cannot contain the ID that names it; Joshua, 2026-11-08).
+	// a file cannot contain the ID that names it; ruled 2026-11-08).
 	// The checkpoint was verified above, so under AllowTrailingID the
 	// normaliser may drop it and rewrite the file; every other reader
 	// refuses and says how to fix the file.

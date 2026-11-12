@@ -34,7 +34,7 @@ constants — the files are byte-stable forever.
 
 Until 2026-11-08 `vector.c4m` and `bad-checkpoint.c4m` ended with a
 fourth block, the resolved manifest's ID on a bare final line (the
-"closing validator" of the 2026-07-13 erratum). Joshua ruled that a
+"closing validator" of the 2026-07-13 erratum). It was ruled that a
 bare C4 ID at the end of a c4m file is a format error: no file can
 contain its own ID. That final line was removed from both files; the
 resolved root ID in `resolved-root-id.txt` is unchanged, because the

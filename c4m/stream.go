@@ -20,7 +20,7 @@ import (
 //
 // The stream ends on the last refined line. Nothing follows it: a
 // c4m file never ends with its own ID, so the resolved state's ID is
-// never written after the entries (through 1.0.24 a "closing
+// never written after the entries (through 1.0.26 a "closing
 // validator" line did; that shape is now ErrTrailingID). The output
 // is a valid c4m chain that resolves to exactly m. These BYTES are
 // the contract at any concurrency; a buffered implementation (this

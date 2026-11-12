@@ -60,7 +60,7 @@ func runIDCheck(paths []string, list, diff bool) int {
 			return 1
 		}
 		// -l and -d read as the normaliser does: a file ending with a
-		// bare ID (the shape `c4 diff >>` wrote through 1.0.24) is
+		// bare ID (the shape `c4 diff >>` wrote through 1.0.26) is
 		// listed as not normal, since its bytes differ from the
 		// normalised text, rather than refused.
 		m, _, err := loadManifestMigrating(p)

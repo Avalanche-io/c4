@@ -223,7 +223,7 @@ func runID(args []string) {
 			// -m projects downward (a description computes at its own
 			// knowledge level; projection only ever removes knowledge).
 			// The normaliser is the migration for files that end with a
-			// bare ID (written by `c4 diff >>` through 1.0.24): it reads
+			// bare ID (written by `c4 diff >>` through 1.0.26): it reads
 			// them, drops the line, says so, and writes the valid form.
 			m, dropped, err := loadManifestMigrating(p)
 			if err != nil {

@@ -22,7 +22,7 @@ patch section. A bare C4 ID at end of input is `ErrTrailingID`.
 The 2026-07-13 erratum (snapshot-loop round 3) made a bare ID at EOF the
 "closing validator": legal, and verified against the resolved manifest.
 It was written because shipped tools emitted that shape. The tool that
-emitted it was `c4 diff`: from 1.0.13 through 1.0.24 its output was
+emitted it was `c4 diff`: from 1.0.13 through 1.0.26 its output was
 `<old ID>`, the entries, `<new ID>`, and the restore dry run printed the
 same. Appending a diff to a file (`c4 diff FILE.c4m DIR >> FILE.c4m`) is
 the documented way to grow a chain, so every chain grown that way ends
@@ -106,7 +106,7 @@ The cost is in the suite and in files already written:
    vector edit, `ErrTrailingID`, the test inversion, and a normaliser
    path if it has one. All five already failed the deepen vector on
    2026-11-03 and were being ported; this rides the same wave.
-2. **Chains written by 1.0.13 through 1.0.24 with `c4 diff >>`.** They
+2. **Chains written by 1.0.13 through 1.0.26 with `c4 diff >>`.** They
    were never readable by the released decoder (it said "empty patch
    section"), so no working flow depends on them; but any that exist on
    disk now get a precise error and a one-command fix instead of a

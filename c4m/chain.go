@@ -119,7 +119,7 @@ func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, 
 	}
 
 	// A bare C4 ID at end of input is a format error (2026-11-08): a c4m
-	// file never ends with its own ID. Through 1.0.24 this reader dropped
+	// file never ends with its own ID. Through 1.0.26 this reader dropped
 	// it silently as a "closing validator"; now every shape-level verb
 	// (patch, log, split, explain) refuses the file and names the fix,
 	// the same as the resolving Decoder. The normaliser migrates it.
