@@ -714,7 +714,7 @@ unchanged siblings are preserved from the base.
 
 > **ERRATUM (2026-11-11).** This section previously made a bare C4 ID at
 > EOF the chain's "closing validator", and Section 10.7's NOTE recommended
-> producers append one. Joshua ruled on 2026-11-08: "A bare C4 ID at the
+> producers append one. It was ruled on 2026-11-08 that "a bare C4 ID at the
 > end of a c4m file is a format error", and on 2026-11-03 that no file can
 > contain its own ID. The closing-validator rule of the 2026-07-13 erratum
 > is withdrawn; its rulings on consecutive checkpoints and on retiring

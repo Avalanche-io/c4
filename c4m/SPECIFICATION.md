@@ -390,8 +390,8 @@ For directories, patch entries may contain children. The children are applied re
 
 > **ERRATUM (2026-11-11).** This section previously called a bare C4 ID
 > at EOF the chain's "closing validator" and said it was legal, which
-> contradicted the rule below and "Multiple Patches". Joshua ruled on
-> 2026-11-08: "A bare C4 ID at the end of a c4m file is a format error",
+> contradicted the rule below and "Multiple Patches". It was ruled on
+> 2026-11-08 that "a bare C4 ID at the end of a c4m file is a format error",
 > and on 2026-11-03 that no file can contain its own ID
 > (design/no-self-id.md). The 2026-07-13 erratum that made a trailing ID
 > legal is withdrawn; its ruling on consecutive checkpoints stands.
@@ -498,7 +498,7 @@ Parsers MUST:
 - Verify bare C4 IDs match accumulated content (except first-line base reference)
 - Treat a bare C4 ID at the end of a file as a format error, never as a validator (see "No Closing Validator")
 - Accept null values as specified
-- Reject path traversal attempts (`../`, `./`, a name containing `/` other than a directory's trailing one). A backslash is a literal name character, never a separator *(corrected 2026-11-11: this listed `\` as a separator; only `/` separates paths, Joshua, 2026-11-10)*
+- Reject path traversal attempts (`../`, `./`, a name containing `/` other than a directory's trailing one). A backslash is a literal name character, never a separator *(corrected 2026-11-11: this listed `\` as a separator; only `/` separates paths, ruled 2026-11-10)*
 - Reject duplicate paths within the same scope
 
 Parsers MAY:
