@@ -70,12 +70,16 @@ Readers:
 
 Migration:
 
-- `c4 id FILE.c4m` (the normaliser) is the migration, via
+- `c4 id FILE.c4m` and `c4 id -` (the normaliser) are the migration, via
   `Decoder.AllowTrailingID()`: it verifies the trailing ID as a
   checkpoint, drops it, reports `trailing root ID removed` on stderr and
   writes the valid form. `DroppedTrailingID()` reports what happened.
   `c4 id -l` lists such a file as not normal (exit 1) and `-d` shows the
-  deletion, so a hook finds them.
+  change, so a hook finds them. The normaliser resolves a chain to one
+  plain c4m of its final state, as it does every chain, so the layers go
+  (same description ID); to keep them, delete the final line instead
+  *(added 2026-11-12: `-d` was described as showing only the deletion;
+  measured, it shows the resolved chain)*. A `c4 patch -` read stays strict.
 - `c4m/testdata/legacy/diff-chain-1.0.24.c4m` is a real file written by
   the installed 1.0.24 (`c4 id t > chain.c4m; c4 diff chain.c4m t/ >>
   chain.c4m`), byte-pinned, and the CLI tests prove it is refused with

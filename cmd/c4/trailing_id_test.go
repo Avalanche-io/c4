@@ -141,3 +141,37 @@ func TestNormalizerMigratesLegacyTrailingID(t *testing.T) {
 		t.Fatalf("migrated file must be normal: exit %d, out %q", code, out)
 	}
 }
+
+// `c4 id -` is the same normaliser as `c4 id FILE.c4m`, so it migrates the
+// same shape: a piped legacy chain gives the same output and the same
+// report. `c4 patch -` stays strict.
+func TestStdinNormalizerMigratesLegacyTrailingID(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	env := map[string]string{"C4_STORE": "", "HOME": home, "USERPROFILE": home}
+
+	legacy, err := os.ReadFile(legacyDiffChain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _, code := runC4WithEnv(t, bin, env, "id", legacyDiffChain)
+	if code != 0 {
+		t.Fatalf("c4 id FILE: exit %d", code)
+	}
+	got, stderr, code := runC4WithStdinEnv(t, bin, env, string(legacy), "id", "-")
+	if code != 0 {
+		t.Fatalf("c4 id - on the legacy chain: exit %d: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "trailing root ID removed") {
+		t.Errorf("c4 id - must report the dropped line, stderr: %q", stderr)
+	}
+	if got != want {
+		t.Errorf("c4 id - gave\n%s\nc4 id FILE gave\n%s", got, want)
+	}
+
+	_, stderr, code = runC4WithStdinEnv(t, bin, env, string(legacy), "patch", "-")
+	if code == 0 || !strings.Contains(stderr, "never ends with its own ID") {
+		t.Errorf("c4 patch - must refuse the legacy chain: exit %d: %s", code, stderr)
+	}
+}

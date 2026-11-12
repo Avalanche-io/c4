@@ -87,8 +87,8 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 }
 
 // resolveC4m loads a c4m file through the one verifying loader:
-// chains resolve to their final state, checkpoints and the closing
-// validator are verified (grammar erratum, draft-v9 §4).
+// chains resolve to their final state and checkpoints are verified; a
+// file ending with a bare ID is refused (format error, ruled 2026-11-08).
 func resolveC4m(path string) *c4m.Manifest {
 	if path == "-" {
 		return manifestFromStdin()

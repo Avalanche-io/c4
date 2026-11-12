@@ -126,7 +126,10 @@ func runID(args []string) {
 	for _, p := range paths {
 		if p == "-" {
 			// Parse stdin as a c4m description; -m projects downward.
-			m := manifestFromStdin()
+			m, dropped := readStdinManifest(true)
+			if dropped {
+				fmt.Fprintln(os.Stderr, "normalized: -: trailing root ID removed (a c4m file never ends with its own ID)")
+			}
 			reportNormalized("-", c4m.Normalize(m))
 			if mode == scan.ModeContent {
 				m = scan.ProjectContent(m)
@@ -328,9 +331,19 @@ func reportPartial(m *c4m.Manifest, mode scan.ScanMode) bool {
 	return found
 }
 
-// manifestFromStdin parses stdin as a c4m description (the `c4 id -`
-// form); patch chains resolve to their final state.
+// manifestFromStdin parses stdin as a c4m description (`c4 patch -`);
+// patch chains resolve to their final state, and a trailing bare ID is
+// refused like every strict read.
 func manifestFromStdin() *c4m.Manifest {
+	m, _ := readStdinManifest(false)
+	return m
+}
+
+// readStdinManifest parses stdin as a c4m description. With migrate (the
+// `c4 id -` normaliser only) a trailing bare ID is verified as a
+// checkpoint and dropped, and dropped reports it, exactly as
+// `c4 id FILE.c4m` does; otherwise the decoder refuses it.
+func readStdinManifest(migrate bool) (m *c4m.Manifest, dropped bool) {
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		fatalf("Error reading stdin: %v", err)
@@ -338,11 +351,15 @@ func manifestFromStdin() *c4m.Manifest {
 	if c4m.IsJournal(data) {
 		fatalf("Error: stdin is a store journal, not a description — list it with: c4 log <file>")
 	}
-	m, err := c4m.Unmarshal(data)
+	d := c4m.NewDecoder(bytes.NewReader(data))
+	if migrate {
+		d.AllowTrailingID()
+	}
+	m, err = d.Decode()
 	if err != nil {
 		fatalf("Error parsing stdin as c4m: %v", err)
 	}
-	return m
+	return m, d.DroppedTrailingID()
 }
 
 func doStdin(storeFlag bool) {

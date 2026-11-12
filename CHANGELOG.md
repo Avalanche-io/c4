@@ -479,10 +479,13 @@ cannot contain its own ID and still be the file its ID summons.
   reader behind `patch`, `log`, `split` and `explain`, with an error
   that says how to fix it. The 1.0.24 decoder already refused these
   files, as "empty patch section"; only master briefly accepted them.
-- The normaliser is the migration: `c4 id FILE.c4m` reads the old
-  shape, verifies the trailing ID as a checkpoint, drops it, reports
-  `trailing root ID removed` on stderr and writes the valid form.
-  `c4 id -l` lists such files; `c4 id -d` shows the deletion.
+- The normaliser is the migration: `c4 id FILE.c4m` (or `c4 id -`)
+  reads the old shape, verifies the trailing ID as a checkpoint, drops
+  it, reports `trailing root ID removed` on stderr and writes the valid
+  form. `c4 id -l` lists such files; `c4 id -d` shows the change. Like
+  every chain it normalises, the result is one plain c4m of the final
+  state (same description ID); to keep a chain's layers, delete its
+  final line instead.
   (`Decoder.AllowTrailingID` and `DroppedTrailingID` expose this.)
 - Consumers holding immutable old objects (a changeset in a signed
   record) use `c4m.DecodePatchChainMigrating`, which takes the trailing
