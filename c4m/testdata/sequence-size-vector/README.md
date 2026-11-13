@@ -21,10 +21,11 @@ libc4) MUST pass it.
 
 ## Files
 
-| File         | Made by                                                                              |
-| ------------ | ------------------------------------------------------------------------------------ |
-| `frames.c4m` | the Go encoder: `sub/` holding `f.001.exr` to `f.003.exr`, 11 bytes each, normalised |
-| `folded.c4m` | `SequenceDetector` (minimum length 3) on `frames.c4m`, normalised, encoded           |
+| File           | Made by                                                                              |
+| -------------- | ------------------------------------------------------------------------------------ |
+| `frames.c4m`   | the Go encoder: `sub/` holding `f.001.exr` to `f.003.exr`, 11 bytes each, normalised |
+| `folded.c4m`   | `SequenceDetector` (minimum length 3) on `frames.c4m`, normalised, encoded           |
+| `expanded.c4m` | `SequenceExpander` (embedded) on `folded.c4m`: the range line, then its three frames |
 
 No line is composed by hand. `C4M_UPDATE_VECTORS=1 go test ./c4m -run
 TestSequenceSizeIncludesList` rewrites the files; the test then fails if
@@ -45,6 +46,10 @@ they differ from what the library writes.
   children (441 here) while hashing the folded listing, and the
   normaliser derived 175.
 - If any frame's size is null, the range's size is null, and so is `sub/`'s.
+- Expanding `folded.c4m` writes `expanded.c4m`: the range line keeps its
+  size, 303, which counts the list, and each frame comes out with a null
+  size (`-`), because the list names the frames' C4 IDs and carries no
+  per-frame metadata.
 
 ## Round trip
 
@@ -57,7 +62,8 @@ check, comparing SHA-512 of the bytes:
 - `ID in` a file: a chain; the resolved state has that C4 ID.
 - `refused`: decoding fails.
 
-| File         | Re-encodes to |
-| ------------ | ------------- |
-| `frames.c4m` | itself        |
-| `folded.c4m` | itself        |
+| File           | Re-encodes to |
+| -------------- | ------------- |
+| `frames.c4m`   | itself        |
+| `folded.c4m`   | itself        |
+| `expanded.c4m` | itself        |

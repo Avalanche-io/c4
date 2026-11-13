@@ -25,6 +25,18 @@ and:
 
 ## The rule
 
+**Every entry's size is its content plus the description it links to:** a
+directory's size counts its listing, and a range's size counts its ID list.
+The maintainer confirmed the consistency this rests on, measured on master:
+
+- `b/` holding one 5-byte file is 5 + its own 131-byte listing = 136.
+- `a/` holding one 3-byte file and `b/` is 3 + 136 + its own 261-byte
+  listing = 400.
+
+A range is the same: three 11-byte frames are 33 + their 270-byte ID list =
+303, and the directory holding the range is 303 + its own 143-byte folded
+listing = 446. In detail:
+
 - **A range's size** is the sum of its frames' sizes plus the byte length
   of its ID list, count × 90: the bare concatenation of member C4 IDs, no
   newline. A null frame size still makes the range's size null. The
@@ -34,6 +46,9 @@ and:
   children's sizes plus the byte length of its listing as written, the
   folded one. That listing is also what its C4 ID hashes; this was already
   the behaviour, and the spec now states it.
+- **Expansion** gives each frame a null size: the list names the frames'
+  C4 IDs and carries no per-frame metadata, while the range line keeps its
+  size, which counts the list (`expanded.c4m` in the vector).
 - **Every path agrees.** `SequenceDetector` writes the range size; the
   scanner's `-S` walk sizes each directory from the folded children it
   hashes (`listedChildren`), where through 2026-11-13 it sized from the

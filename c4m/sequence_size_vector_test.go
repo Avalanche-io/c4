@@ -53,7 +53,11 @@ func TestSequenceSizeIncludesList(t *testing.T) {
 		}
 		return b.Bytes()
 	}
-	files := map[string][]byte{"frames.c4m": encode(frames), "folded.c4m": encode(folded)}
+	expanded, _, err := NewSequenceExpander(SequenceEmbedded).ExpandManifest(folded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{"frames.c4m": encode(frames), "folded.c4m": encode(folded), "expanded.c4m": encode(expanded)}
 	if os.Getenv("C4M_UPDATE_VECTORS") != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -102,6 +106,27 @@ func TestSequenceSizeIncludesList(t *testing.T) {
 	if ch := Normalize(m); len(ch) != 0 {
 		t.Errorf("the normaliser changes folded.c4m: %v", ch)
 	}
+	// Expanded, the frames come out with null sizes: the list names their
+	// IDs and carries no per-frame metadata. The range keeps its size, which
+	// counts the list.
+	nFrames := 0
+	for _, e := range expanded.Entries {
+		switch {
+		case e.IsSequence:
+			if e.Size != 33+3*90 {
+				t.Errorf("expanded: %s has size %d, want %d", e.Name, e.Size, 33+3*90)
+			}
+		case strings.HasSuffix(e.Name, ".exr"):
+			nFrames++
+			if !e.SizeIsNull() {
+				t.Errorf("expanded: frame %s has size %d, want null", e.Name, e.Size)
+			}
+		}
+	}
+	if nFrames != 3 {
+		t.Errorf("expanded: %d frames, want 3", nFrames)
+	}
+
 	// A null frame size still makes the range's size null, and sub/'s.
 	nullFrame := sequenceSizeFrames()
 	nullFrame.Entries[1].Size = -1
