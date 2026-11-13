@@ -74,13 +74,13 @@ A first-line bare C4 ID names a block outside the file — the prior block
 this one refines. `Decoder.Decode` records it as `Manifest.Base` and
 defers checkpoint verification; it does not fetch.
 
-| Function                 | Description                                                                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ResolveBase(m, src)`    | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. Before each section applies, every collapsed base directory it deepens has its listing fetched, verified and inlined (`Deepen`, base_deepen.go); a listing `src` lacks is `ErrUnresolvedBase`. |
-| `ResolveBaseID(id, src)` | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID.                       |
-| `DecodeResolved(r, src)` | Decode plus `ResolveBase` in one step.                                                                                                            |
-| `FoldSection(state, entries, src)` | The one fold every chain resolver uses (ResolveBase, `c4 patch`): `Deepen`, then apply the section. |
-| `Deepen(state, entries, src)` | `state` with every collapsed directory the section restates with children read from `src`, verified and inlined; `c4 log` counts changes against it. |
+| Function                           | Description                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ResolveBase(m, src)`              | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. Before each section applies, every collapsed base directory it deepens has its listing fetched, verified and inlined (`Deepen`, base_deepen.go); a listing `src` lacks is `ErrUnresolvedBase`. |
+| `ResolveBaseID(id, src)`           | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID.                                                                                                                                                                                                                      |
+| `DecodeResolved(r, src)`           | Decode plus `ResolveBase` in one step.                                                                                                                                                                                                                                                                                                           |
+| `FoldSection(state, entries, src)` | The one fold every chain resolver uses (ResolveBase, `c4 patch`): `Deepen`, then apply the section.                                                                                                                                                                                                                                              |
+| `Deepen(state, entries, src)`      | `state` with every collapsed directory the section restates with children read from `src`, verified and inlined; `c4 log` counts changes against it.                                                                                                                                                                                             |
 
 An unreadable base is `ErrUnresolvedBase`, never a manifest silently
 missing its base; a repeated ID is `ErrBaseCycle`. Nulls express partial
@@ -264,25 +264,25 @@ local filesystem path for existing content. This satisfies
 
 Filesystem reconciliation. Depends on `c4`, `c4m`, and `store`.
 
-| Type            | Description                                                                                                                                                           |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Reconciler`    | Stateful reconciler with content sources and saver.                                                                                                                   |
-| `ContentSource` | Interface: `Has(ID)` + `Open(ID)`. Must tolerate concurrent `Open` when Apply concurrency > 1.                                                                        |
-| `LocalSource`   | Optional interface: `ContentPath(ID) (string, bool)`. Apply prefers local paths for file-to-file copies (CoW clone hook point — see design/reconcile-performance.md). |
-| `DirSource`     | Wraps a directory + manifest as a `ContentSource` (also a `LocalSource`).                                                                                             |
-| `Saver`         | Interface: `Put(io.Reader) (ID, error)` + `Has(ID) bool`.                                                                                                             |
-| `Plan`          | Ordered operation list with missing-content check; `Refused`, `MayCollide`, `Unmeasured`, and `Respell` (entries listed under exactly their own name after Apply).                                                                                                                 |
-| `Operation`     | Single filesystem operation (mkdir, create, move, remove, chmod, chtimes).                                                                                            |
-| `Result`        | Outcome counts and errors from `Apply`.                                                                                                                               |
+| Type            | Description                                                                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Reconciler`    | Stateful reconciler with content sources and saver.                                                                                                                                            |
+| `ContentSource` | Interface: `Has(ID)` + `Open(ID)`. Must tolerate concurrent `Open` when Apply concurrency > 1.                                                                                                 |
+| `LocalSource`   | Optional interface: `ContentPath(ID) (string, bool)`. Apply prefers local paths for file-to-file copies (CoW clone hook point — see design/reconcile-performance.md).                          |
+| `DirSource`     | Wraps a directory + manifest as a `ContentSource` (also a `LocalSource`).                                                                                                                      |
+| `Saver`         | Interface: `Put(io.Reader) (ID, error)` + `Has(ID) bool`.                                                                                                                                      |
+| `Plan`          | Ordered operation list with missing-content check; `Refused`, `MayCollide`, `Unmeasured`, and `Respell` (entries listed under exactly their own name after Apply).                             |
+| `Operation`     | Single filesystem operation (mkdir, create, move, remove, chmod, chtimes).                                                                                                                     |
+| `Result`        | Outcome counts and errors from `Apply`.                                                                                                                                                        |
 | `Refusal`       | A target entry the destination cannot hold under its name (a platform-refused name, `names.go`, or one the folder folds onto a sibling, `collide.go`); a directory once, with its entry count. |
-| `Collision`     | Two sibling names that may be one in the destination: a dry run's unmeasured case hint, or a folder the probe could not measure. |
+| `Collision`     | Two sibling names that may be one in the destination: a dry run's unmeasured case hint, or a folder the probe could not measure.                                                               |
 
 Options:
 
 | Option                | Purpose                                                                                                                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `WithSource`          | add a content source                                                                                                                                                                                   |
-| `WithDryRun`          | plan-only Apply; Plan makes no fold probe and reports case pairs unmeasured                                                                                                                                                                                     |
+| `WithDryRun`          | plan-only Apply; Plan makes no fold probe and reports case pairs unmeasured                                                                                                                            |
 | `WithStoreRemovals`   | store content before removal                                                                                                                                                                           |
 | `WithSyncMode`        | created-file durability, mirroring `store.SyncMode`: `SyncEach` default (durable per file); `SyncBatch` = atomic writes + one device barrier at end of Apply (the CLI's mode); `SyncNone` scratch only |
 | `WithMaxConcurrency`  | Apply create workers: 0 = auto (min(GOMAXPROCS, 16)), 1 = sequential                                                                                                                                   |
@@ -305,11 +305,11 @@ share it; a dry run measures nothing.
 
 Distribution (single-pass multi-target):
 
-| Type               | Description                            |
-| ------------------ | -------------------------------------- |
-| `Target`           | Interface: `Kind() string`.            |
-| `DirTarget`        | Writes files to a directory.           |
-| `StoreTarget`      | Stores content by C4 ID.               |
+| Type               | Description                                                                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Target`           | Interface: `Kind() string`.                                                                                                                          |
+| `DirTarget`        | Writes files to a directory.                                                                                                                         |
+| `StoreTarget`      | Stores content by C4 ID.                                                                                                                             |
 | `DistributeResult` | Per-target outcomes from `Distribute`, each with the entries its folder folds (`Refused`, measured before writing) and folders it could not measure. |
 
 ## cmd/c4 (CLI)
@@ -372,7 +372,7 @@ The CLI scans through the public `scan` package only. A second scanner,
 `cmd/c4/internal/scan/` (the v1.0 CLI scanner, with SIGINFO status and
 per-platform walkers), was left unlinked when every verb moved to `scan`
 on 2026-03-19 and was removed on 2026-11-13 (decided by the release lead,
-under Joshua's instruction to decide; reversible).
+under the maintainer's standing instruction to decide; reversible).
 
 ## Dependency Graph
 
