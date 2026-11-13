@@ -510,6 +510,11 @@ func (g *Generator) GenerateFromPath(path string) (*Manifest, error) {
 	if g.detectSequences {
 		collapsed := c4m.DetectSequences(manifest)
 		manifest.Entries = collapsed.Entries
+		// The folded ranges' ID lists travel with the description; the
+		// writer puts them inline, or the store holds them under -s.
+		// Through 2026-11-13 they were dropped here, so a scan without
+		// -s left the frames' IDs nowhere.
+		manifest.RangeData = collapsed.RangeData
 	}
 
 	return manifest, nil
@@ -915,6 +920,13 @@ func ProjectContent(m *c4m.Manifest) *c4m.Manifest {
 	out := c4m.NewManifest()
 	for _, e := range entries {
 		out.AddEntry(e)
+	}
+	// Projection keeps every range's C4 ID, so its ID list still applies.
+	for id, list := range m.RangeData {
+		if out.RangeData == nil {
+			out.RangeData = make(map[c4.ID]string, len(m.RangeData))
+		}
+		out.RangeData[id] = list
 	}
 	return out
 }

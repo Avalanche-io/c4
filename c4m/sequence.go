@@ -754,6 +754,9 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 		result.AddEntry(entry)
 	}
 
+	// The lists of the ranges this fold made, and of the ranges the input
+	// already held, which pass through unchanged.
+	keepRangeData(result, result.RangeData, manifest.RangeData)
 	return result
 }
 
