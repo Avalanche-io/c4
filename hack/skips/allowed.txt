@@ -2,10 +2,47 @@
 # the module) and test, each with why. A skip not listed here fails CI
 # (hack/skips; decided 2026-11-13 by the release lead; reversible). A
 # shared-vector (conformance) test may be listed only for a GOOS where its
-# condition genuinely holds. Measured 2026-11-13 on macOS (developer Mac)
-# and on every CI leg in report mode.
+# condition genuinely holds. Measured 2026-11-13 on a developer's Mac and on
+# every CI leg (ubuntu, macos, windows; Go 1.16, 1.21, stable) in report mode.
 
 # Opt-in: needs a directory on a case-sensitive volume.
-*      reconcile  TestDistributeRefusesNamesTheTargetFolds  # set C4_TEST_CASE_SENSITIVE_DIR
+*       reconcile  TestDistributeRefusesNamesTheTargetFolds                       # set C4_TEST_CASE_SENSITIVE_DIR
 # Opt-in: a timing measurement, not a check.
-*      store      TestSyncCost                              # set C4_SYNC_COST=1
+*       store      TestSyncCost                                                   # set C4_SYNC_COST=1
+
+# The pinned printable table is checked against the runtime only on a Go
+# whose Unicode is 17.0.0 (the stable legs); Go 1.16 and 1.21 carry older
+# tables. Listed for the GOOSes that run those Go versions.
+linux   c4m        TestPrintableTableIsPinnedIsPrint                              # this Go's Unicode is not 17.0.0
+windows c4m        TestPrintableTableIsPinnedIsPrint                              # this Go's Unicode is not 17.0.0
+
+# Linux volumes are case-sensitive: these need a volume that folds case
+# (macOS runs them).
+linux   cmd/c4     TestRestoreCaseOnlyRenameKeepsTheFile                          # the volume tells case apart
+linux   reconcile  TestApplyRespellsTheWinnerOverALeftoverSpelling               # the volume tells case apart
+linux   reconcile  TestBothSpellingsOverAThirdKeepTheWinner                      # the volume tells case apart
+linux   reconcile  TestCaseOnlyRenameKeepsTheFile                                # the volume tells case apart
+linux   reconcile  TestCaseOnlyRenameOfADirectoryKeepsItsFiles                   # the volume tells case apart
+linux   reconcile  TestDistributeRespellsWhatTheTargetHeldUnderAnotherSpelling   # the volume tells case apart
+linux   reconcile  TestPlanRefusesAFoldedDirectoryWithItsSubtree                 # the volume tells case apart
+# Linux holds every name a c4m can carry, so there is nothing to refuse.
+linux   cmd/c4     TestRestoreRefusesNamesThePlatformCannotHold                   # every name is holdable
+
+# Windows: no Unix permissions, chmod 0 does not restrict reads, and making
+# a symlink needs a privilege the runner does not have.
+windows cmd/c4     TestIdentifyFileBytesReportsAReadError                         # opening a directory fails at open
+windows cmd/c4     TestIDSaysCannotReadWhenTheReadFails                           # chmod 0 does not restrict reads
+windows cmd/c4     TestMetadataScanObservedEmptyDirectory                         # needs Unix permissions
+windows cmd/c4     TestPartialScanExitsTwo                                        # chmod 0 does not restrict reads
+windows cmd/c4     TestPartialScanUnreadableDirectory                             # chmod 0 does not restrict reads
+windows cmd/c4     TestRestoreSetsSymlinkTimes                                    # symlinks need a privilege
+windows cmd/c4     TestStoreSkipsDirectorySymlinkContent                          # symlinks need a privilege
+windows cmd/c4     TestUnreadDirectoryKeepsNullSize                               # needs Unix permissions
+windows reconcile  TestApplyDirectoryTimestamps                                   # needs Unix permissions
+windows reconcile  TestApplyMetadataUpdate                                        # needs Unix permissions
+windows reconcile  TestPlanLinkTimeOnExistingLink                                 # symlinks need a privilege
+windows store      TestSyncNeverLeavesAnUncleanRoot                               # needs Unix permissions
+windows scan       TestGenerateFromPathSymlinks                                   # symlinks need a privilege
+windows scan       TestSymlinkC4IDs                                               # symlinks need a privilege
+windows scan       TestGenerateFromPathSymlinkEdgeCases                           # symlinks need a privilege
+windows scan       TestSymlinkRangeGrouping                                       # symlinks need a privilege

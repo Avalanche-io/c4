@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### CI fails on a test skip its allow-list does not name
+
+CI writes `go test -json` and `hack/skips` lists every skipped test with
+its reason, failing the job on one `hack/skips/allowed.txt` does not name
+for that GOOS (decided 2026-11-13 by the release lead; reversible). A port
+had diverged from a shared vector behind a skipped comparison test; a skip
+now has to be stated and justified. Measuring every leg found the scanner's
+four symlink tests skipping whenever `CI` was set, so they had never run
+in CI on any platform; they now skip only where a symlink cannot be made.
+The "unruled" flow-shaped link test is pinned to its 2026-11-13 ruling.
+
 ### A folded sequence's size is null when a frame's size is ⚠
 
 A folded sequence (`c4 -S`, `SequenceDetector`) states the sum of its

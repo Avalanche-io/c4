@@ -288,10 +288,7 @@ func TestGenerateFromPathErrors(t *testing.T) {
 }
 
 func TestGenerateFromPathSymlinks(t *testing.T) {
-	// Skip on systems that don't support symlinks well
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping symlink test in CI environment")
-	}
+	skipWithoutSymlinks(t)
 
 	// Create test directory with symlinks
 	tmpdir, err := os.MkdirTemp("", "generator_symlink_test")
@@ -463,10 +460,7 @@ func TestGroupSequences(t *testing.T) {
 }
 
 func TestSymlinkC4IDs(t *testing.T) {
-	// Skip on systems that don't support symlinks well
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping symlink test in CI environment")
-	}
+	skipWithoutSymlinks(t)
 
 	tmpdir, err := os.MkdirTemp("", "symlink_c4id_test")
 	if err != nil {
@@ -602,10 +596,7 @@ func TestSymlinkC4IDs(t *testing.T) {
 }
 
 func TestGenerateFromPathSymlinkEdgeCases(t *testing.T) {
-	// Skip on systems that don't support symlinks well
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping symlink test in CI environment")
-	}
+	skipWithoutSymlinks(t)
 
 	tests := []struct {
 		name     string
@@ -751,10 +742,7 @@ func TestGenerateFromPathSymlinkEdgeCases(t *testing.T) {
 }
 
 func TestSymlinkRangeGrouping(t *testing.T) {
-	// Skip on systems that don't support symlinks well
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping symlink test in CI environment")
-	}
+	skipWithoutSymlinks(t)
 
 	tests := []struct {
 		name        string
@@ -939,5 +927,21 @@ func TestNewDecoderDecode(t *testing.T) {
 				tt.check(t, got)
 			}
 		})
+	}
+}
+
+// skipWithoutSymlinks skips only where this process cannot make a symlink
+// (Windows without the privilege). The symlink tests used to skip whenever
+// CI was set, so they never ran on any CI leg, Linux and macOS included
+// (found by the CI skip guard, 2026-11-13).
+func skipWithoutSymlinks(t *testing.T) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "symlink-probe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := os.Symlink("target", filepath.Join(dir, "link")); err != nil {
+		t.Skipf("cannot make a symlink here: %v", err)
 	}
 }
