@@ -297,11 +297,17 @@ func TestRangeDataThroughOperations(t *testing.T) {
 			if err := WriteChainBody(&b, stale); err != nil {
 				t.Fatal(err)
 			}
-			m, err := Unmarshal(b.Bytes())
-			if err != nil {
-				t.Fatal(err)
+			// The bytes, not a decode: a decoder drops a stray list itself.
+			got := map[c4.ID]string{}
+			for _, l := range strings.Split(b.String(), "\n") {
+				if isInlineIDList(l) {
+					got[c4.Identify(strings.NewReader(l))] = l
+				}
 			}
-			return state(m)
+			return got, wantStateLists(stale)
+		}},
+		{"DetectSequences(folded): ranges already folded", func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
+			return state(NewSequenceDetector(3).DetectSequences(folded))
 		}},
 		{"WriteChainBody(folded)", func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
 			var b bytes.Buffer
