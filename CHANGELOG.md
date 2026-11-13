@@ -2,6 +2,25 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A folded range's size counts its ID list ⚠
+
+A folded range's size is now the size of every frame plus its ID list's
+length, count × 90 (the bare concatenation of member C4 IDs); a null
+frame size still makes it null. Ruled 2026-11-13 by the maintainer: "The
+size is the size of every frame and the frame id list. Note that the
+frame id list has a compleately deducable size based on the item count
+alone since c4 id's have a fixed length." A directory holding a range
+counts it as one child plus its listing as written, the folded one, and
+`c4 id -S` now sizes directories from that listing too: through
+2026-11-13 it used the unfolded children (441 for three 11-byte frames)
+while the normaliser derived 175; both now say 446. **Range sizes, and
+the size and C4 ID of every directory above a range, change.** SPECIFICATION.md
+and C4M-STANDARD.md carry the erratum, and state under "Computing
+Directory C4 IDs" that a range is one child and the listing as written is
+hashed. (Decided 2026-11-13 by the release lead; reversible;
+`design/sequence-size-includes-list.md`.) The ports test it with the
+shared `c4m/testdata/sequence-size-vector/`.
+
 ### No list, no expansion: a folded range expands only from its ID list ⚠
 
 `SequenceExpander` expands a range from its ID list, found inline or in a

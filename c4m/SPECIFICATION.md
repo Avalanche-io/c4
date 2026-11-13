@@ -256,7 +256,7 @@ Sequences provide compact representation of numbered files common in media workf
 
 - Names with escaped brackets (`\[`, `\]`) are never interpreted as sequences
 - **C4 ID**: Hash of the bare-concatenated member C4 IDs (90 chars per ID, no separators). This ID list content is a regular file — it can be stored in the content store or inlined as a trailing line in the c4m file (see [Inline Range Data](#inline-range-data)).
-- **Size**: Sum of all member file sizes; null if any member's size is null, as for directories. *(Erratum 2026-11-13, ruled by the maintainer: "One cannot use size as an expectation if there are nulls present, so we must say nothing.")*
+- **Size**: Sum of all member file sizes plus the byte length of the range's ID list (member count × 90, the bare concatenation of member C4 IDs); null if any member's size is null, as for directories. *(Erratum 2026-11-13, ruled by the maintainer: "One cannot use size as an expectation if there are nulls present, so we must say nothing.")* *(Erratum 2026-11-13, ruled by the maintainer: "The size is the size of every frame and the frame id list. Note that the frame id list has a compleately deducable size based on the item count alone since c4 id's have a fixed length. So one can easily figure out what the actual file data size is as well by subtracting the deduced file id list size.")* Three 11-byte frames fold to a range of size 303 (33 + 3 × 90).
 - **Timestamp**: Most recent modification time among all members
 - All members must be the same entry type (all files, all directories, or all symlinks)
 - Sequences with any null (uncomputed) member C4 IDs cannot be folded
@@ -275,6 +275,8 @@ Directory C4 IDs use a **one-level canonical representation**:
 6. Compute C4 ID from the UTF-8 bytes of this canonical text
 
 This creates a Merkle tree where each directory's identity depends on its contents.
+
+A folded range is one child entry, and the listing as written, with the range line in it, is what is hashed; a directory holding a range is identified by its folded listing, and its size counts that listing (see "Directory Sizes"). Folding is a choice: "A folded sequence is a different thing then the original listing because the folded version loses some metadata by applying the range expression metadata to every frame. This is like a folder in which the files in it are renamed, it is indeed a different folder." (the maintainer, 2026-11-13).
 
 ### Directory Sizes
 
