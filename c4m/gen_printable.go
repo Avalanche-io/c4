@@ -1,4 +1,5 @@
 //go:build ignore
+// +build ignore
 
 // gen_printable writes SafeName's printable table, pinned to one Unicode
 // version so that a name's C4 ID never depends on which runtime encoded
