@@ -668,6 +668,14 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string, scanStart time
 // the same value `-q` prints, the journal claims, and `stored:`
 // reports. Returns the root ID and the root record's byte size.
 func storeManifestSelf(s store.Store, m *c4m.Manifest) (c4.ID, int64) {
+	// A folded range's ID list is stored beside the listings, under its
+	// own C4 ID, which is the range's: it is linked by ID from its line
+	// as a subdirectory's listing is (ruled 2026-11-13 by the
+	// maintainer; SPECIFICATION.md "Inline Range Data", "With store").
+	// Through 2026-11-13 `c4 id -s FILE.c4m` stored the listings and not
+	// the lists.
+	storeRangeLists(s, m)
+
 	// Directory records, deepest first so parents reference stored
 	// children. Idempotent: existing records are skipped by ID.
 	var dirs []*c4m.Entry
@@ -851,4 +859,23 @@ func outputManifest(manifest *c4m.Manifest, ergonomic bool) {
 		enc.SetPretty(true)
 	}
 	enc.Encode(manifest)
+}
+
+// storeRangeLists stores the ID list of every folded range m holds that m
+// carries inline. A list m does not carry is not invented; a range line
+// without its list stays valid, as a directory line in one-level form is.
+func storeRangeLists(s store.Store, m *c4m.Manifest) {
+	for _, e := range m.Entries {
+		if !e.IsSequence || e.C4ID.IsNil() || s.Has(e.C4ID) {
+			continue
+		}
+		list, ok := m.RangeData[e.C4ID]
+		if !ok {
+			continue
+		}
+		id, err := s.Put(strings.NewReader(list))
+		if err != nil || id != e.C4ID {
+			fmt.Fprintf(os.Stderr, "Warning: failed to store the ID list of %s: %v\n", e.Name, err)
+		}
+	}
 }
