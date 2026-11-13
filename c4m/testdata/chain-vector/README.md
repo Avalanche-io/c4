@@ -8,11 +8,11 @@ coordinated release that ships the erratum.
 
 ## Files
 
-| File                  | A conforming resolving decoder MUST                                      |
-|-----------------------|--------------------------------------------------------------------------|
-| `vector.c4m`          | accept; resolve to exactly the root ID in `resolved-root-id.txt`          |
-| `bad-validator.c4m`   | reject (the bare ID at EOF mismatches the accumulated state, and ends the file) |
-| `bad-checkpoint.c4m`  | reject (interior checkpoint does not match the accumulated state)          |
+| File                 | A conforming resolving decoder MUST                                             |
+| -------------------- | ------------------------------------------------------------------------------- |
+| `vector.c4m`         | accept; resolve to exactly the root ID in `resolved-root-id.txt`                |
+| `bad-validator.c4m`  | reject (the bare ID at EOF mismatches the accumulated state, and ends the file) |
+| `bad-checkpoint.c4m` | reject (interior checkpoint does not match the accumulated state)               |
 
 ## Shape under test
 
@@ -42,3 +42,21 @@ line never contributed to the state. `bad-validator.c4m` keeps its
 trailing (wrong) ID: it is now the fixture for both rejections. The
 "never regenerate" rule stands for the entries and checkpoint; this
 one deletion is the only edit the files have had.
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File                 | Re-encodes to                |
+| -------------------- | ---------------------------- |
+| `vector.c4m`         | ID in `resolved-root-id.txt` |
+| `bad-checkpoint.c4m` | refused                      |
+| `bad-validator.c4m`  | refused                      |

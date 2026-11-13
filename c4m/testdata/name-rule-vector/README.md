@@ -49,3 +49,31 @@ Measured 2026-11-11 on main and release/1.0.x of every implementation:
   `sub/real.txt`, `/real.txt`, `.`, `..`, `./`, `../`, `/` and `a/b/`.
 - **Restore:** restoring `file-sub.c4m` with c4 master made a directory
   `sub` with the file's mode and failed its own verification.
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File                     | Re-encodes to |
+| ------------------------ | ------------- |
+| `ok-dir.c4m`             | itself        |
+| `ok-file.c4m`            | itself        |
+| `dir-dot.c4m`            | refused       |
+| `dir-dotdot.c4m`         | refused       |
+| `dir-double-slash.c4m`   | refused       |
+| `dir-nested.c4m`         | refused       |
+| `dir-root.c4m`           | refused       |
+| `file-dot.c4m`           | refused       |
+| `file-dotdot-inside.c4m` | refused       |
+| `file-dotdot.c4m`        | refused       |
+| `file-leading-slash.c4m` | refused       |
+| `file-sub.c4m`           | refused       |
+| `file-trailing-path.c4m` | refused       |

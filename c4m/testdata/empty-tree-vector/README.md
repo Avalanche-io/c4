@@ -41,3 +41,22 @@ empty directory it scanned.
 A port that returned the nil ID for an empty manifest. Its own patches from
 the empty tree began with the nil ID, so no other implementation could match
 their base.
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File                   | Re-encodes to   |
+| ---------------------- | --------------- |
+| `empty.c4m`            | itself          |
+| `empty-dir.c4m`        | itself          |
+| `empty-dir-patch.c4m`  | itself          |
+| `empty-dir-pretty.c4m` | `empty-dir.c4m` |

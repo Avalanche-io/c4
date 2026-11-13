@@ -9,11 +9,11 @@ sorted correctly everywhere; this is the test of "everywhere".
 
 ## Files
 
-| File            | Made by                                                        |
-| --------------- | -------------------------------------------------------------- |
-| `canonical.c4m` | the Go encoder, canonical form (`TestZeroNullVector`)          |
-| `pretty.c4m`    | the Go encoder, pretty form, timestamps rendered in UTC        |
-| `root-id.txt`   | `ComputeC4ID` of the manifest both files describe              |
+| File            | Made by                                                 |
+| --------------- | ------------------------------------------------------- |
+| `canonical.c4m` | the Go encoder, canonical form (`TestZeroNullVector`)   |
+| `pretty.c4m`    | the Go encoder, pretty form, timestamps rendered in UTC |
+| `root-id.txt`   | `ComputeC4ID` of the manifest both files describe       |
 
 No line was written by hand. `C4M_UPDATE_VECTORS=1 go test ./c4m -run
 TestZeroNullVector` rewrites the files from the library; the test then
@@ -23,15 +23,15 @@ fails if the files differ from what the library writes.
 
 Decode either file to one manifest whose root ID is `root-id.txt`, and see:
 
-| Entry          | Mode                                        | Size            | C4 ID            |
-| -------------- | ------------------------------------------- | --------------- | ---------------- |
-| `zero.txt`     | **known zero**, `----------`, not null      | 4               | present          |
-| `nullmode.txt` | **null**, `-`                               | 4               | present          |
-| `empty.txt`    | `-rw-r--r--`                                | 0, known        | empty-content ID |
-| `emptydir/`    | `drwxr-xr-x`                                | 0, known        | empty-content ID |
-| `locked/`      | **`d---------`**: known, zero permissions    | 142, derived    | present          |
-| `inside.txt`   | `-rw-r--r--` (child of `locked/`)           | 6               | present          |
-| `unread/`      | **`d---------`**: known, zero permissions    | **null**        | **null**         |
+| Entry          | Mode                                      | Size         | C4 ID            |
+| -------------- | ----------------------------------------- | ------------ | ---------------- |
+| `zero.txt`     | **known zero**, `----------`, not null    | 4            | present          |
+| `nullmode.txt` | **null**, `-`                             | 4            | present          |
+| `empty.txt`    | `-rw-r--r--`                              | 0, known     | empty-content ID |
+| `emptydir/`    | `drwxr-xr-x`                              | 0, known     | empty-content ID |
+| `locked/`      | **`d---------`**: known, zero permissions | 142, derived | present          |
+| `inside.txt`   | `-rw-r--r--` (child of `locked/`)         | 6            | present          |
+| `unread/`      | **`d---------`**: known, zero permissions | **null**     | **null**         |
 
 Then re-encode: canonical form reproduces `canonical.c4m` byte for byte
 (null mode as `-`, zero mode as `----------`, null size as `-`); pretty
@@ -69,3 +69,21 @@ Joshua's call.
 
 Timestamps are fixed constants; the files are byte-stable. Regenerate
 only through the library, never by editing.
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File                         | Re-encodes to                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `canonical.c4m`              | itself                                                                        |
+| `pretty.c4m`                 | `canonical.c4m`                                                               |
+| `legacy-ten-dash-1.0.21.c4m` | unpaired: written by c4 1.0.21, whose encoder wrote a null mode as ten dashes |

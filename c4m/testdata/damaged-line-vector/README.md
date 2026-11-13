@@ -45,3 +45,28 @@ pretty form, on a real tree holding setuid and sticky bits with and without
 execute (`-rwsr-xr-x`, `-rwSr--r--`, `drwxrwxrwt`, `drwxrwxrwT`), a
 known-zero mode and a 1.2 MB file. c4m-swift and libc4 write the same
 character set (their mode formatters were read).
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File                               | Re-encodes to |
+| ---------------------------------- | ------------- |
+| `ok.c4m`                           | itself        |
+| `id-89.c4m`                        | refused       |
+| `id-91.c4m`                        | refused       |
+| `id-bad-char.c4m`                  | refused       |
+| `mode-bad-char.c4m`                | refused       |
+| `mode-sticky-letter-misplaced.c4m` | refused       |
+| `mode-wrong-letter.c4m`            | refused       |
+| `size-junk.c4m`                    | refused       |
+| `size-null-junk.c4m`               | refused       |
+| `time-impossible.c4m`              | refused       |

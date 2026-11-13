@@ -39,3 +39,20 @@ Every implementation in the suite, through 2026-11-11, gave `collapsed/` size
 therefore hashed a size the file does not state and nothing observed. The
 Go library's `Normalize` went the other way and left `empty/` null, so the
 normaliser and the ID disagreed.
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File             | Re-encodes to |
+| ---------------- | ------------- |
+| `normalized.c4m` | itself        |
+| `stated.c4m`     | itself        |

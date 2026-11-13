@@ -64,3 +64,21 @@ line canonicalises that null size as `0`. So on release/1.0.x the tree's ID
 is `c411tr2n8AwGyvHsERmffCE38dcjqPaY92KjizyxW9iafuxh3eJ53R9upuWH5MprvogtoM9nNm8j4Fde7L3vCZtj81`,
 measured with Go release/1.0.x's library (2026-11-11). Every other
 expectation is the same on both lines.
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File                | Re-encodes to                     |
+| ------------------- | --------------------------------- |
+| `canonical.c4m`     | itself                            |
+| `pretty.c4m`        | `canonical.c4m`                   |
+| `nfc-nfd-chain.c4m` | ID in `nfc-nfd-chain-root-id.txt` |

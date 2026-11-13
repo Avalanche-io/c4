@@ -42,3 +42,21 @@ backslash of a SafeName escape, so its second byte started a new escape with
 the field separator after it: `trail\\` then a space read back as `trail\ `
 (or, in the library, as the name with its C4 ID swallowed), a different name
 with no error, and a link target ending in `\` gained the following field.
+
+## Round trip
+
+Each file decoded and then encoded canonically. Go's
+`TestVectorRoundTrip` reads this table, and every port runs the same
+check, comparing SHA-512 of the bytes:
+
+- `itself`: the output is the file, byte for byte.
+- A file name: the output is that file, byte for byte.
+- `ID in` a file: a chain; the resolved state has that C4 ID.
+- `refused`: decoding fails.
+- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
+
+| File            | Re-encodes to   |
+| --------------- | --------------- |
+| `canonical.c4m` | itself          |
+| `patch.c4m`     | itself          |
+| `pretty.c4m`    | `canonical.c4m` |
