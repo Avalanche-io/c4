@@ -41,9 +41,7 @@ func sequenceSizeFrames() *Manifest {
 func TestSequenceSizeIncludesList(t *testing.T) {
 	dir := filepath.Join("testdata", "sequence-size-vector")
 	frames := sequenceSizeFrames()
-	// Fold a copy: the detector shares the entries it does not fold, and
-	// normalising the fold would rewrite frames' sub/.
-	folded := NewSequenceDetector(3).DetectSequences(frames.Copy())
+	folded := NewSequenceDetector(3).DetectSequences(frames)
 	Normalize(folded)
 	encode := func(m *Manifest) []byte {
 		t.Helper()

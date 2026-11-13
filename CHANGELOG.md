@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `DetectSequences` shares nothing with its input
+
+`SequenceDetector.DetectSequences` returned the input's own entries for
+everything it did not fold, so normalising or editing a fold rewrote the
+caller's manifest: a directory holding a range took the folded listing's
+size and C4 ID in the input too (measured: `sub/` 441 became 446). Every
+entry it passes through is now a copy; the input, and its encoded bytes,
+are unchanged by anything done to the result. Ports that fold sequences
+should copy rather than share. (Decided 2026-11-13 by the release lead;
+reversible.)
+
 ### A folded range's size counts its ID list ⚠
 
 A folded range's size is now the size of every frame plus its ID list's
