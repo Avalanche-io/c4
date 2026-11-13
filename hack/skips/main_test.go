@@ -76,14 +76,14 @@ func TestAFailureFailsAndShowsItsOutput(t *testing.T) {
 
 func TestTheAllowListIsPerGOOS(t *testing.T) {
 	list := "# reasons after #\nlinux internal/x TestA # needs root\n* internal/y TestB\ndarwin internal/z TestC\n"
-	got, err := readAllow(strings.NewReader(list), "linux")
+	got, err := readAllow(strings.NewReader(list), "linux", "go1.27.4")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !got["internal/x TestA"] || !got["internal/y TestB"] || got["internal/z TestC"] {
 		t.Fatalf("linux allows %v", got)
 	}
-	if _, err := readAllow(strings.NewReader("linux internal/x\n"), "linux"); err == nil {
+	if _, err := readAllow(strings.NewReader("linux internal/x\n"), "linux", "go1.27.4"); err == nil {
 		t.Fatal("a line without a test was taken")
 	}
 }
@@ -118,5 +118,38 @@ func TestAReasonOnSeveralLinesIsKeptWhole(t *testing.T) {
 	})
 	if got != "needs a machine set aside for it" {
 		t.Fatalf("reason %q", got)
+	}
+}
+
+// A Go-version qualifier allows a skip only on that Go release: the
+// printable-table check may skip on Go 1.16, where the runtime's Unicode is
+// older, and must not skip on current Go, where it runs.
+func TestTheAllowListCanNameAGoRelease(t *testing.T) {
+	list := "linux go1.16 a TestNeedsRoot # old Unicode\n* b TestOptIn # opt-in\n"
+
+	old, err := readAllow(strings.NewReader(list), "linux", "go1.16.15")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if code := run(strings.NewReader(events()), &out, old, mod); code != 0 {
+		t.Errorf("on go1.16 the qualified skip is allowed, got exit %d:\n%s", code, out.String())
+	}
+
+	stable, err := readAllow(strings.NewReader(list), "linux", "go1.27.4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if code := run(strings.NewReader(events()), &out, stable, mod); code != 1 || !strings.Contains(out.String(), "NOT ALLOWED a TestNeedsRoot") {
+		t.Errorf("on go1.27 the same skip must be NOT ALLOWED, got exit %d:\n%s", code, out.String())
+	}
+
+	// Three fields still mean any Go version (the original format).
+	if !stable["b TestOptIn"] {
+		t.Error("an unqualified line must allow its skip on every Go version")
+	}
+	if _, err := readAllow(strings.NewReader("linux go1.16 a\n"), "linux", "go1.16.1"); err == nil {
+		t.Error("a qualified line without a test must be refused")
 	}
 }

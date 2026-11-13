@@ -41,6 +41,7 @@ func main() {
 	allow := flag.String("allow", "", "the allow-list")
 	module := flag.String("module", "github.com/Avalanche-io/c4", "the module, stripped from package paths")
 	goos := flag.String("goos", runtime.GOOS, "the GOOS the tests ran on")
+	goversion := flag.String("goversion", runtime.Version(), "the Go version the tests ran with (go run uses the same toolchain)")
 	report := flag.Bool("report", false, "report unlisted skips without failing on them (to measure a new leg)")
 	flag.Parse()
 	allowed := map[string]bool{}
@@ -50,7 +51,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		allowed, err = readAllow(f, *goos)
+		allowed, err = readAllow(f, *goos, *goversion)
 		f.Close()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -61,9 +62,14 @@ func main() {
 	os.Exit(run(os.Stdin, os.Stdout, allowed, *module))
 }
 
-// readAllow returns the skips the list allows on goos, as "pkg test".
-func readAllow(r io.Reader, goos string) (map[string]bool, error) {
+// readAllow returns the skips the list allows on goos and goversion, as
+// "pkg test". A line is "GOOS package test", or "GOOS goX.Y package test"
+// to allow the skip only on that Go release (major.minor): a test that must
+// run on current Go but cannot on an old one is then not allowed to skip
+// where it must run. Three fields mean any Go version, as before.
+func readAllow(r io.Reader, goos, goversion string) (map[string]bool, error) {
 	out := map[string]bool{}
+	have := goMinor(goversion)
 	sc := bufio.NewScanner(r)
 	n := 0
 	for sc.Scan() {
@@ -73,14 +79,48 @@ func readAllow(r io.Reader, goos string) (map[string]bool, error) {
 		if len(f) == 0 {
 			continue
 		}
-		if len(f) != 3 {
-			return nil, fmt.Errorf("allow-list line %d: want GOOS, package and test, have %q", n, sc.Text())
+		version := ""
+		if len(f) >= 2 && isGoRelease(f[1]) {
+			// Read the version before reslicing: the two must not be one
+			// assignment, whose evaluation order Go leaves open.
+			version = f[1]
+			f = append([]string{f[0]}, f[2:]...)
 		}
-		if f[0] == "*" || f[0] == goos {
+		if len(f) != 3 {
+			return nil, fmt.Errorf("allow-list line %d: want GOOS, optionally goX.Y, package and test, have %q", n, sc.Text())
+		}
+		if (f[0] == "*" || f[0] == goos) && (version == "" || version == have) {
 			out[f[1]+" "+f[2]] = true
 		}
 	}
 	return out, sc.Err()
+}
+
+// isGoRelease reports whether a field names a Go release, "goX.Y".
+func isGoRelease(s string) bool {
+	if !strings.HasPrefix(s, "go") {
+		return false
+	}
+	parts := strings.Split(s[2:], ".")
+	if len(parts) != 2 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" || strings.Trim(p, "0123456789") != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// goMinor reduces a Go version ("go1.16.15", "go1.27.4") to its release,
+// "go1.16".
+func goMinor(v string) string {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return v
+	}
+	return parts[0] + "." + parts[1]
 }
 
 // run reads the events, prints the summary to w, and returns the exit code.
