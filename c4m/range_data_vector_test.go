@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,6 +30,16 @@ func rangeDataVectorFiles(t *testing.T) map[string][]byte {
 		"add.c4m":      patchText(t, PatchDiff(plain, folded)),
 		"remove.c4m":   patchText(t, PatchDiff(folded, noPlate)),
 	}
+	expanded, _, err := NewSequenceExpander(SequenceEmbedded).ExpandManifest(folded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["expanded.c4m"] = encodeRD(t, expanded)
+	// The same description with its range lines in one-level form: valid,
+	// as a directory line whose children are not listed is.
+	noLists := folded.Copy()
+	noLists.RangeData = nil
+	files["folded-no-lists.c4m"] = encodeRD(t, noLists)
 	files["add-chain.c4m"] = append(append([]byte{}, files["plain.c4m"]...), files["add.c4m"]...)
 	files["remove-chain.c4m"] = append(append([]byte{}, files["folded.c4m"]...), files["remove.c4m"]...)
 	return files
@@ -101,6 +112,31 @@ func TestRangeDataVector(t *testing.T) {
 			t.Fatal(err)
 		}
 		same("ResolvePatchChain("+chain+")", ResolvePatchChain(secs, 0), want)
+	}
+
+	// Expansion: from the lists, each frame its own C4 ID; with no list
+	// available, nothing expands and asking for a range is "not available".
+	ex, _, err := NewSequenceExpander(SequenceEmbedded).ExpandManifest(read("folded.c4m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	same("ExpandManifest(folded)", ex, "expanded.c4m")
+	bare := read("folded-no-lists.c4m")
+	if len(bare.RangeData) != 0 {
+		t.Fatalf("folded-no-lists.c4m carries %d lists", len(bare.RangeData))
+	}
+	ex, _, err = NewSequenceExpander(SequenceEmbedded).ExpandManifest(bare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same("ExpandManifest(folded-no-lists)", ex, "folded-no-lists.c4m")
+	for _, e := range bare.Entries {
+		if !e.IsSequence {
+			continue
+		}
+		if _, err := NewSequenceExpander(SequenceEmbedded).ExpandRange(bare, e); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("ExpandRange(%s) with no list: %v, want os.ErrNotExist", e.Name, err)
+		}
 	}
 
 	// The lists are transport data, never identity: dropping them changes

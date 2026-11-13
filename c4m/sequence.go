@@ -2,6 +2,7 @@ package c4m
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/store"
 )
 
 var (
@@ -99,9 +101,20 @@ const (
 	SequenceStandalone
 )
 
-// SequenceExpander handles expansion of sequence notation into individual entries
+// SequenceExpander handles expansion of sequence notation into individual entries.
+//
+// A range's frames are named by its ID list, which is content addressed by
+// the range's own C4 ID (SPECIFICATION.md, "Inline Range Data"). The
+// expander finds the list where content is found: inline in the manifest,
+// or in the source given with SetSource. A range whose list is in neither
+// is not expanded: it stays one folded entry, the way a directory whose
+// listing is unavailable stays one line. Ruled 2026-11-13 by the
+// maintainer: "You can't expand a sequence if you don't have a description
+// of it's contents, this is the same for any content. However, it is an
+// error to drop the frame IDs in any context."
 type SequenceExpander struct {
 	mode SequenceExpansionMode
+	src  store.Source
 }
 
 // SequenceDetector identifies and collapses file sequences
@@ -131,6 +144,14 @@ type sequenceRange struct {
 // NewSequenceExpander creates a new sequence expander with the given mode
 func NewSequenceExpander(mode SequenceExpansionMode) *SequenceExpander {
 	return &SequenceExpander{mode: mode}
+}
+
+// SetSource gives the expander a content source for the ID lists of ranges
+// whose list the manifest does not carry inline. A list read from it must
+// hash to the range's C4 ID; one that does not is not available.
+func (se *SequenceExpander) SetSource(src store.Source) *SequenceExpander {
+	se.src = src
+	return se
 }
 
 // NewSequenceDetector creates a detector with minimum sequence length
@@ -469,44 +490,46 @@ func (s *Sequence) Contains(frame int) bool {
 // ----------------------------------------------------------------------------
 
 // ExpandManifest processes a manifest and expands all sequence entries.
-// If the manifest has inline RangeData, individual C4 IDs are recovered.
-// Otherwise, expanded entries use the sequence C4 ID as a fallback.
+// A range is expanded from its ID list, found inline or in the source
+// given with SetSource; each frame takes its own C4 ID from the list. A
+// range whose list is not available stays one folded entry, with no frames:
+// no frame is given a null C4 ID or the range's own ID. The output carries
+// the list of every range it keeps.
 func (se *SequenceExpander) ExpandManifest(manifest *Manifest) (*Manifest, *Manifest, error) {
 	expanded := NewManifest()
 	expansions := NewManifest()
+	found := make(map[c4.ID]string)
 
 	for _, entry := range manifest.Entries {
 		// Check if entry name contains sequence notation
-		if sequencePattern.MatchString(entry.Name) {
-			// Add the sequence notation entry to the main manifest
-			expanded.AddEntry(entry)
-
-			// Try to get ID list from inline range data
-			var ids *idList
-			if !entry.C4ID.IsNil() && manifest.RangeData != nil {
-				if data, ok := manifest.RangeData[entry.C4ID]; ok {
-					ids, _ = parseIDListFromString(data)
-				}
-			}
-
-			expandedEntries, err := expandSequenceEntry(entry, ids)
-			if err != nil {
-				// Not a valid sequence, keep as-is without expansion
-				continue
-			}
-
-			for _, expandedEntry := range expandedEntries {
-				if se.mode == SequenceEmbedded {
-					expanded.AddEntry(expandedEntry)
-				} else {
-					expansions.AddEntry(expandedEntry)
-				}
-			}
-		} else {
+		if !sequencePattern.MatchString(entry.Name) {
 			// Regular entry, copy as-is
 			expanded.AddEntry(entry)
+			continue
+		}
+		// Add the sequence notation entry to the main manifest
+		expanded.AddEntry(entry)
+
+		list, ok := se.idList(manifest, entry)
+		if !ok {
+			continue // not available: the range stays folded
+		}
+		found[entry.C4ID] = list.Canonical()
+		expandedEntries, err := expandSequenceEntry(entry, list)
+		if err != nil {
+			// Not a valid sequence, keep as-is without expansion
+			continue
+		}
+
+		for _, expandedEntry := range expandedEntries {
+			if se.mode == SequenceEmbedded {
+				expanded.AddEntry(expandedEntry)
+			} else {
+				expansions.AddEntry(expandedEntry)
+			}
 		}
 	}
+	keepRangeData(expanded, manifest.RangeData, found)
 
 	if se.mode == SequenceEmbedded {
 		return expanded, nil, nil
@@ -514,10 +537,58 @@ func (se *SequenceExpander) ExpandManifest(manifest *Manifest) (*Manifest, *Mani
 	return expanded, expansions, nil
 }
 
-// expandSequenceEntry expands a single sequence entry into individual file entries.
-// The idList parameter provides individual C4 IDs for each file in order.
-// If idList is nil, the entry's C4ID is used for all expanded files (legacy behavior).
+// ExpandRange expands one folded range of m into its frames, each with its
+// own C4 ID from the range's ID list (inline in m, or from the source given
+// with SetSource). When the list is not available, the result is the one
+// any unavailable content gives: an error satisfying
+// errors.Is(err, os.ErrNotExist), naming the list's C4 ID, as a store's Open
+// does.
+func (se *SequenceExpander) ExpandRange(m *Manifest, entry *Entry) ([]*Entry, error) {
+	if !sequencePattern.MatchString(entry.Name) {
+		return nil, fmt.Errorf("%s is not a folded range", entry.Name)
+	}
+	list, ok := se.idList(m, entry)
+	if !ok {
+		return nil, &os.PathError{Op: "open", Path: entry.C4ID.String(), Err: os.ErrNotExist}
+	}
+	return expandSequenceEntry(entry, list)
+}
+
+// idList finds entry's ID list: inline in m, else from the expander's
+// source, verified against the range's C4 ID. A range with no C4 ID has
+// no list to find.
+func (se *SequenceExpander) idList(m *Manifest, entry *Entry) (*idList, bool) {
+	if entry.C4ID.IsNil() {
+		return nil, false
+	}
+	if data, ok := m.RangeData[entry.C4ID]; ok {
+		list, err := parseIDListFromString(data)
+		return list, err == nil
+	}
+	if se.src == nil {
+		return nil, false
+	}
+	rc, err := se.src.Open(entry.C4ID)
+	if err != nil {
+		return nil, false
+	}
+	data, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil || c4.Identify(bytes.NewReader(data)) != entry.C4ID || !isInlineIDList(string(data)) {
+		return nil, false
+	}
+	list, err := parseIDListFromString(string(data))
+	return list, err == nil
+}
+
+// expandSequenceEntry expands a single sequence entry into individual file
+// entries, each taking its C4 ID from idList in order. There is no fallback:
+// a range is never expanded without its list (through 2026-11-13 every
+// frame was given the range's own C4 ID, which names the list, not a frame).
 func expandSequenceEntry(entry *Entry, idList *idList) ([]*Entry, error) {
+	if idList == nil {
+		return nil, fmt.Errorf("%s: no ID list", entry.Name)
+	}
 	seq, err := ParseSequence(entry.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse sequence: %w", err)
@@ -526,19 +597,12 @@ func expandSequenceEntry(entry *Entry, idList *idList) ([]*Entry, error) {
 	var entries []*Entry
 	expandedFiles := seq.Expand()
 
-	// Validate ID list count if provided
-	if idList != nil && idList.Count() != len(expandedFiles) {
+	if idList.Count() != len(expandedFiles) {
 		return nil, fmt.Errorf("ID list count (%d) doesn't match expanded file count (%d)",
 			idList.Count(), len(expandedFiles))
 	}
 
 	for i, filename := range expandedFiles {
-		// Get individual C4 ID from ID list, or fall back to entry's C4ID
-		fileID := entry.C4ID
-		if idList != nil {
-			fileID = idList.Get(i)
-		}
-
 		// Create a new entry for each expanded file
 		// Note: Size is unknown for individual files (use -1 for null)
 		expandedEntry := &Entry{
@@ -546,7 +610,7 @@ func expandSequenceEntry(entry *Entry, idList *idList) ([]*Entry, error) {
 			Size:      -1,              // Individual size unknown from range
 			Timestamp: entry.Timestamp, // Shared timestamp
 			Mode:      entry.Mode,      // Shared mode
-			C4ID:      fileID,
+			C4ID:      idList.Get(i),
 			Depth:     entry.Depth,
 		}
 		entries = append(entries, expandedEntry)

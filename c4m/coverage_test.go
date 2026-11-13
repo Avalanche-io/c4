@@ -306,14 +306,13 @@ func TestValidatorEdgeCases(t *testing.T) {
 // TestSequenceExpansionEdgeCases tests edge cases in sequence expansion
 func TestSequenceExpansionEdgeCases(t *testing.T) {
 	t.Run("expand sequence without idList", func(t *testing.T) {
+		// No list, no expansion (ruled 2026-11-13): never frames with
+		// null IDs or the range's own ID.
 		seqEntry := &Entry{Name: "file.[001-003].txt", Mode: 0644, Size: 100, IsSequence: true}
 
 		expanded, err := expandSequenceEntry(seqEntry, nil)
-		if err != nil {
-			t.Fatalf("expandSequenceEntry failed: %v", err)
-		}
-		if len(expanded) != 3 {
-			t.Errorf("Expected 3 expanded entries, got %d", len(expanded))
+		if err == nil || len(expanded) != 0 {
+			t.Errorf("expandSequenceEntry with no list: %d entries, err %v; want none and an error", len(expanded), err)
 		}
 	})
 
@@ -544,7 +543,10 @@ func TestSequenceExpansionDirectCoverage(t *testing.T) {
 	})
 	t.Run("expand sequence entry", func(t *testing.T) {
 		entry := &Entry{Name: "file.[001-002].txt", Mode: 0644, Size: 100, Timestamp: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), IsSequence: true}
-		results, err := expandSequenceEntry(entry, nil)
+		list := newIDList()
+		list.Add(c4.Identify(strings.NewReader("one")))
+		list.Add(c4.Identify(strings.NewReader("two")))
+		results, err := expandSequenceEntry(entry, list)
 		if err != nil {
 			t.Fatalf("expandSequenceEntry: %v", err)
 		}

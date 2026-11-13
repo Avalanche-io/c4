@@ -60,17 +60,32 @@ func TestSequenceDetector(t *testing.T) {
 	}
 }
 
-func TestSequenceExpansion(t *testing.T) {
-	// Create manifest with sequence notation
-	manifest := NewManifest()
-	manifest.AddEntry(&Entry{
-		Name:       "shot.[001-005].dpx",
+// sequenceWithList returns a manifest holding one folded range named
+// pattern with count frames, its ID list inline.
+func sequenceWithList(pattern string, count int) *Manifest {
+	ids := make([]c4.ID, count)
+	for i := range ids {
+		ids[i] = c4.Identify(strings.NewReader(fmt.Sprintf("%s frame %d", pattern, i)))
+	}
+	list := string(IDListBytes(ids))
+	id := c4.Identify(strings.NewReader(list))
+	m := NewManifest()
+	m.AddEntry(&Entry{
+		Name:       pattern,
 		Size:       2048,
 		Timestamp:  time.Now(),
 		Mode:       0644,
 		IsSequence: true,
-		Pattern:    "shot.[001-005].dpx",
+		Pattern:    pattern,
+		C4ID:       id,
 	})
+	m.RangeData = map[c4.ID]string{id: list}
+	return m
+}
+
+func TestSequenceExpansion(t *testing.T) {
+	// Create manifest with sequence notation and its ID list
+	manifest := sequenceWithList("shot.[001-005].dpx", 5)
 
 	// Expand sequences
 	expander := NewSequenceExpander(SequenceEmbedded)
@@ -753,15 +768,7 @@ func TestFindRanges(t *testing.T) {
 
 func TestSequenceExpanderStandalone(t *testing.T) {
 	// Test standalone mode where expansions go to separate manifest
-	manifest := NewManifest()
-	manifest.AddEntry(&Entry{
-		Name:       "shot.[001-003].dpx",
-		Size:       2048,
-		Timestamp:  time.Now(),
-		Mode:       0644,
-		IsSequence: true,
-		Pattern:    "shot.[001-003].dpx",
-	})
+	manifest := sequenceWithList("shot.[001-003].dpx", 3)
 
 	expander := NewSequenceExpander(SequenceStandalone)
 	main, expansions, err := expander.ExpandManifest(manifest)
@@ -784,7 +791,8 @@ func TestSequenceExpanderStandalone(t *testing.T) {
 }
 
 func TestExpandSequenceEntryNilIDList(t *testing.T) {
-	// Test with nil idList — uses entry's C4ID for all expanded entries
+	// No ID list, no frames: a range is never expanded without the list
+	// that names its frames (ruled 2026-11-13).
 	entry := &Entry{
 		Name:       "frame.[01-03].exr",
 		Size:       1024,
@@ -796,19 +804,8 @@ func TestExpandSequenceEntryNilIDList(t *testing.T) {
 	}
 
 	expanded, err := expandSequenceEntry(entry, nil)
-	if err != nil {
-		t.Fatalf("expandSequenceEntry() error = %v", err)
-	}
-
-	if len(expanded) != 3 {
-		t.Errorf("expected 3 expanded entries, got %d", len(expanded))
-	}
-
-	// All entries should have nil C4ID (since entry.C4ID was nil)
-	for _, e := range expanded {
-		if !e.C4ID.IsNil() {
-			t.Errorf("expected nil C4ID, got %s", e.C4ID)
-		}
+	if err == nil || len(expanded) != 0 {
+		t.Errorf("expandSequenceEntry with no list: %d entries, err %v; want none and an error", len(expanded), err)
 	}
 }
 
