@@ -44,14 +44,14 @@ otherwise the same tree gets different C4 IDs from different tools.
 
 Measured 2026-11-13 on GitHub's windows-latest runner, with the Go `c4`
 (5ee54b6) and c4ts (after c4ts #29), on a directory holding a
-subdirectory, a plain file under it, and a file set read-only (`attrib`
-showing `R`). Both tools wrote the first three rows and gave the same
-description ID. Before c4ts #29, c4ts wrote directories as `drw-rw-rw-`,
-which is what Node's `stat` reports (`40666`), and its directory IDs
-differed from Go's. The read-only directory row comes from Go's source
-(`os/types_windows.go`: `0444` for read-only, plus `0111` for a
-directory) and is not measured. c4py, libc4 and c4m-swift have no Windows
-CI leg, so their Windows modes are not measured against this table.
+subdirectory, a plain file under it, a file set read-only and a directory
+set read-only (`attrib +R`, with `attrib` showing `R` on each). Both tools
+wrote every row of the table, line for line, and gave the same
+description ID. Node's `stat` reports a directory as `40666` and a
+read-only directory as `40444`; before c4ts #29, c4ts copied that and
+wrote directories as `drw-rw-rw-`, so its directory IDs differed from
+Go's. c4py, libc4 and c4m-swift have no Windows CI leg. Of them, only c4py
+scans a filesystem, so only its Windows modes are unmeasured.
 
 The same tree scanned on Windows and on a Unix system generally gets
 different C4 IDs, because the modes differ. That is the honest record of
