@@ -58,7 +58,15 @@ jobs:
           unformatted=$(gofmt -l $(git ls-files "*.go"))
           if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
       - name: Test
-        run: go test ./...
+        # Every skip is listed, and one hack/skips/allowed.txt does not name
+        # fails the job, so a conformance test cannot stop running unnoticed
+        # (a port once diverged from a shared vector behind a skipped test).
+        # -report: measuring each leg's skips before the list is final.
+        shell: bash
+        run: |
+          status=0; go test -json ./... > test.json || status=$?
+          go run ./hack/skips -report -allow hack/skips/allowed.txt < test.json || exit 1
+          exit $status
       - name: Test with race detector
         # Runs only where the matrix sets race: true (ubuntu stable). The
         # step used to read `if: matrix.race != false`, which skipped it on

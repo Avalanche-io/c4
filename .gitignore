@@ -69,3 +69,4 @@ Thumbs.db
 .worktrees/
 # test vectors are c4m files by nature
 !c4m/testdata/**/*.c4m
+test.json

@@ -28,14 +28,52 @@ func TestEveryLinkReadsBackWhateverTheMode(t *testing.T) {
 // A symlink whose target has the shape of a flow target (a location
 // label and a colon: "host:path", "C:foo", "studio:inbox/") cannot be
 // told from a flow link when the mode is null: both are "-> X <c4id>",
-// and the spec's disambiguation (SPECIFICATION.md "Flow Links") assumes
-// the mode says symlink. Today the decoder reads it as a flow link, a
-// different entry, with no error. Which reading is right is a format
-// question awaiting a ruling, so these cases are recorded, not pinned;
-// under a symlink mode they read back and run in the test above.
-func TestNullModeLinkWithAFlowShapedTargetIsUnruled(t *testing.T) {
-	t.Skip("unruled (2026-11-10): a null-mode link whose target is location-shaped reads as a flow link")
-	runLinkRoundTrips(t, []string{"host:path", "C:foo", "studio:inbox/"}, false)
+// and the spec's disambiguation (SPECIFICATION.md "Flow Links") reads the
+// mode. Ruled 2026-11-13 (decided by the release lead; reversible): under a
+// null mode such a line IS a flow link, and a writer keeps a symlink's type
+// by writing its mode lrwxrwxrwx even when the rest of the mode is null
+// (the content projection does; scan.ContentMode). These pin both halves.
+func TestAFlowShapedTargetIsALinkOnlyUnderASymlinkMode(t *testing.T) {
+	content := c4.Identify(strings.NewReader("what the link points at"))
+	for _, target := range []string{"host:path", "C:foo", "studio:inbox/"} {
+		for _, withID := range []bool{false, true} {
+			var id c4.ID
+			if withID {
+				id = content
+			}
+			// Under lrwxrwxrwx the line reads back as the symlink.
+			m := NewManifest()
+			m.AddEntry(&Entry{Name: "link", Mode: os.ModeSymlink | 0o777, Size: -1, Timestamp: NullTimestamp(), Target: target, C4ID: id})
+			text, err := Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			back, err := Unmarshal(text)
+			if err != nil {
+				t.Fatalf("%s: %v", target, err)
+			}
+			e := back.Entries[0]
+			if e.Target != target || e.FlowDirection != FlowNone || e.Mode&os.ModeSymlink == 0 {
+				t.Errorf("symlink mode, %q: read back as target %q, flow %v, mode %v", target, e.Target, e.FlowDirection, e.Mode)
+			}
+
+			// Under a null mode the same line is a flow link to that location.
+			m = NewManifest()
+			m.AddEntry(&Entry{Name: "link", Mode: 0, Size: -1, Timestamp: NullTimestamp(), Target: target, C4ID: id})
+			text, err = Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			back, err = Unmarshal(text)
+			if err != nil {
+				t.Fatalf("%s: %v", target, err)
+			}
+			e = back.Entries[0]
+			if e.FlowDirection != FlowOutbound || e.FlowTarget != target || e.Target != "" {
+				t.Errorf("null mode, %q: want a flow link to it, got target %q, flow %v to %q", target, e.Target, e.FlowDirection, e.FlowTarget)
+			}
+		}
+	}
 }
 
 func runLinkRoundTrips(t *testing.T, targets []string, withOthers bool) {

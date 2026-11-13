@@ -55,9 +55,12 @@ tree's ID holding the same entries, with these targets and links:
   mtime is the epoch; the two `epoch-link` entries are exactly what it
   writes for one, dangling and live.
 
-## Not covered: unruled
+## A flow-shaped target under a null mode
 
 A symlink whose target has the shape of a flow target (`host:path`,
-`C:foo`) cannot be told from a flow link when the mode is null; the Go
-decoder reads it as a flow link. That reading awaits a ruling and is not
-pinned here (`TestNullModeLinkWithAFlowShapedTargetIsUnruled`).
+`C:foo`) cannot be told from a flow link when the mode is null. Ruled
+2026-11-13 (decided by the release lead; reversible): under a null mode the
+line is a flow link, and a writer keeps a symlink's type by writing its mode
+`lrwxrwxrwx` even when the rest of the mode is null (the content
+projection does). `TestAFlowShapedTargetIsALinkOnlyUnderASymlinkMode` pins
+both readings.

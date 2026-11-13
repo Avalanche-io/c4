@@ -1,0 +1,11 @@
+# Tests allowed to skip in CI, by GOOS ("*" for any), package (relative to
+# the module) and test, each with why. A skip not listed here fails CI
+# (hack/skips; decided 2026-11-13 by the release lead; reversible). A
+# shared-vector (conformance) test may be listed only for a GOOS where its
+# condition genuinely holds. Measured 2026-11-13 on macOS (developer Mac)
+# and on every CI leg in report mode.
+
+# Opt-in: needs a directory on a case-sensitive volume.
+*      reconcile  TestDistributeRefusesNamesTheTargetFolds  # set C4_TEST_CASE_SENSITIVE_DIR
+# Opt-in: a timing measurement, not a check.
+*      store      TestSyncCost                              # set C4_SYNC_COST=1
