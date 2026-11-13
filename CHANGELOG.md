@@ -2,18 +2,36 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
-### Merge, diff and patch keep a c4m's inline ID lists ⚠
+### A folded range's ID list is kept as a subdirectory listing is ⚠
 
 data loss fixed: merge, diff, patch and the subtree and filter operations
 dropped a c4m's inline ID lists; they now keep the lists their output's
 ranges need, so their bytes and byte IDs match. Description IDs do not
-change: the lists were never part of one. An output carries the list of
-every folded sequence it holds and none for a range it does not; a patch
-carries the lists of the ranges it adds or changes, after its entries, and
-`c4 split` keeps each section's lists. Nothing is invented: a list no
-input carried stays absent. (Decided 2026-11-13 by the release lead;
-reversible; `design/range-data-through-operations.md`.) The ports test it
-with the shared `c4m/testdata/range-data-vector/`.
+change: the lists were never part of one. Ruled 2026-11-13 by the
+maintainer: "A frame id list is a part of the c4m format, and is the same
+thing as a subdirectory being referenced by it's ID on a parents
+directory line. Everything that you would expect of the creation and
+retention of that subdirectory c4m file you would also expect of the
+frame id list." No list format changes: the list stays the spec's bare
+concatenation of member C4 IDs, "a linked parseable text file that has
+formatting specific to frame ranges, which doesn't need the per file
+metadata". Only its handling now matches a listing's:
+
+- every operation that carries a subdirectory's entries carries the
+  list; a patch carries the lists of the ranges it adds or changes, after
+  its entries, and `c4 split` keeps each section's lists;
+- `c4 id -S DIR` writes the lists inline, where through 2026-11-13 it
+  wrote them nowhere without `-s`; with `-s` they are stored and inline;
+- every `-s` (`c4 id -s FILE.c4m`, `c4 id -s -`, `c4 id -S -s DIR`)
+  stores each list beside the listings, under its own C4 ID.
+
+A range line whose list is not inline stays valid, as a directory line
+in one-level form is: files older versions wrote without their lists
+remain valid and processable, and a rescan regenerates the lists where
+the frames still exist. Nothing is invented: a list no input carried
+stays absent. (Decided 2026-11-13 by the release lead; reversible;
+`design/range-data-through-operations.md`.) The ports test it with the
+shared `c4m/testdata/range-data-vector/`.
 
 ### CI fails on a test skip its allow-list does not name
 

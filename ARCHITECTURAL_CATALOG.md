@@ -68,13 +68,16 @@ itself, so its patches restate the parent line unchanged; without the
 narrowing, the most natural progressive-scan emission silently deleted
 the subtree it was declaring.
 
-Inline ID lists (`RangeData`) through operations: one helper,
-`rangeDataFor` / `keepRangeData` (`c4m/rangedata.go`), sets every output's
-lists to those of the ranges it holds, from the inputs, inventing none;
-`PatchDiff` gives a patch the lists of the ranges it adds or changes.
-Merge, the patch and chain resolvers, the base resolver, the filters and
-the subtree operations all call it; `writeRangeData` is the one writer
-the encoder and `WriteChainBody` share
+Inline ID lists (`RangeData`) are handled as subdirectory listings are
+(ruled 2026-11-13): one helper, `rangeDataFor` / `keepRangeData`
+(`c4m/rangedata.go`), sets every operation's output lists to those of the
+ranges it holds, from the inputs, inventing none; `PatchDiff` gives a
+patch the lists of the ranges it adds or changes. Merge, the patch and
+chain resolvers, the base resolver, the filters, the subtree operations
+and the sequence detector call it; the scanner's `-S` fold and
+`ProjectContent` keep their lists. `writeRangeData` is the one writer the
+encoder and `WriteChainBody` share. In the CLI, `storeManifestSelf` stores
+each list beside the listings (`storeRangeLists`)
 (`design/range-data-through-operations.md`, 2026-11-13).
 
 ### External base references (c4m/base.go)

@@ -1,73 +1,122 @@
-# ID lists through merge, diff and patch
+# A frame ID list is handled the way a subdirectory listing is
 
 Status: fixed on branch `range-data` (decided 2026-11-13 by the release
 lead; reversible). Shared fixture: `c4m/testdata/range-data-vector/`.
 
-## The fault
+## The rulings
 
-A folded sequence (`shot.[1001-1004].exr`) has a C4 ID that is the ID of
-its ID list, the frames' C4 IDs bare-concatenated. With no store the list
-travels inline, one line after the entries of the section that adds the
-range (SPECIFICATION.md, "Inline Range Data"). The lists are not part of
-a description's identity, but they are part of the file: drop them and
-the bytes and byte ID change, and the frames' IDs are gone wherever the
-list existed nowhere else. That is data loss.
+The maintainer, 2026-11-13:
+
+> You can't expand a sequence if you don't have a description of it's
+> contents, this is the same for any content. However, it is an error to
+> drop the frame IDs in any context. Just like it would be an error to
+> create a c4m tree and drop the subdirectories. No tool should make this
+> easy to do.
+
+and, the same day:
+
+> A frame id list is a part of the c4m format, and is the same thing as a
+> subdirectory being referenced by it's ID on a parents directory line.
+> Everything that you would expect of the creation and retention of that
+> subdirectory c4m file you would also expect of the frame id list.
+
+The list is not literally a listing. It is "a linked parseable text file
+that has formatting specific to frame ranges, which doesn't need the per
+file metadata": the spec's bare concatenation of member C4 IDs
+(SPECIFICATION.md, "Inline Range Data"). **No list format changes.** What
+a frame ID list shares with a subdirectory listing is its handling: it is
+linked by ID from its parent line, and it is created, stored and carried
+the way a listing is.
+
+## The rule: parity with subdirectory listings
+
+- **One-level form.** A folded range line whose list is not inline is
+  valid, exactly like a directory line that carries its ID with its
+  children not listed. The encoder writes it as is; there is no refusal
+  and no flag. A file an older c4 wrote without its lists stays valid and
+  processable.
+- **Creation.** Folding makes the list, as a scan makes a subdirectory's
+  listing. `c4 id -S DIR` writes each range's list inline, as nested
+  listings are written inline, with or without `-s`.
+- **Retention in storage.** Wherever a listing is stored, the list is
+  stored beside it, as an object under its own C4 ID, which is the range's
+  ID (SPECIFICATION.md: "With store: ID lists are stored as regular
+  objects"). `storeManifestSelf`, which every `-s` path goes through
+  (`c4 id -s FILE.c4m`, `c4 id -s -`, `c4 id -S -s DIR`, restore's
+  pre-image), stores the lists of the ranges it holds. `c4 id -s FILE.c4m`
+  keeps them inline in its output too.
+- **Retention through operations.** Wherever an operation carries a
+  subdirectory's entries, it carries the range's list. An output carries
+  the ID list of every range it contains and none for a range it does
+  not; a list the inputs lack stays absent, never invented. A patch
+  section carries the lists of the ranges it adds or changes, after its
+  entries; a removal line takes none. Dropping a list for a range the
+  output does not hold discards nothing it describes, and is allowed.
+- **Expansion** is the next change, (B): as descending into a directory
+  whose listing isn't available, a range whose list isn't available stays
+  one line.
+
+One helper, `rangeDataFor` / `keepRangeData` (`c4m/rangedata.go`), states
+the carry, and every library operation that builds a fresh manifest
+calls it: Merge, PatchDiff, ResolvePatchChain and FoldSection, ApplyPatch
+and ApplyPatchFrom, the base resolver, FilterByPath and FilterByPrefix,
+ExtractSubtree and InjectSubtree, and the sequence detector. The scanner's
+`-S` fold keeps the detector's lists, and a content projection keeps the
+lists it is given. `PatchSection` gains `RangeData`, the lists written in
+that section. `WriteChainBody` writes the lists of the ranges it holds
+after the base section's entries, before the checkpoint, where the spec
+places them. The encoder is unchanged: it writes the lists a manifest
+carries.
+
+`TestRangeListParityWithSubdirectories` (library) and
+`TestRangeListParityCLI` (merge, diff, patch, split, `id`, `id -s`,
+`id -S`) run a tree holding a subdirectory and a tree holding a folded
+range through each operation side by side; both keep their content by ID
+the same way.
+
+## The fault, measured
 
 Measured on master 8a52087 (2026-11-13), with HOME, USERPROFILE and
-C4_STORE set to a fresh directory:
+C4_STORE set to a fresh directory. The 1.0.x column is the 1.0.27 release
+binary (its `c4 version` prints 1.0.25) and `origin/release/1.0.x`
+ac75240, which gave the same results.
 
-| Function or verb                           | Before                                 | After              |
-| ------------------------------------------ | -------------------------------------- | ------------------ |
-| `c4 id FILE.c4m`                           | keeps                                  | keeps              |
-| `c4 merge` / `Merge`                       | drops every list                       | keeps              |
-| `c4 diff` / `PatchDiff`                    | the patch carries no list              | keeps              |
-| `c4 patch` (chain, two files, plain)       | drops every list                       | keeps              |
-| `c4 split`                                 | drops every list                       | keeps              |
-| `DecodePatchChain`                         | skips list lines                       | keeps, per section |
-| `ResolvePatchChain` (even one section)     | drops                                  | keeps              |
-| `FoldSection`                              | drops                                  | keeps              |
-| `ApplyPatch`, `ApplyPatchFrom`             | keep, and keep removed ranges' lists   | keeps              |
-| `ResolveBase`, `DecodeResolved`            | keep, and keep removed ranges' lists   | keeps              |
-| `Decoder.Decode` (list in a patch section) | keeps, and keeps removed ranges' lists | keeps              |
-| `FilterByPath`, `FilterByPrefix`           | drop                                   | keeps              |
-| `ExtractSubtree`, `InjectSubtree`          | drop                                   | keeps              |
-| `WriteChainBody`                           | drops                                  | keeps              |
-
-"Keeps" means the rule below holds exactly. No store was written by any
-of them, before or after.
-
-## The rule
-
-An output carries the ID list of every range entry it contains, and no
-list for a range it does not. A list the inputs lack stays absent; none is
-invented. A patch section carries the lists of the ranges it adds or
-changes, after its entries; a removal line takes none. Lists are keyed by
-their own C4 ID, so the same key from two inputs is the same list.
-
-One helper (`rangeDataFor` in `c4m/rangedata.go`) states it, and every
-operation calls it on its output. `PatchSection` gains `RangeData`, the
-lists written in that section. The encoder and `WriteChainBody` share one
-writer for the lines, sorted by ID; `WriteChainBody` writes them after the
-base section's entries, before the checkpoint, where the spec places them.
+| Function or verb                           | 1.0.x                     | master (before)                        | After              |
+| ------------------------------------------ | ------------------------- | -------------------------------------- | ------------------ |
+| `c4 id FILE.c4m`                           | keeps                     | keeps                                  | keeps              |
+| `c4 merge` / `Merge`                       | drops every list          | drops every list                       | keeps              |
+| `c4 diff` → chain → `c4 patch`             | drops every list          | drops every list                       | keeps              |
+| `c4 patch FILE.c4m` (plain)                | drops every list          | drops every list                       | keeps              |
+| `c4 split`                                 | not measured              | drops every list                       | keeps              |
+| `c4 id -S DIR` (no `-s`)                   | no list, inline or stored | no list, inline or stored              | inline             |
+| `c4 id -S -s DIR`                          | stored, none inline       | stored, none inline                    | stored and inline  |
+| `c4 id -s FILE.c4m`                        | not measured              | lists not stored (2 objects)           | stored (4 objects) |
+| `DecodePatchChain`                         |                           | skips list lines                       | keeps, per section |
+| `ResolvePatchChain` (even one section)     |                           | drops                                  | keeps              |
+| `FoldSection`                              |                           | drops                                  | keeps              |
+| `ApplyPatch`, `ApplyPatchFrom`             |                           | keep, and keep removed ranges' lists   | keeps              |
+| `ResolveBase`, `DecodeResolved`            |                           | keep, and keep removed ranges' lists   | keeps              |
+| `Decoder.Decode` (list in a patch section) |                           | keeps, and keeps removed ranges' lists | keeps              |
+| `FilterByPath`, `FilterByPrefix`           |                           | drop                                   | keeps              |
+| `ExtractSubtree`, `InjectSubtree`          |                           | drop                                   | keeps              |
+| `DetectSequences` on ranges already folded |                           | drops their lists                      | keeps              |
+| `WriteChainBody`                           |                           | drops                                  | keeps              |
 
 ## Reach
 
-Byte IDs change for every merge, diff and patch output that holds a
-folded sequence whose list an input carried: the output now has the
-lines it lost. Description IDs do not change; the lists are never part of
-one. The encoder still writes whatever a manifest's `RangeData` holds, so
-`c4 id FILE.c4m` keeps a list even for a range the file lacks: a
-normaliser of the file's form, not an operation.
+Byte IDs change for every output that holds a folded range whose list an
+input carried: the output now has the lines it lost. `c4 id -S DIR` now
+writes its lists inline. Description IDs do not change; the lists are
+never part of one. A c4m that arrived without its lists (an older c4's
+merge, diff or patch output) stays valid: its range lines are in
+one-level form, and a rescan regenerates the lists where the frames still
+exist.
 
-## Open
+## Later refinement
 
-Expanding a range whose list cannot be found still gives every frame the
-range's own C4 ID (`expandSequenceEntry`), an ID that names the list and
-no frame; what it gives instead is a null-semantics question for the
-maintainer, and is not changed here.
-
-Also measured and not changed here: `c4 id -s FILE.c4m` stores the
-description's listings but not its inline lists, and `c4 id -S DIR`
-without `-s` folds sequences but writes no list, inline or stored (the
-scanner keeps the folded entries and drops the detector's lists). Both
-are the spec's store-or-inline lifecycle, a question for the maintainer.
+The spec's lifecycle says "With store: ID lists are stored as regular
+objects. No inline lines in the c4m." Verbs that write c4m from c4m keep
+the lists inline even with a store configured, and `-s` writes them
+inline as well as storing them; inlining is safe, as nested listings are
+written inline. Dropping the inline lines when a store holds them is a
+possible later refinement.

@@ -11,10 +11,21 @@ frames' IDs were gone. That is data loss. Every c4m implementation that
 merges, diffs or patches (Go `c4m`, c4py, c4ts, c4m-swift, libc4) MUST
 pass it.
 
+Ruled 2026-11-13 by the maintainer: "A frame id list is a part of the
+c4m format, and is the same thing as a subdirectory being referenced by
+it's ID on a parents directory line. Everything that you would expect of
+the creation and retention of that subdirectory c4m file you would also
+expect of the frame id list." The list's format does not change: it is
+"a linked parseable text file that has formatting specific to frame
+ranges, which doesn't need the per file metadata", the bare
+concatenation of member C4 IDs. Only its handling matches a listing's.
+
 The rule: an output carries the ID list of every range entry it
 contains, and no list for a range it does not. A list the inputs lack
 stays absent; none is invented. A patch section carries the lists of the
 ranges it adds or changes, after its entries; a removal line takes none.
+A range line whose list is not inline is valid, as a directory line in
+one-level form is; a conforming writer writes it as is.
 
 ## Files
 

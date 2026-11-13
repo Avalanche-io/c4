@@ -250,6 +250,10 @@ FLAGS
     -c  reuse guide: trust unchanged size+mtime from this description (see RE-SCAN TRUST)
     --verify  re-hash everything; with -c, report changes hidden under unchanged metadata
     -e  column-aligned output    -S  fold sequences    --exclude, --exclude-file  see EXCLUSIONS
+    A folded range's ID list (its frames' C4 IDs) is linked by the range's ID, as a
+    subdirectory's listing is by the directory's: -S writes it inline after the entries, and
+    -s also stores it beside the listings. A range line without its list is valid, like a
+    directory line whose children are not listed.
 EXIT STATUS
     0 success; 1 error; 2 partial scan (declared on stderr). Several paths: all attempted - 1
     if any failed, else 2 if any partial, else 0.
