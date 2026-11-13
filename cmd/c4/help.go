@@ -30,7 +30,8 @@ Shortcuts:  c4 <path> = c4 id <path> (read-only);   c4 -s <path> = c4 id -s <pat
 
 Identity - two concepts:
   content ID    the ID of bytes alone: a file's contents; a directory's child listing with mode
-                and timestamp nulled entirely (the exec bit included). Scanned alike (same -S and
+                and timestamp nulled entirely (the exec bit included; a symlink keeps
+                lrwxrwxrwx so it reads back as a link). Scanned alike (same -S and
                 exclusion choices), equal exactly when contents are byte-identical - on any
                 machine, clock, or umask. The comparison projection: c4 id -q -m c.
   snapshot ID   the ID of a full description: everything observed at a moment (modes, times,
@@ -119,7 +120,8 @@ IDENTITY
     (identical on every machine); observed modes and times = snapshot ID. Content-form listings
     carry child content IDs; full-form, child full-listing IDs - every ID in a listing is the ID
     of the exact text of the object it names. The content projection nulls mode and timestamp
-    entirely, the exec bit included; an ID does not say which projection it is - compare like
+    entirely, the exec bit included (a symlink's mode is written lrwxrwxrwx, so its type
+    survives); an ID does not say which projection it is - compare like
     with like, scanned alike.
 
     Sizes come from the scan: a file's size is the byte count read and hashed; a directory's is

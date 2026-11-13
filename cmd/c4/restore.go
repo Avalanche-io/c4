@@ -361,7 +361,9 @@ func isContentLevel(m *c4m.Manifest) bool {
 		return false
 	}
 	for _, e := range m.Entries {
-		if e.Mode != 0 || !e.Timestamp.Equal(c4m.NullTimestamp()) {
+		// A content-level entry carries the content projection's mode:
+		// null, or lrwxrwxrwx for a symlink (scan.ContentMode).
+		if e.Mode != scan.ContentMode(e.Mode) || !e.Timestamp.Equal(c4m.NullTimestamp()) {
 			return false
 		}
 	}

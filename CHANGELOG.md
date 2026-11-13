@@ -2,6 +2,18 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### Content mode writes a symlink's mode as lrwxrwxrwx ⚠
+
+The content projection (`c4 id -m c`) nulled every mode, a symlink's
+included. A link whose target has the shape of a flow target (`host:path`,
+`C:foo`) under a null mode reads back as a flow link, so a tree holding
+one did not round-trip: `c4 id -m c` then `c4 patch -` turned the link
+into an outbound flow link with no target. A symlink's mode is now written
+`lrwxrwxrwx`, the canonical value Linux and git give every link, and the
+operator's views use the same spelling; files and directories keep a null
+mode. **Content IDs change** for trees holding symlinks. (Decided
+2026-11-13 by the release lead; reversible.)
+
 ### No verb prompts for a store or creates one; storing stdin without one refuses
 
 `c4 id -s`, `c4 -s` and `c4 restore`, finding no content store

@@ -653,10 +653,13 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 				fileEntry := MetadataToEntry(md)
 				fileEntry.Name = name
 				// Content projection nulls mode and timestamp at EVERY
-				// level (D1, permanent) — symlinks included; the entry's
-				// symlink-ness travels in its target, not its mode.
+				// level (D1), except a symlink's mode, written lrwxrwxrwx:
+				// D1 held that a link's type travels in its target, but a
+				// target shaped like a flow target (host:path) under a null
+				// mode reads back as a flow link (decided 2026-11-13 by the
+				// release lead; reversible). Same rule as ProjectContent.
 				if g.mode == ModeContent {
-					fileEntry.Mode = 0
+					fileEntry.Mode = ContentMode(fileEntry.Mode)
 					fileEntry.Timestamp = c4m.NullTimestamp()
 				}
 				if err := g.emit(fileEntry); err != nil {
@@ -862,7 +865,11 @@ func canonicalListingID(children []*Entry) c4.ID {
 }
 
 // ProjectContent returns the content projection of a manifest: mode
-// and timestamp null at EVERY level (the exec bit included); names,
+// and timestamp null at EVERY level (the exec bit included), except that
+// a symlink's mode is written lrwxrwxrwx, the canonical value Linux and git
+// give every link, so its type survives: a link whose target has the shape
+// of a flow target (host:path) under a null mode would read back as a flow
+// link (decided 2026-11-13 by the release lead; reversible); names,
 // sizes, symlink targets, and file IDs unchanged; every directory ID
 // recomputed from the projected one-level listing of its direct
 // children. The projection happens at evaluation time — a saved
@@ -873,7 +880,7 @@ func ProjectContent(m *c4m.Manifest) *c4m.Manifest {
 	entries := make([]*c4m.Entry, len(m.Entries))
 	for i, e := range m.Entries {
 		cp := *e
-		cp.Mode = 0
+		cp.Mode = ContentMode(e.Mode)
 		cp.Timestamp = c4m.NullTimestamp()
 		entries[i] = &cp
 	}
@@ -928,11 +935,20 @@ func (g *Generator) generateEntry(path string, info os.FileInfo, depth int) (*En
 	// entry lines render "-" for both fields, so the one-level listing
 	// a directory ID hashes carries no machine-specific state.
 	if g.mode == ModeContent {
-		entry.Mode = 0
+		entry.Mode = ContentMode(entry.Mode)
 		entry.Timestamp = c4m.NullTimestamp()
 	}
 
 	return entry, nil
+}
+
+// ContentMode is a mode as the content projection writes it: null, except
+// a symlink's, lrwxrwxrwx, so the link's type survives (see ProjectContent).
+func ContentMode(m os.FileMode) os.FileMode {
+	if m&os.ModeSymlink != 0 {
+		return os.ModeSymlink | 0o777
+	}
+	return 0
 }
 
 // computesIDs reports whether this scan mode hashes content (files,
