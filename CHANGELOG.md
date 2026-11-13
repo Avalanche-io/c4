@@ -14,6 +14,7 @@ writes one, because a frame it cannot read has no C4 ID and is not folded.
 Ruled 2026-11-13 by the maintainer: "One cannot use size as an expectation
 if there are nulls present, so we must say nothing." SPECIFICATION.md and
 C4M-STANDARD.md state it as a one-line erratum (`design/sequence-null-size.md`).
+The ports test it with the shared `c4m/testdata/sequence-null-size-vector/`.
 
 ### `c4 cat -r --content`: is everything a snapshot names in the store?
 
