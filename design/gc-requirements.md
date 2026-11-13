@@ -602,7 +602,7 @@ shipped). Two readings were considered: treat a first-line L1 as an edge
 whatever follows, or classify the object as a description and walk it in
 full. The second is adopted; it subsumes the first, and a block's entry IDs
 are content its view may not name, between rests. V-10 loses its indented
-case, and V-25 pins the shapes.
+case, and V-39 pins the shapes.
 
 ### 5.4 Edge extraction (total, per structural position)
 
@@ -637,6 +637,23 @@ an edge with the kind the fold entry declared (rule 2). The list object
 itself is always marked. (Aggregate-claim lists are record-layer objects and
 never arrive here as roots; the same BYTES referenced by some user fold
 entry classify by this same rule — ordinary marking, no distribution.)
+
+From an **ID-list reached walk-class any other way** (a journaled root
+whose claim assigns walk kind, or a member of such a list): every member
+chunk is a walk-class edge, rehash-read once and classified by its own
+bytes under §5.2. A member that is a description or an ID-list is walked;
+any other bytes are a leaf, still marked. *(Added 2026-11-12. The grammar
+gave a member a kind only through a declaring fold entry, so a journaled
+history list (a job record naming every head of a block chain that its
+periodic rests cut off) marked its members object-level and never walked
+them, leaving their bases and content unprotected through it. The rule
+honours §5.1: the kind comes from the store's own record, the journal
+claim of the list, never from probing bytes no record attributes. Adopted
+lists are untouched: they enter leaf-class (§5.1), and §5.6's pin stands.
+The read cost is rule 4's, once per member, paid only by a list a c4 writer
+journaled under a walk kind. The alternative, a description whose entries
+carry invented `.c4m` names so that rule 4 walks them, was rejected: it
+would make up names to steer the walk.)*
 
 From a **leaf**: no edges, and no read ever occurred for leaf-class
 arrivals.
@@ -1047,7 +1064,7 @@ Classification and edges:
 - V-10 each ergonomic/nonconforming mutation → whole object leaf:
   padded/comma size; leading-zero size; non-UTC timestamp; CR; CRLF;
   `@` line; invalid UTF-8; one malformed line amid valid ones. *(Amended
-  2026-11-12: "indented entry" is no longer a leaf case; see V-25.)*
+  2026-11-12: "indented entry" is no longer a leaf case; see V-39.)*
 - V-11 lenient accepts: blank lines; unsorted entries; duplicate names
   (edge union); missing final LF — all still descriptions.
 - V-12 symlink entries, null-ID and legacy non-null-ID → zero edges; bytes
@@ -1070,7 +1087,7 @@ Classification and edges:
   superset covers it exactly (gates V-10/V-11). The fixture includes
   `EncodePatch` output with a nested path, not only listings (amended
   2026-11-12).
-- V-25 patch-shaped objects are descriptions and walk in full (2026-11-12):
+- V-39 patch-shaped objects are descriptions and walk in full (2026-11-12; numbered V-25 when added, which duplicated the existing V-25 below, renumbered the same day):
   (a) a shape-B block, first line the previous block's byte ID, then a
   restated directory with an indented child → walk edge to the previous
   block, walk edge to the directory's ID, leaf edge to the child's;
@@ -1079,6 +1096,14 @@ Classification and edges:
   checkpoint edge; (d) consecutive checkpoints followed by a patch →
   description, both checkpoint edges; (e) a one-ID-per-line list and a
   single-L2 object still classify shape (ii).
+- V-40 a journaled walk-class ID-list root (2026-11-12): (a) members that
+  are shape-B blocks → each walked in full (V-39), their base edges and
+  entry edges marked; (b) a member that is a nested ID-list → walked, its
+  members walk-class; (c) a member that is media bytes → read once, leaf,
+  marked; (d) the same list bytes reached only as a non-`/` fold target →
+  members leaf-class, never read (rule 2 unchanged); reached both ways, the
+  walk-class arrival still walks its members (edges union); (e) the same list as
+  an adopted list → members leaf, never read (§5.6 unchanged).
 
 Adoption and the ~100× pin:
 - V-19 adopted list containing a member whose bytes ARE a stored
