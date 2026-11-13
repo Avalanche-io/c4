@@ -10,7 +10,7 @@ import (
 )
 
 // A size of 0 beside the C4 ID of non-empty content is a null size
-// (Joshua, 2026-11-08): a filesystem surface has no "-", so a null size
+// (ruled 2026-11-08): a filesystem surface has no "-", so a null size
 // materialises as 0, and only the empty content truthfully has size 0.
 // A 0 with no ID, a 0 with the empty content's ID, and a symlink's 0 are
 // all known zeros.

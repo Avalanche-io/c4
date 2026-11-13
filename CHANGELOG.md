@@ -550,7 +550,9 @@ over it, so `0 f <ID>` and `- f <ID>` are one description with one ID.
 A `0` with no C4 ID, a `0` with the empty content's ID, and a symlink's
 `0` stay known zeros. `c4m.Entry.SizeIsNull` is the one test;
 `c4m.EmptyContentID` names the ID of zero bytes. No shipped scanner
-writes the combination, so no existing file changes meaning.
+writes the combination, so no existing file changes meaning. The shared
+vector `c4m/testdata/null-size-vector/` pins it for every implementation.
+(Landed 2026-11-13, decided by the release lead; reversible.)
 
 ### `c4 cat -r` names every listing the store lacks and exits 2
 

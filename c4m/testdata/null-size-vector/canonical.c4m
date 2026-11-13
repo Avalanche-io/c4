@@ -1,0 +1,7 @@
+-rw-r--r-- 2026-03-06T12:00:00Z 0 empty.txt c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT
+-rw-r--r-- 2026-03-06T12:00:00Z 5 known.txt c447Fm3BJZQ62765jMZJH4m28hrDM7Szbj9CUmj4F4gnvyDYXYz4WfnK2nYRhFvRgYEectEXYBYWLDpLo6XGNAfKdt
+lrwxr-xr-x 2026-03-06T12:00:00Z 0 link -> known.txt -
+-rw-r--r-- 2026-03-06T12:00:00Z - null.txt c447Fm3BJZQ62765jMZJH4m28hrDM7Szbj9CUmj4F4gnvyDYXYz4WfnK2nYRhFvRgYEectEXYBYWLDpLo6XGNAfKdt
+-rw-r--r-- 2026-03-06T12:00:00Z 0 structure.txt -
+drwxr-xr-x 2026-03-06T12:00:00Z - collapsed/ c433AUvLU7qUeR5fPYZnuPyFevrp6zZ593x8TShvv6JbfN8EHfwD3RzWPnwbMhnwZ4Ai1sGK2UbdAtu12nu5x7bcLC
+drwxr-xr-x 2026-03-06T12:00:00Z 0 emptydir/ c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT

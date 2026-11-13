@@ -392,7 +392,7 @@ func (e *Entry) IsSocket() bool {
 // is a stated 0 beside the C4 ID of content that is not empty: a
 // filesystem surface has no number for "unknown", so a null size can
 // only materialise as 0, and a 0 is contradicted by every C4 ID except
-// the empty content's (Joshua, 2026-11-08; design/null-size-zero.md).
+// the empty content's (ruled 2026-11-08; design/null-size-zero.md).
 // Only the empty content has size 0, so the rule reinterprets a
 // combination no honest scan produces and changes no real data. A 0
 // with no C4 ID is a known zero (a structure-level scan of an empty
