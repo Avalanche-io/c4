@@ -27,6 +27,36 @@ c4m does not include:
 - **File flags** (immutable, append-only, etc.)
 - **Sparse file hole maps**
 
+## Modes on Windows
+
+Windows has no Unix permission bits, so a scan there records the mode the
+platform reports from the read-only attribute, as Go's `os.Stat` derives
+it. Every implementation that scans on Windows records the same mode as
+the Go reference (decided 2026-11-13 by the release lead; reversible);
+otherwise the same tree gets different C4 IDs from different tools.
+
+| Entry on Windows    | Mode recorded |
+| ------------------- | ------------- |
+| directory           | `drwxrwxrwx`  |
+| file                | `-rw-rw-rw-`  |
+| read-only file      | `-r--r--r--`  |
+| read-only directory | `dr-xr-xr-x`  |
+
+Measured 2026-11-13 on GitHub's windows-latest runner, with the Go `c4`
+(5ee54b6) and c4ts (after c4ts #29), on a directory holding a
+subdirectory, a plain file under it, and a file set read-only (`attrib`
+showing `R`). Both tools wrote the first three rows and gave the same
+description ID. Before c4ts #29, c4ts wrote directories as `drw-rw-rw-`,
+which is what Node's `stat` reports (`40666`), and its directory IDs
+differed from Go's. The read-only directory row comes from Go's source
+(`os/types_windows.go`: `0444` for read-only, plus `0111` for a
+directory) and is not measured. c4py, libc4 and c4m-swift have no Windows
+CI leg, so their Windows modes are not measured against this table.
+
+The same tree scanned on Windows and on a Unix system generally gets
+different C4 IDs, because the modes differ. That is the honest record of
+what each platform holds, not an error.
+
 ## Perspective: what existing tools capture
 
 Before concluding that the absence of this metadata is a limitation unique to c4m, consider what actually happens today without c4m. Most tools people rely on for filesystem transfer and comparison lose the same details:
