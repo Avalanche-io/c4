@@ -88,7 +88,9 @@ func resolveBlock(id c4.ID, src store.Source, seen map[c4.ID]bool) (*Manifest, e
 // something only against the right state, so a block is folded here, base
 // first, never as one flattened patch.
 func resolveBytes(data []byte, src store.Source, seen map[c4.ID]bool) (*Manifest, error) {
-	m, err := NewDecoder(bytes.NewReader(data)).Decode()
+	d := NewDecoder(bytes.NewReader(data))
+	d.SetSource(src)
+	m, err := d.Decode()
 	if err != nil {
 		return nil, err
 	}

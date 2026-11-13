@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/store"
 )
 
 // Decoder reads and decodes C4M manifests from an input stream.
@@ -33,6 +34,9 @@ type Decoder struct {
 	// the new state's ID. droppedTrailingID reports that it happened.
 	allowTrailingID   bool
 	droppedTrailingID bool
+	// src, when set, supplies the listing of a collapsed directory that a
+	// later section of a self-contained chain deepens (see applySection).
+	src store.Source
 }
 
 // NewDecoder creates a new Decoder that reads from r.
@@ -52,6 +56,38 @@ func (d *Decoder) AllowTrailingID() { d.allowTrailingID = true }
 // DroppedTrailingID reports whether the last Decode met and dropped a
 // trailing bare C4 ID under AllowTrailingID.
 func (d *Decoder) DroppedTrailingID() bool { return d.droppedTrailingID }
+
+// SetSource gives the decoder a content source for the listings of
+// collapsed directories that a chain's later sections deepen. Without one,
+// such a chain is refused with ErrUnresolvedBase naming the listing.
+func (d *Decoder) SetSource(src store.Source) { d.src = src }
+
+// applySection applies one patch section to the accumulated state. In a
+// self-contained chain (no external base) the state is the chain's own,
+// so a collapsed directory the section deepens has its listing read from
+// d.src first, through Deepen, the fold every resolver shares. Before
+// 2026-11-13 the decoder applied the section without it: the directory
+// read as empty, the normaliser re-derived its ID from the partial
+// listing, and `c4 id -q` named a tree that was never there (decided
+// 2026-11-13 by the release lead, under Joshua's instruction to decide;
+// reversible). After an unresolved external base the state is
+// provisional (ResolveBase refolds every section onto the fetched base),
+// so nothing is read here.
+func (d *Decoder) applySection(m *Manifest, section []*Entry) (*Manifest, error) {
+	patch := &Manifest{Version: "1.0", Entries: section}
+	base := m.Base
+	state := m
+	if base.IsNil() {
+		deep, err := Deepen(m, section, d.src)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", d.lineNum, err)
+		}
+		state = deep
+	}
+	next := ApplyPatch(state, patch)
+	next.Base = base // ApplyPatch builds a fresh manifest; the reference survives
+	return next, nil
+}
 
 // Decode reads and decodes a manifest from the input stream.
 // The format is entry-only: no header, no directives.
@@ -137,10 +173,9 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 				if !patchMode {
 					m.Entries = append(m.Entries, section...)
 				} else if len(section) > 0 {
-					patch := &Manifest{Version: "1.0", Entries: section}
-					base := m.Base
-					m = ApplyPatch(m, patch)
-					m.Base = base // ApplyPatch builds a fresh manifest; the reference survives
+					if m, err = d.applySection(m, section); err != nil {
+						return nil, err
+					}
 				}
 				section = nil
 				sectionIdx++
@@ -203,10 +238,9 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 	if !patchMode {
 		m.Entries = append(m.Entries, section...)
 	} else if len(section) > 0 {
-		patch := &Manifest{Version: "1.0", Entries: section}
-		base := m.Base
-		m = ApplyPatch(m, patch)
-		m.Base = base
+		if m, err = d.applySection(m, section); err != nil {
+			return nil, err
+		}
 	}
 
 	// Auto-sort: tolerate out-of-order input by sorting to canonical order.

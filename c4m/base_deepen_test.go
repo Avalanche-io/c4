@@ -116,3 +116,49 @@ func TestResolveBaseDeepensCollapsedDirectory(t *testing.T) {
 		}
 	}
 }
+
+// A self-contained chain whose first section is a one-level listing (d/ as
+// one collapsed line) and whose next section deepens d/. The decoder used
+// to apply the section without d/'s listing, so the normaliser re-derived
+// d/ from the partial listing and named a tree that was never there.
+// Decided 2026-11-13 by the release lead, under Joshua's instruction to
+// decide; reversible: with a source the listing is read first; without
+// one the chain is refused, naming the listing.
+func TestDecodeDeepensCollapsedDirectoryInAChain(t *testing.T) {
+	x, y, z := deepenFile("x.txt", "x"), deepenFile("y.txt", "y"), deepenFile("z.txt", "z")
+	v0 := deepenTree(t, x, y)
+	v1 := deepenTree(t, x, y, z)
+
+	src := newBlockSource()
+	base := storeOneLevel(t, src, v0, true)
+	dir := *v0.Entries[0]
+	dir.Depth = 0
+	rootText, _ := ListingRecord([]*Entry{&dir})
+	chain := rootText + encodeBlock(t, v0, v1, base)
+
+	got, err := DecodeResolved(strings.NewReader(chain), src)
+	if err != nil {
+		t.Fatalf("with a source: %v", err)
+	}
+	if got.ComputeC4ID() != v1.ComputeC4ID() {
+		t.Errorf("with a source: %s, want %s", got.ComputeC4ID(), v1.ComputeC4ID())
+	}
+	// The root ID alone can come out right from the restated d/ line while
+	// the entries under it are wrong: check the entries, and that the
+	// description agrees with its own directory IDs.
+	names := map[string]bool{}
+	for _, e := range got.Entries {
+		names[e.Name] = true
+	}
+	if !names["x.txt"] || !names["y.txt"] || !names["z.txt"] {
+		t.Errorf("with a source, d/ must hold x, y and z, got %v", names)
+	}
+	if ch := Normalize(got); len(ch) != 0 {
+		t.Errorf("with a source, the description disagrees with its own directory IDs: %v", ch)
+	}
+
+	_, err = Unmarshal([]byte(chain))
+	if !errors.Is(err, ErrUnresolvedBase) || !strings.Contains(err.Error(), v0.Entries[0].C4ID.String()) {
+		t.Errorf("without a source the chain must be refused, naming d/'s listing: %v", err)
+	}
+}
