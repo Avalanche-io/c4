@@ -67,3 +67,26 @@ func TestDecodePatchChainConsecutiveCheckpointsMustAgree(t *testing.T) {
 		t.Fatalf("disagreeing consecutive checkpoints must be ErrPatchIDMismatch, got %v", err)
 	}
 }
+
+// The refusal names the line the trailing ID is on, the line its hint says
+// to delete. It used to report the decoder's count at end of input, one
+// past that line, and further still with blank lines after it (found
+// 2026-11-13 porting the rule to c4-swift).
+func TestTrailingIDErrorNamesItsLine(t *testing.T) {
+	data, err := os.ReadFile("testdata/legacy/diff-chain-1.0.24.c4m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fixture's trailing ID is its fifth line.
+	for _, tail := range []string{"", "\n", "\n\n"} {
+		in := append(append([]byte{}, data...), tail...)
+		_, err := Unmarshal(in)
+		if !errors.Is(err, ErrTrailingID) || !strings.Contains(err.Error(), "(line 5)") {
+			t.Errorf("decoder, tail %q: want ErrTrailingID at line 5, got %v", tail, err)
+		}
+		_, err = DecodePatchChain(bytes.NewReader(in))
+		if !errors.Is(err, ErrTrailingID) || !strings.Contains(err.Error(), "(line 5)") {
+			t.Errorf("chain reader, tail %q: want ErrTrailingID at line 5, got %v", tail, err)
+		}
+	}
+}

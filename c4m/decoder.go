@@ -85,6 +85,7 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 	externalBase := false
 	sectionIdx := 0            // patch sections seen, for onEntry
 	lastWasCheckpoint := false // the previous non-blank line was a checkpoint
+	checkpointLine := 0        // the line that checkpoint is on
 
 	for {
 		line, err := d.readLine()
@@ -132,6 +133,7 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 				// verifies the same accumulated state. A checkpoint at
 				// end of input is a format error (see the flush below).
 				lastWasCheckpoint = true
+				checkpointLine = d.lineNum
 				if !patchMode {
 					m.Entries = append(m.Entries, section...)
 				} else if len(section) > 0 {
@@ -190,7 +192,7 @@ func (d *Decoder) Decode() (result *Manifest, err error) {
 	if lastWasCheckpoint {
 		if !d.allowTrailingID {
 			return nil, fmt.Errorf("%w (line %d): delete that line, or rewrite the file with `c4 id FILE.c4m > fixed.c4m`",
-				ErrTrailingID, d.lineNum)
+				ErrTrailingID, checkpointLine)
 		}
 		d.droppedTrailingID = true
 	}

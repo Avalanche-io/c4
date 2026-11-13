@@ -49,6 +49,7 @@ func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, 
 	current := &PatchSection{}
 	firstLine := true
 	lastWasID := false // the previous non-blank line was a bare C4 ID
+	idLine := 0        // the line that bare ID is on
 
 	for {
 		line, err := d.readLine()
@@ -91,6 +92,7 @@ func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, 
 						ErrPatchIDMismatch, d.lineNum, current.BaseID, id)
 				}
 				lastWasID = true
+				idLine = d.lineNum
 			} else {
 				// Flush current section.
 				if len(current.Entries) > 0 {
@@ -98,6 +100,7 @@ func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, 
 				}
 				current = &PatchSection{BaseID: id}
 				lastWasID = true
+				idLine = d.lineNum
 			}
 			firstLine = false
 			continue
@@ -127,7 +130,7 @@ func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, 
 	if lastWasID {
 		if !allowTrailing {
 			return nil, c4.ID{}, fmt.Errorf("%w (line %d): delete that line, or rewrite the file with `c4 id FILE.c4m > fixed.c4m`",
-				ErrTrailingID, d.lineNum)
+				ErrTrailingID, idLine)
 		}
 		// Migrating: the trailing ID names the state the sections resolve
 		// to. It is handed back for the caller to verify, never kept as a
