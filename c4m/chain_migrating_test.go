@@ -90,3 +90,21 @@ func TestTrailingIDErrorNamesItsLine(t *testing.T) {
 		}
 	}
 }
+
+// A checkpoint directly after the first-line base names the base's
+// resolved state. The shape reader used to drop the empty first section and
+// with it the base, so patch and log fetched the checkpoint's ID as the
+// base (found 2026-11-13 porting the chain rules to libc4).
+func TestDecodePatchChainKeepsBaseBeforeCheckpoint(t *testing.T) {
+	base := c4.Identify(strings.NewReader("base block"))
+	state := c4.Identify(strings.NewReader("its state"))
+	text := base.String() + "\n" + state.String() + "\n" +
+		"-rw-r--r-- 2026-01-01T00:00:00Z 1 a.txt " + c4.Identify(strings.NewReader("a")).String() + "\n"
+	sections, err := DecodePatchChain(strings.NewReader(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sections) != 2 || sections[0].BaseID != base || len(sections[0].Entries) != 0 || sections[1].BaseID != state {
+		t.Fatalf("want [base %s, no entries] then [checkpoint %s, a.txt], got %d sections", base, state, len(sections))
+	}
+}

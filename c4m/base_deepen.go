@@ -9,8 +9,23 @@ import (
 	"github.com/Avalanche-io/c4/store"
 )
 
-// deepenRestated makes every directory that sec restates with children
-// under it known in state before sec is applied. A fetched base is a
+// FoldSection applies one patch section to state, the one fold every
+// chain resolver uses: each collapsed directory of state that the section
+// restates with children has its listing fetched from src, verified and
+// inlined first (Deepen), then the section is applied. A listing
+// src cannot supply, or a nil src when one is needed, is ErrUnresolvedBase
+// naming it; nothing is guessed. state is not modified.
+func FoldSection(state *Manifest, entries []*Entry, src store.Source) (*Manifest, error) {
+	deep, err := Deepen(state, entries, src)
+	if err != nil {
+		return nil, err
+	}
+	return ResolvePatchChain([]*PatchSection{{Entries: deep.Entries}, {Entries: entries}}, 0), nil
+}
+
+// Deepen returns state with every directory that entries (a patch
+// section) restate with children under it made known, so the section can
+// be applied or compared against it. state is not modified. A fetched base is a
 // one-level record: a subdirectory is one line carrying its listing's ID,
 // with no children inline. Applying a patch that deepens such a line
 // against it would treat the directory as empty, so a restated child that
@@ -22,7 +37,7 @@ import (
 // src cannot supply is an unresolved base: the fold refuses rather than
 // guess. A directory whose ID is null has no listing to fetch; it stays as
 // the base states it (partial knowledge), as before.
-func deepenRestated(state *Manifest, sec []*Entry, src store.Source) (*Manifest, error) {
+func Deepen(state *Manifest, sec []*Entry, src store.Source) (*Manifest, error) {
 	for _, path := range restatedDirs(sec) {
 		idx := indexOfPath(state.Entries, path)
 		if idx < 0 {
@@ -57,6 +72,9 @@ func deepenRestated(state *Manifest, sec []*Entry, src store.Source) (*Manifest,
 // fetchListing reads one directory listing by ID and verifies the bytes
 // hash to it. A listing names no base of its own.
 func fetchListing(id c4.ID, path string, src store.Source) ([]*Entry, error) {
+	if src == nil {
+		return nil, fmt.Errorf("%w: listing %s of %s, which a patch deepens: no content source to read it from", ErrUnresolvedBase, id, path)
+	}
 	rc, err := src.Open(id)
 	if err != nil {
 		return nil, fmt.Errorf("%w: listing %s of %s, which a patch deepens: %v", ErrUnresolvedBase, id, path, err)

@@ -87,13 +87,12 @@ func runLog(args []string) {
 	// the files' own sections are unchanged (c4 split takes them). A base
 	// the store cannot supply is an error naming it, as in c4 patch.
 	external := !allSections[0].BaseID.IsNil()
+	var src store.Source
+	if s, _ := store.OpenStore(); s != nil {
+		src = s
+	}
 	if external {
 		baseID := allSections[0].BaseID
-		s, _ := store.OpenStore()
-		var src store.Source
-		if s != nil {
-			src = s
-		}
 		resolved, err := c4m.ResolveBaseID(baseID, src)
 		if err != nil {
 			fatalf("Error: %v\n"+
@@ -109,8 +108,16 @@ func runLog(args []string) {
 		if i == 0 && !external {
 			current = c4m.ResolvePatchChain(allSections[:1], 1)
 		} else {
-			patch := &c4m.Manifest{Version: "1.0", Entries: sec.Entries}
-			current = c4m.ApplyPatch(prev, patch)
+			// The same fold c4 patch uses: a collapsed directory the
+			// section deepens has its listing read from the store first.
+			// The counts below compare against that deepened layer, so
+			// children read from the store are not counted as added.
+			deep, err := c4m.Deepen(prev, sec.Entries, src)
+			if err != nil {
+				fatalf("Error: layer %d: %v", i+1, err)
+			}
+			prev = deep
+			current = c4m.ResolvePatchChain([]*c4m.PatchSection{{Entries: deep.Entries}, {Entries: sec.Entries}}, 0)
 		}
 		id := current.ComputeC4ID()
 

@@ -2,6 +2,28 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `c4 patch` and `c4 log` fold one-level bases correctly; `c4 patch` verifies checkpoints
+
+Three faults in the chain verbs, found 2026-11-13 while bringing libc4's
+chain reader in line with this one:
+
+- `c4 patch` and `c4 log` applied a file's own sections without reading
+  a collapsed directory's listing, the fault the entry below fixed in the
+  library fold only. `c4 patch block.c4m`, where the block deepens a
+  directory of its one-level base, printed that directory holding only the
+  block's children under a line whose ID names them all, exit 0. Both verbs
+  now fold through `c4m.FoldSection`, and `c4 log` counts each layer's
+  changes against the deepened state before it.
+- `c4 patch` never checked a checkpoint: `chain-vector/bad-checkpoint.c4m`
+  resolved, exit 0. Every bare ID inside a file is now verified against the
+  state the sections before it resolve to. The first line of each file in
+  a concatenation is not checked; it may be a state ID or the byte ID of
+  the block it refines.
+- The shape reader dropped a first-line base that a checkpoint directly
+  follows, so `c4 patch` and `c4 log` fetched the checkpoint's ID as the
+  base: refused when the store lacked it, and folded onto the wrong record
+  when it held it. The base is now kept as an empty first section.
+
 ### A block that deepens a directory of its base reads that directory's listing first
 
 A stored base is a one-level record: a subdirectory is one line carrying

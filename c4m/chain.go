@@ -94,8 +94,14 @@ func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, 
 				lastWasID = true
 				idLine = d.lineNum
 			} else {
-				// Flush current section.
-				if len(current.Entries) > 0 {
+				// Flush current section. A first section that carries
+				// the external base is kept even with no entries: a
+				// checkpoint directly after the first-line base names
+				// the base's resolved state, and dropping the section
+				// would lose the base, so patch and log would fetch the
+				// checkpoint's ID as if it were the base (found
+				// 2026-11-13 porting the chain rules to libc4).
+				if len(current.Entries) > 0 || (len(sections) == 0 && !current.BaseID.IsNil()) {
 					sections = append(sections, current)
 				}
 				current = &PatchSection{BaseID: id}

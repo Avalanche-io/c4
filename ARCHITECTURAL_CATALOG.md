@@ -77,9 +77,11 @@ defers checkpoint verification; it does not fetch.
 
 | Function                 | Description                                                                                                                                       |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ResolveBase(m, src)`    | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. Before each section applies, every collapsed base directory it deepens has its listing fetched, verified and inlined (`deepenRestated`, base_deepen.go); a listing `src` lacks is `ErrUnresolvedBase`. |
+| `ResolveBase(m, src)`    | Folds `m` onto its base, followed transitively, with cycle detection. A manifest with no base is returned unchanged and `src` is never consulted. Before each section applies, every collapsed base directory it deepens has its listing fetched, verified and inlined (`Deepen`, base_deepen.go); a listing `src` lacks is `ErrUnresolvedBase`. |
 | `ResolveBaseID(id, src)` | Resolves one block by ID, following its own base chain — the entry point for a consumer holding only the newest block's ID.                       |
 | `DecodeResolved(r, src)` | Decode plus `ResolveBase` in one step.                                                                                                            |
+| `FoldSection(state, entries, src)` | The one fold every chain resolver uses (ResolveBase, `c4 patch`): `Deepen`, then apply the section. |
+| `Deepen(state, entries, src)` | `state` with every collapsed directory the section restates with children read from `src`, verified and inlined; `c4 log` counts changes against it. |
 
 An unreadable base is `ErrUnresolvedBase`, never a manifest silently
 missing its base; a repeated ID is `ErrBaseCycle`. Nulls express partial
