@@ -51,3 +51,33 @@ func TestSequenceScanKeepsIDLists(t *testing.T) {
 	check("scan -S", m)
 	check("ProjectContent", ProjectContent(m))
 }
+
+// A -S scan sizes a directory holding a folded range from its listing as
+// written, the folded one, as its ID already was, and the range's size
+// counts its ID list (ruled 2026-11-13 by the maintainer: "The size is the
+// size of every frame and the frame id list."). So the normaliser changes
+// nothing in a -S scan. Through 2026-11-13 the scanner sized the directory
+// from its unfolded children and the normaliser disagreed.
+func TestSequenceScanIsNormal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"1", "2", "3"} {
+		if err := os.WriteFile(filepath.Join(dir, "sub", "f.00"+f+".exr"), []byte("frame "+f+" abc"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := NewGeneratorWithOptions(WithSequenceDetection(true)).GenerateFromPath(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range m.Entries {
+		if e.IsSequence && e.Size != 33+3*90 {
+			t.Errorf("%s: size %d, want %d", e.Name, e.Size, 33+3*90)
+		}
+	}
+	if ch := c4m.Normalize(m.Copy()); len(ch) != 0 {
+		t.Errorf("the normaliser changes a -S scan: %v", ch)
+	}
+}

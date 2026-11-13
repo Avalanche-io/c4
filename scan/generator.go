@@ -789,9 +789,16 @@ func (g *Generator) generateDir(dirPath, dirName string, depth int) ([]*Entry, e
 			// resolve to 0. Those modes compute no C4 IDs, so they need no
 			// per-directory resolution; the whole-manifest pass handles
 			// them with full context, as before.
-			scope := make([]*Entry, 0, len(directChildren)+1)
+			//
+			// With sequence detection the directory's listing holds the
+			// folded children, so its size is computed from them, as its
+			// ID is (canonicalDirID). Through 2026-11-13 the size came
+			// from the unfolded children while the ID hashed the folded
+			// ones, so the normaliser disagreed with every -S scan.
+			listed := g.listedChildren(directChildren)
+			scope := make([]*Entry, 0, len(listed)+1)
 			scope = append(scope, dirEntry)
-			scope = append(scope, directChildren...)
+			scope = append(scope, listed...)
 			c4m.PropagateMetadata(scope)
 
 			dirEntry.C4ID = g.dirID(directChildren)
@@ -830,6 +837,21 @@ func (g *Generator) dirID(children []*Entry) c4.ID {
 		return g.dirIdentity(children)
 	}
 	return g.canonicalDirID(children)
+}
+
+// listedChildren returns a directory's direct children as its listing
+// holds them: folded into ranges when sequence detection is on. The
+// entries are copies; the walk's own entries are left as they are.
+func (g *Generator) listedChildren(children []*Entry) []*Entry {
+	if !g.detectSequences || len(children) == 0 {
+		return children
+	}
+	tmp := c4m.NewManifest()
+	for _, c := range children {
+		cp := *c
+		tmp.AddEntry(&cp)
+	}
+	return c4m.DetectSequences(tmp).Entries
 }
 
 // canonicalDirID implements the spec's directory identity: the C4 ID of the

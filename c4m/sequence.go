@@ -764,8 +764,18 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 			// No metadata (timestamps, sizes, modes) affects the sequence identity.
 			// Only the content identity of each frame matters.
 			seqC4ID := idList.ComputeC4ID()
+			// A range's size is the size of every frame and of its ID
+			// list, the list's bare concatenation of member C4 IDs (90
+			// bytes each, no separator), as a directory's size counts its
+			// listing (ruled 2026-11-13 by the maintainer: "The size is
+			// the size of every frame and the frame id list."). The list's
+			// share follows from the count alone, so the frames' total is
+			// the size less count × 90. A null frame size still makes the
+			// whole size null.
 			if nullSize {
 				totalSize = -1
+			} else {
+				totalSize += int64(len(idList.Canonical()))
 			}
 
 			seqEntry := &Entry{

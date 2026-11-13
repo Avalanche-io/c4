@@ -41,8 +41,9 @@ func TestSequenceSizeIsNullWhenAFrameSizeIsNull(t *testing.T) {
 		return nil
 	}
 
-	if e := fold(build(0)); e.Size != 24 {
-		t.Errorf("all frames known: size %d, want 24", e.Size)
+	// 24 bytes of frames and a 4 × 90-byte ID list.
+	if e := fold(build(0)); e.Size != 24+4*90 {
+		t.Errorf("all frames known: size %d, want %d", e.Size, 24+4*90)
 	}
 	if e := fold(build(3)); !e.SizeIsNull() {
 		t.Errorf("one frame's size unknown: size %d, want null", e.Size)

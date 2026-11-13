@@ -101,7 +101,7 @@ func TestSequenceNullSizeVector(t *testing.T) {
 	if id := m.ComputeC4ID().String(); id != root {
 		t.Errorf("folded.c4m resolves to %s, want %s", id, root)
 	}
-	want := map[string]int64{"plate.[1001-1004].exr": 24, "shot.[1001-1004].exr": -1}
+	want := map[string]int64{"plate.[1001-1004].exr": 24 + 4*90, "shot.[1001-1004].exr": -1}
 	for _, e := range m.Entries {
 		w, ok := want[e.Name]
 		if !ok {
