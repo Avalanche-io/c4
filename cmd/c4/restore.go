@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -69,6 +70,16 @@ func runRestore(args []string) {
 	var incomplete []string
 	seen := make(map[c4.ID]bool)
 	var folded []string
+	// A file entry with no C4 ID has no content to write: writing zeros of
+	// its stated size would invent content. It is kept as found, named by
+	// its full path, and left out of verification on both sides (decided
+	// 2026-11-13 by the release lead; reversible).
+	for path, e := range c4m.EntryPaths(target.Entries) {
+		if !e.IsDir() && e.Target == "" && !e.IsSequence && e.C4ID.IsNil() {
+			incomplete = append(incomplete, path)
+		}
+	}
+	sort.Strings(incomplete)
 	for _, e := range target.Entries {
 		if e.IsDir() {
 			continue
@@ -85,8 +96,7 @@ func runRestore(args []string) {
 			continue
 		}
 		if e.C4ID.IsNil() {
-			incomplete = append(incomplete, e.Name)
-			continue
+			continue // an incomplete entry, listed above
 		}
 		if seen[e.C4ID] {
 			continue
@@ -279,6 +289,14 @@ func runRestore(args []string) {
 	if refusedCount > 0 {
 		verifyTarget = withoutRefused(verifyTarget, plan.Refused)
 		builtScan = withoutRefused(builtScan, plan.Refused)
+	}
+	// Declared omissions were never written: compare what was. Through
+	// 2026-11-13 they stayed in the comparison, so a restore that did all
+	// it could failed here, exit 3, with a "re-run" hint no re-run could
+	// satisfy.
+	if len(incomplete) > 0 {
+		verifyTarget = withoutPaths(verifyTarget, incomplete)
+		builtScan = withoutPaths(builtScan, incomplete)
 	}
 	built := projectToKnowledge(builtScan, verifyTarget)
 	builtID := built.ComputeC4ID()
@@ -552,17 +570,30 @@ func reportRefused(refused []reconcile.Refusal) int {
 // the rest is compared exactly and the refused entries are not; the
 // refused set is reported in full beside it.
 func withoutRefused(m *c4m.Manifest, refused []reconcile.Refusal) *c4m.Manifest {
+	paths := make([]string, len(refused))
+	for i, r := range refused {
+		paths[i] = r.Path
+	}
+	return withoutPaths(m, paths)
+}
+
+// withoutPaths drops the entries at the given paths (a directory path, with
+// its trailing slash, takes its subtree), nulls the size and C4 ID of every
+// directory above them, which depend on what was dropped, and re-derives
+// the rest. Applied to the as-built tree and to the target alike, it
+// compares exactly what a restore could write.
+func withoutPaths(m *c4m.Manifest, omitted []string) *c4m.Manifest {
 	out := m.Copy()
 	paths := c4m.EntryPaths(out.Entries)
 	drop := make(map[*c4m.Entry]bool)
 	ancestors := make(map[string]bool)
-	for _, r := range refused {
+	for _, path := range omitted {
 		for p, e := range paths {
-			if p == r.Path || (strings.HasSuffix(r.Path, "/") && strings.HasPrefix(p, r.Path)) {
+			if p == path || (strings.HasSuffix(path, "/") && strings.HasPrefix(p, path)) {
 				drop[e] = true
 			}
 		}
-		parts := strings.Split(strings.TrimSuffix(r.Path, "/"), "/")
+		parts := strings.Split(strings.TrimSuffix(path, "/"), "/")
 		for i := 1; i < len(parts); i++ {
 			ancestors[strings.Join(parts[:i], "/")+"/"] = true
 		}

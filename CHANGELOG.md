@@ -2,6 +2,21 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `c4 restore` verifies what it wrote when an entry has no C4 ID
+
+A description can hold a file whose name, size and date are known but not
+its content (no C4 ID): a metadata scan (`c4 id -m m`) writes one for
+every file. Restore cannot write such a file without inventing content, so
+it keeps the path as found and says so, and it exits 2 (declared
+omissions). But verification still compared the omitted files, so a
+restore that did all it could failed, exit 3, with "re-run the restore",
+which no re-run could satisfy. Omissions are now left out of verification
+on both sides, as entries this platform cannot hold already were (the
+directories above them compare without the aggregates that depend on
+them), and each is named by its full path, `d/x.txt` rather than
+`x.txt`. Writing zeros of the stated size was the alternative; it would
+invent content (decided 2026-11-13 by the release lead; reversible).
+
 ### `cmd/c4/internal/scan` is removed
 
 It was the CLI's scanner at v1.0. On 2026-03-19 every verb moved to the
