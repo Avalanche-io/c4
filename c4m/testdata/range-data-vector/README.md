@@ -32,8 +32,9 @@ ranges it adds or changes, after its entries; a removal line takes none.
 No line is composed by hand. `C4M_UPDATE_VECTORS=1 go test ./c4m -run
 TestRangeDataVector` rewrites the files; the test then fails if they
 differ from what the library writes. On the code before this vector,
-`merged.c4m`, `add.c4m` and both chains' resolutions come out with no
-ID-list lines.
+`merged.c4m` and `add.c4m` come out with no ID-list lines, `c4 merge`,
+`c4 diff` and `c4 patch` write none, and `remove-chain.c4m` re-encodes
+with the plate list still in it, for a range it no longer holds.
 
 The two chains place lists in both positions the spec allows: in
 `remove-chain.c4m` they follow the base section's entries, before the

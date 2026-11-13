@@ -2,6 +2,19 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### Merge, diff and patch keep a c4m's inline ID lists ⚠
+
+data loss fixed: merge, diff, patch and the subtree and filter operations
+dropped a c4m's inline ID lists; they now keep the lists their output's
+ranges need, so their bytes and byte IDs match. Description IDs do not
+change: the lists were never part of one. An output carries the list of
+every folded sequence it holds and none for a range it does not; a patch
+carries the lists of the ranges it adds or changes, after its entries, and
+`c4 split` keeps each section's lists. Nothing is invented: a list no
+input carried stays absent. (Decided 2026-11-13 by the release lead;
+reversible; `design/range-data-through-operations.md`.) The ports test it
+with the shared `c4m/testdata/range-data-vector/`.
+
 ### CI fails on a test skip its allow-list does not name
 
 CI writes `go test -json` and `hack/skips` lists every skipped test with

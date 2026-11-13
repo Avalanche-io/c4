@@ -39,14 +39,14 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 
 ### Core types
 
-| Type           | Description                                                                           |
-| -------------- | ------------------------------------------------------------------------------------- |
-| `Manifest`     | Collection of entries with optional patch chain base ID and range data.               |
-| `Entry`        | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links. `SizeIsNull` is the one test for an unknown size (-1, or 0 beside a non-empty C4 ID); `EmptyContentID` is the C4 ID of zero bytes. |
-| `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes. Writes a non-nil `Base` as the first line (`EncodePatch` writes its `OldID` there instead). |
-| `Decoder` | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. Rejects a bare ID at EOF (`ErrTrailingID`, 2026-11-08); `AllowTrailingID`/`DroppedTrailingID` are the normaliser's migration hook. `SetSource` supplies listings a self-contained chain deepens (otherwise `ErrUnresolvedBase`). |
-| `PatchSection` | One section of a patch chain (base or delta).                                         |
-| `Validator`    | Reads through the Decoder (an unexported per-entry hook), so a format fault is the decoder's error at its line; adds duplicate paths, path-like names (`isPathName`), depth past a parent, flow targets, and with Strict canonical order (`siblingLess`). |
+| Type           | Description                                                                                                                                                                                                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Manifest`     | Collection of entries with optional patch chain base ID and range data.                                                                                                                                                                                                                                                |
+| `Entry`        | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links. `SizeIsNull` is the one test for an unknown size (-1, or 0 beside a non-empty C4 ID); `EmptyContentID` is the C4 ID of zero bytes.                                                                                                 |
+| `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes. Writes a non-nil `Base` as the first line (`EncodePatch` writes its `OldID` there instead).                                                                                                                                                |
+| `Decoder`      | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. Rejects a bare ID at EOF (`ErrTrailingID`, 2026-11-08); `AllowTrailingID`/`DroppedTrailingID` are the normaliser's migration hook. `SetSource` supplies listings a self-contained chain deepens (otherwise `ErrUnresolvedBase`). |
+| `PatchSection` | One section of a patch chain (base or delta), with the inline ID lists written in it (`RangeData`).                                                                                                                                                                                                                    |
+| `Validator`    | Reads through the Decoder (an unexported per-entry hook), so a format fault is the decoder's error at its line; adds duplicate paths, path-like names (`isPathName`), depth past a parent, flow targets, and with Strict canonical order (`siblingLess`).                                                              |
 
 ### Operations (c4m/operations.go)
 
@@ -67,6 +67,15 @@ directory's children before it learns anything about the directory
 itself, so its patches restate the parent line unchanged; without the
 narrowing, the most natural progressive-scan emission silently deleted
 the subtree it was declaring.
+
+Inline ID lists (`RangeData`) through operations: one helper,
+`rangeDataFor` / `keepRangeData` (`c4m/rangedata.go`), sets every output's
+lists to those of the ranges it holds, from the inputs, inventing none;
+`PatchDiff` gives a patch the lists of the ranges it adds or changes.
+Merge, the patch and chain resolvers, the base resolver, the filters and
+the subtree operations all call it; `writeRangeData` is the one writer
+the encoder and `WriteChainBody` share
+(`design/range-data-through-operations.md`, 2026-11-13).
 
 ### External base references (c4m/base.go)
 
