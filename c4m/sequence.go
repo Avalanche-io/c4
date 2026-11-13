@@ -811,11 +811,16 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 
 	// Emit in the input's order: directories and unnumbered files as they
 	// are, a folded range in place of its first frame, nothing for the
-	// frames it absorbed.
+	// frames it absorbed. Every entry passed through is a copy: the result
+	// shares nothing with the input, so normalising or editing a fold
+	// leaves the caller's manifest as it was. Through 2026-11-13 these were
+	// the input's own entries, and normalising a fold rewrote the input's
+	// directory sizes and C4 IDs.
 	for i, entry := range manifest.Entries {
 		m, ok := member[i]
 		if !ok {
-			result.AddEntry(entry)
+			cp := *entry
+			result.AddEntry(&cp)
 			continue
 		}
 		if seq, ok := folded[m.key][m.frame]; ok {
@@ -825,7 +830,8 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 		if consumed[m.key][m.frame] {
 			continue
 		}
-		result.AddEntry(entry)
+		cp := *entry
+		result.AddEntry(&cp)
 	}
 
 	// The lists of the ranges this fold made, and of the ranges the input

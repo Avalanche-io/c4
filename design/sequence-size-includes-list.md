@@ -73,8 +73,3 @@ longer than "33".
 Range sizes change, and so do the size and C4 ID of every directory above
 a range, up to the root. Description IDs of trees without folded ranges
 do not change.
-
-`SequenceDetector` shares the entries it does not fold with its input, so
-normalising a fold also rewrites those entries in the input manifest
-(found writing the vector). That predates this change and is not changed
-here.

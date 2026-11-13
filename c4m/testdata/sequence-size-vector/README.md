@@ -33,10 +33,12 @@ they differ from what the library writes.
 
 ## What a conforming implementation MUST do
 
-| Entry in `folded.c4m` | Size | Why                                                   |
-| --------------------- | ---- | ----------------------------------------------------- |
-| `f.[001-003].exr`     | 303  | 33 bytes of frames + 3 × 90 bytes of ID list          |
-| `sub/`                | 446  | 303 + 143, the byte length of `sub/`'s folded listing |
+| Entry                                      | Size       | Why                                                                                                                   |
+| ------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| `folded.c4m`: `f.[001-003].exr`            | 303        | 33 bytes of frames + 3 × 90 bytes of ID list                                                                          |
+| `folded.c4m`: `sub/`                       | 446        | 303 + 143, the byte length of `sub/`'s folded listing                                                                 |
+| `expanded.c4m`: `f.[001-003].exr`          | 303        | the range keeps its size, which counts its list                                                                       |
+| `expanded.c4m`: `f.001.exr` to `f.003.exr` | null (`-`) | the list names the frames' C4 IDs and carries no per-frame metadata; no share of the range's size is given to a frame |
 
 - Folding `frames.c4m` (minimum length 3) and deriving directory sizes
   writes `folded.c4m` byte for byte.
