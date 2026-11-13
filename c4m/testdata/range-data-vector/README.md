@@ -29,16 +29,18 @@ one-level form is; a conforming writer writes it as is.
 
 ## Files
 
-| File               | Made by                                                                                                                           |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `folded.c4m`       | the Go encoder on `SequenceDetector` (minimum length 3): `plate.[1001-1004].exr` at the root, `sub/shot.[001-003].exr`, two lists |
-| `plain.c4m`        | the Go encoder: `other.txt` and `readme.txt`, no ranges                                                                           |
-| `no-plate.c4m`     | `folded.c4m` with the plate range and its list removed through the API, directory aggregates re-derived                           |
-| `merged.c4m`       | `Merge(nil, folded, plain)`, encoded                                                                                              |
-| `add.c4m`          | `PatchDiff(plain, folded)` written as `c4 diff` writes it: the old state's ID, then the patch                                     |
-| `remove.c4m`       | `PatchDiff(folded, no-plate)` written the same way                                                                                |
-| `add-chain.c4m`    | `plain.c4m` then `add.c4m`, byte for byte (`c4 diff >>`)                                                                          |
-| `remove-chain.c4m` | `folded.c4m` then `remove.c4m`, byte for byte                                                                                     |
+| File                  | Made by                                                                                                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `folded.c4m`          | the Go encoder on `SequenceDetector` (minimum length 3): `plate.[1001-1004].exr` at the root, `sub/shot.[001-003].exr`, two lists |
+| `plain.c4m`           | the Go encoder: `other.txt` and `readme.txt`, no ranges                                                                           |
+| `no-plate.c4m`        | `folded.c4m` with the plate range and its list removed through the API, directory aggregates re-derived                           |
+| `expanded.c4m`        | `SequenceExpander` (embedded) on `folded.c4m`: each range, then its frames, each with its own C4 ID                               |
+| `folded-no-lists.c4m` | `folded.c4m` decoded, its `RangeData` dropped through the API, encoded: both range lines in one-level form                        |
+| `merged.c4m`          | `Merge(nil, folded, plain)`, encoded                                                                                              |
+| `add.c4m`             | `PatchDiff(plain, folded)` written as `c4 diff` writes it: the old state's ID, then the patch                                     |
+| `remove.c4m`          | `PatchDiff(folded, no-plate)` written the same way                                                                                |
+| `add-chain.c4m`       | `plain.c4m` then `add.c4m`, byte for byte (`c4 diff >>`)                                                                          |
+| `remove-chain.c4m`    | `folded.c4m` then `remove.c4m`, byte for byte                                                                                     |
 
 No line is composed by hand. `C4M_UPDATE_VECTORS=1 go test ./c4m -run
 TestRangeDataVector` rewrites the files; the test then fails if they
@@ -56,16 +58,18 @@ checkpoint; in `add-chain.c4m` they follow the patch section's entries.
 Each operation's output, encoded canonically, is the named file byte for
 byte. Ports without a sequence detector start from `folded.c4m`.
 
-| Operation                           | Output         |
-| ----------------------------------- | -------------- |
-| merge `folded.c4m` with `plain.c4m` | `merged.c4m`   |
-| merge `plain.c4m` with `folded.c4m` | `merged.c4m`   |
-| merge `folded.c4m` with itself      | `folded.c4m`   |
-| diff `plain.c4m` to `folded.c4m`    | `add.c4m`      |
-| diff `folded.c4m` to `no-plate.c4m` | `remove.c4m`   |
-| patch (resolve) `add-chain.c4m`     | `folded.c4m`   |
-| patch `plain.c4m` with `add.c4m`    | `folded.c4m`   |
-| patch (resolve) `remove-chain.c4m`  | `no-plate.c4m` |
+| Operation                               | Output                           |
+| --------------------------------------- | -------------------------------- |
+| merge `folded.c4m` with `plain.c4m`     | `merged.c4m`                     |
+| merge `plain.c4m` with `folded.c4m`     | `merged.c4m`                     |
+| merge `folded.c4m` with itself          | `folded.c4m`                     |
+| diff `plain.c4m` to `folded.c4m`        | `add.c4m`                        |
+| diff `folded.c4m` to `no-plate.c4m`     | `remove.c4m`                     |
+| patch (resolve) `add-chain.c4m`         | `folded.c4m`                     |
+| patch `plain.c4m` with `add.c4m`        | `folded.c4m`                     |
+| patch (resolve) `remove-chain.c4m`      | `no-plate.c4m`                   |
+| expand `folded.c4m`                     | `expanded.c4m`                   |
+| expand `folded-no-lists.c4m`, no source | `folded-no-lists.c4m`: no frames |
 
 In particular:
 
@@ -74,6 +78,18 @@ In particular:
   gone.
 - `add.c4m` carries both lists after its entries; `remove.c4m` carries
   none, because its only line removes a range.
+- A range is expanded only from its ID list, the way a directory is
+  descended into only from its listing (ruled 2026-11-13 by the
+  maintainer: "You can't expand a sequence if you don't have a
+  description of it's contents, this is the same for any content.").
+  `folded-no-lists.c4m` is `folded.c4m` with its range lines in one-level
+  form, their lists not inline: a valid file. With no list available,
+  inline or from any source, each range stays one folded entry: no frame
+  is given a null C4 ID or the range's own C4 ID, which names the list and
+  no frame. Asking to expand that range by itself gives what any
+  unavailable content gives (Go: an error satisfying
+  `errors.Is(err, os.ErrNotExist)`, naming the list's C4 ID). Through
+  2026-11-13 Go gave every frame the range's own ID.
 - The lists never change a description ID: each of `folded.c4m`,
   `merged.c4m` and `no-plate.c4m` has the same description ID with its
   lists as without them. Only the bytes, and so the byte ID, differ.
@@ -96,13 +112,15 @@ A file that is not canonical by design re-encodes to a canonical partner
 the library wrote; `C4M_UPDATE_VECTORS=1 go test ./c4m -run
 TestVectorRoundTrip` rewrites the partners.
 
-| File               | Re-encodes to  |
-| ------------------ | -------------- |
-| `folded.c4m`       | itself         |
-| `plain.c4m`        | itself         |
-| `no-plate.c4m`     | itself         |
-| `merged.c4m`       | itself         |
-| `add.c4m`          | itself         |
-| `remove.c4m`       | itself         |
-| `add-chain.c4m`    | `folded.c4m`   |
-| `remove-chain.c4m` | `no-plate.c4m` |
+| File                  | Re-encodes to  |
+| --------------------- | -------------- |
+| `folded.c4m`          | itself         |
+| `plain.c4m`           | itself         |
+| `no-plate.c4m`        | itself         |
+| `expanded.c4m`        | itself         |
+| `folded-no-lists.c4m` | itself         |
+| `merged.c4m`          | itself         |
+| `add.c4m`             | itself         |
+| `remove.c4m`          | itself         |
+| `add-chain.c4m`       | `folded.c4m`   |
+| `remove-chain.c4m`    | `no-plate.c4m` |
