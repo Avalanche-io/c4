@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
 	"github.com/Avalanche-io/c4/store"
 )
@@ -46,9 +47,9 @@ patch composes descriptions; to change a directory: c4 restore <target> <dir>
 // runPatchChain concatenates the arguments into one chain and resolves it.
 func runPatchChain(paths []string, n int, ergonomic bool) {
 	var allSections []*c4m.PatchSection
-	// interior[i]: section i's bare ID is a checkpoint inside its own file,
-	// not the first line of a file (see verifyInteriorCheckpoints).
-	var interior []bool
+	// checks[i] says how section i's bare ID is verified (see foldChain).
+	var checks []idCheck
+	var prevFile c4.ID // byte ID of the previous file's bytes
 
 	for _, path := range paths {
 		// "-" is stdin, as for every verb that takes a c4m, so a chain
@@ -62,9 +63,17 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 			fatalf("Error decoding %s: %v", path, err)
 		}
 		for i := range sections {
-			interior = append(interior, i > 0)
+			switch {
+			case i > 0:
+				checks = append(checks, idCheck{kind: checkInterior})
+			case !prevFile.IsNil():
+				checks = append(checks, idCheck{kind: checkBoundary, prevFile: prevFile})
+			default:
+				checks = append(checks, idCheck{})
+			}
 		}
 		allSections = append(allSections, sections...)
+		prevFile = c4.Identify(bytes.NewReader(data))
 	}
 
 	if len(allSections) == 0 {
@@ -83,7 +92,7 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 				"The first line names a base block this chain refines; it must be in the store.", err)
 		}
 		allSections = append([]*c4m.PatchSection{{Entries: resolved.Entries}}, allSections...)
-		interior = append([]bool{false}, interior...)
+		checks = append([]idCheck{{}}, checks...)
 		if n > 0 {
 			n++
 		}
@@ -93,7 +102,7 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 	if s, _ := store.OpenStore(); s != nil {
 		src = s
 	}
-	manifest, err := foldChain(allSections, interior, n, src)
+	manifest, err := foldChain(allSections, checks, n, src)
 	if err != nil {
 		fatalf("Error: %v", err)
 	}
@@ -111,10 +120,15 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 //     description its own directory IDs contradict (c4 #140 fixed the
 //     library fold; this CLI path still had it, 2026-11-13).
 //   - Every bare ID inside a file is checked against the state the sections
-//     before it resolve to (chain-vector/bad-checkpoint.c4m). The first line
-//     of each file is not: in a concatenation it may be a state ID or the
-//     byte ID of the block it refines, and which it must be is not settled.
-func foldChain(sections []*c4m.PatchSection, interior []bool, n int, src store.Source) (*c4m.Manifest, error) {
+//     before it resolve to (chain-vector/bad-checkpoint.c4m).
+//   - A later file's first-line bare ID, the boundary between two files,
+//     is accepted when it equals either the accumulated state's description
+//     ID (the checkpoint form `c4 diff` writes) or the byte ID of the
+//     preceding file (the block form of a shape-B chain), and refused
+//     otherwise, naming both (ruled 2026-11-13). Both are what the spec's
+//     bare ID means, "fetch this manifest by its C4 ID": a description ID
+//     fetches the stored listing, a byte ID the block.
+func foldChain(sections []*c4m.PatchSection, checks []idCheck, n int, src store.Source) (*c4m.Manifest, error) {
 	limit := len(sections)
 	if n > 0 && n < limit {
 		limit = n
@@ -125,11 +139,8 @@ func foldChain(sections []*c4m.PatchSection, interior []bool, n int, src store.S
 	state := &c4m.Manifest{Version: "1.0", Entries: sections[0].Entries}
 	for i := 1; i < limit; i++ {
 		sec := sections[i]
-		if interior[i] && !sec.BaseID.IsNil() {
-			if got := state.ComputeC4ID(); got != sec.BaseID {
-				return nil, fmt.Errorf("%w: checkpoint before section %d names %s, the sections before it resolve to %s",
-					c4m.ErrPatchIDMismatch, i+1, sec.BaseID, got)
-			}
+		if err := checks[i].verify(sec.BaseID, state, i+1); err != nil {
+			return nil, err
 		}
 		next, err := c4m.FoldSection(state, sec.Entries, src)
 		if err != nil {
@@ -160,4 +171,39 @@ func readC4mArg(path string) ([]byte, error) {
 		return io.ReadAll(os.Stdin)
 	}
 	return os.ReadFile(path)
+}
+
+type checkKind int
+
+const (
+	checkNone     checkKind = iota // a file's first line naming an external base, or no ID
+	checkInterior                  // a checkpoint inside a file
+	checkBoundary                  // a later file's first line
+)
+
+type idCheck struct {
+	kind     checkKind
+	prevFile c4.ID
+}
+
+// verify checks a section's bare ID against the state the sections before
+// it resolve to; section is its 1-based number in the chain.
+func (c idCheck) verify(id c4.ID, state *c4m.Manifest, section int) error {
+	if id.IsNil() || c.kind == checkNone {
+		return nil
+	}
+	got := state.ComputeC4ID()
+	switch c.kind {
+	case checkInterior:
+		if got != id {
+			return fmt.Errorf("%w: checkpoint before section %d names %s, the sections before it resolve to %s",
+				c4m.ErrPatchIDMismatch, section, id, got)
+		}
+	case checkBoundary:
+		if got != id && c.prevFile != id {
+			return fmt.Errorf("%w: the file starting at section %d names %s, which is neither the state the files before it resolve to (%s) nor the byte ID of the file before it (%s)",
+				c4m.ErrPatchIDMismatch, section, id, got, c.prevFile)
+		}
+	}
+	return nil
 }

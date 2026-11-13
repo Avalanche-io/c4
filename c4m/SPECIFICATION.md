@@ -433,6 +433,8 @@ c4<id-after-patch-1>
 
 Each checkpoint verifies the state after all preceding patches have been applied.
 
+*(Wording, 2026-11-13.)* When a reader is given several c4m files as one chain, the bare ID on the first line of each later file names either the state the files before it resolve to (its description ID, the checkpoint form) or the bytes of the file before it (its byte ID, the block form); both are "fetch this manifest by its C4 ID". A resolving reader accepts either and refuses any other ID, naming both.
+
 A chain ends on its last section's entries. A bare ID appears only as a boundary before a patch; a c4m file never ends with a bare ID of its own resolved state, because no file can contain its own ID: a file written from a description must be the file its own C4 ID names (design/no-self-id.md, 2026-11-03; a format error since 2026-11-08, "No Closing Validator" above).
 
 ### Encoding Patches

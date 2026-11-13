@@ -59,6 +59,7 @@ func TestPatchFoldsOneLevelBaseAndVerifiesCheckpoints(t *testing.T) {
 	tree := filepath.Join(dir, "t")
 	writeTree(t, tree, map[string]string{"d/x.txt": "x", "d/y.txt": "y"})
 	v0 := storeID(tree)
+	base0Path := write("base0.c4m", run("id", tree))
 
 	writeTree(t, tree, map[string]string{"d/z.txt": "z"})
 	v1 := storeID(tree)
@@ -98,6 +99,30 @@ func TestPatchFoldsOneLevelBaseAndVerifiesCheckpoints(t *testing.T) {
 	}
 	if _, stderr, code := resolve("../../c4m/testdata/chain-vector/bad-checkpoint.c4m"); code == 0 || !strings.Contains(stderr, "does not match") {
 		t.Errorf("chain-vector/bad-checkpoint.c4m must be refused: exit %d: %s", code, stderr)
+	}
+
+	// A later file's first line is a boundary. It may name the state the
+	// files before it resolve to (the checkpoint form c4 diff writes) or
+	// the byte ID of the file before it (the block form); anything else is
+	// refused, naming both (ruled 2026-11-13).
+	concat := func(files ...string) (string, string, int) {
+		t.Helper()
+		out, stderr, code := runC4WithEnv(t, bin, env, append([]string{"patch"}, files...)...)
+		if code != 0 {
+			return "", stderr, code
+		}
+		id, _, _ := runC4WithStdinEnv(t, bin, env, out, "id", "-q", "-")
+		return strings.TrimSpace(id), stderr, code
+	}
+	if got, stderr, code := concat(base0Path, block1Path); code != 0 || got != v1 {
+		t.Errorf("checkpoint form (a scan, then a diff naming its state): %q exit %d: %s, want %s", got, code, stderr, v1)
+	}
+	if got, stderr, code := concat(block1Path, block2Path); code != 0 || got != v2 {
+		t.Errorf("block form (block 1, then block 2 naming block 1's bytes): %q exit %d: %s, want %s", got, code, stderr, v2)
+	}
+	stray := write("stray.c4m", wrong+"\n"+tail)
+	if _, stderr, code := concat(block1Path, stray); code == 0 || !strings.Contains(stderr, "neither the state") || !strings.Contains(stderr, b1) || !strings.Contains(stderr, v1) {
+		t.Errorf("a boundary naming neither must be refused, naming both candidates: exit %d: %s", code, stderr)
 	}
 
 	// c4 log counts changes against the deepened layer: block 1 adds one
