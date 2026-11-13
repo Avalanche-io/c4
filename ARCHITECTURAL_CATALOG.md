@@ -44,7 +44,7 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | -------------- | ------------------------------------------------------------------------------------- |
 | `Manifest`     | Collection of entries with optional patch chain base ID and range data.               |
 | `Entry`        | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links.   |
-| `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes.           |
+| `Encoder`      | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes. Writes a non-nil `Base` as the first line (`EncodePatch` writes its `OldID` there instead). |
 | `Decoder` | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. Rejects a bare ID at EOF (`ErrTrailingID`, 2026-11-08); `AllowTrailingID`/`DroppedTrailingID` are the normaliser's migration hook. |
 | `PatchSection` | One section of a patch chain (base or delta).                                         |
 | `Validator`    | Reads through the Decoder (an unexported per-entry hook), so a format fault is the decoder's error at its line; adds duplicate paths, path-like names (`isPathName`), depth past a parent, flow targets, and with Strict canonical order (`siblingLess`). |

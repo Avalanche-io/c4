@@ -52,6 +52,17 @@ func (e *Encoder) Encode(m *Manifest) error {
 	m = m.Copy()
 	m.SortEntries()
 
+	// A first-line bare ID is the external base this description refines
+	// (SPECIFICATION.md, external base reference). Decode keeps it in Base;
+	// writing it back keeps the round trip honest. Through 2026-11-13 it was
+	// dropped, so encoding a decoded block turned it into a standalone
+	// description of its own entries.
+	if !m.Base.IsNil() {
+		if _, err := fmt.Fprintf(e.w, "%s\n", m.Base); err != nil {
+			return err
+		}
+	}
+
 	// Calculate formatting parameters if pretty-printing
 	var maxSize int64
 	var c4IDColumn int
@@ -209,8 +220,14 @@ func (e *Encoder) EncodePatch(pr *PatchResult) error {
 	if _, err := fmt.Fprintf(e.w, "%s\n", pr.OldID); err != nil {
 		return err
 	}
-	// Write patch entries.
-	return e.Encode(pr.Patch)
+	// Write patch entries. The OldID line above is this stream's first
+	// line, so a base the patch manifest carries is not written again.
+	patch := pr.Patch
+	if patch != nil && !patch.Base.IsNil() {
+		patch = patch.Copy()
+		patch.Base = c4.ID{}
+	}
+	return e.Encode(patch)
 }
 
 // ----------------------------------------------------------------------------

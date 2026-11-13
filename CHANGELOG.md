@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### Encoding a description keeps its external base
+
+The encoder never wrote a manifest's `Base`, the first-line bare ID naming
+the block a description refines, although the decoder keeps it. So
+`Unmarshal` then `Marshal` turned a block on a base into a standalone
+description of the block's own entries, silently (found 2026-11-13; c4-swift
+had copied the encoder). `Encode`, `Marshal` and `MarshalPretty` now write
+it as the first line. `EncodePatch`, whose first line is its `OldID`, does
+not write a base the patch manifest carries a second time. A manifest with
+no base encodes exactly as before.
+
 ### `c4 patch` and `c4 log` fold one-level bases correctly; `c4 patch` verifies checkpoints
 
 Three faults in the chain verbs, found 2026-11-13 while bringing libc4's
