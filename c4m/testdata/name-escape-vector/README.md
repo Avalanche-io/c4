@@ -60,17 +60,21 @@ check, comparing SHA-512 of the bytes:
 - A file name: the output is that file, byte for byte.
 - `ID in` a file: a chain; the resolved state has that C4 ID.
 - `refused`: decoding fails.
-- `unpaired`: it decodes; no file holds its canonical form, for the reason given.
 
-| File                        | Re-encodes to                                                      |
-| --------------------------- | ------------------------------------------------------------------ |
-| `ok-dir.c4m`                | itself                                                             |
-| `ok-escaped.c4m`            | itself                                                             |
-| `ok-file.c4m`               | itself                                                             |
-| `ok-indent-3.c4m`           | unpaired: written with `SetIndent(3)`; canonical form indents by 2 |
-| `dir-unescaped-space.c4m`   | refused                                                            |
-| `file-damaged-id-field.c4m` | refused                                                            |
-| `file-raw-control.c4m`      | refused                                                            |
-| `file-raw-quote.c4m`        | refused                                                            |
-| `file-raw-tab.c4m`          | refused                                                            |
-| `file-unescaped-space.c4m`  | refused                                                            |
+A file that is not canonical by design re-encodes to a canonical partner
+the library wrote; `C4M_UPDATE_VECTORS=1 go test ./c4m -run
+TestVectorRoundTrip` rewrites the partners.
+
+| File                        | Re-encodes to               |
+| --------------------------- | --------------------------- |
+| `ok-dir.c4m`                | itself                      |
+| `ok-escaped.c4m`            | itself                      |
+| `ok-file.c4m`               | itself                      |
+| `ok-indent-3.c4m`           | `ok-indent-3.canonical.c4m` |
+| `ok-indent-3.canonical.c4m` | itself                      |
+| `dir-unescaped-space.c4m`   | refused                     |
+| `file-damaged-id-field.c4m` | refused                     |
+| `file-raw-control.c4m`      | refused                     |
+| `file-raw-quote.c4m`        | refused                     |
+| `file-raw-tab.c4m`          | refused                     |
+| `file-unescaped-space.c4m`  | refused                     |

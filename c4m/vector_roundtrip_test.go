@@ -14,7 +14,7 @@ import (
 // roundTripRow is one line of a vector README's "## Round trip" table.
 type roundTripRow struct {
 	file string // a name in the directory, or a glob such as */*.c4m
-	want string // itself | `NAME` | ID in `NAME` | refused | unpaired: why
+	want string // itself | `NAME` | ID in `NAME` | refused
 }
 
 // readRoundTrip returns the rows of the "## Round trip" table in a vector
@@ -69,7 +69,8 @@ func quoted(s string) string {
 
 // TestVectorRoundTrip decodes every .c4m in every shared vector directory
 // and encodes it canonically, checking the bytes against what the
-// directory's README states. A port that keeps or drops bytes on a round
+// directory's README states. Every file gets a check: a row is itself, a
+// canonical partner, a chain's resolved ID, or refused, and nothing else. A port that keeps or drops bytes on a round
 // trip changes a c4m file's byte ID, which is a C4 ID: that is data loss.
 // The README's table is the shared statement every port runs (decided
 // 2026-11-13 by the release lead; reversible).
@@ -148,10 +149,6 @@ func checkRoundTrip(t *testing.T, dir, path, want string, sum func([]byte) [64]b
 		if sum(out.Bytes()) != sum(in) {
 			t.Errorf("%s does not re-encode to itself:\n--- file\n%s--- re-encoded\n%s", path, in, out.Bytes())
 		}
-	case strings.HasPrefix(want, "unpaired:"):
-		if strings.TrimSpace(strings.TrimPrefix(want, "unpaired:")) == "" {
-			t.Errorf("%s: unpaired without a reason", path)
-		}
 	case strings.HasPrefix(want, "ID in "):
 		b, err := os.ReadFile(filepath.Join(dir, quoted(want)))
 		if err != nil {
@@ -162,6 +159,13 @@ func checkRoundTrip(t *testing.T, dir, path, want string, sum func([]byte) [64]b
 			t.Errorf("%s resolves to %s, want %s (%s)", path, id, strings.TrimSpace(string(b)), quoted(want))
 		}
 	case quoted(want) != "" && quoted(want) == strings.Trim(want, "`"):
+		// A canonical partner is the library's own output: with
+		// C4M_UPDATE_VECTORS set, it is rewritten from the re-encoding.
+		if os.Getenv("C4M_UPDATE_VECTORS") != "" {
+			if err := os.WriteFile(filepath.Join(dir, quoted(want)), out.Bytes(), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 		partner, err := os.ReadFile(filepath.Join(dir, quoted(want)))
 		if err != nil {
 			t.Errorf("%s: %v", path, err)
