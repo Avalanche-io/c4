@@ -2,6 +2,21 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### No verb prompts for a store or creates one; storing stdin without one refuses
+
+`c4 id -s`, `c4 -s` and `c4 restore`, finding no content store
+configured, asked on a terminal whether to create `~/.c4/store` and created
+it on any answer but "n", end of input included. So a script or a test run
+from a terminal created a store as a side effect, and a composable verb
+waited on a question. They now refuse, exit 1, saying how to configure a
+store (`C4_STORE=PATH`, created on first use, or `s3://bucket/prefix`, or a
+store line in `~/.c4/config`), and create nothing. `... | c4 -s` with no
+store printed the ID of stdin as if it were stored; it now refuses too.
+`c4 restore` needs the store for its pre-image, the durable undo written
+before anything changes, so it refuses without one even when the
+destination holds every byte it needs. (Decided 2026-11-13 by the release
+lead; reversible.)
+
 ### SafeName's printable test is pinned to Unicode 17.0.0 ⚠
 
 SafeName writes a code point as itself when `unicode.IsPrint` says it is

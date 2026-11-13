@@ -46,7 +46,7 @@ func runRestore(args []string) {
 
 	s := getOrSetupStore()
 	if s == nil {
-		fatalf("Error: restore requires a configured store (set C4_STORE or ~/.c4/config)")
+		fatalf("Error: restore needs a content store (its pre-image is the durable undo, stored before anything changes); %s", noStoreHint())
 	}
 
 	target := resolveRestoreTarget(s, targetArg)

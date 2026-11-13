@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -90,7 +89,7 @@ func runID(args []string) {
 	// script believed its content was stored when nothing was.
 	if shouldStore {
 		if s := getOrSetupStore(); s == nil {
-			fatalf("Error: -s needs a content store and none is configured: set C4_STORE=/path/to/store or s3://bucket/prefix, or run c4 id -s in a terminal to create %s", store.DefaultStorePath())
+			fatalf("Error: -s needs a content store; %s", noStoreHint())
 		}
 	}
 
@@ -365,6 +364,11 @@ func readStdinManifest(migrate bool) (m *c4m.Manifest, dropped bool) {
 func doStdin(storeFlag bool) {
 	if storeFlag {
 		s := getOrSetupStore()
+		if s == nil {
+			// Never print an ID as if stored when nothing was: a script
+			// would believe its content was kept.
+			fatalf("Error: storing stdin needs a content store; %s", noStoreHint())
+		}
 		if s != nil {
 			start := time.Now().UTC()
 			id, _, err := storeContentBytes(s, os.Stdin)
@@ -816,6 +820,12 @@ func getOrSetupStore() store.Store {
 	return ingestStore
 }
 
+// openOrSetupStore opens the configured content store, or returns nil when
+// none is configured. It never prompts and never creates a store: a
+// composable verb runs the same in a terminal as in a script, and a store
+// is configured on purpose (noStoreHint). Through 2026-11-13 it asked, in a
+// terminal, whether to create ~/.c4/store, and created it on any answer
+// but "n" (decided 2026-11-13 by the release lead; reversible).
 func openOrSetupStore() store.Store {
 	s, err := store.OpenStore()
 	if err != nil {
@@ -825,33 +835,14 @@ func openOrSetupStore() store.Store {
 	if s != nil {
 		return applyIngestSync(s)
 	}
-
-	// No store configured — offer to create default (local only).
-	if !isTerminal() {
-		return nil
-	}
-
-	fmt.Fprintf(os.Stderr, "No content store configured. Create %s? [Y/n] ", store.DefaultStorePath())
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-
-	if answer == "" || answer == "y" || answer == "yes" {
-		s, err := store.SetupDefaultStore()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating store: %v\n", err)
-			return nil
-		}
-		return applyIngestSync(s)
-	}
-
-	fmt.Fprintf(os.Stderr, "Set C4_STORE=/path/to/store or s3://bucket/prefix\n")
 	return nil
 }
 
-func isTerminal() bool {
-	stat, _ := os.Stdin.Stat()
-	return (stat.Mode() & os.ModeCharDevice) != 0
+// noStoreHint says how to configure a content store, for the verbs that
+// refuse without one.
+func noStoreHint() string {
+	return "no content store is configured: set C4_STORE=" + store.DefaultStorePath() +
+		" (any directory; created on first use) or C4_STORE=s3://bucket/prefix, or put a store line in ~/.c4/config"
 }
 
 func outputManifest(manifest *c4m.Manifest, ergonomic bool) {
