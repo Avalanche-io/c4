@@ -290,6 +290,19 @@ func TestRangeDataThroughOperations(t *testing.T) {
 			}
 			return state(m)
 		}},
+		{"WriteChainBody(a list for an absent range)", func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
+			stale := noPlate.Copy()
+			stale.RangeData = folded.Copy().RangeData // the plate list too
+			var b bytes.Buffer
+			if err := WriteChainBody(&b, stale); err != nil {
+				t.Fatal(err)
+			}
+			m, err := Unmarshal(b.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			return state(m)
+		}},
 		{"WriteChainBody(folded)", func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
 			var b bytes.Buffer
 			if err := WriteChainBody(&b, folded); err != nil {
