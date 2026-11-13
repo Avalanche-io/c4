@@ -14,7 +14,7 @@ a section through `c4m.Deepen`, the fold `ResolveBase`, `c4 patch` and
 listing; without a source the chain is refused with `ErrUnresolvedBase`
 naming it. `c4 id` never reads the store, so it refuses such a chain
 rather than guess; `c4 patch` resolves it from the store. (Decided
-2026-11-13 by the release lead, under Joshua's instruction to decide;
+2026-11-13 by the release lead, under the maintainer's standing instruction to decide;
 reversible.)
 
 ### Encoding a description keeps its external base

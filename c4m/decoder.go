@@ -69,7 +69,7 @@ func (d *Decoder) SetSource(src store.Source) { d.src = src }
 // 2026-11-13 the decoder applied the section without it: the directory
 // read as empty, the normaliser re-derived its ID from the partial
 // listing, and `c4 id -q` named a tree that was never there (decided
-// 2026-11-13 by the release lead, under Joshua's instruction to decide;
+// 2026-11-13 by the release lead, under the maintainer's standing instruction to decide;
 // reversible). After an unresolved external base the state is
 // provisional (ResolveBase refolds every section onto the fetched base),
 // so nothing is read here.

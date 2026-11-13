@@ -121,7 +121,7 @@ func TestResolveBaseDeepensCollapsedDirectory(t *testing.T) {
 // one collapsed line) and whose next section deepens d/. The decoder used
 // to apply the section without d/'s listing, so the normaliser re-derived
 // d/ from the partial listing and named a tree that was never there.
-// Decided 2026-11-13 by the release lead, under Joshua's instruction to
+// Decided 2026-11-13 by the release lead, under the maintainer's standing instruction to
 // decide; reversible: with a source the listing is read first; without
 // one the chain is refused, naming the listing.
 func TestDecodeDeepensCollapsedDirectoryInAChain(t *testing.T) {
