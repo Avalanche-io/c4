@@ -617,7 +617,7 @@ The sequence pattern regex used by the implementation:
 
 ### 9.3 Sequence Properties
 
-- **Size**: Sum of all member file sizes; null if any member's size is null, as for directories. *(Erratum 2026-11-13: the directory rule, "if any child entry has null size (-1), the parent directory's size is also null", applied to sequences; not a new ruling.)*
+- **Size**: Sum of all member file sizes; null if any member's size is null, as for directories. *(Erratum 2026-11-13, ruled by the maintainer: "One cannot use size as an expectation if there are nulls present, so we must say nothing.")*
 - **Timestamp**: Most recent modification time among all members
 - **C4 ID**: Hash of the bare-concatenated member C4 IDs (90 chars per
   member, no separators). This content is a regular file in the store

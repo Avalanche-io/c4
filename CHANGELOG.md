@@ -11,10 +11,9 @@ Now any frame with a null size (including a 0 beside a C4 ID, which is
 null) makes the sequence's size null, as a null child does a directory's.
 **C4 IDs change** for a description holding such a sequence; a scan never
 writes one, because a frame it cannot read has no C4 ID and is not folded.
-This is the spec's directory rule ("if any child entry has null size (-1),
-the parent directory's size is also null") applied to sequences, now
-stated in SPECIFICATION.md and C4M-STANDARD.md as a one-line erratum; it is
-not a new ruling. (Decided 2026-11-13 by the release lead; reversible.)
+Ruled 2026-11-13 by the maintainer: "One cannot use size as an expectation
+if there are nulls present, so we must say nothing." SPECIFICATION.md and
+C4M-STANDARD.md state it as a one-line erratum (`design/sequence-null-size.md`).
 
 ### `c4 cat -r --content`: is everything a snapshot names in the store?
 

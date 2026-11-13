@@ -256,7 +256,7 @@ Sequences provide compact representation of numbered files common in media workf
 
 - Names with escaped brackets (`\[`, `\]`) are never interpreted as sequences
 - **C4 ID**: Hash of the bare-concatenated member C4 IDs (90 chars per ID, no separators). This ID list content is a regular file — it can be stored in the content store or inlined as a trailing line in the c4m file (see [Inline Range Data](#inline-range-data)).
-- **Size**: Sum of all member file sizes; null if any member's size is null, as for directories. *(Erratum 2026-11-13: the directory rule, "if any child entry has null size (-1), the parent directory's size is also null", applied to sequences; not a new ruling.)*
+- **Size**: Sum of all member file sizes; null if any member's size is null, as for directories. *(Erratum 2026-11-13, ruled by the maintainer: "One cannot use size as an expectation if there are nulls present, so we must say nothing.")*
 - **Timestamp**: Most recent modification time among all members
 - All members must be the same entry type (all files, all directories, or all symlinks)
 - Sequences with any null (uncomputed) member C4 IDs cannot be folded
