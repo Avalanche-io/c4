@@ -86,11 +86,17 @@ func TestSequenceExpansionNeedsTheIDList(t *testing.T) {
 		t.Errorf("lists in the source: the expansion carries %d lists, want 2", len(out.RangeData))
 	}
 
-	// A source whose bytes under a range's ID are not that list: not
-	// available, so that range stays folded.
+	// A source whose bytes under a range's ID are a well-formed list of the
+	// right length that is not that range's list (it hashes elsewhere):
+	// not available, so that range stays folded.
 	wrong := bytesSource{}
-	for id := range ranges {
-		wrong[id] = []byte("not the list")
+	for id, list := range folded.RangeData {
+		n := len(list) / 90
+		ids := make([]c4.ID, n)
+		for i := range ids {
+			ids[i] = c4.Identify(bytes.NewReader([]byte{byte(i), 'x'}))
+		}
+		wrong[id] = IDListBytes(ids)
 	}
 	if n := framesOf("wrong bytes in the source", expand(bare, wrong)); n != 0 {
 		t.Errorf("wrong bytes in the source: %d frames, want none", n)
