@@ -47,7 +47,7 @@ Two consequences of that measurement:
   since a symlink's target is never empty, but the fields do not
   constrain each other). The spec's symlink example showing `0` is
   illustrative, not what the scanner writes.
-- **`0` with no C4 ID is a known zero, not null.** c4-fleet asked
+- **`0` with no C4 ID is a known zero, not null.** the release lead asked
   whether it should read as null by the same test, and my first answer
   was yes. That was wrong: a structure-level scan (`c4 id -m s`) records
   every file's size and no C4 ID, so an empty file reads `0 name -`
@@ -103,7 +103,7 @@ cannot recover the ID of bytes it could not read, so it records the read
 error instead. That is the right outcome: the client learns that the
 file is not there, not that it is empty.
 
-**Where the refusal happens** (amended 2026-11-09 after c4d's review).
+**Where the refusal happens** (amended 2026-11-09 after the storage review).
 An earlier draft of this table said the mount "refuses to open". That
 assumes an open call. NFS v3 has none, and any client that sees size 0
 skips READ altogether, so a refusal placed at open or at the first read
@@ -118,7 +118,7 @@ loudly. Hiding the entry from the listing is the other option and is
 rejected: it lies about existence, and a client's scan would then record
 a deletion.
 
-**Measured by c4d, 2026-11-09** (macOS 27.2 NFS v3 client, c4fs behind
+**Measured by the storage lead, 2026-11-09** (macOS 27.2 NFS v3 client, c4fs behind
 absnfs, a c4m made with the package with README.md's size null, empty
 store, c4 master 6aa19d8):
 
@@ -144,10 +144,10 @@ store, c4 master 6aa19d8):
 So the rule for an open-less door is two-part: fail LOOKUP and GETATTR
 for the entry (so every tool is loud), **and keep the name in
 READDIR(PLUS)** with no attributes and no handle, so the listing still
-says the entry exists. That needs a change in absnfs (c4d has told absfs)
+says the entry exists. That needs a change in absnfs (the storage lead has told the absfs maintainers)
 and then a measurement of what `ls -l` and Finder show for such an entry.
 
-**Measured again (absnfs #92, c4d, 2026-11-09 16:14 CST):** with the
+**Measured again (absnfs #92, the storage lead, 2026-11-09 16:14 CST):** with the
 name kept in READDIR(PLUS) and no attributes or handle, macOS `ls` and
 `find` do not show it at all (the client's bulk-attribute path skips an
 entry it cannot describe); `getdirentries` returns it and `stat` gives
@@ -158,7 +158,7 @@ option there is to let LOOKUP and GETATTR succeed (size 0, as ruled) and
 refuse at ACCESS, the one call the client makes before letting a program
 open the file; whether the macOS client honours an ACCESS refusal for a
 file its owner may read is not yet measured. On SMB the door has a real
-open, and absfs measured that refusal as loud in every tool.
+open, and the absfs maintainers measured that refusal as loud in every tool.
 
 **The rule as it stands, then:** where the door has an open, or an
 access check the client honours, refuse there and list the entry with
@@ -168,8 +168,8 @@ lesser harm, and the capture side must still carry the entry (it knows
 the ID), so the hiding is a property of that door, not of the
 description. The ACCESS measurement decides which case NFS v3 is in.
 
-**ACCESS measured (absfs, macOS 27.2 client, absnfs a185d90, 2026-11-09
-16:24; relayed by c4d, single-sourced):** macOS NFS v3 is in the first
+**ACCESS measured (the absfs maintainers, macOS 27.2 client, absnfs a185d90, 2026-11-09
+16:24; relayed by the storage lead, single-sourced):** macOS NFS v3 is in the first
 case. With LOOKUP and GETATTR succeeding (size 0) and ACCESS refused,
 `ls -l`, `find` and `stat` list the entry with size 0 and exit 0, while
 `cat`, `cp`, Python, `shasum`, `c4 id` and `c4 id -q` all fail with exit
@@ -181,7 +181,7 @@ must hold from the first ACCESS; whether a later attribute change drops a
 cached grant is not yet measured. c4fs's FileInfos now carry
 `SizeKnown() bool` (false only when Size() is 0 because the size cannot
 be found), which is the signal a door refuses on. Whether the doors
-refuse is c4d's review decision 6, with Joshua.
+refuse is the storage review's decision 6, with the maintainer.
 
 ## Cost
 

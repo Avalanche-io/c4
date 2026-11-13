@@ -13,7 +13,7 @@ import (
 // against the description silently: diff printed nothing, restore
 // planned nothing, then failed its own verification with the changed
 // bytes still in place. Trust is a client choice (-c), never the
-// default. (Design review and c4-fleet, 2026-11-03.)
+// default. (Design review and the release lead, 2026-11-03.)
 func sameSizeSameMtimeTamper(t *testing.T) (bin, root, dir, c4mPath string, env map[string]string) {
 	t.Helper()
 	bin = buildC4(t)

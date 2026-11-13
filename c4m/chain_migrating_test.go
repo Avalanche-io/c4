@@ -48,7 +48,7 @@ func TestDecodePatchChainMigratingReturnsTrailingID(t *testing.T) {
 
 // Two consecutive bare IDs are checkpoint repetition and must agree; the
 // shape-level reader used to keep the second and drop the first without
-// comparing them (found by c4d, 2026-11-09).
+// comparing them (found by the storage project, 2026-11-09).
 func TestDecodePatchChainConsecutiveCheckpointsMustAgree(t *testing.T) {
 	base := NewManifest()
 	base.AddEntry(&Entry{Name: "a.txt", Size: 5, C4ID: c4.Identify(strings.NewReader("hello"))})

@@ -98,7 +98,7 @@ func TestEveryWrittenFormIsTheFileItsIDNames(t *testing.T) {
 // A c4m file inside a scanned tree is stored as its bytes and comes back
 // byte for byte, from the store and from restore: aligned and chained,
 // with and without a .c4m name. On master before this change the entry
-// was stored re-rendered and restore wrote a different file (c4-fleet,
+// was stored re-rendered and restore wrote a different file (the release lead,
 // 2026-11-03).
 func TestC4mFilesInsideATreeKeepTheirBytes(t *testing.T) {
 	bin := buildC4(t)

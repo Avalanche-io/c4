@@ -56,7 +56,7 @@ func partialSnapshot(t *testing.T, bin string, env map[string]string, dir string
 }
 
 // TestCatRecursivePartialTreeExits2 pins the rule from the 2026-11-08
-// c4d finding: `c4 cat -r` on a snapshot whose store lacks a listing
+// Storage-project finding: `c4 cat -r` on a snapshot whose store lacks a listing
 // prints the tree as far as it goes, names each missing listing on
 // stderr, and exits 2. Until then it exited 0 and said nothing, so a
 // check that read only the exit status believed a partial tree complete.

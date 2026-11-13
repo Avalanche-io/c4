@@ -25,7 +25,7 @@ func (plainStore) Walk(func(c4.ID, int64) error) error  { return nil }
 func (plainStore) ContentPath(c4.ID) (string, bool)     { return "", false }
 
 // The barrier's error reaches the caller, which is fatal before any claim
-// is journaled or printed (c4d review, 2026-11-09: it used to warn and
+// is journaled or printed (storage review, 2026-11-09: it used to warn and
 // claim anyway). A nil store and a store without batch semantics pass.
 func TestStoreBarrierReportsFailure(t *testing.T) {
 	if err := storeBarrier(nil); err != nil {

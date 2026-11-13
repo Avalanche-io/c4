@@ -86,7 +86,7 @@ func decodePatchChain(r io.Reader, allowTrailing bool) ([]*PatchSection, c4.ID, 
 				// state, so they must be the same ID. This reader cannot
 				// verify either against the state (it does not resolve),
 				// but it can refuse a pair that disagrees instead of
-				// silently keeping the second (found by c4d, 2026-11-09).
+				// silently keeping the second (found by the storage project, 2026-11-09).
 				if current.BaseID != id {
 					return nil, c4.ID{}, fmt.Errorf("%w (line %d): consecutive checkpoints disagree: %s then %s",
 						ErrPatchIDMismatch, d.lineNum, current.BaseID, id)
