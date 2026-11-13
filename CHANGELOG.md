@@ -2,6 +2,18 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `c4 cat -r --content`: is everything a snapshot names in the store?
+
+`c4 cat -r` checks that every listing a tree names is in the store, and
+exits 2 naming each one that is not; it never looked up file content, so a
+snapshot naming content that was never stored passed with exit 0.
+`--content` (with `-r`) extends the same walk: each file whose C4 ID the
+store does not hold is named on stderr, `partial: <path> content <ID> not
+in store`, in tree order, and cat exits 2. A file recorded with no C4 ID is
+named as `recorded with nulls`. It is presence (`Has`, across every
+configured store), not a rehash; `c4 cat <ID>` verifies an object's bytes.
+Stdout is unchanged. (Decided 2026-11-13 by the release lead; reversible.)
+
 ### Content mode writes a symlink's mode as lrwxrwxrwx ⚠
 
 The content projection (`c4 id -m c`) nulled every mode, a symlink's

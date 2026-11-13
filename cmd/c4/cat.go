@@ -17,7 +17,11 @@ func runCat(args []string) {
 	fs.help(catHelp)
 	ergonomic := fs.boolFlag("ergonomic", 'e', false, "Pretty-print c4m content")
 	recursive := fs.boolFlag("recursive", 'r', false, "Recursively expand directory entries in c4m")
+	content := fs.boolFlag("content", 0, false, "With -r: name every file whose content the store does not hold (presence, not a rehash)")
 	fs.parse(args)
+	if *content && !*recursive {
+		fatalf("Error: --content checks a whole tree; use it with -r")
+	}
 
 	if len(fs.args) != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 cat [flags] <c4id|file.c4m>\n")
@@ -49,13 +53,13 @@ func runCat(args []string) {
 		}
 
 		finalID, assertListing := storeDescend(s, id, target[len(first):])
-		catFromStore(s, finalID, *ergonomic, *recursive, assertListing)
+		catFromStore(s, finalID, *ergonomic, *recursive, *content, assertListing)
 		return
 	}
 
 	// A file path (c4m file on disk).
 	if _, err := os.Stat(target); err == nil {
-		catFile(target, *ergonomic, *recursive)
+		catFile(target, *ergonomic, *recursive, *content)
 		return
 	}
 
@@ -136,7 +140,7 @@ func storeDescend(s store.Store, id c4.ID, pathPart string) (c4.ID, bool) {
 // a FILE argument names a description, and echoing something that
 // failed to parse would garble silently (store objects, by contrast,
 // stay type-agnostic raw bytes).
-func catFile(path string, ergonomic, recursive bool) {
+func catFile(path string, ergonomic, recursive bool, content bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		fatalf("Error reading %s: %v", path, err)
@@ -156,14 +160,20 @@ func catFile(path string, ergonomic, recursive bool) {
 	}
 
 	var missing []missingRecord
+	var st store.Store
 	if recursive {
 		// A nil store expands nothing and names every collapsed directory
 		// as missing: -r without a store is a partial answer, not a quiet one.
-		m, missing = expandRecursive(m, openStoreOrNil())
+		st = openStoreOrNil()
+		m, missing = expandRecursive(m, st)
 	}
 
 	outputManifest(m, ergonomic)
-	if reportPartialTree(missing) {
+	partial := reportPartialTree(missing)
+	if recursive && content && reportMissingContent(m, st) {
+		partial = true
+	}
+	if partial {
 		os.Exit(2)
 	}
 }
@@ -171,7 +181,7 @@ func catFile(path string, ergonomic, recursive bool) {
 // catFromStore fetches content from the store, verifies it against the
 // requested ID, and displays it. Nothing is written on a failed
 // verification: absent and damaged are one answer to a consumer.
-func catFromStore(s store.Store, id c4.ID, ergonomic, recursive, assertListing bool) {
+func catFromStore(s store.Store, id c4.ID, ergonomic, recursive, content, assertListing bool) {
 	data := readVerified(s, id)
 
 	// The object's bytes, exactly: what an ID names is what cat returns
@@ -203,7 +213,11 @@ func catFromStore(s store.Store, id c4.ID, ergonomic, recursive, assertListing b
 	// listing it could not supply is named on stderr and cat exits 2:
 	// partial is a valid answer, silence about it is not.
 	outputManifest(m, ergonomic)
-	if reportPartialTree(missing) {
+	partial := reportPartialTree(missing)
+	if recursive && content && reportMissingContent(m, s) {
+		partial = true
+	}
+	if partial {
 		os.Exit(2)
 	}
 }
@@ -394,4 +408,46 @@ func isBase58(b byte) bool {
 		(b >= 'P' && b <= 'Z') ||
 		(b >= 'a' && b <= 'k') ||
 		(b >= 'm' && b <= 'z')
+}
+
+// reportMissingContent names, on stderr, every file entry of the expanded
+// tree whose content the store does not hold, in tree order, as
+// `partial: <path> content <ID> not in store`, and every file recorded
+// with no C4 ID as `partial: <path> recorded with nulls` (content nobody
+// claimed, not content missing). It reports whether it named any. This is
+// presence (Has), not a rehash: a completeness check asks whether the bytes
+// are here; `c4 cat <ID>` verifies an object's bytes. Symlinks name no
+// store object. With no store, every file is missing. (`c4 cat -r
+// --content`, decided 2026-11-13 by the release lead; reversible.)
+func reportMissingContent(m *c4m.Manifest, s store.Store) bool {
+	found := false
+	var stack []string
+	for _, e := range m.Entries {
+		if e.Depth < len(stack) {
+			stack = stack[:e.Depth]
+		}
+		path := strings.Join(stack, "") + e.Name
+		if e.IsDir() {
+			stack = append(stack, e.Name)
+			continue
+		}
+		if e.Target != "" {
+			continue
+		}
+		if e.C4ID.IsNil() {
+			fmt.Fprintf(os.Stderr, "partial: %s recorded with nulls\n", path)
+			found = true
+			continue
+		}
+		if s == nil {
+			fmt.Fprintf(os.Stderr, "partial: %s content %s not in store (no store configured)\n", path, e.C4ID)
+			found = true
+			continue
+		}
+		if !s.Has(e.C4ID) {
+			fmt.Fprintf(os.Stderr, "partial: %s content %s not in store\n", path, e.C4ID)
+			found = true
+		}
+	}
+	return found
 }
