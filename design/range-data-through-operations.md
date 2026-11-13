@@ -52,9 +52,8 @@ the way a listing is.
   section carries the lists of the ranges it adds or changes, after its
   entries; a removal line takes none. Dropping a list for a range the
   output does not hold discards nothing it describes, and is allowed.
-- **Expansion** is the next change, (B): as descending into a directory
-  whose listing isn't available, a range whose list isn't available stays
-  one line.
+- **Expansion** is descent: a range is expanded only from its list, as a
+  directory is descended into only from its listing (see below).
 
 One helper, `rangeDataFor` / `keepRangeData` (`c4m/rangedata.go`), states
 the carry, and every library operation that builds a fresh manifest
@@ -73,6 +72,38 @@ carries.
 `id -S`) run a tree holding a subdirectory and a tree holding a folded
 range through each operation side by side; both keep their content by ID
 the same way.
+
+## Expansion: no list, no expansion
+
+The maintainer, 2026-11-13: "You can't expand a sequence if you don't
+have a description of it's contents, this is the same for any content."
+
+- `SequenceExpander` finds a range's list where content is found: inline
+  in the manifest, or in the source given with `SetSource` (a
+  `store.Source`, as `ResolveBase` takes). A list read from the source
+  must hash to the range's C4 ID and be a bare concatenation of C4 IDs;
+  anything else is not available.
+- A range whose list is not available stays one folded entry, with no
+  frames, as a directory whose listing is not available stays one line.
+  No frame is given a null C4 ID, and none the range's own C4 ID, which
+  names the list and no frame. Through 2026-11-13 every frame took the
+  range's own ID; that fallback is deleted. A range with no C4 ID names
+  no list and stays folded.
+- `ExpandRange(m, entry)` expands one range. When its list is not
+  available it returns what any unavailable content returns: an
+  `*os.PathError` naming the list's C4 ID, with
+  `errors.Is(err, os.ErrNotExist)`, the form a store's `Open` gives.
+- The expansion carries the list of every range it keeps, including one
+  read from the source.
+- **Frame metadata, beside directory descent.** Descending a directory
+  in one-level form gives each child the size, mode and timestamp its
+  listing states, because a listing carries per-file metadata (measured:
+  three 7-byte files come back with size 7). A frame list carries none:
+  it "doesn't need the per file metadata". So a frame takes its C4 ID from
+  the list, its mode and timestamp from the range line, which the fold
+  applied to every frame, and a null size (-1), because the range states
+  only the total. Both descents give exactly what the linked file and
+  the parent line state, and invent nothing.
 
 ## The fault, measured
 

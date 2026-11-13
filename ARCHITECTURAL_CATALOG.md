@@ -113,14 +113,14 @@ patch cost what a full restatement cost. Measured at 40k entries /
 
 ### Other c4m types
 
-| Type               | Description                                                 |
-| ------------------ | ----------------------------------------------------------- |
-| `ManifestBuilder`  | Fluent API for constructing manifests programmatically.     |
-| `DirBuilder`       | Helper for building directory subtrees in a manifest.       |
-| `Sequence`         | Represents a media file sequence (`frame.[0001-0100].exr`). |
-| `SequenceDetector` | Groups files into sequences by pattern.                     |
-| `SequenceExpander` | Expands sequence entries into individual file entries.      |
-| `Conflict`         | Reports conflicting entries during merge.                   |
+| Type               | Description                                                                                                                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ManifestBuilder`  | Fluent API for constructing manifests programmatically.                                                                                                                                                         |
+| `DirBuilder`       | Helper for building directory subtrees in a manifest.                                                                                                                                                           |
+| `Sequence`         | Represents a media file sequence (`frame.[0001-0100].exr`).                                                                                                                                                     |
+| `SequenceDetector` | Groups files into sequences by pattern.                                                                                                                                                                         |
+| `SequenceExpander` | Expands sequence entries into individual file entries, only from each range's ID list (inline, or from `SetSource`, verified); with no list the range stays folded, and `ExpandRange` returns `os.ErrNotExist`. |
+| `Conflict`         | Reports conflicting entries during merge.                                                                                                                                                                       |
 
 ### Journal (c4m/journal.go)
 

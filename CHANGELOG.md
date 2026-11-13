@@ -2,6 +2,22 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### No list, no expansion: a folded range expands only from its ID list ⚠
+
+`SequenceExpander` expands a range from its ID list, found inline or in a
+source given with the new `SetSource`, verified against the range's C4
+ID, as a directory is descended into only from its listing. A range
+whose list is not available now stays one folded entry, with no frames;
+through 2026-11-13 every frame was given the range's own C4 ID, which
+names the list and no frame. **Expansion output changes** for any range
+without its list. The new `ExpandRange` expands one range and, with no
+list, returns the error any unavailable content gives
+(`errors.Is(err, os.ErrNotExist)`). The expansion carries the lists of
+the ranges it keeps. Ruled 2026-11-13 by the maintainer: "You can't
+expand a sequence if you don't have a description of it's contents, this
+is the same for any content." The shared `range-data-vector` gains
+`expanded.c4m` and `folded-no-lists.c4m`.
+
 ### A folded range's ID list is kept as a subdirectory listing is ⚠
 
 data loss fixed: merge, diff, patch and the subtree and filter operations
