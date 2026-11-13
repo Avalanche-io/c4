@@ -651,6 +651,7 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 
 			// Aggregate metadata from all entries in range
 			var totalSize int64
+			nullSize := false
 			var latestTime time.Time
 			var mostRestrictiveMode os.FileMode = 0777 // Start with most permissive
 			var depth int
@@ -661,7 +662,15 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 				if !ok {
 					continue
 				}
-				totalSize += entry.Size
+				// A frame whose size is unknown makes the total unknown, as a
+				// null child does a directory's size. Through 2026-11-13 its -1
+				// was added in, so the range claimed a known, wrong size
+				// (decided 2026-11-13 by the release lead; reversible).
+				if entry.SizeIsNull() {
+					nullSize = true
+				} else {
+					totalSize += entry.Size
+				}
 				if entry.Timestamp.After(latestTime) {
 					latestTime = entry.Timestamp
 				}
@@ -691,6 +700,9 @@ func (sd *SequenceDetector) DetectSequences(manifest *Manifest) *Manifest {
 			// No metadata (timestamps, sizes, modes) affects the sequence identity.
 			// Only the content identity of each frame matters.
 			seqC4ID := idList.ComputeC4ID()
+			if nullSize {
+				totalSize = -1
+			}
 
 			seqEntry := &Entry{
 				Name:       pattern,

@@ -2,6 +2,17 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A folded sequence's size is null when a frame's size is ⚠
+
+A folded sequence (`c4 -S`, `SequenceDetector`) states the sum of its
+frames' sizes. A frame whose size is unknown had its -1 added in, so four
+6-byte frames with one unknown folded to size 17, a known and wrong value.
+Now any frame with a null size (including a 0 beside a C4 ID, which is
+null) makes the sequence's size null, as a null child does a directory's.
+**C4 IDs change** for a description holding such a sequence; a scan never
+writes one, because a frame it cannot read has no C4 ID and is not folded.
+(Decided 2026-11-13 by the release lead; reversible.)
+
 ### `c4 cat -r --content`: is everything a snapshot names in the store?
 
 `c4 cat -r` checks that every listing a tree names is in the store, and
