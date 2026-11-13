@@ -84,3 +84,8 @@ TestVectorRoundTrip` rewrites the partners.
 | File        | Re-encodes to |
 | ----------- | ------------- |
 | `names.c4m` | itself        |
+
+`names.c4m` holds names that are not valid UTF-8. c4ts and c4m-swift
+refuse it on decode, as stated above, for 1.x. Their round-trip tests
+assert that refusal for this one file, naming the first such line, and
+check that every other line round-trips byte for byte.
