@@ -79,7 +79,7 @@ The bare filename (not a path). Entry names never contain `/`: nesting is expres
 
 **Filename encoding (SafeName)**: Names are first encoded using the Universal Filename Encoding (see `SafeName`/`UnsafeName` in the c4m package), a three-tier system that represents arbitrary byte sequences as printable UTF-8:
 
-- **Tier 1**: Printable UTF-8 passes through unchanged (except `¤` and `\`)
+- **Tier 1**: Printable UTF-8 passes through unchanged (except `¤` and `\`). Printable means `unicode.IsPrint` at Unicode 17.0.0, pinned (`testdata/safename-vector/printable-17.0.0.txt`), so the encoding never depends on the runtime's Unicode version
 - **Tier 2**: Backslash escapes for `\0` (null), `\t` (tab), `\n` (newline), `\r` (CR), `\\` (backslash)
 - **Tier 3**: Non-printable bytes encoded as braille codepoints (U+2800–U+28FF) between `¤` delimiters
 

@@ -54,7 +54,7 @@ ALPHA       = %x41-5A / %x61-7A
 BASE58CHAR  = %x31-39 / %x41-48 / %x4A-4E / %x50-5A
             / %x61-6B / %x6D-7A
             ; 1-9, A-H, J-N, P-Z, a-k, m-z (no 0, O, I, l)
-UTF8-PRINT  = <any codepoint where unicode.IsPrint() is true>
+UTF8-PRINT  = <any codepoint printable at Unicode 17.0.0: see 4.4.2>
 ```
 
 ### 2.2 Terminology
@@ -286,7 +286,11 @@ provides a three-tier system for representing all possible filenames in
 printable UTF-8:
 
 **Tier 1 — Printable passthrough**: Printable UTF-8 codepoints (where
-`unicode.IsPrint()` is true) pass through unchanged, except for `¤` (U+00A4)
+`unicode.IsPrint()` is true at Unicode 17.0.0, pinned: the inclusive ranges in
+`c4m/testdata/safename-vector/printable-17.0.0.txt`, which every
+implementation embeds rather than asking its runtime, so a name's encoding
+and C4 ID do not depend on the runtime's Unicode tables; decided 2026-11-13
+by the release lead, reversible) pass through unchanged, except for `¤` (U+00A4)
 which is the Tier 3 escape delimiter and `\` (U+005C) which is the Tier 2
 escape sigil.
 
