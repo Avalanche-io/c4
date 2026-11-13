@@ -8,13 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode"
 
 	"github.com/Avalanche-io/c4"
 )
 
 // The shared SafeName vector (c4m/testdata/safename-vector). C4M-STANDARD
-// §4.4.2: printable UTF-8 (where Go's unicode.IsPrint is true) passes
+// §4.4.2: printable UTF-8 (unicode.IsPrint at Unicode 17.0.0, pinned) passes
 // through, except ¤ and \; NUL, tab, LF, CR and \ use backslash escapes;
 // every other byte is braille between ¤. One name, one written form, one C4
 // ID, in every implementation. Each case sits at a tier boundary; the names
@@ -83,7 +82,7 @@ func TestSafeNameVector(t *testing.T) {
 		"names.c4m":           text,
 		"cases.txt":           []byte(cases.String()),
 		"root-id.txt":         []byte(m.ComputeC4ID().String() + "\n"),
-		"unicode-version.txt": []byte(unicode.Version + "\n"),
+		"unicode-version.txt": []byte(printableUnicodeVersion + "\n"),
 	}
 	if os.Getenv("C4M_UPDATE_VECTORS") != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -95,15 +94,10 @@ func TestSafeNameVector(t *testing.T) {
 			}
 		}
 	}
-	// The vector pins the Unicode version it was written with. A Go release
-	// with other tables (CI runs several) still writes every case the same
-	// way, since none of these code points changed class between versions;
-	// only the recorded version differs. Whether the format pins a version
-	// is an open question (README).
-	if pinned, err := os.ReadFile(filepath.Join(dir, "unicode-version.txt")); err == nil && strings.TrimSpace(string(pinned)) != unicode.Version {
-		t.Logf("written with Unicode %s; this Go has %s", strings.TrimSpace(string(pinned)), unicode.Version)
-		delete(files, "unicode-version.txt")
-	}
+	// SafeName's printable test is pinned to one Unicode version
+	// (printable-<version>.txt), so every Go release writes every case the
+	// same way and the recorded version is the pinned one (decided
+	// 2026-11-13 by the release lead; reversible).
 	for name, want := range files {
 		got, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
