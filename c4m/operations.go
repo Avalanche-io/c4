@@ -56,10 +56,16 @@ func PatchDiff(old, new *Manifest) *PatchResult {
 	newIdx := new.ensureIndex()
 
 	var entries []*Entry
-	diffTree(old, new, oldIdx.root, newIdx.root, 0, &entries)
+	removed := make(map[*Entry]bool)
+	diffTree(old, new, oldIdx.root, newIdx.root, 0, &entries, removed)
 
 	patch := NewManifest()
 	patch.Entries = entries
+	// The section carries the lists of the ranges it adds or changes,
+	// from the new side; a removal line names a range the new state does
+	// not hold, so it takes none. Through 2026-11-13 a patch carried no
+	// lists at all.
+	patch.RangeData = rangeDataFor(entries, func(e *Entry) bool { return removed[e] }, new.RangeData)
 
 	return &PatchResult{
 		Patch: patch,
@@ -69,7 +75,8 @@ func PatchDiff(old, new *Manifest) *PatchResult {
 }
 
 // diffTree recursively compares children at a given depth, emitting patch entries.
-func diffTree(old, new *Manifest, oldChildren, newChildren []*Entry, depth int, result *[]*Entry) {
+// removed collects the removal lines it emits.
+func diffTree(old, new *Manifest, oldChildren, newChildren []*Entry, depth int, result *[]*Entry, removed map[*Entry]bool) {
 	oldByName := make(map[string]*Entry, len(oldChildren))
 	for _, e := range oldChildren {
 		oldByName[e.Name] = e
@@ -96,7 +103,9 @@ func diffTree(old, new *Manifest, oldChildren, newChildren []*Entry, depth int, 
 
 		if oldEntry != nil && newEntry == nil {
 			// Removal — re-emit old entry (exact duplicate signals removal)
-			*result = append(*result, entryAtDepth(oldEntry, depth))
+			r := entryAtDepth(oldEntry, depth)
+			removed[r] = true
+			*result = append(*result, r)
 			continue
 		}
 
@@ -110,7 +119,7 @@ func diffTree(old, new *Manifest, oldChildren, newChildren []*Entry, depth int, 
 			oldChildren := old.Children(oldEntry)
 			newChildren := new.Children(newEntry)
 			var childEntries []*Entry
-			diffTree(old, new, oldChildren, newChildren, depth+1, &childEntries)
+			diffTree(old, new, oldChildren, newChildren, depth+1, &childEntries, removed)
 			if len(childEntries) == 0 {
 				// No child differences — skip entirely
 				continue
@@ -124,7 +133,7 @@ func diffTree(old, new *Manifest, oldChildren, newChildren []*Entry, depth int, 
 		if oldEntry.IsDir() && newEntry.IsDir() {
 			// Both directories, different content — emit new dir entry and recurse
 			*result = append(*result, entryAtDepth(newEntry, depth))
-			diffTree(old, new, old.Children(oldEntry), new.Children(newEntry), depth+1, result)
+			diffTree(old, new, old.Children(oldEntry), new.Children(newEntry), depth+1, result, removed)
 		} else {
 			// File modified or type changed — emit new entry (clobber)
 			*result = append(*result, entryAtDepth(newEntry, depth))
@@ -203,16 +212,9 @@ func ApplyPatch(base, patch *Manifest) *Manifest {
 	result.Entries = entries
 	result.SortEntries()
 
-	// Merge RangeData from both base and patch.
-	if len(base.RangeData) > 0 || len(patch.RangeData) > 0 {
-		result.RangeData = make(map[c4.ID]string)
-		for k, v := range base.RangeData {
-			result.RangeData[k] = v
-		}
-		for k, v := range patch.RangeData {
-			result.RangeData[k] = v
-		}
-	}
+	// The lists of the ranges the result holds, from base or patch; a
+	// range the patch removed takes its list with it.
+	keepRangeData(result, base.RangeData, patch.RangeData)
 
 	return result
 }
@@ -280,15 +282,7 @@ func ApplyPatchFrom(target, base, patch *Manifest) (*Manifest, error) {
 	// other units' children would otherwise carry this unit's aggregate.
 	Normalize(result)
 
-	if len(target.RangeData) > 0 || len(patch.RangeData) > 0 {
-		result.RangeData = make(map[c4.ID]string)
-		for k, v := range target.RangeData {
-			result.RangeData[k] = v
-		}
-		for k, v := range patch.RangeData {
-			result.RangeData[k] = v
-		}
-	}
+	keepRangeData(result, target.RangeData, patch.RangeData)
 	return result, nil
 }
 
@@ -640,6 +634,7 @@ func (m *Manifest) FilterByPath(pattern string) *Manifest {
 			result.AddEntry(entry)
 		}
 	}
+	keepRangeData(result, m.RangeData)
 	return result
 }
 
@@ -651,6 +646,7 @@ func (m *Manifest) FilterByPrefix(prefix string) *Manifest {
 			result.AddEntry(entry)
 		}
 	}
+	keepRangeData(result, m.RangeData)
 	return result
 }
 

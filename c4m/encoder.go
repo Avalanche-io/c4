@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"github.com/Avalanche-io/c4"
@@ -90,22 +89,7 @@ func (e *Encoder) Encode(m *Manifest) error {
 
 	// Write inline range data lines (bare-concatenated ID lists).
 	// These trail after entries and are not part of the manifest identity.
-	if len(m.RangeData) > 0 {
-		// Sort keys for deterministic output.
-		keys := make([]string, 0, len(m.RangeData))
-		for id := range m.RangeData {
-			keys = append(keys, id.String())
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			id, _ := c4.Parse(key)
-			if _, err := fmt.Fprintf(e.w, "%s\n", m.RangeData[id]); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return writeRangeData(e.w, m.RangeData)
 }
 
 // calculateC4IDColumn determines the appropriate column for C4 ID alignment

@@ -80,7 +80,7 @@ func writeRawSections(path string, sections []*c4m.PatchSection) {
 			fmt.Fprintln(f, sec.BaseID)
 		}
 		// Write entries.
-		m := &c4m.Manifest{Version: "1.0", Entries: sec.Entries}
+		m := &c4m.Manifest{Version: "1.0", Entries: sec.Entries, RangeData: sec.RangeData}
 		enc.Encode(m)
 	}
 }

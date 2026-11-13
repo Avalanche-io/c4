@@ -29,6 +29,7 @@ func (m *Manifest) ExtractSubtree(entryPath string) (*Manifest, error) {
 
 	result := NewManifest()
 	result.Entries = entries
+	keepRangeData(result, m.RangeData)
 	return result, nil
 }
 
@@ -98,6 +99,7 @@ func (m *Manifest) InjectSubtree(entryPath string, sub *Manifest) (*Manifest, er
 
 	result := NewManifest()
 	result.Entries = newEntries
+	keepRangeData(result, m.RangeData, sub.RangeData)
 	return result, nil
 }
 

@@ -54,6 +54,14 @@ func WriteChainBody(w io.Writer, m *Manifest) error {
 			return err
 		}
 	}
+	// The ID lists of m's ranges belong to the base section, the one
+	// that adds the ranges: after its entries, before the checkpoint
+	// (SPECIFICATION.md, "Inline Range Data"). The refinement patch
+	// restates only directory lines, so it needs none. Through
+	// 2026-11-13 they were not written.
+	if err := writeRangeData(w, m.RangeData); err != nil {
+		return err
+	}
 
 	// Nothing to refine (flat tree, empty dirs only, or all-unreadable
 	// dirs): the body is the base alone.

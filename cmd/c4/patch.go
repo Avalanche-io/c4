@@ -91,7 +91,7 @@ func runPatchChain(paths []string, n int, ergonomic bool) {
 			fatalf("Error: %v\n"+
 				"The first line names a base block this chain refines; it must be in the store.", err)
 		}
-		allSections = append([]*c4m.PatchSection{{Entries: resolved.Entries}}, allSections...)
+		allSections = append([]*c4m.PatchSection{{Entries: resolved.Entries, RangeData: resolved.RangeData}}, allSections...)
 		checks = append([]idCheck{{}}, checks...)
 		if n > 0 {
 			n++
@@ -136,13 +136,19 @@ func foldChain(sections []*c4m.PatchSection, checks []idCheck, n int, src store.
 	if limit == 1 {
 		return c4m.ResolvePatchChain(sections, 1), nil
 	}
-	state := &c4m.Manifest{Version: "1.0", Entries: sections[0].Entries}
+	state := &c4m.Manifest{Version: "1.0", Entries: sections[0].Entries, RangeData: sections[0].RangeData}
 	for i := 1; i < limit; i++ {
 		sec := sections[i]
 		if err := checks[i].verify(sec.BaseID, state, i+1); err != nil {
 			return nil, err
 		}
-		next, err := c4m.FoldSection(state, sec.Entries, src)
+		// The section's ID lists join state's before the fold, which
+		// keeps those of the ranges the result holds (lists are keyed by
+		// their own C4 ID, so the union is safe). Through 2026-11-13
+		// patch dropped every list.
+		withLists := *state
+		withLists.RangeData = unionRangeData(state.RangeData, sec.RangeData)
+		next, err := c4m.FoldSection(&withLists, sec.Entries, src)
 		if err != nil {
 			return nil, err
 		}
@@ -206,4 +212,20 @@ func (c idCheck) verify(id c4.ID, state *c4m.Manifest, section int) error {
 		}
 	}
 	return nil
+}
+
+// unionRangeData is every ID list in a and b. Lists are keyed by their own
+// C4 ID, so a key in both is the same list.
+func unionRangeData(a, b map[c4.ID]string) map[c4.ID]string {
+	if len(b) == 0 {
+		return a
+	}
+	out := make(map[c4.ID]string, len(a)+len(b))
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
 }

@@ -124,6 +124,10 @@ func Merge(base, local, remote *Manifest) (*Manifest, []Conflict, error) {
 	ensureDirs(merged)
 
 	result := rebuildManifest(merged)
+	// The ID lists of the ranges the result holds, from whichever input
+	// carried them. rebuildManifest works from entries only; through
+	// 2026-11-13 the lists were dropped here.
+	keepRangeData(result, base.RangeData, local.RangeData, remote.RangeData)
 	return result, conflicts, nil
 }
 

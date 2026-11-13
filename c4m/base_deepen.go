@@ -20,7 +20,11 @@ func FoldSection(state *Manifest, entries []*Entry, src store.Source) (*Manifest
 	if err != nil {
 		return nil, err
 	}
-	return ResolvePatchChain([]*PatchSection{{Entries: deep.Entries}, {Entries: entries}}, 0), nil
+	// state's lists travel with the fold: the result keeps those of the
+	// ranges it still holds. A caller folding a section that carries lists
+	// of its own adds them to state.RangeData first (lists are keyed by
+	// their own C4 ID, so the union is safe).
+	return ResolvePatchChain([]*PatchSection{{Entries: deep.Entries, RangeData: state.RangeData}, {Entries: entries}}, 0), nil
 }
 
 // Deepen returns state with every directory that entries (a patch
