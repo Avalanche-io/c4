@@ -24,7 +24,16 @@ func TestVerbsRefuseADepthJumpWithoutPanicking(t *testing.T) {
 	// restore needs a store; give it one rather than rely on the old prompt,
 	// which read /dev/null (a character device) as a terminal and created
 	// one in $HOME.
-	t.Setenv("C4_STORE", filepath.Join(work, "store"))
+	// (os.Setenv, not t.Setenv: the suite builds with Go 1.16.)
+	prev, had := os.LookupEnv("C4_STORE")
+	os.Setenv("C4_STORE", filepath.Join(work, "store"))
+	defer func() {
+		if had {
+			os.Setenv("C4_STORE", prev)
+		} else {
+			os.Unsetenv("C4_STORE")
+		}
+	}()
 	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	file := func(name string, depth int) *c4m.Entry {
 		return &c4m.Entry{Name: name, Depth: depth, Mode: 0o644, Timestamp: ts, Size: 1,
