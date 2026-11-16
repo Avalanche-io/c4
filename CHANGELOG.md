@@ -2,6 +2,21 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A shared changeset vector pins every patch writer to `c4 diff`'s bytes
+
+New conformance fixture `c4m/testdata/changeset-vector/`: two states of a
+nested tree, the changeset between them as `c4 diff` writes it, and the
+chain `c4 diff >>` makes. Its MUST rule: every patch writer, given
+`base.c4m` and `v2.c4m`, writes `changeset.c4m` byte for byte. That means the
+old state's ID, then the patch in canonical order (files before
+directories), and no bare C4 ID after it. Every chain reader resolves
+`chain.c4m` to `v2.c4m`. `TestChangesetVector` and `TestChangesetVectorCLI`
+run it; `C4M_UPDATE_VECTORS=1` rewrites the files from the library. Go's
+behaviour does not change. Measured with the same files on the suite's
+1.0.27 lines, three port faults: libc4's `EncodePatch` ended with the new
+state's ID, libc4's `Manifest::Parse` concatenated a chain's sections, and
+c4py's `patch_diff` wrote a directory before its sibling files.
+
 ### `DetectSequences` shares nothing with its input
 
 `SequenceDetector.DetectSequences` returned the input's own entries for
