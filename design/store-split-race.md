@@ -59,6 +59,89 @@ left in it stay there. They are found, and `Settle` moves them.
 version on. Measured on the 300 stores the publish reproducer damaged:
 master's code missed 180 of 32,400 object files, and this code misses none.
 
+## The premises, checked against the code (2026-11-16)
+
+**An object only ever moves deeper.** Every `os.Rename` in store/ and
+cmd/c4:
+
+| Where                            | What it renames                                   | Direction                        |
+| -------------------------------- | ------------------------------------------------- | -------------------------------- |
+| `split`                          | `dir/<ID>` to `dir/XX/<ID>`                        | one level down                   |
+| `Settle`                         | a misplaced object to `path(id)`                   | down only (`deeper` is checked)  |
+| `Put`, `Sync`                    | a temp file to the resolved path                   | publishes a new object; no move  |
+| `DurableWriter.Close` (`Create`) | a temp file to the path resolved at Create        | publishes a new object; no move  |
+
+cmd/c4 renames nothing inside a store.
+
+**No shard directory is ever removed.** There is no `os.RemoveAll` in
+store/. Every `os.Remove` in store/ names a temp file or an object file:
+- the `DurableWriter`, `pendingWriter` and `Put` temp clean-ups;
+- `SweepIngest`, which removes only `.ingest.*` temps in the root;
+- `Remove(id)`, which removes `path(id)` or what `foldFind` returns, both
+  ending in the ID.
+
+cmd/c4 removes nothing inside a store; reconcile's removes act on the
+restore target. `TestTreeStoreSplitLeavesItsLevel` checks both premises
+over 400 Puts of real splits. The code states them beside `foldFind`.
+
+## What lives in a store root, and what a split did to it
+
+| File                                    | Before 2026-11-16                                 | After                    |
+| --------------------------------------- | ------------------------------------------------- | ------------------------ |
+| objects (`c4…`)                         | moved to `c4/`                                    | moved to `c4/` (as meant) |
+| `journal` (c4m.JournalName; locks itself) | **moved to `jo/journal`**; claims dropped out    | stays                    |
+| `.ingest.<host>.<pid>.*` (Put, Create temps) | skipped (dot file)                           | skipped                  |
+| `.tmp.*` (DurableWriter temps, in leaves) | skipped (dot file)                              | skipped                  |
+| `config`, only if `C4_STORE` is `~/.c4`  | moved to `co/config`; the config read nothing    | stays                    |
+| any other file a user leaves there      | moved into a two-character directory              | stays                    |
+
+The journal locks its own file, so the root holds no separate lock file.
+`SweepIngest` writes nothing. A split now moves only files whose names
+parse as C4 IDs (`TestTreeStoreSplitMovesOnlyObjects`).
+
+**A journal an earlier split displaced is read where it lies.** `Claims`
+reads `jo/journal` first, if it begins with the journal magic, then the
+root's. A root split puts it there, and no object name starts `jo`, so
+nothing else is filed there. Every claim before the split is in the
+displaced file and every claim after it in the root's, so the two read in
+that order are the history in order. Putting it back was rejected: the
+root journal has been restarted by then, so putting it back means merging
+two files under the lock and renaming over a file other processes may
+hold open. A crash, or a writer with the old file open, could lose a claim
+that way. Reading in place writes nothing.
+
+## A writer at a stale level, after the fix
+
+It can still happen. `Put` resolves its path under its own process's lock,
+and another process's split can come between that and the rename. In
+`TestTreeStoreStaleLevelWriters` (8 processes, threshold 16), 12 to 19 of
+40 rounds per run left an object above its level. What it leaves is one
+of two things:
+- an object at an interior level, which every lookup finds;
+- a second copy of an ID already stored. Both copies are complete and
+  hash to the ID, because a name is only given after the hash check.
+
+Two processes publishing the same new ID at once, at different levels,
+make the second case. None arose in 120 rounds, since each Put's dedup
+check found the first copy; `TestTreeStoreSettle` makes one directly.
+
+Nothing is lost or corrupted:
+- every lookup reads either copy;
+- `Settle` never moves over an object already at its place;
+- `Remove` now deletes every copy on the ID's path. Through 2026-11-16 it
+  deleted the first it found, and `Has` went on finding the other.
+
+The test checks every ID's bytes after the writers and after `Settle`, and
+that `Remove` leaves nothing `Has` finds.
+
+## The shared fixture
+
+`store/testdata/split-race-store/` is a store Go split at threshold 4,
+with one object moved one level up. That is the inverse of `Settle`'s
+move, and the place the race was measured to leave one. Its README says
+what a conforming reader must find; the ports (c4ts, c4py) read it.
+`TestSplitRaceStoreFixture` regenerates it from the library and checks it.
+
 ## The cost of a true miss
 
 A hit costs what it did: the fast path, one stat of the deepest path,
