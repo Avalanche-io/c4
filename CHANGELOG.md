@@ -2,6 +2,31 @@
 
 ## Unreleased (1.0.27)
 
+### A folded range's ID list is kept as a subdirectory listing is ⚠
+
+**Data loss fixed.** A folded range's C4 ID names its ID list, the frames'
+C4 IDs. `c4 merge`, `c4 diff`, `c4 patch`, `c4 split`, the chain
+readers, and the library's merge, diff, patch, subtree, filter and
+sequence-detector operations dropped a c4m's inline ID lists, and
+`c4 id -S DIR` wrote them nowhere without `-s`, so the frames' IDs were
+lost. Patch application and the base resolver also kept the list of a
+range the patch had removed. Each operation now keeps exactly the lists
+of the ranges its output holds, from its inputs, and invents none. A
+patch carries the lists of the ranges it adds or changes, after its
+entries. `c4 id -S DIR` writes the lists inline. `c4 id -s FILE.c4m`
+stores each one under its own C4 ID, as `c4 id -S -s DIR` already did.
+**The bytes, and so the byte IDs, of c4m files these verbs write change
+wherever a folded range is present.** Description IDs do not change: no
+list is part of one. Ruled 2026-11-13 by the maintainer: "A frame id list
+is a part of the c4m format, and is the same thing as a subdirectory
+being referenced by it's ID on a parents directory line. Everything that
+you would expect of the creation and retention of that subdirectory c4m
+file you would also expect of the frame id list." The list format does
+not change. A range line whose list is not inline stays valid, as a
+directory line in one-level form is. The ports test it with the shared
+`c4m/testdata/range-data-vector/`, copied from master byte for byte
+(`design/range-data-through-operations.md`). Master's c4 #159.
+
 ### A folded sequence's size is null when a frame's size is ⚠
 
 A folded sequence (`c4 -S`, `SequenceDetector`) states the sum of its

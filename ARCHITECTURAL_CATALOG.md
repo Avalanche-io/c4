@@ -47,7 +47,7 @@ Implements the C4 Manifest Format specification. Depends only on root `c4` and `
 | `Entry` | Single filesystem entry: Mode, Timestamp, Size, Name, C4ID, Depth, flow/hard links. |
 | `Encoder` | Writes manifests to `io.Writer`. Supports canonical and pretty-print modes. |
 | `Decoder` | Reads manifests from `io.Reader`. Auto-sorts to canonical order. Handles block links. |
-| `PatchSection` | One section of a patch chain (base or delta). |
+| `PatchSection` | One section of a patch chain (base or delta), with the inline ID lists written in it (`RangeData`). |
 | `Validator` | Validates manifest structure, field ranges, and sort order. |
 
 ### Operations (c4m/operations.go)
@@ -68,6 +68,17 @@ directory's children before it learns anything about the directory
 itself, so its patches restate the parent line unchanged; without the
 narrowing, the most natural progressive-scan emission silently deleted
 the subtree it was declaring.
+
+Inline ID lists (`RangeData`) are handled as subdirectory listings are
+(ruled 2026-11-13): one helper, `rangeDataFor` / `keepRangeData`
+(`c4m/rangedata.go`), sets every operation's output lists to those of the
+ranges it holds, from the inputs, inventing none; `PatchDiff` gives a
+patch the lists of the ranges it adds or changes. Merge, the patch and
+chain resolvers, the base resolver, the filters, the subtree operations
+and the sequence detector call it; the scanner's `-S` fold keeps its
+lists. `writeRangeData` is the encoder's one list writer. In the CLI,
+`storeManifestSelf` stores each list (`storeRangeLists`)
+(`design/range-data-through-operations.md`, 2026-11-13).
 
 ### External base references (c4m/base.go)
 
