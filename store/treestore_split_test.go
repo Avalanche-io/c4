@@ -3,6 +3,8 @@ package store
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -321,6 +323,13 @@ func TestTreeStoreSettle(t *testing.T) {
 	if len(report) != 1 || report[0].ID != dup {
 		t.Errorf("after Settle(true), Settle(false) reports %d files, want only the duplicate", len(report))
 	}
+	// Remove deletes both copies of the duplicate, so Has stops finding it.
+	if err := s.Remove(dup); err != nil {
+		t.Fatal(err)
+	}
+	if s.Has(dup) {
+		t.Errorf("Remove left a copy of %s that Has still finds", dup.String()[:12])
+	}
 }
 
 // A lookup looks at each level before the levels below it, the order files
@@ -440,4 +449,106 @@ func TestTreeStoreSplitLeavesItsLevel(t *testing.T) {
 	if len(dirs) < 3 {
 		t.Fatalf("fixture: only %d directories; the splits did not go two levels deep", len(dirs))
 	}
+}
+
+// After the fix a writer can still publish at a stale level: Put resolves
+// its target under its own process's lock, and another process's split can
+// come between that and the rename. What it leaves is an object one level
+// up, which every lookup finds, or a second copy of an ID already stored,
+// with the same bytes. Here several processes Put the same contents and
+// their own across splits; then every ID reads back with bytes that hash
+// to it, Settle loses nothing, and Remove leaves no copy behind.
+func TestTreeStoreStaleLevelWriters(t *testing.T) {
+	const rounds, writers, threshold = 40, 8, 16
+	shared := make([][]byte, 12)
+	for i := range shared {
+		shared[i] = []byte(fmt.Sprintf("shared content %d", i))
+	}
+	dupRounds, upRounds := 0, 0
+	for r := 0; r < rounds; r++ {
+		dir := t.TempDir()
+		pre := splitTestStore(t, dir, threshold)
+		for i := 0; i < threshold-4; i++ {
+			putRandom(t, pre)
+		}
+		var mu sync.Mutex
+		ids := map[c4.ID][]byte{}
+		var wg sync.WaitGroup
+		for k := 0; k < writers; k++ {
+			wg.Add(1)
+			go func(k int) {
+				defer wg.Done()
+				s, err := NewTreeStore(dir)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				s.SetSplitThreshold(threshold)
+				s.SetSyncMode(SyncNone)
+				for i := 0; i < len(shared); i++ {
+					for _, b := range [][]byte{shared[(i+k)%len(shared)], []byte(fmt.Sprintf("writer %d put %d round %d", k, i, r))} {
+						id, err := s.Put(bytes.NewReader(b))
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						mu.Lock()
+						ids[id] = b
+						mu.Unlock()
+					}
+				}
+			}(k)
+		}
+		wg.Wait()
+
+		// What the round left on disk: copies per ID, and objects above
+		// their level.
+		fresh := splitTestStore(t, dir, threshold)
+		copies := map[c4.ID]int{}
+		filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				if id, perr := c4.Parse(d.Name()); perr == nil {
+					copies[id]++
+				}
+			}
+			return nil
+		})
+		for _, n := range copies {
+			if n > 1 {
+				dupRounds++
+				break
+			}
+		}
+		if m, _ := fresh.Settle(false); len(m) > 0 {
+			upRounds++
+		}
+
+		readsBack := func(when string) {
+			for id, want := range ids {
+				f, err := fresh.Open(id)
+				if err != nil {
+					t.Fatalf("round %d, %s: %s: %v", r, when, id.String()[:12], err)
+				}
+				got, err := io.ReadAll(f)
+				f.Close()
+				if err != nil || !bytes.Equal(got, want) || c4.Identify(bytes.NewReader(got)) != id {
+					t.Fatalf("round %d, %s: %s reads back wrong bytes", r, when, id.String()[:12])
+				}
+			}
+		}
+		readsBack("after the writers")
+		if _, err := fresh.Settle(true); err != nil {
+			t.Fatal(err)
+		}
+		readsBack("after Settle")
+		for id := range ids {
+			if err := fresh.Remove(id); err != nil {
+				t.Fatalf("round %d: Remove %s: %v", r, id.String()[:12], err)
+			}
+			if fresh.Has(id) {
+				t.Fatalf("round %d: Remove %s left a copy that Has still finds", r, id.String()[:12])
+			}
+		}
+	}
+	t.Logf("%d of %d rounds left a second copy of some ID, %d left an object above its level; nothing lost or wrong", dupRounds, rounds, upRounds)
 }
