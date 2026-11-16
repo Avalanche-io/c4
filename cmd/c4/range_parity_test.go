@@ -157,16 +157,6 @@ func TestRangeListParityCLI(t *testing.T) {
 		r := results[verb]
 		word := map[bool]string{true: "kept", false: "lost"}
 		fmt.Fprintf(&table, "| %s | %s | %s |\n", verb, word[r["subdirectory"]], word[r["range"]])
-		// 1.0.x: "c4 id -s FILE.c4m" stores the file's text and its root
-		// record, not each nested listing under its own ID (master's
-		// directory records are 1.1), so on this line the subdirectory's
-		// listing is not stored there either. The range's list is.
-		if verb == "c4 id -s FILE.c4m: in the store" {
-			if !r["range"] {
-				t.Errorf("%s: range %s; the list must be stored", verb, word[r["range"]])
-			}
-			continue
-		}
 		if !r["subdirectory"] || !r["range"] {
 			t.Errorf("%s: subdirectory %s, range %s; both must be kept", verb, word[r["subdirectory"]], word[r["range"]])
 		}

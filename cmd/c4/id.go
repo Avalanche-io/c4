@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -389,6 +390,17 @@ func storeManifestSelf(s store.Store, m *c4m.Manifest) c4.ID {
 	// Through 2026-11-13 `c4 id -s FILE.c4m` did not store the lists.
 	storeRangeLists(s, m)
 
+	// A one-level record for every directory, deepest first, so the whole
+	// tree expands from the store alone, as a scan with -s leaves it
+	// (master's storeManifestSelf). Through 1.0.26 `c4 id -s FILE.c4m`
+	// stored the file's text and the root record only, so no nested
+	// listing could be fetched by its ID: "it would be an error to create
+	// a c4m tree and drop the subdirectories" (the maintainer).
+	// Idempotent: a record already in the store is skipped by ID. The
+	// description itself is not changed; a directory with no children
+	// listed stores nothing here, and its stated ID is kept as written.
+	storeDirectoryRecords(s, m)
+
 	data, err := c4m.Marshal(m)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to encode manifest: %v\n", err)
@@ -636,5 +648,24 @@ func storeRangeLists(s store.Store, m *c4m.Manifest) {
 		if err != nil || id != e.C4ID {
 			fmt.Fprintf(os.Stderr, "Warning: failed to store the ID list of %s: %v\n", e.Name, err)
 		}
+	}
+}
+
+// storeDirectoryRecords stores the one-level record of every directory in
+// m that lists children, deepest first. A record already in the store is
+// skipped by ID.
+func storeDirectoryRecords(s store.Store, m *c4m.Manifest) {
+	var dirs []*c4m.Entry
+	for _, e := range m.Entries {
+		if e.IsDir() {
+			dirs = append(dirs, e)
+		}
+	}
+	sort.SliceStable(dirs, func(i, j int) bool { return dirs[i].Depth > dirs[j].Depth })
+	for _, e := range dirs {
+		if !e.C4ID.IsNil() && s.Has(e.C4ID) {
+			continue
+		}
+		storeDirectoryC4m(m, e, s)
 	}
 }
