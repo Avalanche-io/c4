@@ -2,6 +2,27 @@
 
 ## Unreleased (1.0.27)
 
+### A folded range's size counts its ID list; `-S` sizes directories from the folded listing ⚠
+
+A folded range's size is now the size of its frames plus its ID list:
+count × 90 bytes, the bare concatenation of member C4 IDs. So three
+11-byte frames make 303, not 33. A null frame size still makes it null.
+The frames' data size is the range's size less count × 90. A `c4 id -S`
+scan now sizes each directory holding a range from its folded listing,
+the one its C4 ID already hashed. Through this release it sized the
+directory from the unfolded children (441 where the folded listing gives
+446). **The C4 IDs of folded ranges, and of every directory above them up
+to the root, change**, as do the sizes. Trees without folded ranges are
+unchanged, and so `c4 id` output without `-S` stays byte-identical to
+1.0.26's. Ruled 2026-11-13 by the maintainer: "The size is the size of
+every frame and the frame id list. Note that the frame id list has a
+compleately deducable size based on the item count alone since c4 id's
+have a fixed length." SPECIFICATION.md and C4M-STANDARD.md state it as
+errata (`design/sequence-size-includes-list.md`). The shared
+`sequence-size-vector/` is new, and `range-data-vector/` and
+`sequence-null-size-vector/` are regenerated, all master's bytes. Master's
+c4 #161.
+
 ### No list, no expansion: a folded range expands only from its ID list ⚠
 
 `SequenceExpander` expands a range from its ID list, found inline or in a
