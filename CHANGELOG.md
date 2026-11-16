@@ -2,6 +2,25 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### The store's journal survives the store's first split ⚠
+
+**Data loss fixed.** A local store's split moved every file in the
+directory it split, not only objects. The store root holds the journal,
+so the root's split, at about 4,097 objects, moved `journal` to
+`jo/journal`, and the next snapshot started a new journal at the root.
+The claims made before the split dropped out of `c4 log`, and `c4 id -c`
+lost their scan starts, falling back to the guide file's mtime. Measured
+at the default threshold with real `c4 id -s` runs: nine claims, then one,
+once the store passed 4,096 objects. Most stores whose first snapshot was
+smaller than that have it. Now a split moves only files whose names are C4
+IDs. **Nothing to do:** a journal an earlier split displaced is read where
+it lies, before the root's, so `c4 log` lists the whole history in order
+(measured on a store damaged by the old code: 2 claims before, all 11
+after). Nothing is moved or rewritten. Any other non-object file in a
+leaf, such as `~/.c4/config` when `C4_STORE` is `~/.c4`, is no longer
+moved either. Decided 2026-11-16 by the release lead; reversible
+(`design/store-split-race.md`).
+
 ### A store shared by several processes no longer loses objects to a split ⚠
 
 **Data loss and correctness fix.** A local store (`~/.c4/store`, c4git's
@@ -34,7 +53,9 @@ readers sharing the store (c4 1.0.26 and earlier, and tools built on
 that library) still miss them. To fix the layout for them, run
 `go run ./hack/storesettle DIR` to list misplaced objects (exit 2 when any
 are found), and add `-move` to move them down. `TreeStore.Settle` is the
-library call. Decided 2026-11-16 by the release lead; reversible
+library call. `Remove` deletes every copy of an object on its path, since
+a write racing a split can still leave a second copy with the same bytes.
+Decided 2026-11-16 by the release lead; reversible
 (`design/store-split-race.md`).
 
 ### A shared changeset vector pins every patch writer to `c4 diff`'s bytes
