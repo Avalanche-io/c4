@@ -358,3 +358,42 @@ func TestTreeStoreLookupOrderBeatsASplitMove(t *testing.T) {
 		t.Errorf("Has: the file moved down while the lookup was between levels, and was missed")
 	}
 }
+
+// A split moves only objects. The store root holds the journal, and
+// through 2026-11-16 the root's split moved it to jo/journal, where the
+// journal no longer read it (measured at the default threshold with real
+// `c4 id -s` runs: nine claims became one). Any other file kept in a leaf
+// stays too, and so do temp files.
+func TestTreeStoreSplitMovesOnlyObjects(t *testing.T) {
+	root := t.TempDir()
+	keep := []string{"journal", "notes.txt", ".ingest.host.1.x", "c4-not-an-id"}
+	for _, name := range keep {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := splitTestStore(t, root, 4)
+	var ids []c4.ID
+	for i := 0; i < 12; i++ {
+		ids = append(ids, putRandom(t, s))
+	}
+	if _, err := os.Stat(filepath.Join(root, "c4")); err != nil {
+		t.Fatalf("precondition: the root did not split: %v", err)
+	}
+	for _, name := range keep {
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			t.Errorf("the root's split moved %s: %v", name, err)
+		}
+	}
+	for _, d := range []string{"jo", "no", "c4-"} {
+		if _, err := os.Stat(filepath.Join(root, d)); err == nil {
+			t.Errorf("the split made a directory %s/ for a file that is not an object", d)
+		}
+	}
+	for _, id := range ids {
+		p, ok := s.ContentPath(id)
+		if !ok || filepath.Dir(p) == root {
+			t.Errorf("object %s not moved below the root: %q %v", id.String()[:12], p, ok)
+		}
+	}
+}

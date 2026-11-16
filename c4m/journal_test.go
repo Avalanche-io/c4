@@ -1,7 +1,10 @@
 package c4m
 
 import (
+	"bytes"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -198,5 +201,62 @@ func TestJournalRejectsHeaderlessData(t *testing.T) {
 	}
 	if _, err := j.Claims(); err == nil {
 		t.Fatal("headerless journal data must be refused")
+	}
+}
+
+// A journal a tree store's root split displaced to jo/journal (every
+// version through 2026-11-16 filed every root file by its first two
+// characters) is read where it lies, before the root's, so the history
+// stays whole and in order. The displaced file is never written.
+func TestJournalReadsADisplacedJournal(t *testing.T) {
+	root := t.TempDir()
+	j := OpenJournal(root)
+	at := func(i int) Claim {
+		return Claim{ScanStart: time.Date(2026, 11, 1, 0, 0, i, 0, time.UTC), ID: c4.Identify(strings.NewReader(fmt.Sprint("claim ", i)))}
+	}
+	for i := 0; i < 3; i++ {
+		if err := j.Append(at(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// What the split did: rename the root's journal into jo/.
+	if err := os.Mkdir(filepath.Join(root, "jo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	displaced := filepath.Join(root, "jo", JournalName)
+	if err := os.Rename(j.Path(), displaced); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(displaced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 3; i < 5; i++ { // appends after the split start a root journal
+		if err := j.Append(at(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := OpenJournal(root).Claims()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 5 {
+		t.Fatalf("Claims: %d claims, want 5 (3 displaced, 2 at the root)", len(got))
+	}
+	for i, c := range got {
+		if c.ID != at(i).ID {
+			t.Errorf("claim %d is %s, want %s: out of order", i+1, c.Line(), at(i).Line())
+		}
+	}
+	after, err := os.ReadFile(displaced)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Errorf("the displaced journal was written: %v", err)
+	}
+	// A file at jo/journal that is not a journal is not read as one.
+	if err := os.WriteFile(displaced, []byte("not a journal\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := OpenJournal(root).Claims(); err != nil || len(got) != 2 {
+		t.Errorf("with a non-journal at jo/journal: %d claims, %v; want the root's 2", len(got), err)
 	}
 }
