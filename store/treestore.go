@@ -459,14 +459,36 @@ func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
 	return p, true
 }
 
-// Remove deletes the content for the given ID.
+// Remove deletes the content for the given ID: every copy of it on the
+// ID's path. A write that raced another process's split can leave a
+// second copy one level up beside the one at its place (the same bytes,
+// since a name is only ever given to bytes that hash to it); through
+// 2026-11-16 Remove deleted the first copy it found and Has went on
+// reporting the other (TestTreeStoreStaleLevelWriters).
 func (s *TreeStore) Remove(id c4.ID) error {
 	err := os.Remove(s.path(id))
-	if err == nil || !os.IsNotExist(err) {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if p, ok := s.foldFind(id); ok {
-		return os.Remove(p)
+	removed := err == nil
+	// Each pass removes one copy or finds one moved deeper, and a path has
+	// at most one level per two characters of the ID, so the bound is
+	// never reached unless another process keeps publishing the ID.
+	for i := 0; i < len(id.String()); i++ {
+		p, ok := s.foldFind(id)
+		if !ok {
+			break
+		}
+		if rerr := os.Remove(p); rerr != nil {
+			if os.IsNotExist(rerr) {
+				continue // another process removed or moved it meanwhile
+			}
+			return rerr
+		}
+		removed = true
+	}
+	if removed {
+		return nil
 	}
 	return err
 }
