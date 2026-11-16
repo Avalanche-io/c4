@@ -540,6 +540,22 @@ func (s *TreeStore) locate(id c4.ID) (string, bool) {
 // is either at the level being looked at, or below it under a directory
 // that already exists and is descended into next.
 //
+// The two premises, as of 2026-11-16, and what pins them:
+//   - An object only ever moves deeper. The only renames of an existing
+//     object are split's (dir/name to dir/XX/name) and Settle's (only
+//     when deeper reports the target below). Every other rename publishes
+//     a new object from a temp file: Put, Sync, and the DurableWriter
+//     Create hands out.
+//   - No shard directory is ever removed. There is no RemoveAll in this
+//     package. Every os.Remove names a temp file or an object file:
+//     Remove(id) removes path(id) or what foldFind found, both ending in
+//     the ID; SweepIngest removes only .ingest temps in the root. Nothing
+//     in cmd/c4 removes inside a store.
+//
+// TestTreeStoreSplitLeavesItsLevel checks both over real splits; a change
+// that breaks either breaks it, and TestTreeStoreSplitKeepsObjectsVisible
+// with it.
+//
 // Case folding, because C4 IDs are base58 and case-sensitive, but a store
 // built on a case-insensitive filesystem (default macOS APFS) files IDs
 // differing only in case at some level under one shard directory named
