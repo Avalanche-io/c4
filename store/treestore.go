@@ -138,8 +138,19 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 	if err == nil || !os.IsNotExist(err) {
 		return f, err
 	}
-	if p, ok := s.foldFind(id); ok {
-		return os.Open(p)
+	// The search found the file at one level, and another process's split
+	// can move it down before the open: search again. Each retry follows a
+	// file that moved deeper, so the bound is never reached unless the ID
+	// keeps being removed and stored again (TestTreeStoreOpenFollowsAMove).
+	for i := 0; i < len(id.String()); i++ {
+		p, ok := s.foldFind(id)
+		if !ok {
+			return nil, err
+		}
+		f, oerr := os.Open(p)
+		if oerr == nil || !os.IsNotExist(oerr) {
+			return f, oerr
+		}
 	}
 	return nil, err
 }
@@ -377,14 +388,36 @@ func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
 	return p, true
 }
 
-// Remove deletes the content for the given ID.
+// Remove deletes the content for the given ID: every copy of it on the
+// ID's path. A write that raced another process's split can leave a
+// second copy one level up beside the one at its place (the same bytes,
+// since a name is only ever given to bytes that hash to it); through
+// 2026-11-16 Remove deleted the first copy it found and Has went on
+// reporting the other (TestTreeStoreStaleLevelWriters).
 func (s *TreeStore) Remove(id c4.ID) error {
 	err := os.Remove(s.path(id))
-	if err == nil || !os.IsNotExist(err) {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if p, ok := s.foldFind(id); ok {
-		return os.Remove(p)
+	removed := err == nil
+	// Each pass removes one copy or finds one moved deeper, and a path has
+	// at most one level per two characters of the ID, so the bound is
+	// never reached unless another process keeps publishing the ID.
+	for i := 0; i < len(id.String()); i++ {
+		p, ok := s.foldFind(id)
+		if !ok {
+			break
+		}
+		if rerr := os.Remove(p); rerr != nil {
+			if os.IsNotExist(rerr) {
+				continue // another process removed or moved it meanwhile
+			}
+			return rerr
+		}
+		removed = true
+	}
+	if removed {
+		return nil
 	}
 	return err
 }
@@ -457,6 +490,22 @@ func (s *TreeStore) locate(id c4.ID) (string, bool) {
 // deeper and shard directories are never removed, so a file that exists
 // is either at the level being looked at, or below it under a directory
 // that already exists and is descended into next.
+//
+// The two premises, as of 2026-11-16, and what pins them:
+//   - An object only ever moves deeper. The only renames of an existing
+//     object are split's (dir/name to dir/XX/name) and Settle's (only
+//     when deeper reports the target below). Every other rename publishes
+//     a new object from a temp file: Put, Sync, and the DurableWriter
+//     Create hands out.
+//   - No shard directory is ever removed. There is no RemoveAll in this
+//     package. Every os.Remove names a temp file or an object file:
+//     Remove(id) removes path(id) or what foldFind found, both ending in
+//     the ID; the rest are temp-file clean-ups. Nothing in cmd/c4 removes
+//     inside a store.
+//
+// TestTreeStoreSplitLeavesItsLevel checks both over real splits; a change
+// that breaks either breaks it, and TestTreeStoreSplitKeepsObjectsVisible
+// with it.
 //
 // Case folding, because C4 IDs are base58 and case-sensitive, but a store
 // built on a case-insensitive filesystem (default macOS APFS) files IDs
@@ -562,8 +611,19 @@ func countFiles(dir string) int {
 	return n
 }
 
-// split redistributes a leaf directory's files into 2-char
+// split redistributes a leaf directory's objects into 2-char
 // subdirectories based on the next prefix segment. Caller must hold s.mu.
+//
+// Only objects move: files whose names are C4 IDs. Anything else in the
+// leaf stays where it is. Through 2026-11-16 a split moved every non-dot
+// file by its first two characters: a config file in a store rooted at
+// ~/.c4, or a file a user left there, was filed under a two-character
+// directory and no longer found where it was
+// (TestTreeStoreSplitMovesOnlyObjects).
+//
+// Each move goes one level down, never up, and no shard directory is ever
+// removed: the two premises the top-down lookup rests on (foldFind;
+// TestTreeStoreSplitKeepsObjectsVisible, TestTreeStoreSplitLeavesItsLevel).
 func (s *TreeStore) split(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -578,6 +638,9 @@ func (s *TreeStore) split(dir string) {
 			continue
 		}
 		name := e.Name()
+		if _, err := c4.Parse(name); err != nil {
+			continue // not an object: anything else kept here stays
+		}
 		if len(name) <= depth+2 {
 			continue // ID too short for another level (shouldn't happen)
 		}

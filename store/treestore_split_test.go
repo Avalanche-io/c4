@@ -3,6 +3,8 @@ package store
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -321,6 +323,13 @@ func TestTreeStoreSettle(t *testing.T) {
 	if len(report) != 1 || report[0].ID != dup {
 		t.Errorf("after Settle(true), Settle(false) reports %d files, want only the duplicate", len(report))
 	}
+	// Remove deletes both copies of the duplicate, so Has stops finding it.
+	if err := s.Remove(dup); err != nil {
+		t.Fatal(err)
+	}
+	if s.Has(dup) {
+		t.Errorf("Remove left a copy of %s that Has still finds", dup.String()[:12])
+	}
 }
 
 // A lookup looks at each level before the levels below it, the order files
@@ -356,5 +365,226 @@ func TestTreeStoreLookupOrderBeatsASplitMove(t *testing.T) {
 	}
 	if !r.Has(id) {
 		t.Errorf("Has: the file moved down while the lookup was between levels, and was missed")
+	}
+}
+
+// A split moves only objects. The store root holds the journal, and
+// through 2026-11-16 the root's split moved it to jo/journal, where the
+// journal no longer read it (measured at the default threshold with real
+// `c4 id -s` runs: nine claims became one). Any other file kept in a leaf
+// stays too, and so do temp files.
+func TestTreeStoreSplitMovesOnlyObjects(t *testing.T) {
+	root := t.TempDir()
+	keep := []string{"journal", "notes.txt", ".ingest.host.1.x", "c4-not-an-id"}
+	for _, name := range keep {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := splitTestStore(t, root, 4)
+	var ids []c4.ID
+	for i := 0; i < 12; i++ {
+		ids = append(ids, putRandom(t, s))
+	}
+	if _, err := os.Stat(filepath.Join(root, "c4")); err != nil {
+		t.Fatalf("precondition: the root did not split: %v", err)
+	}
+	for _, name := range keep {
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			t.Errorf("the root's split moved %s: %v", name, err)
+		}
+	}
+	for _, d := range []string{"jo", "no", "c4-"} {
+		if _, err := os.Stat(filepath.Join(root, d)); err == nil {
+			t.Errorf("the split made a directory %s/ for a file that is not an object", d)
+		}
+	}
+	for _, id := range ids {
+		p, ok := s.ContentPath(id)
+		if !ok || filepath.Dir(p) == root {
+			t.Errorf("object %s not moved below the root: %q %v", id.String()[:12], p, ok)
+		}
+	}
+}
+
+// The premises the top-down lookup rests on (foldFind), pinned over real
+// splits: an object only ever moves deeper, and no shard directory is ever
+// removed. Every directory that existed before a Put still exists after
+// it, and every object is where it was or below it.
+func TestTreeStoreSplitLeavesItsLevel(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, 4)
+	where := map[c4.ID]string{}
+	dirs := map[string]bool{}
+	snapshot := func() map[string]bool {
+		out := map[string]bool{}
+		filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err == nil && d.IsDir() {
+				out[p] = true
+			}
+			return nil
+		})
+		return out
+	}
+	for i := 0; i < 400; i++ {
+		where[putRandom(t, s)] = ""
+		now := snapshot()
+		for d := range dirs {
+			if !now[d] {
+				t.Fatalf("Put %d removed the shard directory %s", i, relTo(root, d))
+			}
+		}
+		dirs = now
+		for id, before := range where {
+			p, ok := s.ContentPath(id)
+			if !ok {
+				t.Fatalf("Put %d: %s is missing", i, id.String()[:12])
+			}
+			if before != "" && p != before && !deeper(p, before) {
+				t.Fatalf("Put %d moved %s up or sideways: %s to %s", i, id.String()[:12], relTo(root, before), relTo(root, p))
+			}
+			where[id] = p
+		}
+	}
+	if len(dirs) < 3 {
+		t.Fatalf("fixture: only %d directories; the splits did not go two levels deep", len(dirs))
+	}
+}
+
+// After the fix a writer can still publish at a stale level: Put resolves
+// its target under its own process's lock, and another process's split can
+// come between that and the rename. What it leaves is an object one level
+// up, which every lookup finds, or a second copy of an ID already stored,
+// with the same bytes. Here several processes Put the same contents and
+// their own across splits; then every ID reads back with bytes that hash
+// to it, Settle loses nothing, and Remove leaves no copy behind.
+func TestTreeStoreStaleLevelWriters(t *testing.T) {
+	const rounds, writers, threshold = 40, 8, 16
+	shared := make([][]byte, 12)
+	for i := range shared {
+		shared[i] = []byte(fmt.Sprintf("shared content %d", i))
+	}
+	dupRounds, upRounds := 0, 0
+	for r := 0; r < rounds; r++ {
+		dir := t.TempDir()
+		pre := splitTestStore(t, dir, threshold)
+		for i := 0; i < threshold-4; i++ {
+			putRandom(t, pre)
+		}
+		var mu sync.Mutex
+		ids := map[c4.ID][]byte{}
+		var wg sync.WaitGroup
+		for k := 0; k < writers; k++ {
+			wg.Add(1)
+			go func(k int) {
+				defer wg.Done()
+				s, err := NewTreeStore(dir)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				s.SetSplitThreshold(threshold)
+				s.SetSyncMode(SyncNone)
+				for i := 0; i < len(shared); i++ {
+					for _, b := range [][]byte{shared[(i+k)%len(shared)], []byte(fmt.Sprintf("writer %d put %d round %d", k, i, r))} {
+						id, err := s.Put(bytes.NewReader(b))
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						mu.Lock()
+						ids[id] = b
+						mu.Unlock()
+					}
+				}
+			}(k)
+		}
+		wg.Wait()
+
+		// What the round left on disk: copies per ID, and objects above
+		// their level.
+		fresh := splitTestStore(t, dir, threshold)
+		copies := map[c4.ID]int{}
+		filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				if id, perr := c4.Parse(d.Name()); perr == nil {
+					copies[id]++
+				}
+			}
+			return nil
+		})
+		for _, n := range copies {
+			if n > 1 {
+				dupRounds++
+				break
+			}
+		}
+		if m, _ := fresh.Settle(false); len(m) > 0 {
+			upRounds++
+		}
+
+		readsBack := func(when string) {
+			for id, want := range ids {
+				f, err := fresh.Open(id)
+				if err != nil {
+					t.Fatalf("round %d, %s: %s: %v", r, when, id.String()[:12], err)
+				}
+				got, err := io.ReadAll(f)
+				f.Close()
+				if err != nil || !bytes.Equal(got, want) || c4.Identify(bytes.NewReader(got)) != id {
+					t.Fatalf("round %d, %s: %s reads back wrong bytes", r, when, id.String()[:12])
+				}
+			}
+		}
+		readsBack("after the writers")
+		if _, err := fresh.Settle(true); err != nil {
+			t.Fatal(err)
+		}
+		readsBack("after Settle")
+		for id := range ids {
+			if err := fresh.Remove(id); err != nil {
+				t.Fatalf("round %d: Remove %s: %v", r, id.String()[:12], err)
+			}
+			if fresh.Has(id) {
+				t.Fatalf("round %d: Remove %s left a copy that Has still finds", r, id.String()[:12])
+			}
+		}
+	}
+	t.Logf("%d of %d rounds left a second copy of some ID, %d left an object above its level; nothing lost or wrong", dupRounds, rounds, upRounds)
+}
+
+// Open opens what the search found, and another process's split can move
+// the file down between the search's look and the open. Open then searches
+// again. Through 2026-11-16 it returned "no such file" for a present
+// object (seen once in CI, during one split, after the lookup fix).
+func TestTreeStoreOpenFollowsAMove(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, DefaultSplitThreshold)
+	id := putRandom(t, s)
+	str := id.String()
+	shallow := filepath.Join(root, str)
+	sub := filepath.Join(root, str[0:2])
+	if err := os.Mkdir(sub, 0o755); err != nil { // mid-split
+		t.Fatal(err)
+	}
+	r := splitTestStore(t, root, DefaultSplitThreshold)
+	moved := false
+	r.stat = func(p string) (os.FileInfo, error) {
+		info, err := os.Stat(p)
+		if p == shallow && err == nil && !moved {
+			moved = true // the split's rename, right after the search looked
+			if rerr := os.Rename(shallow, filepath.Join(sub, str)); rerr != nil {
+				t.Error(rerr)
+			}
+		}
+		return info, err
+	}
+	f, err := r.Open(id)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	f.Close()
+	if !moved {
+		t.Fatal("fixture: the move did not happen")
 	}
 }
