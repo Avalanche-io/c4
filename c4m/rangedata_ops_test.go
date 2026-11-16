@@ -211,7 +211,17 @@ func TestRangeDataThroughOperations(t *testing.T) {
 			pr := PatchDiff(folded, noPlate)
 			return pr.Patch.RangeData, map[c4.ID]string{}
 		}},
-		{"ApplyPatch(plain, diff)", func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
+		// A removal line takes no list even when the new side still holds
+		// one for that range's ID (a stale list): it names a range the
+		// new state does not hold. 1.0.x addition; master has no row
+		// whose new side carries a stale list.
+		{"PatchDiff(folded, noPlate with a stale plate list): removal takes none", func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
+			stale := noPlate.Copy()
+			stale.RangeData = folded.Copy().RangeData
+			pr := PatchDiff(folded, stale)
+			return pr.Patch.RangeData, map[c4.ID]string{}
+		}},
+		{"ApplyPatch(plain, diff)",func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
 			patch := PatchDiff(plain, folded).Patch
 			patch.RangeData = folded.Copy().RangeData
 			return state(ApplyPatch(plain, patch))
