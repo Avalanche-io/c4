@@ -2,6 +2,23 @@
 
 ## Unreleased (1.0.27)
 
+### A folded sequence's size is null when a frame's size is ⚠
+
+A folded sequence (`c4 -S`, `SequenceDetector`) states the sum of its
+frames' sizes. A frame whose size is unknown had its -1 added in, so four
+6-byte frames with one unknown folded to size 17, a known and wrong value.
+Now any frame with a null size (`-`) makes the sequence's size null, as a
+null child does a directory's. **The C4 IDs of such folded ranges, and of
+the directories above them, change.** A scan never writes one, because a
+frame it cannot read has no C4 ID and is not folded. Ruled 2026-11-13 by
+the maintainer: "One cannot use size as an expectation if there are nulls
+present, so we must say nothing." SPECIFICATION.md and C4M-STANDARD.md
+state it as a one-line erratum (`design/sequence-null-size.md`). The ports
+test it with the shared `c4m/testdata/sequence-null-size-vector/`, copied
+from master byte for byte. On this line a frame's `0` size is a known
+zero (the zero-versus-null rule is held off 1.0.x), so the vector's
+`frames-zero-spelled.c4m` folds to a known size here. Master's c4 #155.
+
 ### `c4 diff` no longer ends its output with a bare C4 ID
 
 `c4 diff`, and the changeset that `c4 patch` prints when it applies or
