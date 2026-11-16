@@ -50,6 +50,15 @@ Looking below first and then at the level breaks this: the file can move
 down between the two looks. `TestTreeStoreLookupOrderBeatsASplitMove` forces
 that interleaving.
 
+A lookup that returns a path is a look, not a hold: the file can move down
+between the look and the use. `Open` therefore searches again when opening
+the path it found says "no such file", and `Remove` does too. Each retry
+follows a file that moved deeper. CI caught `Open` failing once during a
+split after the lookup fix and before this
+(`TestTreeStoreOpenFollowsAMove` forces it). `ContentPath` returns a path as
+it stands; a caller that opens it later can get "no such file" if a split
+moved it, and should look again.
+
 **A crash in the middle of a split** leaves some files in the old leaf and
 some below, never a file in two places or none. Every one is found by (3).
 The leaf is now an interior node, so it never splits again, and the files
