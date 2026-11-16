@@ -322,3 +322,39 @@ func TestTreeStoreSettle(t *testing.T) {
 		t.Errorf("after Settle(true), Settle(false) reports %d files, want only the duplicate", len(report))
 	}
 }
+
+// A lookup looks at each level before the levels below it, the order files
+// move in. Here the other process's split moves the file down at the worst
+// moment for a lookup that looked below first: just after the lookup's
+// search has looked for it one level down, and before it looks at the
+// level the file was on. Looking top down, the lookup has already found it.
+func TestTreeStoreLookupOrderBeatsASplitMove(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, DefaultSplitThreshold)
+	id := putRandom(t, s)
+	str := id.String()
+	shallow := filepath.Join(root, str)
+	sub := filepath.Join(root, str[0:2])
+	deep := filepath.Join(sub, str)
+	// Mid-split: the subdirectory exists and the file has not moved yet.
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	deepLooks := 0
+	r := splitTestStore(t, root, DefaultSplitThreshold)
+	r.stat = func(p string) (os.FileInfo, error) {
+		info, err := os.Stat(p)
+		if p == deep && os.IsNotExist(err) {
+			deepLooks++
+			if deepLooks == 2 { // the search's own look below, not the fast path's
+				if rerr := os.Rename(shallow, deep); rerr != nil {
+					t.Error(rerr)
+				}
+			}
+		}
+		return info, err
+	}
+	if !r.Has(id) {
+		t.Errorf("Has: the file moved down while the lookup was between levels, and was missed")
+	}
+}
