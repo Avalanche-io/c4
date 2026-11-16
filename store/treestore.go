@@ -427,8 +427,9 @@ func (s *TreeStore) path(id c4.ID) string {
 
 // locate returns the path of id's object file and true when it exists.
 // The exact-case trie path is checked first with a single stat, exactly
-// as before; only on a miss is foldFind consulted. On a miss the
-// exact-case path is returned as the write target.
+// as before; only on a miss is foldFind consulted, which looks at every
+// level of the trie on the way down. On a miss the exact-case path is
+// returned as the write target.
 func (s *TreeStore) locate(id c4.ID) (string, bool) {
 	p := s.path(id)
 	if _, err := s.statPath(p); err == nil {
@@ -440,20 +441,42 @@ func (s *TreeStore) locate(id c4.ID) (string, bool) {
 	return p, false
 }
 
-// foldFind searches for id's object file through shard directories whose
-// names equal the ID's segments under case folding. C4 IDs are base58
-// and case-sensitive, but a store built on a case-insensitive filesystem
-// (default macOS APFS) files IDs differing only in case at some level
-// under one shard directory named by whichever came first ("c4/1J"
-// holding "c41j..."). On a case-sensitive filesystem the exact-case
-// probe misses those objects; this finds them without moving anything.
-// Each level probes at most four case variants (exact first) by stat
-// rather than listing the directory, so a miss never reads a full leaf.
+// foldFind searches for id's object file from the root down, looking for
+// the file at every level before descending, through shard directories
+// whose names equal the ID's segments exactly or under case folding.
+//
+// Every level, because a split moves a leaf's files one level down one
+// rename at a time, after making the subdirectories, and another process
+// may be splitting right now: from a subdirectory's mkdir until a file's
+// own rename the file is still one level up, and a writer that resolved
+// its target before another process's split lands there for good, as
+// does every file a split cut short by a crash had not moved yet. Through
+// 2026-11-16 a lookup descended into any subdirectory that existed and
+// looked nowhere else, so those objects read as absent. Looking top down
+// is enough, with no lock across processes: a file only ever moves
+// deeper and shard directories are never removed, so a file that exists
+// is either at the level being looked at, or below it under a directory
+// that already exists and is descended into next.
+//
+// Case folding, because C4 IDs are base58 and case-sensitive, but a store
+// built on a case-insensitive filesystem (default macOS APFS) files IDs
+// differing only in case at some level under one shard directory named
+// by whichever came first ("c4/1J" holding "c41j..."). On a
+// case-sensitive filesystem the exact-case probe misses those objects;
+// this finds them without moving anything. Each level probes the file
+// and at most four case variants (exact first) by stat rather than
+// listing the directory, so a miss never reads a full leaf.
 func (s *TreeStore) foldFind(id c4.ID) (string, bool) {
 	return s.foldSearch(s.root, id.String(), 0)
 }
 
 func (s *TreeStore) foldSearch(dir, str string, i int) (string, bool) {
+	// The file at this level first, then the levels below: the order the
+	// files move in (see foldFind).
+	here := filepath.Join(dir, str)
+	if _, err := s.statPath(here); err == nil {
+		return here, true
+	}
 	if i+2 <= len(str) {
 		var seen []os.FileInfo
 		for _, seg := range foldVariants(str[i : i+2]) {
@@ -466,15 +489,8 @@ func (s *TreeStore) foldSearch(dir, str string, i int) (string, bool) {
 				return p, true
 			}
 		}
-		if len(seen) > 0 {
-			return "", false // interior node: objects live in the leaves
-		}
 	}
-	p := filepath.Join(dir, str)
-	if _, err := s.statPath(p); err != nil {
-		return "", false
-	}
-	return p, true
+	return "", false
 }
 
 // sameAsAny reports whether info is the same directory as any in seen.
