@@ -2,6 +2,41 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A store shared by several processes no longer loses objects to a split ⚠
+
+**Data loss and correctness fix.** A local store (`~/.c4/store`, c4git's
+`.c4/store`) splits a directory when it passes 4,096 objects, moving the
+files one level down one at a time. A lookup went straight to the deepest
+level that existed. So while one process split, every other process saw
+objects that were present as absent: `Has` false and `Open` "no such
+file". A process that was storing an object at that moment could put it
+one level too high, where no lookup looked again. `Put` had returned its ID,
+and no store could find it. Measured on the code before this change, with
+two or more processes on one store:
+- during one split, thousands of 12,288 lookups of present objects missed;
+- with splits made frequent, about 30% of rounds of 8 concurrent writers
+  left objects no store could find.
+
+Now a lookup that misses looks for the object at every level on the way
+down. Objects only ever move deeper and the store's directories are never
+removed, so it finds every object that exists, during a split, after a
+racing write, and after a split cut short by a crash.
+
+The exposure: a store makes its first two splits once, back to back, at
+about 4,097 objects (some 120 to 250 snapshots of one repo), and its next at
+about 1.16 million. A store used by one process at a time was never
+affected. S3 stores don't use this layout.
+
+**What affected users must do: nothing, to read correctly with this
+release.** It finds misplaced objects where they are; on 300 damaged
+stores it missed none of the 180 objects the old code missed. Older
+readers sharing the store (c4 1.0.26 and earlier, and tools built on
+that library) still miss them. To fix the layout for them, run
+`go run ./hack/storesettle DIR` to list misplaced objects (exit 2 when any
+are found), and add `-move` to move them down. `TreeStore.Settle` is the
+library call. Decided 2026-11-16 by the release lead; reversible
+(`design/store-split-race.md`).
+
 ### A shared changeset vector pins every patch writer to `c4 diff`'s bytes
 
 New conformance fixture `c4m/testdata/changeset-vector/`: two states of a
