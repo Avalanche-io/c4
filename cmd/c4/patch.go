@@ -135,7 +135,7 @@ func backfillBase(sections []*c4m.PatchSection) []*c4m.PatchSection {
 		fatalf("Error: %v\n"+
 			"The first line names a base block this chain refines; it must be in the store.", err)
 	}
-	return append([]*c4m.PatchSection{{Entries: resolved.Entries}}, sections...)
+	return append([]*c4m.PatchSection{{Entries: resolved.Entries, RangeData: resolved.RangeData}}, sections...)
 }
 
 // runPatchPair handles two-argument patch with dispatch based on argument types.
