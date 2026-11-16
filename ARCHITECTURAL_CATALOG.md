@@ -78,7 +78,9 @@ chain resolvers, the base resolver, the filters, the subtree operations
 and the sequence detector call it; the scanner's `-S` fold keeps its
 lists. `writeRangeData` is the encoder's one list writer. In the CLI,
 `storeManifestSelf` stores each list (`storeRangeLists`)
-(`design/range-data-through-operations.md`, 2026-11-13).
+(`design/range-data-through-operations.md`, 2026-11-13), and a one-level
+record for every directory, deepest first (`storeDirectoryRecords`), so a
+description stored with `c4 id -s FILE.c4m` resolves from the store alone.
 
 ### External base references (c4m/base.go)
 

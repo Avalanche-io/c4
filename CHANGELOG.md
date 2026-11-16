@@ -2,6 +2,23 @@
 
 ## Unreleased (1.0.27)
 
+### `c4 id -s FILE.c4m` stores every subdirectory's listing ⚠
+
+**Data loss fixed.** `c4 id -s FILE.c4m` stored the file's text and its
+root record, and none of the nested subdirectories' one-level listings.
+So `c4 cat` could not return any directory below the root by its C4 ID,
+and the tree could not be resolved from the store alone. Measured on this
+line: storing a description of `a/b/c/`, `d/` and `seq/` left every one of
+those listings missing, and only the root record and the range lists were
+there. `c4 id -s DIR` was not affected: a scan stores every listing. Now
+`c4 id -s FILE.c4m` stores a one-level record for every directory,
+deepest first, as a scan does, and the description itself is unchanged.
+The maintainer: "it would be an error to create a c4m tree and drop the
+subdirectories". No C4 ID changes. **A store filled by `c4 id -s FILE.c4m`
+before 1.0.27 lacks those listings: store the same file again with
+`c4 id -s FILE.c4m` on 1.0.27 to add them.** Records already present are
+skipped. Master's `storeManifestSelf`.
+
 ### `DetectSequences` shares nothing with its input ⚠
 
 **Correctness fix.** `SequenceDetector.DetectSequences` returned the

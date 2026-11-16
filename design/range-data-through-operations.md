@@ -174,3 +174,10 @@ chain. `c4 id -s FILE.c4m` here stores the file's text and its root
 record, not each nested listing under its own ID, so the parity table's
 subdirectory column for that row reads "lost" on 1.0.x for a reason
 outside this change; the range's list is stored.
+
+Correction, 2026-11-16: that gap is closed on this line by a later
+change. `c4 id -s FILE.c4m` now stores a one-level record for every
+directory, deepest first, as master's `storeManifestSelf` does, and the
+parity table's row reads "kept" for both columns; the test's 1.0.x
+exception for it is removed. The paragraph above stays as the record of
+what the line did when this back-port landed.
