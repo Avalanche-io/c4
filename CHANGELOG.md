@@ -55,6 +55,8 @@ that library) still miss them. To fix the layout for them, run
 are found), and add `-move` to move them down. `TreeStore.Settle` is the
 library call. `Remove` deletes every copy of an object on its path, since
 a write racing a split can still leave a second copy with the same bytes.
+`Open` searches again when the file it found is moved down before it opens
+it.
 Decided 2026-11-16 by the release lead; reversible
 (`design/store-split-race.md`).
 
