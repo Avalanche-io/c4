@@ -94,15 +94,16 @@ func TestSequenceNullSizeVector(t *testing.T) {
 
 	// 1.0.x: the zero-versus-null rule is held off this line, so the 0 in
 	// frames-zero-spelled.c4m is a known size here, not a null one, and
-	// the shot range folds to a known 15 (5 + 5 + 0 + 5). Master folds it
-	// to folded.c4m; the file's bytes are master's, byte for byte.
+	// the shot range folds to a known 15 bytes of frames (5 + 5 + 0 + 5)
+	// and its 4 × 90-byte ID list. Master folds it to folded.c4m; the
+	// file's bytes are master's, byte for byte.
 	m, err = Unmarshal(files["frames-zero-spelled.c4m"])
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range NewSequenceDetector(3).DetectSequences(m).Entries {
-		if e.Name == "shot.[1001-1004].exr" && e.Size != 15 {
-			t.Errorf("frames-zero-spelled.c4m: shot range size %d, want 15 on 1.0.x (0 is a known size here)", e.Size)
+		if e.Name == "shot.[1001-1004].exr" && e.Size != 15+4*90 {
+			t.Errorf("frames-zero-spelled.c4m: shot range size %d, want %d on 1.0.x (0 is a known size here)", e.Size, 15+4*90)
 		}
 	}
 	m, err = Unmarshal(files["folded.c4m"])
@@ -112,7 +113,7 @@ func TestSequenceNullSizeVector(t *testing.T) {
 	if id := m.ComputeC4ID().String(); id != root {
 		t.Errorf("folded.c4m resolves to %s, want %s", id, root)
 	}
-	want := map[string]int64{"plate.[1001-1004].exr": 24, "shot.[1001-1004].exr": -1}
+	want := map[string]int64{"plate.[1001-1004].exr": 24 + 4*90, "shot.[1001-1004].exr": -1}
 	for _, e := range m.Entries {
 		w, ok := want[e.Name]
 		if !ok {

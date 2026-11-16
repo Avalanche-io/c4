@@ -174,13 +174,16 @@ func TestFoldingWithNonUniformTimestamps(t *testing.T) {
 		t.Errorf("sequence timestamp = %v, want %v (most recent)", seqEntry.Timestamp, expectedTime)
 	}
 
-	// The folded size should be the sum
+	// The folded size is every frame's size plus the ID list's, 90 bytes
+	// a frame (ruled 2026-11-13: "The size is the size of every frame and
+	// the frame id list.")
 	var expectedSize int64
 	for i := 1; i <= 5; i++ {
 		expectedSize += int64(3000 + i*200)
 	}
+	expectedSize += 5 * 90
 	if seqEntry.Size != expectedSize {
-		t.Errorf("sequence size = %d, want %d (sum)", seqEntry.Size, expectedSize)
+		t.Errorf("sequence size = %d, want %d (frames plus list)", seqEntry.Size, expectedSize)
 	}
 }
 
