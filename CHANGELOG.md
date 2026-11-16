@@ -2,6 +2,24 @@
 
 ## Unreleased (1.0.27)
 
+### A shared changeset vector pins every patch writer to `c4 diff`'s bytes
+
+New conformance fixture `c4m/testdata/changeset-vector/`, master's files
+byte for byte: two states of a nested tree, the changeset between them as
+`c4 diff` writes it, and the chain `c4 diff >>` makes. Its MUST rule:
+every patch writer, given `base.c4m` and `v2.c4m`, writes `changeset.c4m`
+byte for byte (the old state's ID, the patch in canonical order, and no
+bare C4 ID after it), and every chain reader resolves `chain.c4m` to
+`v2.c4m`. On this line the library derives a directory's C4 ID only by
+scanning, so `scan`'s `TestChangesetVectorStates` writes the two states
+from trees on disk, and `c4m`'s `TestChangesetVector` writes the
+changeset and chain from them. `TestChangesetVectorCLI` runs `c4 diff`
+and `c4 patch`. This line's behaviour does not change. Measured with the
+same files on the suite's 1.0.27 lines, three port faults: libc4's
+`EncodePatch` ended with the new state's ID, libc4's `Manifest::Parse`
+concatenated a chain's sections, and c4py's `patch_diff` wrote a
+directory before its sibling files.
+
 ### `c4 id -s FILE.c4m` stores every subdirectory's listing ⚠
 
 **Data loss fixed.** `c4 id -s FILE.c4m` stored the file's text and its
