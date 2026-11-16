@@ -28,7 +28,11 @@ child's time never moves its parent's.
    `b.txt`'s mtime is `…:40.9999997`; it is `15:06:40Z`, never `:41`. A
    scanner that turns nanoseconds into a float of seconds and rounds to
    microseconds records `:41`, and its C4 IDs differ from every other
-   implementation's for the same tree.
+   implementation's for the same tree. Before 1970 the floor is toward
+   negative infinity, as Go writes the wall-clock second: `pre-half.txt`
+   (−1.5 s) is `23:59:58Z`, never the `:59` that truncating toward zero
+   gives, and `pre-round.txt` (−1.0000003 s) is `23:59:58Z`, never the
+   `:59` that rounding to the microsecond gives.
 2. **Diff at the format's resolution.** A diff of the scan against its
    own saved c4m, and against `saved.c4m` (on a platform with POSIX
    modes), is an empty patch: no entry lines. Comparing below the second
