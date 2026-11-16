@@ -27,12 +27,15 @@ the shot range folds to size 14 (5 + 5 - 1 + 5).
 Decode `folded.c4m` to a manifest whose root ID is `folded-root-id.txt`,
 and see:
 
-| Entry                   | Size line | Size is  |
-| ----------------------- | --------- | -------- |
-| `plate.[1001-1004].exr` | `24`      | known 24 |
-| `shot.[1001-1004].exr`  | `-`       | **null** |
+| Entry                   | Size line | Size is                                                 |
+| ----------------------- | --------- | ------------------------------------------------------- |
+| `plate.[1001-1004].exr` | `384`     | known 384: 24 bytes of frames and a 4 × 90-byte ID list |
+| `shot.[1001-1004].exr`  | `-`       | **null**                                                |
 
-Re-encoding it canonically reproduces `folded.c4m` byte for byte.
+Re-encoding it canonically reproduces `folded.c4m` byte for byte. (Since
+the 2026-11-13 ruling that a range's size counts its ID list as well as
+its frames, `sequence-size-includes-list`, the plate range is 384, not
+24.)
 
 An implementation that folds sequences MUST also fold either frames file
 (minimum length 3) to `folded.c4m` byte for byte: the shot range's size is
