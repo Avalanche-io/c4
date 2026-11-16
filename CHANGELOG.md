@@ -16,7 +16,9 @@ list, returns the error any unavailable content gives
 the ranges it keeps. Ruled 2026-11-13 by the maintainer: "You can't
 expand a sequence if you don't have a description of it's contents, this
 is the same for any content." The shared `range-data-vector` gains
-`expanded.c4m` and `folded-no-lists.c4m`.
+`expanded.c4m` and `folded-no-lists.c4m`, master's bytes. Measured on
+release/1.0.27 before the change: `folded-no-lists.c4m` expanded to seven
+frames, each carrying its range's own C4 ID. Master's c4 #160.
 
 ### A folded range's ID list is kept as a subdirectory listing is ⚠
 
