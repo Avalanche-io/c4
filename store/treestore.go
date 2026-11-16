@@ -644,8 +644,18 @@ func countFiles(dir string) int {
 	return n
 }
 
-// split redistributes a leaf directory's files into 2-char
+// split redistributes a leaf directory's objects into 2-char
 // subdirectories based on the next prefix segment. Caller must hold s.mu.
+//
+// Only objects move: files whose names are C4 IDs. Anything else in the
+// leaf stays where it is; the store root holds the journal
+// (c4m.JournalName), and through 2026-11-16 the root's split moved it to
+// jo/journal, where the journal no longer read it
+// (TestTreeStoreSplitMovesOnlyObjects).
+//
+// Each move goes one level down, never up, and no shard directory is ever
+// removed: the two premises the top-down lookup rests on (foldFind;
+// TestTreeStoreSplitKeepsObjectsVisible, TestTreeStoreSplitLeavesItsLevel).
 func (s *TreeStore) split(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -660,6 +670,9 @@ func (s *TreeStore) split(dir string) {
 			continue
 		}
 		name := e.Name()
+		if _, err := c4.Parse(name); err != nil {
+			continue // not an object: the journal, or anything else kept here
+		}
 		if len(name) <= depth+2 {
 			continue // ID too short for another level (shouldn't happen)
 		}
