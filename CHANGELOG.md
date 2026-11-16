@@ -11,11 +11,12 @@ The frames' data size is the range's size less count × 90. A `c4 id -S`
 scan now sizes each directory holding a range from its folded listing,
 the one its C4 ID already hashed. Through this release it sized the
 directory from the unfolded children (441 where the folded listing gives
-446). **The C4 IDs of folded ranges, and of every directory above them up
-to the root, change**, as do the sizes. Trees without folded ranges are
-unchanged, and so `c4 id` output without `-S` stays byte-identical to
-1.0.26's. Ruled 2026-11-13 by the maintainer: "The size is the size of
-every frame and the frame id list. Note that the frame id list has a
+446). **A folded range's own C4 ID, its list's ID, does not change; its
+size does, and so do the C4 IDs of the listings and directories above
+it, up to the root.** Trees without folded ranges are unchanged, and so
+`c4 id` output without `-S` stays byte-identical to 1.0.26's. Ruled
+2026-11-13 by the maintainer: "The size is the size of every frame and
+the frame id list. Note that the frame id list has a
 compleately deducable size based on the item count alone since c4 id's
 have a fixed length." SPECIFICATION.md and C4M-STANDARD.md state it as
 errata (`design/sequence-size-includes-list.md`). The shared
@@ -72,8 +73,9 @@ A folded sequence (`c4 -S`, `SequenceDetector`) states the sum of its
 frames' sizes. A frame whose size is unknown had its -1 added in, so four
 6-byte frames with one unknown folded to size 17, a known and wrong value.
 Now any frame with a null size (`-`) makes the sequence's size null, as a
-null child does a directory's. **The C4 IDs of such folded ranges, and of
-the directories above them, change.** A scan never writes one, because a
+null child does a directory's. **A folded range's own C4 ID, its list's
+ID, does not change; its size does, and so do the C4 IDs of the listings
+and directories above it.** A scan never writes one, because a
 frame it cannot read has no C4 ID and is not folded. Ruled 2026-11-13 by
 the maintainer: "One cannot use size as an expectation if there are nulls
 present, so we must say nothing." SPECIFICATION.md and C4M-STANDARD.md
