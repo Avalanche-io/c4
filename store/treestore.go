@@ -186,8 +186,19 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 	if err == nil || !os.IsNotExist(err) {
 		return f, err
 	}
-	if p, ok := s.foldFind(id); ok {
-		return os.Open(p)
+	// The search found the file at one level, and another process's split
+	// can move it down before the open: search again. Each retry follows a
+	// file that moved deeper, so the bound is never reached unless the ID
+	// keeps being removed and stored again (TestTreeStoreOpenFollowsAMove).
+	for i := 0; i < len(id.String()); i++ {
+		p, ok := s.foldFind(id)
+		if !ok {
+			return nil, err
+		}
+		f, oerr := os.Open(p)
+		if oerr == nil || !os.IsNotExist(oerr) {
+			return f, oerr
+		}
 	}
 	return nil, err
 }

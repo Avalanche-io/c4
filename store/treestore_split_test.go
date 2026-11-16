@@ -552,3 +552,39 @@ func TestTreeStoreStaleLevelWriters(t *testing.T) {
 	}
 	t.Logf("%d of %d rounds left a second copy of some ID, %d left an object above its level; nothing lost or wrong", dupRounds, rounds, upRounds)
 }
+
+// Open opens what the search found, and another process's split can move
+// the file down between the search's look and the open. Open then searches
+// again. Through 2026-11-16 it returned "no such file" for a present
+// object (seen once in CI, during one split, after the lookup fix).
+func TestTreeStoreOpenFollowsAMove(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, DefaultSplitThreshold)
+	id := putRandom(t, s)
+	str := id.String()
+	shallow := filepath.Join(root, str)
+	sub := filepath.Join(root, str[0:2])
+	if err := os.Mkdir(sub, 0o755); err != nil { // mid-split
+		t.Fatal(err)
+	}
+	r := splitTestStore(t, root, DefaultSplitThreshold)
+	moved := false
+	r.stat = func(p string) (os.FileInfo, error) {
+		info, err := os.Stat(p)
+		if p == shallow && err == nil && !moved {
+			moved = true // the split's rename, right after the search looked
+			if rerr := os.Rename(shallow, filepath.Join(sub, str)); rerr != nil {
+				t.Error(rerr)
+			}
+		}
+		return info, err
+	}
+	f, err := r.Open(id)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	f.Close()
+	if !moved {
+		t.Fatal("fixture: the move did not happen")
+	}
+}
