@@ -2,6 +2,20 @@
 
 ## Unreleased (1.0.27)
 
+### `DetectSequences` shares nothing with its input ⚠
+
+**Correctness fix.** `SequenceDetector.DetectSequences` returned the
+input's own entries for everything it did not fold, so deriving or
+editing anything on a fold rewrote the caller's manifest. A directory
+holding a range took the folded listing's size and C4 ID in the input too
+(measured on this line: `sub/` 441 became 446). Every entry it passes
+through is now a copy, so the input and its encoded bytes are unchanged
+by anything done to the result. **No C4 ID changes for a caller that kept
+its input and its fold apart. A caller that relied on the sharing, and
+read a fold's re-derived sizes or C4 IDs back from its input, now gets
+the input's own values.** Ports that fold sequences should copy rather
+than share. Master's c4 #162.
+
 ### A folded range's size counts its ID list; `-S` sizes directories from the folded listing ⚠
 
 A folded range's size is now the size of its frames plus its ID list:
