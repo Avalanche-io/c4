@@ -15,6 +15,10 @@ import (
 type PatchSection struct {
 	BaseID  c4.ID    // C4 ID line preceding this section (nil for first)
 	Entries []*Entry // Entries in this section
+	// RangeData holds the inline ID lists written in this section, after
+	// its entries (SPECIFICATION.md, "Inline Range Data"), keyed by each
+	// list's C4 ID. Nil when the section has none.
+	RangeData map[c4.ID]string
 }
 
 // DecodePatchChain reads a c4m file and returns each section separately
@@ -44,9 +48,15 @@ func DecodePatchChain(r io.Reader) ([]*PatchSection, error) {
 			continue
 		}
 
-		// Skip inline ID list lines (range data). These don't affect
-		// patch chain structure — they're supplementary content.
+		// Inline ID list lines (range data) don't affect the chain's
+		// structure; they belong to the section they sit in, after its
+		// entries. Through 2026-11-13 this reader skipped them, so patch,
+		// split and log lost every list.
 		if isInlineIDList(trimmed) {
+			if current.RangeData == nil {
+				current.RangeData = make(map[c4.ID]string)
+			}
+			current.RangeData[c4.Identify(strings.NewReader(trimmed))] = trimmed
 			continue
 		}
 
@@ -129,6 +139,10 @@ func resolvePatchChainChecked(sections []*PatchSection, stopAt int) (*Manifest, 
 
 	// First section is the base.
 	m := &Manifest{Version: "1.0", Entries: sections[0].Entries}
+	if limit == 1 {
+		keepRangeData(m, sections[0].RangeData)
+		return m, nil
+	}
 
 	// Apply subsequent patches.
 	for i := 1; i < limit; i++ {
@@ -140,5 +154,12 @@ func resolvePatchChainChecked(sections []*PatchSection, stopAt int) (*Manifest, 
 		}
 	}
 
+	// The lists of the ranges the resolved state holds, from whichever
+	// section carried them.
+	lists := make([]map[c4.ID]string, 0, limit)
+	for _, sec := range sections[:limit] {
+		lists = append(lists, sec.RangeData)
+	}
+	keepRangeData(m, lists...)
 	return m, nil
 }

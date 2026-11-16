@@ -81,15 +81,9 @@ func foldOntoBase(m *Manifest, src store.Source, seen map[c4.ID]bool) (*Manifest
 		{Entries: m.Entries},
 	}, 0)
 
-	// Carry range data forward; the newer block wins on collision.
-	for _, layer := range []*Manifest{prior, m} {
-		for k, v := range layer.RangeData {
-			if resolved.RangeData == nil {
-				resolved.RangeData = make(map[c4.ID]string)
-			}
-			resolved.RangeData[k] = v
-		}
-	}
+	// The lists of the ranges the resolved state holds, from the prior
+	// block or this one; a range this block removed takes its list with it.
+	keepRangeData(resolved, prior.RangeData, m.RangeData)
 	return resolved, nil
 }
 
