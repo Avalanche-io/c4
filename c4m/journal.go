@@ -185,16 +185,46 @@ func IsJournal(data []byte) bool {
 // Claims reads every complete claim line, ignoring a torn tail (the
 // torn line belongs to an append that never reported success). An
 // absent journal is an empty history.
+//
+// A journal a store's root split displaced is read first, where it lies:
+// through 2026-11-16 a tree store's split moved every file in the root,
+// so once a store passed 4,096 objects its journal sat at jo/journal and
+// appends started a new one at the root (store split race; decided
+// 2026-11-16 by the release lead; reversible). Every claim before the
+// split is in the displaced file and every claim after it in the root's,
+// so the two read in that order are the store's history in order. The
+// displaced file is never written: every append goes to the root.
 func (j *Journal) Claims() ([]Claim, error) {
+	var claims []Claim
+	displaced := filepath.Join(j.root, displacedJournal)
+	if data, err := os.ReadFile(displaced); err == nil && IsJournal(data) {
+		old, err := DecodeJournal(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", displaced, err)
+		}
+		claims = old
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
 	data, err := os.ReadFile(j.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return claims, nil
 		}
 		return nil, err
 	}
-	return DecodeJournal(data)
+	cur, err := DecodeJournal(data)
+	if err != nil {
+		return nil, err
+	}
+	return append(claims, cur...), nil
 }
+
+// displacedJournal is where a tree store's root split put the journal
+// before 2026-11-16: the split filed every name by its first two
+// characters. No object name starts "jo" (every C4 ID starts "c4"), so
+// nothing else is ever filed there and the directory never splits.
+var displacedJournal = filepath.Join(JournalName[:2], JournalName)
 
 // DecodeJournal parses journal bytes (a store's journal file, or a
 // copy of one): the magic header, then one claim per complete line.
