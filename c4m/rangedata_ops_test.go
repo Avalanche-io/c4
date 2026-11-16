@@ -221,7 +221,7 @@ func TestRangeDataThroughOperations(t *testing.T) {
 			pr := PatchDiff(folded, stale)
 			return pr.Patch.RangeData, map[c4.ID]string{}
 		}},
-		{"ApplyPatch(plain, diff)",func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
+		{"ApplyPatch(plain, diff)", func(t *testing.T) (map[c4.ID]string, map[c4.ID]string) {
 			patch := PatchDiff(plain, folded).Patch
 			patch.RangeData = folded.Copy().RangeData
 			return state(ApplyPatch(plain, patch))
