@@ -223,3 +223,102 @@ func relTo(root, p string) string {
 	}
 	return r
 }
+
+// Settle reports every object above its proper level, moves them with
+// move set, and leaves a store a reader built before the fix (exact trie
+// path only) reads in full. A copy whose proper place already holds the
+// object is reported and left alone.
+func TestTreeStoreSettle(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, 4)
+	var ids []c4.ID
+	for i := 0; i < 60; i++ {
+		ids = append(ids, putRandom(t, s))
+	}
+	oldReader := func(id c4.ID) bool { // what lookups did through 2026-11-16
+		_, err := os.Stat(s.path(id))
+		return err == nil
+	}
+	var up []c4.ID
+	var dup c4.ID
+	for _, id := range ids {
+		p, _ := s.ContentPath(id)
+		if filepath.Dir(p) == root {
+			continue
+		}
+		dst := filepath.Join(filepath.Dir(filepath.Dir(p)), id.String())
+		if dup.IsNil() {
+			// A duplicate: the object at its place and a copy one level up.
+			data, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(dst, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			dup = id
+			continue
+		}
+		if err := os.Rename(p, dst); err != nil {
+			t.Fatal(err)
+		}
+		up = append(up, id)
+		if len(up) == 5 {
+			break
+		}
+	}
+	if len(up) != 5 || dup.IsNil() {
+		t.Fatalf("fixture: %d objects moved up", len(up))
+	}
+	for _, id := range up {
+		if oldReader(id) {
+			t.Fatal("fixture: an exact-path lookup still finds a moved-up object")
+		}
+	}
+
+	report, err := s.Settle(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report) != 6 {
+		t.Errorf("Settle(false) reports %d misplaced files, want 6 (5 moved up and 1 duplicate)", len(report))
+	}
+	for _, m := range report {
+		if m.Moved {
+			t.Errorf("Settle(false) moved %s", m.ID)
+		}
+	}
+	for _, id := range up {
+		if oldReader(id) {
+			t.Error("Settle(false) moved a file")
+		}
+	}
+
+	report, err = s.Settle(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := 0
+	for _, m := range report {
+		if m.Moved {
+			moved++
+		} else if m.ID != dup {
+			t.Errorf("Settle(true) did not move %s", m.ID)
+		}
+	}
+	if moved != 5 {
+		t.Errorf("Settle(true) moved %d files, want 5", moved)
+	}
+	for _, id := range ids {
+		if !oldReader(id) {
+			t.Errorf("after Settle(true), an exact-path lookup misses %s", id)
+		}
+	}
+	report, err = s.Settle(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report) != 1 || report[0].ID != dup {
+		t.Errorf("after Settle(true), Settle(false) reports %d files, want only the duplicate", len(report))
+	}
+}
