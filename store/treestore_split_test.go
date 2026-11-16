@@ -397,3 +397,47 @@ func TestTreeStoreSplitMovesOnlyObjects(t *testing.T) {
 		}
 	}
 }
+
+// The premises the top-down lookup rests on (foldFind), pinned over real
+// splits: an object only ever moves deeper, and no shard directory is ever
+// removed. Every directory that existed before a Put still exists after
+// it, and every object is where it was or below it.
+func TestTreeStoreSplitLeavesItsLevel(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, 4)
+	where := map[c4.ID]string{}
+	dirs := map[string]bool{}
+	snapshot := func() map[string]bool {
+		out := map[string]bool{}
+		filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err == nil && d.IsDir() {
+				out[p] = true
+			}
+			return nil
+		})
+		return out
+	}
+	for i := 0; i < 400; i++ {
+		where[putRandom(t, s)] = ""
+		now := snapshot()
+		for d := range dirs {
+			if !now[d] {
+				t.Fatalf("Put %d removed the shard directory %s", i, relTo(root, d))
+			}
+		}
+		dirs = now
+		for id, before := range where {
+			p, ok := s.ContentPath(id)
+			if !ok {
+				t.Fatalf("Put %d: %s is missing", i, id.String()[:12])
+			}
+			if before != "" && p != before && !deeper(p, before) {
+				t.Fatalf("Put %d moved %s up or sideways: %s to %s", i, id.String()[:12], relTo(root, before), relTo(root, p))
+			}
+			where[id] = p
+		}
+	}
+	if len(dirs) < 3 {
+		t.Fatalf("fixture: only %d directories; the splits did not go two levels deep", len(dirs))
+	}
+}
