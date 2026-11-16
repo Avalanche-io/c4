@@ -34,8 +34,14 @@ readers sharing the store (c4 1.0.26 and earlier, and tools built on
 that library) still miss them. To fix the layout for them, run
 `go run ./hack/storesettle DIR` to list misplaced objects (exit 2 when any
 are found), and add `-move` to move them down. `TreeStore.Settle` is the
-library call. Decided 2026-11-16 by the release lead; reversible
-(`design/store-split-race.md`). Master's fix, the same change.
+library call. `Remove` deletes every copy of an object on its path, since
+a write racing a split can still leave a second copy with the same bytes.
+`Open` searches again when the file it found is moved down before it opens
+it. A split now moves only objects: before, it filed every other non-dot
+file under a two-character directory, such as `~/.c4/config` in a store
+rooted at `~/.c4`, or a file a user left in the store. Decided 2026-11-16
+by the release lead; reversible (`design/store-split-race.md`). Master's
+fix, the same change; the journal part of master's is 1.1-only.
 
 ### On Windows, storing content another process was storing failed ⚠
 
