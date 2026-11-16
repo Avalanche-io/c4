@@ -59,6 +59,29 @@ left in it stay there. They are found, and `Settle` moves them.
 version on. Measured on the 300 stores the publish reproducer damaged:
 master's code missed 180 of 32,400 object files, and this code misses none.
 
+## The cost of a true miss
+
+A hit costs what it did: the fast path, one stat of the deepest path,
+finds it. A miss (a Has for an absent ID, as every Put's dedup check and
+every diff against a store makes) now also stats the file name at each
+interior level on the way down: one extra stat per level. Counted
+through the store's stat seam, 20,000 absent IDs each, on APFS
+(case-insensitive, so the case-fold variants are probed too):
+
+| Depth of the leaf | Stats per miss before | After |
+| ----------------- | --------------------- | ----- |
+| 1 (`c4/`)         | 7.8                   | 8.8   |
+| 2 (`c4/XX/`)      | 12.2                  | 14.2  |
+| 3 (`c4/XX/YY/`)   | 17.0                  | 20.1  |
+
+Depth 2 is every store from about 4,098 objects to about 1.16 million. On
+such a store (4,296 objects, default threshold), 100k absent-ID Has calls
+took 3.9 to 4.0 s before and 4.7 to 5.1 s after, about 40 µs to 47 to 51 µs
+each, two runs each. That is about 1 s per 100k new objects, beside a
+hash, a write and (by default) a flush for each one. It does not matter
+next to what a Put costs. The extra look cannot be skipped: it is what finds
+an object one level up.
+
 ## Rejected: making a split's files visible at their new place first
 
 One could build each subdirectory under a temporary name, hard-link the
