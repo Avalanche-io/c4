@@ -204,7 +204,7 @@ func TestTreeStoreFindsObjectAboveItsLevel(t *testing.T) {
 			f.Close()
 		}
 		// A Put of the same content finds it and does not write a copy.
-		if _, ok := r.locate(id); !ok {
+		if _, ok, _ := r.locate(id); !ok {
 			t.Errorf("locate: not found")
 		}
 		if err := r.Remove(id); err != nil {
