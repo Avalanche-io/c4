@@ -2,6 +2,29 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### ⚠ `c4 id -s` never names content the store doesn't hold
+
+`c4 id -s` could print, store and journal a description naming a C4 ID the
+store did not hold, and exit 0. A later `c4 cat` of that ID failed. Measured
+2026-11-16:
+- a file made unreadable after a `-c GUIDE` scan was trusted and never read;
+- a file removed between the scan and the store pass was skipped silently;
+- a file rewritten in that window had its new bytes stored, under an ID nothing named, while the old ID was printed;
+- an empty directory's listing (the empty content) was not stored unless an empty file happened to store it;
+- with `C4_STORE` naming two locations, the claim was never journaled.
+
+Now:
+- **A file the store pass can't take** (gone, unreadable, or no longer the bytes the scan hashed) is recorded as a scan that could not read it records it. Its C4 ID is null, and the directories above it are re-derived from the listings that hold it. stderr says `partial: PATH recorded with nulls (WHY)`, and the run exits 2.
+- **A folded range** with such a member is unfolded, that member null, as a scan would record it. Its other frame IDs are kept.
+- **Under `-s` the store pass runs before the description is printed**, so what is printed is what was stored. Plain `c4 id` streams as before. This changes the `-s` streaming design, so it is noted for the 1.1 triage. The alternative not built: keep streaming, and append a patch section that nulls the entries given up.
+- **A store that can't take an object ends the run**, exit 1, with nothing claimed. Before, it printed a warning and went on.
+- **Empty listings are stored:** the empty-content object is stored whenever a description names it.
+- **Journals:**
+  - A store of several locations journals its claims in the one it writes to; `c4 log` reads them there.
+  - A store with no local journal (S3) still stores, and says once on stderr that the claim is not journaled. This differs from GC-DESIGN-R4 S10's "or `-s` is refused": collection is refused on stores that are not local, so an unjournaled remote claim can't cost content.
+
+**Exit codes change** for those runs: 2 where a file was given up, 1 where the store failed; before, both were 0. Tests drive the window between the scan and the store pass through a hook built only into test binaries (`-tags c4testhooks`). A release binary has none.
+
 ### Repairing a chain an older `c4 diff >>` grew
 
 A chain grown with `c4 diff … >> FILE.c4m` on 1.0.26 or earlier may end
