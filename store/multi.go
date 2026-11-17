@@ -20,6 +20,16 @@ func NewMultiStore(stores ...Store) *MultiStore {
 	return &MultiStore{stores: stores}
 }
 
+// WriteStore returns the store a MultiStore writes to, its first, or nil
+// when it holds none. What is written lands there, so a claim on what was
+// written is journaled beside it.
+func (m *MultiStore) WriteStore() Store {
+	if len(m.stores) == 0 {
+		return nil
+	}
+	return m.stores[0]
+}
+
 func (m *MultiStore) Has(id c4.ID) bool {
 	for _, s := range m.stores {
 		if s.Has(id) {
