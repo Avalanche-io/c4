@@ -588,3 +588,91 @@ func TestTreeStoreOpenFollowsAMove(t *testing.T) {
 		t.Fatal("fixture: the move did not happen")
 	}
 }
+
+// The object is removed, in its only copy, between the search's look and
+// the open. Open searches again, finds nothing, and reports not found: it
+// stops at the first search that finds no copy.
+func TestTreeStoreOpenRemovedMidSearch(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, DefaultSplitThreshold)
+	id := putRandom(t, s)
+	str := id.String()
+	shallow := filepath.Join(root, str)
+	if err := os.Mkdir(filepath.Join(root, str[0:2]), 0o755); err != nil { // mid-split
+		t.Fatal(err)
+	}
+	r := splitTestStore(t, root, DefaultSplitThreshold)
+	looks, removed := 0, false
+	r.stat = func(p string) (os.FileInfo, error) {
+		info, err := os.Stat(p)
+		if p == shallow {
+			looks++
+			if err == nil && !removed {
+				removed = true // another process's Remove, right after the look
+				if rerr := os.Remove(shallow); rerr != nil {
+					t.Error(rerr)
+				}
+			}
+		}
+		return info, err
+	}
+	f, err := r.Open(id)
+	if err == nil {
+		f.Close()
+		t.Fatal("Open returned a file for an object removed in every copy")
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("Open: %v, want not found", err)
+	}
+	if !removed {
+		t.Fatal("fixture: the removal did not happen")
+	}
+	if looks != 2 {
+		t.Fatalf("Open looked at the object's place %d times, want 2: the look before the removal and one that finds nothing", looks)
+	}
+}
+
+// The worst case for the bound: every search finds the object and every
+// open finds it gone, as if the ID were removed and stored again on every
+// pass. Open still returns, not found, after the stated bound: 90 passes,
+// one per character of a C4 ID.
+func TestTreeStoreOpenRetryIsBounded(t *testing.T) {
+	const bound = 90
+	root := t.TempDir()
+	s := splitTestStore(t, root, DefaultSplitThreshold)
+	id := putRandom(t, s)
+	str := id.String()
+	shallow := filepath.Join(root, str)
+	if err := os.Mkdir(filepath.Join(root, str[0:2]), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The object's bytes go elsewhere, so no open of shallow succeeds,
+	// and the seam reports them at shallow on every look.
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.Rename(shallow, elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	r := splitTestStore(t, root, DefaultSplitThreshold)
+	looks := 0
+	r.stat = func(p string) (os.FileInfo, error) {
+		if p != shallow {
+			return os.Stat(p)
+		}
+		looks++
+		if looks > 10*bound {
+			t.Fatalf("Open is still searching after %d looks: unbounded", looks)
+		}
+		return os.Stat(elsewhere)
+	}
+	f, err := r.Open(id)
+	if err == nil {
+		f.Close()
+		t.Fatal("Open returned a file that is not at its place")
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("Open: %v, want not found", err)
+	}
+	if looks != bound {
+		t.Fatalf("Open made %d passes, want the stated bound of %d", looks, bound)
+	}
+}

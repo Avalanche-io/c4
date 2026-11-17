@@ -139,10 +139,19 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 		return f, err
 	}
 	// The search found the file at one level, and another process's split
-	// can move it down before the open: search again. Each retry follows a
-	// file that moved deeper, so the bound is never reached unless the ID
-	// keeps being removed and stored again (TestTreeStoreOpenFollowsAMove).
-	for i := 0; i < len(id.String()); i++ {
+	// can move it down before the open: search again.
+	//
+	// The bound is openFollows(id) passes, one search and one open each,
+	// and Open stops at the first of: the search finds no copy (not
+	// found, the first open's error); an open succeeds, or fails other
+	// than not-exist (that result); the bound (not found). A file only
+	// moves deeper, at most one level per two characters of the ID, so a
+	// file that is only being moved is followed well within the bound; it
+	// is reached only if the ID is removed and stored again on every
+	// pass, and then it was absent at some instant during this Open, so
+	// not found is a true answer (TestTreeStoreOpenFollowsAMove,
+	// TestTreeStoreOpenRemovedMidSearch, TestTreeStoreOpenRetryIsBounded).
+	for i := 0; i < openFollows(id); i++ {
 		p, ok := s.foldFind(id)
 		if !ok {
 			return nil, err
@@ -154,6 +163,11 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 	}
 	return nil, err
 }
+
+// openFollows is how many times Open searches again for a file that was
+// gone when it opened what the search found: one per character of the
+// ID, twice the deepest a file can move.
+func openFollows(id c4.ID) int { return len(id.String()) }
 
 // Create creates a new entry for writing. The caller must know the ID
 // in advance. Writes go to a temp file; Close flushes per the store's
