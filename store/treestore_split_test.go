@@ -67,6 +67,7 @@ func TestTreeStoreSplitKeepsObjectsVisible(t *testing.T) {
 
 	var stop int32
 	var calls, misses, openMisses int64
+	var firstOpenErr error
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -80,6 +81,9 @@ func TestTreeStoreSplitKeepsObjectsVisible(t *testing.T) {
 				if i%8 == 0 {
 					f, err := o.Open(id)
 					if err != nil {
+						if openMisses == 0 {
+							firstOpenErr = err
+						}
 						openMisses++
 						continue
 					}
@@ -95,8 +99,8 @@ func TestTreeStoreSplitKeepsObjectsVisible(t *testing.T) {
 		t.Fatalf("precondition: no split happened: %v", err)
 	}
 	if misses != 0 || openMisses != 0 {
-		t.Errorf("during one split, %d of %d Has calls on objects present throughout returned false, and %d Open calls failed",
-			misses, calls, openMisses)
+		t.Errorf("during one split, %d of %d Has calls on objects present throughout returned false, and %d Open calls failed (first: %v)",
+			misses, calls, openMisses, firstOpenErr)
 	}
 }
 
