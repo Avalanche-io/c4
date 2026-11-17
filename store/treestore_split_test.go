@@ -676,3 +676,83 @@ func TestTreeStoreOpenRetryIsBounded(t *testing.T) {
 		t.Fatalf("Open made %d passes, want the stated bound of %d", looks, bound)
 	}
 }
+
+// On Windows an open can meet another process's split renaming the file:
+// the rename holds it, and the open fails with a sharing violation. Open
+// waits and searches again, and if the file is held to the end of the
+// bound it returns that error, never not-found. Measured on Windows CI
+// before the change (c4 #186): 4 to 9 such Open failures in 6 root
+// splits on every leg. The open seam injects the violation on every
+// platform; TestTreeStoreSplitKeepsObjectsVisible is the real case.
+func TestTreeStoreOpenWaitsOutARename(t *testing.T) {
+	root := t.TempDir()
+	s := splitTestStore(t, root, DefaultSplitThreshold)
+	data := []byte("an object a split is renaming")
+	id, err := s.Put(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	str := id.String()
+	shallow := filepath.Join(root, str)
+	if err := os.Mkdir(filepath.Join(root, str[0:2]), 0o755); err != nil { // mid-split
+		t.Fatal(err)
+	}
+	held := func(p string) error { return &os.PathError{Op: "open", Path: p, Err: errSharingViolation} }
+
+	r := splitTestStore(t, root, DefaultSplitThreshold)
+	opens := 0
+	r.open = func(p string) (*os.File, error) {
+		if p == shallow {
+			opens++
+			if opens <= 3 {
+				return nil, held(p) // the rename holds it for three looks
+			}
+		}
+		return os.Open(p)
+	}
+	f, err := r.Open(id)
+	if err != nil {
+		t.Fatalf("Open while a rename held the file: %v", err)
+	}
+	got, _ := io.ReadAll(f)
+	f.Close()
+	if !bytes.Equal(got, data) || opens != 4 {
+		t.Fatalf("read %q after %d opens of its level, want the object after 4", got, opens)
+	}
+
+	// Held to the end: the bound holds, and the answer is the violation.
+	opens = 0
+	r.open = func(p string) (*os.File, error) {
+		if p == shallow {
+			opens++
+			if opens > 900 {
+				t.Fatalf("Open is still opening the held file after %d tries: unbounded", opens)
+			}
+			return nil, held(p)
+		}
+		return os.Open(p)
+	}
+	if f, err := r.Open(id); err == nil || !moving(err) || os.IsNotExist(err) {
+		if f != nil {
+			f.Close()
+		}
+		t.Fatalf("Open with the file held throughout: %v, want the sharing violation", err)
+	}
+	if opens != 90 {
+		t.Fatalf("Open opened the held file %d times, want the bound of 90", opens)
+	}
+
+	// Held, then gone: not found.
+	opens = 0
+	r.open = func(p string) (*os.File, error) {
+		if p == shallow {
+			opens++
+			os.Remove(p) // another process's Remove, while the rename held it
+			return nil, held(p)
+		}
+		return os.Open(p)
+	}
+	if _, err := r.Open(id); !os.IsNotExist(err) {
+		t.Fatalf("Open of a held file then removed: %v, want not found", err)
+	}
+}

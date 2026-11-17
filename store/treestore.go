@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Avalanche-io/c4"
 )
@@ -43,6 +44,9 @@ type TreeStore struct {
 	// rename is a test seam for the publishing renames (Put, Sync and
 	// Create's writer); nil means os.Rename.
 	rename func(oldpath, newpath string) error
+	// open is a test seam for Open's opens of object files; nil means
+	// os.Open.
+	open func(string) (*os.File, error)
 }
 
 var _ Store = (*TreeStore)(nil)
@@ -134,8 +138,8 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 	if ok {
 		return os.Open(tmpName)
 	}
-	f, err := os.Open(s.path(id))
-	if err == nil || !os.IsNotExist(err) {
+	f, err := s.openPath(s.path(id))
+	if err == nil || !os.IsNotExist(err) && !moving(err) {
 		return f, err
 	}
 	// The search found the file at one level, and another process's split
@@ -151,18 +155,59 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 	// pass, and then it was absent at some instant during this Open, so
 	// not found is a true answer (TestTreeStoreOpenFollowsAMove,
 	// TestTreeStoreOpenRemovedMidSearch, TestTreeStoreOpenRetryIsBounded).
+	//
+	// On Windows an open can also meet the split's rename itself: the
+	// rename holds the file, and the open fails with a sharing violation
+	// (moving). Open waits movingPause and searches again, within the same
+	// bound; if the bound runs out with the file still held, it returns
+	// that error, never not-found. Measured 2026-11-16 on master's code
+	// with this lookup (c4 #186): 4 to 9 such failures in 6 root splits on
+	// every Windows leg (TestTreeStoreOpenWaitsOutARename).
+	var held error
 	for i := 0; i < openFollows(id); i++ {
 		p, ok := s.foldFind(id)
 		if !ok {
+			if moving(err) { // it was moving, and is gone
+				return nil, &os.PathError{Op: "open", Path: s.path(id), Err: os.ErrNotExist}
+			}
 			return nil, err
 		}
-		f, oerr := os.Open(p)
-		if oerr == nil || !os.IsNotExist(oerr) {
-			return f, oerr
+		f, oerr := s.openPath(p)
+		if oerr == nil {
+			return f, nil
 		}
+		if moving(oerr) {
+			held = oerr
+			time.Sleep(movingPause)
+			continue
+		}
+		if !os.IsNotExist(oerr) {
+			return nil, oerr
+		}
+		held = nil
+	}
+	if held != nil {
+		return nil, held
 	}
 	return nil, err
 }
+
+// openPath opens an object file through the test seam when one is set.
+func (s *TreeStore) openPath(p string) (*os.File, error) {
+	if s.open != nil {
+		return s.open(p)
+	}
+	return os.Open(p)
+}
+
+// moving reports an open that failed because another process's rename
+// holds the file at this instant: a sharing violation, which only Windows
+// produces. The file is there, at this level or the next one down.
+func moving(err error) bool { return errors.Is(err, errSharingViolation) }
+
+// movingPause is how long Open waits before it looks again for a file
+// whose open met a rename in progress.
+var movingPause = time.Millisecond
 
 // openFollows is how many times Open searches again for a file that was
 // gone when it opened what the search found: one per character of the
