@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,4 +84,40 @@ func captureStderr(t *testing.T, f func()) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// TestMultiStoreRefusesAnUnknownJournalVersionBeforeIngest: the journal a
+// MultiStore's claims go to (its write store's) is version-checked before
+// anything is ingested, as a single store's is (c4 issue #44). Without
+// that, -s into a MultiStore whose write store holds a newer-format journal
+// stored its objects first and only then met the journal.
+func TestMultiStoreRefusesAnUnknownJournalVersionBeforeIngest(t *testing.T) {
+	bin := buildC4(t)
+	dir := t.TempDir()
+	storeDir, journal := storeWithUnknownJournal(t, bin, dir)
+	before := storeObjects(t, storeDir)
+	other := filepath.Join(dir, "other")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(dir, "second")
+	writeTree(t, second, map[string]string{"b.txt": "bravo, new content"})
+	env := map[string]string{"C4_STORE": storeDir + "," + other}
+	stdout, stderr, code := runC4WithEnv(t, bin, env, "id", "-s", "-q", second)
+	if code == 0 {
+		t.Errorf("c4 id -s exited 0 into a MultiStore whose write store has a version-2 journal, printing %q", stdout)
+	}
+	if !strings.Contains(stderr, `"2"`) {
+		t.Errorf("stderr doesn't name the version it found:\n%s", stderr)
+	}
+	after, err := os.ReadFile(filepath.Join(storeDir, "journal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, journal) {
+		t.Errorf("the version-2 journal was changed:\nbefore %q\nafter  %q", journal, after)
+	}
+	if got := storeObjects(t, storeDir); strings.Join(got, "\n") != strings.Join(before, "\n") {
+		t.Errorf("objects were stored before the journal was refused:\nbefore %v\nafter  %v", before, got)
+	}
 }
