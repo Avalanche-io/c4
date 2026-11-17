@@ -6,7 +6,7 @@ to completion"); implemented on branch `ingest-sweep`, not landed.
 
 ## The finding
 
-c4d's commit measurements (c4d-to-c4-fleet.md, 2026-11-08): a `SIGKILL`
+c4d's commit measurements (2026-11-08): a `SIGKILL`
 partway through a `SyncBatch` batch leaves its `.ingest.*` temp files in
 the store root (6 and 14 files in two cases). They are harmless, nothing
 reads them, and nothing ever removes them.
