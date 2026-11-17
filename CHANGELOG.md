@@ -2,6 +2,31 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### A claim never rests on a name that isn't on disk ⚠
+
+**Data loss fixed.** When a snapshot stored nothing new, because every
+object was already in the store, its barrier did nothing. A store
+stores an object by renaming it into place. If another process had just
+stored an object and hadn't yet made that rename durable (it stores
+without syncing, or it died before its barrier), the snapshot skipped
+the object, journaled its claim and printed it, while the object's name
+could still vanish in a power cut. The claim then named content no store
+could find. A `SyncEach` store's own Puts made their bytes durable, but
+not their names.
+
+Now every name a writer relies on is synced before its claim can be
+made, whether it published that name or skipped because it was there.
+A batch's barrier syncs each such directory once. `SyncEach` syncs before
+`Put` or `Create`'s `Close` returns. `SyncNone` stays atomic and not
+durable, by choice.
+
+Measured on the code before this change (`TestSkippedObjectSurvivesAPowerCut`):
+an all-skip batch synced 0 directories, and after a simulated power cut
+`c4 cat` of the journaled claim failed. The cost is one barrier for an
+all-present batch (500 ns before, about 32 ms after, for 3,000 objects),
+and about 4 ms per `SyncEach` Put that skips. Batches of new objects and
+`SyncEach` publishes show no measurable change.
+
 ### ⚠ Under -S, a directory holding an empty directory printed a C4 ID that wasn't its own listing's
 
 **C4 IDs change** for `-S` scans of a tree holding an empty directory: the
