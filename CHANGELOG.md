@@ -27,6 +27,13 @@ all-present batch (500 ns before, about 32 ms after, for 3,000 objects),
 and about 4 ms per `SyncEach` Put that skips. Batches of new objects and
 `SyncEach` publishes show no measurable change.
 
+The journal had the same gap for itself. The first claim on a store
+creates `<store>/journal` and synced the file's bytes, but not the root's
+entry for it, so a power cut could lose the journal and the first claim.
+Now the first append syncs the root before it returns. Later appends
+write into a file whose name is already durable, and sync nothing more
+(`TestJournalFirstAppendSurvivesAPowerCut`).
+
 ### ⚠ Under -S, a directory holding an empty directory printed a C4 ID that wasn't its own listing's
 
 **C4 IDs change** for `-S` scans of a tree holding an empty directory: the

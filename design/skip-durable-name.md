@@ -83,8 +83,19 @@ somewhere other than the writer's own target.
 A `SyncEach` skip already paid a full flush before this change: `Put`
 writes and flushes its temp file before it knows the ID.
 
-## Not covered here
+## The journal's own name
 
-The journal's first append on a store creates `<root>/journal` and syncs
-the file but not the root's entry for it. It is the same class of gap for
-the journal itself, and is left to the lead's decision.
+The journal had the same gap. The first claim on a store creates
+`<root>/journal`, and `Append` synced the file's bytes but not the root's
+entry for it. A power cut after the first claim was reported could lose
+the journal and the claim with it.
+
+Now an append that writes the header (the file is new, or was left empty
+by an appender that died) syncs the root, after the file's own sync and
+before it returns. Later appends write into a file whose name is already
+durable and sync nothing more.
+
+`TestJournalFirstAppendSurvivesAPowerCut` loses the journal's entry
+unless the root was synced after the file appeared, and the claim must
+survive. Its other check is that four appends sync the root once. Without
+the sync (the code before this change), the journal comes back empty.
