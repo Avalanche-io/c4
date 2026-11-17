@@ -498,7 +498,8 @@ func (s *TreeStore) publish(tmpName, p string, id c4.ID) (published bool, at str
 // batch whose objects were all present left Sync with nothing to do. The
 // name it skipped on may be another writer's, not yet synced (a SyncNone
 // writer, or one that died before its barrier), so a power cut could
-// leave a journaled claim whose content no store finds (GC-DESIGN-R4 S13;
+// leave a journaled claim whose content no store finds (a claim never
+// rests on a name that isn't durable;
 // TestSkippedObjectSurvivesAPowerCut). A SyncEach publish synced the
 // file's bytes and not its name either.
 //

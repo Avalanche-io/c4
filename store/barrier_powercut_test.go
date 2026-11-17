@@ -139,8 +139,8 @@ func TestBatchPublishSurvivesAPowerCut(t *testing.T) {
 // before its barrier). Then c4 id -s's path Puts the same bytes, skips
 // because X is there, runs the barrier, and prints the ID. Through
 // 2026-11-16 a batch of only skips made the barrier do nothing, so the
-// printed ID could name content a power cut had taken (GC-DESIGN-R4 S13;
-// master's #196).
+// printed ID could name content a power cut had taken (a claim never
+// rests on a name that isn't durable; master's #196).
 func TestSkippedObjectSurvivesAPowerCut(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		t.Run(fmt.Sprintf("split=%v", split), func(t *testing.T) {
