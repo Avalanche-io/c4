@@ -101,7 +101,7 @@ over 400 Puts of real splits. The code states them beside `foldFind`.
 | `journal` (c4m.JournalName; locks itself) | **moved to `jo/journal`**; claims dropped out    | stays                    |
 | `.ingest.<host>.<pid>.*` (Put, Create temps) | skipped (dot file)                           | skipped                  |
 | `.tmp.*` (DurableWriter temps, in leaves) | skipped (dot file)                              | skipped                  |
-| `config`, only if `C4_STORE` is `~/.c4`  | moved to `co/config`; the config read nothing    | stays                    |
+| `config`, if the store is rooted at `~/.c4` | moved to `co/config`; read where it lies (corrected 2026-11-16, below) | stays |
 | any other file a user leaves there      | moved into a two-character directory              | stays                    |
 
 The journal locks its own file, so the root holds no separate lock file.
@@ -118,6 +118,22 @@ root journal has been restarted by then, so putting it back means merging
 two files under the lock and renaming over a file other processes may
 hold open. A crash, or a writer with the old file open, could lose a claim
 that way. Reading in place writes nothing.
+
+**A config an earlier split displaced is read where it lies (corrected
+2026-11-16).** The table said the moved config "read nothing". That holds
+only while `C4_STORE` is set: `~/.c4/config` is read by
+`configuredEndpoints` (its `store` lines) when `C4_STORE` is unset;
+`AutoStoreEnabled` reads `store_auto`, but nothing calls it. A config that itself says `store = ~/.c4` was moved by
+the root split, and from then on no store was configured. Measured with
+`HOME` a scratch directory and 4,200 objects stored with `c4 id -s`:
+released 1.0.26 leaves `~/.c4/co/config`, and the next `c4 cat` fails with
+"no content store configured"; in a terminal `c4 id -s` then offers to
+create `~/.c4/store` and write a new config naming it, so later content
+goes to a second store. Now the readers read `~/.c4/co/config` when
+`~/.c4/config` does not exist (`configReadPath`). It is never written,
+moved back or removed, and when both exist the root's is read: it is the
+file c4 writes, so the newer. Decided 2026-11-16 by the release lead
+(`TestConfigDisplacedBySplitIsReadWhereItLies`).
 
 ## A writer at a stale level, after the fix
 
