@@ -731,6 +731,17 @@ func (g *Generator) resolveDir(dirEntry *Entry, directChildren []*Entry) {
 	// children, so its size is computed from them, as its ID is
 	// (canonicalDirID). Through 2026-11-13 the size came from the
 	// unfolded children while the ID hashed the folded ones.
+	//
+	// An empty directory's ID, the empty listing's, is known before
+	// anything is propagated: set it first, so PropagateMetadata reads
+	// the directory as empty and gives it size 0 at its own close.
+	// Through 2026-11-16 the ID came after, the size stayed null until
+	// the parent's propagation, and under -S the parent propagates
+	// copies, so it hashed the empty child with a null size: its ID was
+	// not its own listing's.
+	if len(directChildren) == 0 {
+		dirEntry.C4ID = g.dirID(directChildren)
+	}
 	listed := g.listedChildren(directChildren)
 	scope := make([]*Entry, 0, len(listed)+1)
 	scope = append(scope, dirEntry)
