@@ -184,7 +184,7 @@ awk '{
 ```bash
 # Files over 100MB
 awk '{s=$0; gsub(/^ +/,"",s); split(s,f," ");
-  if(f[3]+0 > 100000000) print}' project.c4m
+  if(f[3]+0 > 100000000 && f[4] !~ /\/$/) print}' project.c4m
 ```
 
 ### Find files modified after a date
@@ -406,7 +406,8 @@ c4 patch project.c4m > /dev/null  # exits non-zero on mismatch
 ### Extract just the changes from a patch
 
 ```bash
-# Show only added/modified files (patch entries that aren't removals)
+# The patch entries without the boundary ID line (removals are restated
+# entries, so they remain)
 c4 diff old.c4m new.c4m | grep -v '^c4'
 ```
 
@@ -469,8 +470,7 @@ done
 
 ```bash
 # Delete all .log files listed in a c4m
-awk '{s=$0;gsub(/^ +/,"",s);split(s,f," ");
-  if(f[4]~/.log$/) print f[4]}' project.c4m | xargs rm -f
+c4 paths project.c4m | grep '\.log$' | xargs rm -f
 ```
 
 ### Pipe to sort for different orderings

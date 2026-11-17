@@ -127,7 +127,7 @@ patch cost what a full restatement cost. Measured at 40k entries /
 - `AddEntry`, `RemoveEntry`, `SortEntries`
 - `ExtractSubtree(path)` — extract a directory and its children
 - `EntryPaths(entries)` — reconstruct full paths from depth-based entries
-- `Merge(a, b)` — combine two manifests, report conflicts
+- `Merge(base, local, remote)` — three-way merge (nil base: local is the base), report conflicts
 - `ApplyPatch(base, patch)`, `ResolvePatchChain(sections, n)` — apply
   patches; an entry whose depth skips past its parent panics with an error
   wrapping `ErrInvalidEntry` (the `Decoder` returns it as an error; the CLI
@@ -150,8 +150,9 @@ removed in v1.0.13 along with the underlying O(D × N) algorithm).
 Properties:
 
 - Single-pass depth-stack accumulator: O(N) work, O(max-depth) memory.
-- Nil-infectious per `c4m/SPECIFICATION.md`: any null descendant Size /
-  Timestamp poisons the parent recursively to root.
+- Nil-infectious per `c4m/SPECIFICATION.md` for a directory whose own Size /
+  Timestamp is null: a null descendant leaves it null, recursively to root; a
+  stated value is never overwritten.
 - Empty directories resolve to Size = 0, null Timestamp.
 - Whole-manifest early-out: returns immediately if no directory has any
   null values (fast path for repeated `Canonicalize`).
@@ -354,7 +355,7 @@ Safety defaults (`design/safety-defaults.md`):
   directory records (`expandIfRecord` in `cat.go`) and incomplete
   expansions are refused (`validateRevertTarget`).
 - **Verified record reads** — every store object decoded as c4m
-  (`manifestFromStore`, `fetchManifestFromStore`, `diff -r`) is read
+  (`manifestFromStore`, `fetchListing`, `diff -r`) is read
   through `readVerified` (`helpers.go`, a `store.Validating` read): bytes
   that do not hash to the requested ID are refused before decoding.
 

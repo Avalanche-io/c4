@@ -69,11 +69,11 @@ File size in bytes as a decimal integer. No leading zeros except for `0` itself.
 
 **Null size**: `-` (single dash). Internally represented as -1.
 
-**Directory sizes**: Sum of all content within the directory (recursive). See [Directory C4 IDs and Metadata](#directory-c4-ids-and-metadata).
+**Directory sizes**: Sum of all content within the directory (recursive), plus the byte length of the canonical one-level listing of the directory and of each subdirectory in it. See [Directory C4 IDs and Metadata](#directory-c4-ids-and-metadata).
 
 ### Name
 
-The bare filename (not a path). Entry names never contain `/` or `\` as separators — nesting is expressed through indentation and depth. Directory names end with a trailing `/`.
+The bare filename (not a path). Entry names never contain `/`: nesting is expressed through indentation and depth. `/` is the only path separator in c4m; a backslash is a literal name character (written `\\` by SafeName). Directory names end with a trailing `/`.
 
 **Filename encoding (SafeName)**: Names are first encoded using the Universal Filename Encoding (see `SafeName`/`UnsafeName` in the c4m package), a three-tier system that represents arbitrary byte sequences as printable UTF-8:
 
@@ -278,11 +278,11 @@ A folded range is one child entry, and the listing as written, with the range li
 
 ### Directory Sizes
 
-The size field for a directory is the **total size of all contents** (recursive sum of file sizes). Does not include filesystem metadata overhead.
+The size field for a directory is the **total size of all contents**: the recursive sum of file sizes plus the byte length of the canonical one-level listing of the directory and of each subdirectory in it (`design/directory-size-includes-c4m.md`). Does not include filesystem metadata overhead.
 
 #### Nil-Infectious Propagation
 
-If **any** child entry has null size (-1), the parent directory's size is also null. This applies recursively to the root. The same rule applies to timestamps.
+If **any** child entry has null size (-1), the parent directory's size is also null. This applies recursively to the root. The same rule applies to timestamps only where the directory's own timestamp is null: a null child leaves it null. A stated directory timestamp is its own mtime and is never replaced (see Directory Timestamps).
 
 ### Directory Timestamps
 
@@ -446,7 +446,7 @@ Parsers MUST:
 - Verify bare C4 IDs match accumulated content (except first-line base reference)
 - Reject empty patch sections
 - Accept null values as specified
-- Reject path traversal attempts (`../`, `./`, names containing `/` or `\`)
+- Reject path traversal attempts (`../`, `./`, names containing `/` other than a directory's trailing one). A backslash is a literal name character, never a separator
 - Reject duplicate paths within the same scope
 
 Parsers MAY:

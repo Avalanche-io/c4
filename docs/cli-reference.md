@@ -641,7 +641,6 @@ awk '{
   d=0; for(i=1;i<=length($0);i++){if(substr($0,i,1)==" ")d++;else break}
   if(!skip && $0 ~ /src\//) {skip=1; sd=d; print; next}
   if(skip) {if(d>sd){print;next}; skip=0}
-  if(!skip) print
 }' project.c4m
 
 # Remove the node_modules/ subtree

@@ -17,7 +17,7 @@ $ c4 id photo.jpg
 -rw-r--r-- 2026-03-04T14:22:10Z 4404019 photo.jpg c43zYcLni5LF...
 
 $ echo "hello world" | c4
-c44SjyfSsNez6bqFCJeFCSurmMiQ3DFCXkG67PiB9DJobUqG2YhvMeCvig6fjuh67SmrUUYMcaHmJjNMeZCqbNkWcTP
+c45PDQdgo41nG9RopnFaMCwBng3fnziEXcJEdPpFh8JeTeLXkHHAji8Zx8fwbwtBV5paRGPUZyrN5yhWLMrmfGyUNN
 ```
 
 Piped data has no filesystem metadata, so it outputs a bare C4 ID. A directory produces a full recursive c4m listing:

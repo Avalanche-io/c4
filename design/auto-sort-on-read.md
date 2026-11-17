@@ -38,4 +38,4 @@ $ echo '...' | cat - template.c4m > tmp && mv tmp template.c4m
 
 ## Status
 
-Pending implementation. Not blocking for announcement — the demo can use append and note that tools auto-sort.
+Implemented (6a4f4c3): the decoder sorts on read and notes a reorder on stderr.

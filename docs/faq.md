@@ -74,10 +74,9 @@ from the C4 ID. This keeps directory listings fast on any filesystem.
 store/c43Q4j81SxGkV9FhbeW23YrMTj6...
 store/c44iCq6un9W47x7ydjJSWp4arMJ...
 
-# Sharded (>= 4096 objects):
-store/c4/3Q4j81SxGkV9FhbeW23YrMTj6...
-store/c4/4iCq6un9W47x7ydjJSWp4arMJ...
-store/c5/...
+# Sharded (> 4096 objects):
+store/c4/3Q/c43Q4j81SxGkV9FhbeW23YrMTj6...
+store/c4/4i/c44iCq6un9W47x7ydjJSWp4arMJ...
 ```
 
 The same layout is used by all ecosystem tools (`c4`, `c4sh`, `c4git`,
@@ -85,8 +84,9 @@ The same layout is used by all ecosystem tools (`c4`, `c4sh`, `c4git`,
 others.
 
 The design can handle billions of objects. At 4096 files per
-subdirectory with 58^2 = 3364 possible prefixes, each level supports
-roughly 13 million objects before a second level of sharding would be
+subdirectory with 297 possible prefixes (every C4 ID begins "c4"; the
+prefix is its third and fourth characters), the first level supports
+roughly 1.2 million objects before a second level of sharding would be
 needed. In practice, this has not yet been tested at that scale in
 production -- we are honest about this. The architecture is sound, but
 billion-object production deployments remain ahead of us.

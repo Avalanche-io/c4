@@ -6,4 +6,4 @@ from directory trees with optional C4 ID computation and sequence detection.
 Exclusion is supported via glob patterns (`--exclude`), explicit exclude
 files (`--exclude-file`), and an env-named exclude file (`C4_EXCLUDE_FILE`).
 
-Used by the `c4 id` command for directory scanning.
+Not imported by any package on this line; `c4 id` scans with the top-level `scan` package.

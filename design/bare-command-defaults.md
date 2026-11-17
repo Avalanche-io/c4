@@ -31,4 +31,4 @@ The most useful default is to store content. You almost always want the content 
 
 ## Status
 
-Pending implementation. Not blocking for announcement.
+Implemented (e4eed6f).

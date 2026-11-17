@@ -15,7 +15,7 @@ readable, text-based filesystem format.
 
 ```bash
 $ echo "hello" | c4
-c447Fm3BJZQ62765jMZJH4m28hrDM7Szbj9CUmj4F4gnvyDYXYz4WfnK2nYRhFvRgYEectEXYBYWLDpLo6XGNAfKdt
+c45dkQrAqUiR8WzPGgn6fAGji3VAVeAE7cKVG4G53ou9dTk4Nzb9vFYEwzy9jq5ZKQKM64DMpPpVbYe2bMsZP2yYKi
 ```
 
 That 90-character string is a [SMPTE ST 2114:2017](https://ieeexplore.ieee.org/document/7971777)
@@ -33,7 +33,7 @@ file and directory in a tree:
 ```bash
 $ c4 id ./project/
 -rw-r--r-- 2026-03-18T22:22:57Z 13 README.md c44iCq6un9W47x7ydjJSWp4arMJ...
-drwxr-xr-x 2026-03-18T22:22:57Z 66 src/ c44nbgL6nkBWsEBDCUCr4LufsjVhJt...
+drwxr-xr-x 2026-03-18T22:22:57Z 200 src/ c44nbgL6nkBWsEBDCUCr4LufsjVhJt...
   -rw-r--r-- 2026-03-18T22:22:57Z 66 main.go c43Q4j81SxGkV9FhbeW23YrMTj6...
 ```
 
@@ -99,7 +99,7 @@ c4 farm up
 that name exists, the way git finds its plugins; `c4 help` lists the
 tools installed. The farm itself is
 [c4-operator](https://github.com/Avalanche-io/c4-operator) and its
-console is [c4-hud](https://github.com/Avalanche-io/c4-hud); their
+console is c4-hud; their
 READMEs take it from here.
 
 ## What can you do with it?
@@ -178,8 +178,9 @@ files into one:
 c4 merge branch-a.c4m branch-b.c4m > merged.c4m
 ```
 
-Conflicts (same path, different content) are reported. Non-overlapping
-entries are combined.
+On a conflict (same path, different content) c4 merge names each
+conflicting path, exits 1 and writes nothing. Non-overlapping entries are
+combined.
 
 **Scan fast, hash later.** Structure-only scans skip content hashing.
 Edit the manifest, then hash only what survived:
@@ -242,7 +243,7 @@ Zero external dependencies. Go 1.16+.
 ## Links
 
 - [C4 Framework Universal Asset ID](https://youtu.be/ZHQY0WYmGYU) (video)
-- [C4 ID Whitepaper](https://cccc.io/c4id-whitepaper-u2.pdf)
+- [C4 ID Whitepaper](./docs/c4id-whitepaper.md)
 - [CLI Reference](./docs/cli-reference.md)
 - [Getting Started](./docs/getting-started.md)
 - [FAQ](./docs/faq.md) — design decisions (SHA-512 permanence, c4m format, store scaling)
