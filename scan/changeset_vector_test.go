@@ -57,7 +57,7 @@ func writeChangesetTree(t *testing.T, root string, entries []changesetTreeEntry)
 	}
 }
 
-// TestChangesetVectorStates pins base.c4m and v2.c4m of
+// TestChangesetVectorStates pins base.c4m, v2.c4m and v3.c4m of
 // c4m/testdata/changeset-vector as this line's scanner writes them (`c4 id`
 // on each state). On the 1.0.x line the library derives a directory's C4
 // ID only by scanning; master builds the same files through the API.
@@ -71,6 +71,7 @@ func TestChangesetVectorStates(t *testing.T) {
 	}
 	t1 := time.Date(2026, 1, 2, 9, 4, 5, 0, time.UTC)
 	t2 := time.Date(2026, 1, 3, 10, 5, 6, 0, time.UTC)
+	t3 := time.Date(2026, 1, 4, 11, 6, 7, 0, time.UTC)
 	states := map[string][]changesetTreeEntry{
 		"base.c4m": {
 			{"top.txt", "top", t1},
@@ -87,6 +88,13 @@ func TestChangesetVectorStates(t *testing.T) {
 			{"sub/new.txt", "new", t2},
 			{"sub/deep/", "", t2},
 			{"sub/deep/leaf.txt", "leaf2", t2},
+		},
+		// v2 with the directory sub/deep/, and the file in it, removed.
+		"v3.c4m": {
+			{"top.txt", "top", t1},
+			{"sub/", "", t3},
+			{"sub/mid.txt", "mid", t1},
+			{"sub/new.txt", "new", t2},
 		},
 	}
 	vec := filepath.Join("..", "c4m", "testdata", "changeset-vector")

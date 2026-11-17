@@ -32,6 +32,8 @@ func TestChangesetVectorCLI(t *testing.T) {
 	}{
 		{[]string{"diff", file("base.c4m"), file("v2.c4m")}, "changeset.c4m"},
 		{[]string{"patch", file("chain.c4m")}, "v2.c4m"},
+		{[]string{"diff", file("v2.c4m"), file("v3.c4m")}, "changeset-v3.c4m"},
+		{[]string{"patch", file("chain-v3.c4m")}, "v3.c4m"},
 	}
 	for _, c := range cases {
 		out, stderr, code := runC4WithEnv(t, bin, env, c.args...)
