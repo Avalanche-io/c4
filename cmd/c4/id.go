@@ -562,6 +562,20 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 // so a test can change the tree or the store at exactly that point.
 var storePassHook = func(baseDir string, s store.Store) {}
 
+// mustPut stores r's bytes or ends the run. A store that cannot take an
+// object leaves the description naming a C4 ID the store does not hold,
+// so nothing may be claimed, journaled or reported after it: the run dies
+// before the print barrier (exit 1). Through 2026-11-16 each store-pass
+// Put failure printed a warning and the run went on, journaled nothing
+// (the root record was among the failures) and exited 0.
+func mustPut(s store.Store, r io.Reader, what string) c4.ID {
+	id, err := s.Put(r)
+	if err != nil {
+		fatalf("Error: failed to store %s; nothing claimed: %v", what, err)
+	}
+	return id
+}
+
 func storeManifestContent(manifest *c4m.Manifest, baseDir string, scanStart time.Time) {
 	s := getOrSetupStore()
 	if s == nil {
@@ -713,14 +727,9 @@ func storeManifestSelf(s store.Store, m *c4m.Manifest) (c4.ID, int64) {
 	record := m.Copy()
 	record.Canonicalize()
 	text := record.Canonical()
-	if text == "" {
-		return c4.Identify(bytes.NewReader(nil)), 0
-	}
-	id, err := s.Put(strings.NewReader(text))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store root record: %v\n", err)
-		return c4.ID{}, 0
-	}
+	// An empty root's record is the empty content: stored like any other
+	// record, so the ID reported for it returns through c4 cat.
+	id := mustPut(s, strings.NewReader(text), "the root record")
 	return id, int64(len(text))
 }
 
@@ -747,12 +756,7 @@ func storeSequenceMember(s store.Store, relPath, fullPath string) c4.ID {
 		return c4.ID{}
 	}
 	defer f.Close()
-	id, err := s.Put(f)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
-		return c4.ID{}
-	}
-	return id
+	return mustPut(s, f, relPath)
 }
 
 // storeSequenceIDList stores the ID-list object a folded entry names. The
@@ -769,9 +773,7 @@ func storeSequenceIDList(s store.Store, entry *c4m.Entry, memberIDs []c4.ID) err
 	if got := c4.Identify(bytes.NewReader(data)); got != entry.C4ID {
 		return fmt.Errorf("sequence %s: rebuilt ID list is %s, entry names %s", entry.Name, got, entry.C4ID)
 	}
-	if _, err := s.Put(bytes.NewReader(data)); err != nil {
-		return fmt.Errorf("sequence %s: failed to store ID list: %w", entry.Name, err)
-	}
+	mustPut(s, bytes.NewReader(data), "the ID list of "+entry.Name)
 	return nil
 }
 
@@ -789,11 +791,7 @@ func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
 	// The bytes, whatever the name: a .c4m file inside a tree is stored
 	// as itself, so its entry ID returns it and restore writes it back
 	// byte for byte (design/no-self-id.md).
-	newID, err := s.Put(bytes.NewReader(data))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
-		return
-	}
+	newID := mustPut(s, bytes.NewReader(data), relPath)
 	if newID != entry.C4ID {
 		entry.C4ID = newID
 	}
@@ -810,17 +808,13 @@ func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
 func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Store) c4.ID {
 	// One derivation of a directory's identity: c4m.DirectoryRecord, the
 	// same the scanner and the normaliser use.
-	canonical, recordID := c4m.DirectoryRecord(manifest, dirEntry)
-	if canonical == "" {
-		return recordID
-	}
-
-	id, err := s.Put(strings.NewReader(canonical))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store directory c4m for %s: %v\n", dirEntry.Name, err)
-		return c4.ID{}
-	}
-	return id
+	// An empty directory's record is the empty content, and its line names
+	// that ID, so it is stored like any other record (approved 2026-11-16,
+	// option A). Through 2026-11-16 it was returned unstored, and a tree
+	// with an empty directory and no empty file named the empty-content ID
+	// without the store holding it.
+	canonical, _ := c4m.DirectoryRecord(manifest, dirEntry)
+	return mustPut(s, strings.NewReader(canonical), "the listing of "+dirEntry.Name)
 }
 
 // ingestStore memoizes the store handle for ingest: every Put in a
@@ -895,9 +889,8 @@ func storeRangeLists(s store.Store, m *c4m.Manifest) {
 		if !ok {
 			continue
 		}
-		id, err := s.Put(strings.NewReader(list))
-		if err != nil || id != e.C4ID {
-			fmt.Fprintf(os.Stderr, "Warning: failed to store the ID list of %s: %v\n", e.Name, err)
+		if id := mustPut(s, strings.NewReader(list), "the ID list of "+e.Name); id != e.C4ID {
+			fmt.Fprintf(os.Stderr, "Warning: the ID list of %s hashes to %s, its line names %s\n", e.Name, id, e.C4ID)
 		}
 	}
 }
