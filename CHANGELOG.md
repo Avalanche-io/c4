@@ -21,6 +21,16 @@ leaf, such as `~/.c4/config` when `C4_STORE` is `~/.c4`, is no longer
 moved either. Decided 2026-11-16 by the release lead; reversible
 (`design/store-split-race.md`).
 
+**A config the split displaced is read where it lies.** A store rooted at
+`~/.c4` itself, named by a hand-written `store = ~/.c4` line in
+`~/.c4/config` with `C4_STORE` unset, had that config moved to
+`~/.c4/co/config` by the root split. From then on no store was
+configured: `c4 cat` said "no content store configured", and `c4 id -s`
+in a terminal offered to create `~/.c4/store`, a second store (measured
+with c4 1.0.26). Now, when `~/.c4/config` does not exist, `~/.c4/co/config`
+is read. It is never written, moved back or removed. When both exist the
+root's is read. Decided 2026-11-16 by the release lead.
+
 ### A store shared by several processes no longer loses objects to a split ⚠
 
 **Data loss and correctness fix.** A local store (`~/.c4/store`, c4git's
