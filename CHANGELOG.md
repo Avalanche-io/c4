@@ -2,6 +2,24 @@
 
 ## Unreleased (1.0.27)
 
+### ⚠ `c4 id -s` never names content the store doesn't hold
+
+`c4 id -s` could print and store a description naming a C4 ID the store did
+not hold, and exit 0. A later `c4 cat` of that ID failed. Measured
+2026-11-16 on this line:
+- a file removed between the scan and the store pass was skipped silently;
+- a file rewritten in that window was nulled, but the directories above it kept IDs derived from its old bytes;
+- an empty directory's listing (the empty content) was not stored unless an empty file happened to store it;
+- every failure to write to the store printed a warning and the run went on.
+
+Now:
+- **A file the store pass can't take** (gone, unreadable, or no longer the bytes the scan hashed) is recorded as a scan that could not read it records it. Its C4 ID is null, and the directories above it are re-derived (their size by `PropagateMetadata`, their ID from their listing). stderr says `partial: PATH recorded with nulls (WHY)`, and the run exits 2.
+- **A folded range** with such a member is unfolded, that member null, as a scan would record it. Its other frame IDs are kept.
+- **A store that can't take an object ends the run**, exit 1, with nothing reported.
+- **Empty listings are stored:** the empty-content object is stored whenever a description names it.
+
+**Exit codes change** for those runs: 2 where a file was given up, 1 where the store failed; before, both were 0. Tests drive the window between the scan and the store pass through a hook built only into test binaries (`-tags c4testhooks`). A release binary has none.
+
 ### A printed ID never rests on a name that isn't on disk ⚠
 
 **Data loss fixed.** When a snapshot stored nothing new, because every
