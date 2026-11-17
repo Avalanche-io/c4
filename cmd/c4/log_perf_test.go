@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Avalanche-io/c4"
 	"github.com/Avalanche-io/c4/c4m"
@@ -17,9 +16,21 @@ import (
 // `c4 log`: the shipped implementation resolved the whole chain from
 // scratch for every section (500 sections took ~60s; 1000 never
 // finished). The incremental implementation applies one patch per
-// section; 1000 sections must complete comfortably within the timeout.
+// section over the previous layer.
+//
+// It measures work, not seconds: log builds every layer through
+// logResolve or logApply, and the test counts the sections each call
+// applies. Each layer applies one patch to the previous layer (N in all,
+// on this line), and the bound allows two per layer, 2N; resolving from scratch applies
+// i sections at layer i, N(N+1)/2 in all, which exceeds 2N for every N
+// above 3 (20100 against 400 here). The count does not depend on the
+// machine's load or clock, so the bound is exact rather than generous.
+// Every layer must also apply at least one section through the seam, so
+// a log that stopped resolving through it fails rather than passing on a
+// count of zero. Through 2026-11-16 this asserted c4 log finished within
+// 60 seconds, which failed at load 30 after 251s.
 func TestLogLongChainLinear(t *testing.T) {
-	const sections = 1000
+	const sections = 200
 
 	// Build a chain: a base with one entry, then N patch sections each
 	// adding one file. Format per c4m chain tests: base entries, base
@@ -56,23 +67,61 @@ func TestLogLongChainLinear(t *testing.T) {
 	if err := os.WriteFile(chainPath, chain.Bytes(), 0644); err != nil {
 		t.Fatal(err)
 	}
+	home := filepath.Join(dir, "home")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("C4_STORE", filepath.Join(dir, "store"))
 
-	bin := buildC4(t)
-	start := time.Now()
-	stdout, stderr, code := runC4(t, bin, "log", chainPath)
-	elapsed := time.Since(start)
-	if code != 0 {
-		t.Fatalf("c4 log exit %d: %s", code, stderr)
+	applied := 0
+	orig := logResolve
+	logResolve = func(secs []*c4m.PatchSection, limit int) *c4m.Manifest {
+		n := len(secs)
+		if limit > 0 && limit < n {
+			n = limit
+		}
+		applied += n
+		return orig(secs, limit)
 	}
+	defer func() { logResolve = orig }()
+	origApply := logApply
+	logApply = func(base, patch *c4m.Manifest) *c4m.Manifest {
+		applied++
+		return origApply(base, patch)
+	}
+	defer func() { logApply = origApply }()
+
+	stdout := captureStdout(t, func() { runLog([]string{chainPath}) })
+
 	lines := strings.Count(strings.TrimSpace(stdout), "\n") + 1
 	if lines != sections {
 		t.Fatalf("expected %d log lines, got %d", sections, lines)
 	}
-	// Generous bound: incremental resolution finishes in a few seconds;
-	// the quadratic implementation did not finish 1000 sections in
-	// minutes. The bound catches a complexity regression, not noise.
-	if elapsed > 60*time.Second {
-		t.Fatalf("c4 log took %v for %d sections — complexity regression", elapsed, sections)
+	if applied < sections {
+		t.Fatalf("c4 log applied %d sections through logResolve and logApply for %d layers; every layer resolves through them", applied, sections)
 	}
-	t.Logf("c4 log: %d sections in %v", sections, elapsed)
+	if applied > 2*sections {
+		t.Fatalf("c4 log applied %d sections for %d layers, more than 2 per layer — complexity regression", applied, sections)
+	}
+	t.Logf("c4 log: %d layers, %d sections applied", sections, applied)
+}
+
+// captureStdout runs f with os.Stdout sent to a file and returns what it
+// wrote.
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	out, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	saved := os.Stdout
+	os.Stdout = out
+	defer func() { os.Stdout = saved }()
+	f()
+	os.Stdout = saved
+	b, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

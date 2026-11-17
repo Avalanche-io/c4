@@ -8,6 +8,15 @@ import (
 	"github.com/Avalanche-io/c4/c4m"
 )
 
+// logResolve and logApply are the chain operations log applies to build
+// each layer, variables so log_perf_test.go can count the sections each
+// layer applies: one patch over the previous layer, never the chain from
+// scratch.
+var (
+	logResolve = c4m.ResolvePatchChain
+	logApply   = c4m.ApplyPatch
+)
+
 func runLog(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintf(os.Stderr, "Usage: c4 log <file.c4m>...\n")
@@ -43,10 +52,10 @@ func runLog(args []string) {
 	for i, sec := range allSections {
 		var current *c4m.Manifest
 		if i == 0 {
-			current = c4m.ResolvePatchChain(allSections[:1], 1)
+			current = logResolve(allSections[:1], 1)
 		} else {
 			patch := &c4m.Manifest{Version: "1.0", Entries: sec.Entries}
-			fatalOnInvalidEntry(fmt.Sprintf("Error resolving patch %d", i+1), func() { current = c4m.ApplyPatch(prev, patch) })
+			fatalOnInvalidEntry(fmt.Sprintf("Error resolving patch %d", i+1), func() { current = logApply(prev, patch) })
 		}
 		id := current.ComputeC4ID()
 
