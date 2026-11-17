@@ -144,7 +144,7 @@ Platform locks: `journal_lock_unix.go` (flock, EINTR loop) /
 - `AddEntry`, `RemoveEntry`, `SortEntries`
 - `ExtractSubtree(path)` — extract a directory and its children
 - `EntryPaths(entries)` — reconstruct full paths from depth-based entries
-- `Merge(a, b)` — combine two manifests, report conflicts
+- `Merge(base, local, remote)` — three-way merge (nil base: local is the base), report conflicts
 - `ComputeC4ID(manifest)` — canonical identification (streams canonical
   bytes through `io.Pipe` into `c4.Identify`, no full-string allocation)
 - `Canonicalize(manifest)` — normalize to canonical form before identification
@@ -163,8 +163,9 @@ removed in v1.0.13 along with the underlying O(D × N) algorithm).
 Properties:
 
 - Single-pass depth-stack accumulator: O(N) work, O(max-depth) memory.
-- Nil-infectious per `c4m/SPECIFICATION.md`: any null descendant Size /
-  Timestamp poisons the parent recursively to root.
+- Nil-infectious per `c4m/SPECIFICATION.md` for a directory whose own Size /
+  Timestamp is null: a null descendant leaves it null, recursively to root; a
+  stated value is never overwritten.
 - Empty directories resolve to Size = 0, null Timestamp.
 - Whole-manifest early-out: returns immediately if no directory has any
   null values (fast path for repeated `Canonicalize`).

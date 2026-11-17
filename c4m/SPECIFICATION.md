@@ -280,11 +280,11 @@ A folded range is one child entry, and the listing as written, with the range li
 
 ### Directory Sizes
 
-The size field for a directory is the **total size of all contents**: the recursive sum of file sizes, plus the byte length of each subdirectory's canonical one-level c4m record. That record is content too: it has a C4 ID and lives in the store beside the files, so a directory's size is the whole cost of everything inside it (see `design/directory-size-includes-c4m.md`). Filesystem metadata overhead is not included. A folder holding one 5-byte file therefore reads larger than 5, and its size changes when a child's metadata changes, because the child's record does.
+The size field for a directory is the **total size of all contents**: the recursive sum of file sizes, plus the byte length of the canonical one-level c4m record of the directory itself and of each subdirectory in it. That record is content too: it has a C4 ID and lives in the store beside the files, so a directory's size is the whole cost of everything inside it (see `design/directory-size-includes-c4m.md`). Filesystem metadata overhead is not included. A folder holding one 5-byte file therefore reads larger than 5, and its size changes when a child's metadata changes, because the child's record does.
 
 #### Nil-Infectious Propagation
 
-If **any** child entry has null size (-1), the parent directory's size is also null. This applies recursively to the root. The same rule applies to timestamps.
+If **any** child entry has null size (-1), the parent directory's size is also null. This applies recursively to the root. The same rule applies to timestamps only where the directory's own timestamp is null: a null child leaves it null. A stated directory timestamp is its own mtime and is never replaced (see Directory Timestamps).
 
 #### Empty and Unread Directories
 

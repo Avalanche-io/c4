@@ -75,7 +75,7 @@ That is a complete description of the project. Every file, every directory, ever
 
 **Timestamp** is the file's modification time in UTC, formatted as RFC 3339 with second precision. UTC is the only canonical representation; local times may be displayed for human readability but are stored as UTC internally.
 
-**Size** is the file size in bytes. For directories, the size is the recursive sum of all contained file sizes -- a useful at-a-glance measure of how much content a directory holds.
+**Size** is the file size in bytes. For directories, the size is the recursive sum of all contained file sizes plus the bytes of the c4m listings that describe it and its subdirectories -- a useful at-a-glance measure of how much content a directory holds.
 
 **Name** is the bare filename -- no path components. Directory hierarchy is expressed entirely through indentation: two spaces per level. Directory names end with a trailing slash. This means every entry's name is a simple string, never a path that requires parsing or interpretation.
 
@@ -129,7 +129,7 @@ Consider a VFX project where two shots use the same placeholder texture. The fil
 
 C4 IDs reveal that content is identical. c4m understands that identical content does not imply identical intent. A content-addressed store can safely collapse duplicates for storage, because the store is read-only with respect to content -- you retrieve bytes by ID, you do not edit them in place. But the filesystem that is reconstructed from a c4m description must preserve the original independence of files that merely happened to share content.
 
-When c4m scans a filesystem, it records which files are actually hard-linked -- sharing a single inode, so that modifying one genuinely modifies the other -- and which are independent copies that happen to have the same C4 ID. Hard links are marked with the `->` operator and a group number:
+The c4m format can record which files are actually hard-linked -- sharing a single inode, so that modifying one genuinely modifies the other -- and which are independent copies that happen to have the same C4 ID (the scanner does not yet detect them). Hard links are marked with the `->` operator and a group number:
 
 ```
 -rw-r--r-- 2026-03-20T12:00:00Z 4096 shared_lut.cube  ->1 c4abc...
@@ -137,7 +137,7 @@ When c4m scans a filesystem, it records which files are actually hard-linked -- 
 -rw-r--r-- 2026-03-20T12:00:00Z 4096 master_lut.cube      c4abc...
 ```
 
-The first two entries share hard link group 1 -- they are the same inode, and modifying one modifies the other. The third entry has the same C4 ID but no group annotation. It is an independent copy. When the filesystem is reconstructed, the hard-linked files will be hard-linked, and the independent copy will remain independent. The distinction is preserved exactly.
+The first two entries share hard link group 1 -- they are the same inode, and modifying one modifies the other. The third entry has the same C4 ID but no group annotation. It is an independent copy. A tool that reconstructs the filesystem can hard-link the grouped files and keep the independent copy independent (c4's reconcile writes every entry as an independent file). The distinction is preserved exactly.
 
 This is an aspect of filesystems that very few archival or description formats capture correctly. Most either ignore hard links entirely (zip, most asset management systems), collapse all duplicates indiscriminately (some deduplication tools), or record hard links but lose track of which groups they belong to. c4m preserves the filesystem's own decisions about what is linked and what is independent, because those decisions carry meaning that the format has no right to discard.
 
@@ -211,13 +211,13 @@ To make a live directory match a described state, `c4 restore` reconciles it: th
 
 ### Merge
 
-When two parties have independently modified the same base, a three-way merge combines their changes:
+When two parties have independently modified the same tree, c4 merge combines their c4m files:
 
 ```
-$ c4 merge base.c4m alice.c4m bob.c4m > merged.c4m
+$ c4 merge alice.c4m bob.c4m > merged.c4m
 ```
 
-Changes to different files are applied independently. Additions from both sides are combined. When both sides modified the same file differently, the conflict is resolved by timestamp -- the newer version takes the original name, the older is preserved under a `.conflict` suffix -- producing a merged result that can be reviewed and adjusted rather than a process that halts and demands immediate resolution.
+Changes to different files are applied independently. Additions from both sides are combined. When both sides hold the same path with different content, c4 merge names each conflicting path, exits 1 and writes nothing, so a conflict is settled before a merged result exists.
 
 ### Version History
 
@@ -240,11 +240,11 @@ This is not a replacement for git. Git excels at versioning source code: text fi
 
 ### Plain Text
 
-The most natural objection to a text-based format is overhead. A binary format could encode the same information more compactly. This is true, and the overhead is approximately 2%.
+The most natural objection to a text-based format is overhead. A binary format could encode the same information more compactly. This is true, and the overhead is approximately 33%.
 
 The C4 ID dominates every c4m entry at 90 characters. In raw binary, the same identity would be 64 bytes. The remaining fields -- mode, timestamp, size, name -- add a few dozen bytes each. For a typical entry of roughly 160 bytes, the binary equivalent would be around 120. The overhead is real, and it is small.
 
-In exchange for this 2%, you get a format that works with every text tool in existence. You can grep it, diff it, sort it, email it, commit it to git, read it on a machine that has never heard of C4. The 2% buys complete independence from specialized tooling. We consider this a bargain.
+In exchange for this 33%, you get a format that works with every text tool in existence. You can grep it, diff it, sort it, email it, commit it to git, read it on a machine that has never heard of C4. The 33% buys complete independence from specialized tooling. We consider this a bargain.
 
 There is a deeper reason the overhead is so small. The C4 ID is dominated by entropy. SHA-512 produces 512 bits of output that are, by design, indistinguishable from random. Random data does not compress. Base58 encoding adds approximately 37% relative to raw binary, but neither representation compresses further. The format is within a small constant factor of the theoretical minimum, and that constant buys a great deal of practical utility.
 

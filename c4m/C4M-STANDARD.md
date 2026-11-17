@@ -229,7 +229,9 @@ the entry.
 MUST accept commas in size fields and strip them before parsing.
 
 **Directory sizes**: The size of a directory MUST be the recursive sum of all
-file content sizes within it. This excludes filesystem metadata overhead.
+file content sizes within it, plus the byte length of the canonical one-level
+listing of the directory and of each subdirectory in it. This excludes
+filesystem metadata overhead.
 
 #### 4.3.1 Nil-Infectious Propagation
 
@@ -237,8 +239,9 @@ If any child entry has null size (-1), the parent directory's size MUST be
 null. This rule applies recursively: a null anywhere in a subtree propagates
 to the root.
 
-The same rule applies to timestamps: if any child has a null timestamp, the
-parent directory's timestamp MUST be null.
+The same rule applies to timestamps only where the directory's own timestamp
+is null: if any child has a null timestamp, it stays null. A stated directory
+timestamp is the directory's own modification time and MUST NOT be replaced.
 
 ### 4.4 Name
 
@@ -956,7 +959,7 @@ Decoders MUST reject streams containing:
 | Invalid UTF-8 | Fatal parse error |
 | Missing required field (mode, timestamp, size, name) | `ErrInvalidEntry` |
 | Name is `.`, `..`, `/`, or empty | `ErrPathTraversal` |
-| Name contains path separator (`/` as non-trailing, `\`) | `ErrPathTraversal` |
+| Name contains `/` other than a directory's trailing one (a backslash is a literal character) | `ErrPathTraversal` |
 | Duplicate path within same scope | `ErrDuplicatePath` |
 | Bare C4 ID mismatch (non-first-line) | `ErrPatchIDMismatch` |
 | Checkpoint mismatch | `ErrPatchIDMismatch` |

@@ -35,4 +35,4 @@ All implementations: Go, Python, TypeScript, Swift, C
 
 ## Status
 
-Pending. This is a correctness fix but also a breaking change. Needs careful consideration of migration path.
+Implemented (7bf545d): a directory's size counts its own and each subdirectory's one-level listing bytes.
