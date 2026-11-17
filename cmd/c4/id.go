@@ -350,8 +350,10 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) bool {
 			// nothing for its frames.
 			members, err := c4m.ExpandSequencePattern(entry.Name)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: cannot expand sequence %s: %v\n", entry.Name, err)
-				continue
+				// The scan folded this range, so its pattern expands; if
+				// it does not, its frames and list cannot be stored and
+				// the line would name content the store lacks.
+				fatalf("Error: cannot expand the sequence %s: %v; nothing claimed", entry.Name, err)
 			}
 			prefix := strings.Join(dirStack, "")
 			g := &seqGroup{entry: entry, prefix: prefix, names: members,
@@ -423,7 +425,10 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) bool {
 		}
 		if allTaken(g.whys) {
 			if err := storeSequenceIDList(s, g.entry, g.members); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+				// Every member was taken and checked against the scan's
+				// list, so this cannot fail; if it does, the range would
+				// name a list the store does not hold.
+				fatalf("Error: %v; nothing claimed", err)
 			}
 			continue
 		}
@@ -601,8 +606,7 @@ func storeManifestSelf(s store.Store, m *c4m.Manifest) c4.ID {
 
 	data, err := c4m.Marshal(m)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to encode manifest: %v\n", err)
-		return c4.ID{}
+		fatalf("Error: failed to encode the description: %v; nothing claimed", err)
 	}
 	id := mustPut(s, bytes.NewReader(data), "the description")
 
@@ -888,8 +892,11 @@ func storeRangeLists(s store.Store, m *c4m.Manifest) {
 		if !ok {
 			continue
 		}
+		// RangeData is keyed by the list's own ID, so the stored list is
+		// the one the line names; if not, the line names a list the store
+		// does not hold.
 		if id := mustPut(s, strings.NewReader(list), "the ID list of "+e.Name); id != e.C4ID {
-			fmt.Fprintf(os.Stderr, "Warning: the ID list of %s hashes to %s, its line names %s\n", e.Name, id, e.C4ID)
+			fatalf("Error: the ID list of %s hashes to %s, its line names %s; nothing claimed", e.Name, id, e.C4ID)
 		}
 	}
 }
