@@ -204,9 +204,42 @@ func configFilePath() string {
 	return filepath.Join(home, ".c4", "config")
 }
 
+// configReadPath is the config file the readers read: ~/.c4/config, or,
+// when that file does not exist, ~/.c4/co/config where it lies.
+//
+// Through 2026-11-16 a tree store's root split filed every non-dot file in
+// the root by its first two characters. A store rooted at ~/.c4 itself (a
+// config whose store line names ~/.c4, with C4_STORE unset) therefore had
+// its config moved to co/config once it passed about 4,096 objects, and
+// from then on no store was configured: c4 cat said "no content store
+// configured", and c4 id -s in a terminal offered to make ~/.c4/store, a
+// second store (measured with c4 1.0.26; store split race, decided
+// 2026-11-16 by the release lead; reversible). No object name starts "co"
+// (every C4 ID starts "c4"), so a split files nothing else there.
+//
+// The displaced file is only read: SetupDefaultStore writes the root's,
+// and nothing moves it back or removes it, as with the displaced journal.
+// When both exist the root's is read: it is the file c4 writes, so it is
+// the newer, and a root config that exists but can't be read is not
+// replaced by the displaced one.
+func configReadPath() string {
+	root := configFilePath()
+	if root == "" {
+		return ""
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		return root
+	}
+	displaced := filepath.Join(filepath.Dir(root), "co", "config")
+	if info, err := os.Stat(displaced); err == nil && info.Mode().IsRegular() {
+		return displaced
+	}
+	return root
+}
+
 // configValues returns all values for a key from the config file.
 func configValues(key string) []string {
-	path := configFilePath()
+	path := configReadPath()
 	if path == "" {
 		return nil
 	}
@@ -240,7 +273,7 @@ func configValues(key string) []string {
 }
 
 func configValue(key string) string {
-	path := configFilePath()
+	path := configReadPath()
 	if path == "" {
 		return ""
 	}

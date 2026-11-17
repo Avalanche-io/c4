@@ -101,7 +101,7 @@ over 400 Puts of real splits. The code states them beside `foldFind`.
 | `journal` (c4m.JournalName; locks itself) | **moved to `jo/journal`**; claims dropped out    | stays                    |
 | `.ingest.<host>.<pid>.*` (Put, Create temps) | skipped (dot file)                           | skipped                  |
 | `.tmp.*` (DurableWriter temps, in leaves) | skipped (dot file)                              | skipped                  |
-| `config`, if the store is rooted at `~/.c4` | moved to `co/config`; see below (corrected 2026-11-16) | stays             |
+| `config`, if the store is rooted at `~/.c4` | moved to `co/config`; read where it lies (corrected 2026-11-16, below) | stays |
 | any other file a user leaves there      | moved into a two-character directory              | stays                    |
 
 The journal locks its own file, so the root holds no separate lock file.
@@ -248,8 +248,11 @@ configured"; in a terminal `c4 id -s` would then offer to create
 `~/.c4/store` and write a new config naming it, so later content goes to a
 second store. With this change the config stays, and `c4 cat` finds the
 object. The default store is `~/.c4/store`, so only a hand-written
-`store = ~/.c4` reaches this. Whether a config already at `co/config` is
-read where it lies is the release lead's decision (2026-11-16, pending).
+`store = ~/.c4` reaches this. A config already at `co/config` is read
+where it lies when `~/.c4/config` does not exist (`configReadPath`). It is
+never written, moved back or removed, and when both exist the root's is
+read: it is the file c4 writes, so the newer. Decided 2026-11-16 by the
+release lead (`TestConfigDisplacedBySplitIsReadWhereItLies`).
 
 ## Same-ID publishers on Windows
 
