@@ -18,9 +18,7 @@ import (
 // fetched by its ID; `c4 id -s DIR` stored them all.
 func TestStoredTreeResolvesFromStoreAlone(t *testing.T) {
 	bin := buildC4(t)
-	dir := t.TempDir()
-	tree := filepath.Join(dir, "tree")
-	writeTree(t, tree, map[string]string{
+	files := map[string]string{
 		"top.txt":           "top",
 		"a/one.txt":         "one",
 		"a/b/two.txt":       "two",
@@ -35,7 +33,44 @@ func TestStoredTreeResolvesFromStoreAlone(t *testing.T) {
 		"seq/s.0004.exr":    "shot 4",
 		"seq/notes/n.txt":   "notes",
 		"empty-sibling.txt": "",
-	})
+	}
+	// The same tree twice: as it was, holding an empty file, and with an
+	// empty directory and no empty file. An empty directory's listing is
+	// the empty content, and the empty file stored that object too, which
+	// hid that nothing else did (measured 2026-11-16: with no empty file
+	// the store lacked it, on 1.0.26, 1.0.27 and master).
+	withEmptyDir := map[string]string{}
+	for p, c := range files {
+		if p != "empty-sibling.txt" {
+			withEmptyDir[p] = c
+		}
+	}
+	for _, tc := range []struct {
+		name     string
+		files    map[string]string
+		emptyDir string
+	}{
+		{"with an empty file", files, ""},
+		{"with an empty directory and no empty file", withEmptyDir, "a/b/empty-dir"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tree := filepath.Join(dir, "tree")
+			writeTree(t, tree, tc.files)
+			if tc.emptyDir != "" {
+				if err := os.MkdirAll(filepath.Join(tree, filepath.FromSlash(tc.emptyDir)), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			checkStoredTreeResolves(t, bin, dir, tree)
+		})
+	}
+}
+
+// checkStoredTreeResolves stores tree both ways and walks it back from the
+// store alone, from the root's ID down.
+func checkStoredTreeResolves(t *testing.T, bin, dir, tree string) {
+	t.Helper()
 	envFor := func(name string) map[string]string {
 		home := filepath.Join(dir, "home-"+name)
 		st := filepath.Join(dir, "store-"+name)
