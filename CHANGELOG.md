@@ -2,6 +2,22 @@
 
 ## Unreleased (1.0.27)
 
+### ⚠ A time inside the epoch second is null: one description ID again
+
+**c4's scan was not a fixed point of its own normaliser.** For a file
+timed inside the epoch second (an mtime of 0.5 s, say), `c4 id dir/`
+wrote `1970-01-01T00:00:00Z`, and `c4 id` of that output rewrote the line
+as `-`. A parent directory kept the size and C4 ID derived from the
+literal line (measured: `sub/` 135 and c44pHX… where its listing as read
+gives 116 and c42p6g…), so a directory's description ID differed from the
+ID of the c4m that describes it. Every null test compared the unfloored in-memory time with the
+epoch, so the entry was not null, and its line was written
+`1970-01-01T00:00:00Z`, which reads back as null. The new
+`Entry.TimestampIsNull` floors to the second before comparing, and all 16
+null-time tests use it (master's fix). **C4 IDs change** only for trees
+holding a time in (0, 1) s after the epoch. New shared vector
+`c4m/testdata/epoch-second-vector/`, byte-identical to master's.
+
 ### ⚠ Under -S, a directory holding an empty directory printed a C4 ID that wasn't its own listing's
 
 **C4 IDs change** for `-S` scans of a tree holding an empty directory: the

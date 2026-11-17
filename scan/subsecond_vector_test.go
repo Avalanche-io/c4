@@ -17,14 +17,14 @@ import (
 
 const subsecondVector = "../c4m/testdata/subsecond-vector"
 
-// buildSubsecondTree makes the tree tree.txt describes under dir: each line
+// buildVectorTree makes the tree a vector's tree.txt describes under dir: each line
 // is "<octal mode> <mtime ns> <path>", a path ending in "/" is a directory,
 // and a file's bytes are its base name and a newline. Times are set once
 // every entry exists, files first, then directories deepest first, so a
 // child's time never moves its parent's afterwards.
-func buildSubsecondTree(t *testing.T, dir string) {
+func buildVectorTree(t *testing.T, vector, dir string) {
 	t.Helper()
-	f, err := os.Open(filepath.Join(subsecondVector, "tree.txt"))
+	f, err := os.Open(filepath.Join(vector, "tree.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestSubsecondVector(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	buildSubsecondTree(t, dir)
+	buildVectorTree(t, subsecondVector, dir)
 	scanned, err := Dir(dir)
 	if err != nil {
 		t.Fatal(err)

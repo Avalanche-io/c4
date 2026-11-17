@@ -164,7 +164,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 				})
 			} else {
 				// Directory exists — check if metadata needs updating.
-				if !entry.Timestamp.Equal(c4m.NullTimestamp()) &&
+				if !entry.TimestampIsNull() &&
 					!curInfo.ModTime().UTC().Truncate(time.Second).Equal(entry.Timestamp.UTC().Truncate(time.Second)) {
 					chtimes = append(chtimes, Operation{
 						Type:  OpChtimes,
@@ -217,7 +217,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 				// Windows doesn't support Unix permissions; skip chmod there.
 			needChmod := runtime.GOOS != "windows" &&
 				entry.Mode != 0 && curInfo.Mode().Perm() != entry.Mode.Perm()
-				needChtimes := !entry.Timestamp.Equal(c4m.NullTimestamp()) &&
+				needChtimes := !entry.TimestampIsNull() &&
 					!curInfo.ModTime().UTC().Truncate(time.Second).Equal(entry.Timestamp.UTC().Truncate(time.Second))
 
 				if needChmod {
@@ -380,7 +380,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 			continue
 		}
 		entry := targetPaths[filepath.ToSlash(rel)+"/"]
-		if entry == nil || entry.Timestamp.Equal(c4m.NullTimestamp()) {
+		if entry == nil || entry.TimestampIsNull() {
 			continue // not described, or no time recorded: the platform's time stands
 		}
 		chtimes = append(chtimes, Operation{
@@ -439,7 +439,7 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 			return
 		}
 		entry := targetPaths[filepath.ToSlash(rel)+"/"]
-		if entry == nil || !entry.IsDir() || entry.Timestamp.Equal(c4m.NullTimestamp()) {
+		if entry == nil || !entry.IsDir() || entry.TimestampIsNull() {
 			return
 		}
 		chtimes = append(chtimes, Operation{Type: OpChtimes, Path: parent, Entry: entry})
@@ -488,7 +488,7 @@ func (r *Reconciler) trustedID(e *c4m.Entry, info os.FileInfo) (c4.ID, bool) {
 	if !r.trustMetadata || e == nil || e.C4ID.IsNil() || e.IsDir() || e.IsSymlink() {
 		return c4.ID{}, false
 	}
-	if e.Size != info.Size() || e.Timestamp.Equal(c4m.NullTimestamp()) {
+	if e.Size != info.Size() || e.TimestampIsNull() {
 		return c4.ID{}, false
 	}
 	if !info.ModTime().UTC().Truncate(time.Second).Equal(e.Timestamp.UTC().Truncate(time.Second)) {

@@ -400,7 +400,7 @@ func (r *Reconciler) applyChtimes(op Operation, res *Result) error {
 	if op.Entry == nil {
 		return nil
 	}
-	if op.Entry.Timestamp.Equal(c4m.NullTimestamp()) {
+	if op.Entry.TimestampIsNull() {
 		res.Skipped++
 		return nil
 	}
@@ -479,7 +479,7 @@ func (r *Reconciler) setMetadata(path string, entry *c4m.Entry) {
 	if entry.Mode != 0 {
 		os.Chmod(path, entry.Mode.Perm())
 	}
-	if !entry.Timestamp.Equal(c4m.NullTimestamp()) {
+	if !entry.TimestampIsNull() {
 		os.Chtimes(path, entry.Timestamp, entry.Timestamp)
 	}
 }

@@ -258,7 +258,7 @@ func Distribute(srcPath string, targets ...Target) (*DistributeResult, error) {
 		for _, dt := range dirTargets {
 			dstDir := filepath.Join(dt.Path, filepath.FromSlash(di.rel))
 			if di.entry != nil {
-				if !di.entry.Timestamp.Equal(c4m.NullTimestamp()) {
+				if !di.entry.TimestampIsNull() {
 					os.Chtimes(dstDir, di.entry.Timestamp, di.entry.Timestamp)
 				}
 				if di.entry.Mode != 0 {
