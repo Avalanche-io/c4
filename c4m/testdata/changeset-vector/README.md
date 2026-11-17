@@ -20,19 +20,21 @@ directories, then natural sort within each group.
 
 ## Files
 
-| File               | Made by                                                                                                 |
-| ------------------ | ------------------------------------------------------------------------------------------------------- |
-| `base.c4m`         | the Go encoder on a tree built through the API: `top.txt`, `sub/` holding two files and `deep/leaf.txt` |
-| `v2.c4m`           | the same tree with `sub/deep/leaf.txt` changed, `sub/gone.txt` removed and `sub/new.txt` added          |
-| `changeset.c4m`    | `PatchDiff(base, v2)` written as `c4 diff` writes it: the old state's ID, then the patch                |
-| `chain.c4m`        | `base.c4m` then `changeset.c4m`, byte for byte (`c4 diff >>`)                                           |
-| `v3.c4m`           | `v2.c4m` with the directory `sub/deep/`, and the file in it, removed                                    |
-| `changeset-v3.c4m` | `PatchDiff(v2, v3)` written as `c4 diff` writes it                                                      |
-| `chain-v3.c4m`     | `v2.c4m` then `changeset-v3.c4m`, byte for byte                                                         |
+| File               | Made by                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| `base.c4m`         | this line's scanner on a tree on disk: `top.txt`, `sub/` holding two files and `deep/leaf.txt` |
+| `v2.c4m`           | the same tree with `sub/deep/leaf.txt` changed, `sub/gone.txt` removed and `sub/new.txt` added |
+| `changeset.c4m`    | `PatchDiff(base, v2)` written as `c4 diff` writes it: the old state's ID, then the patch       |
+| `chain.c4m`        | `base.c4m` then `changeset.c4m`, byte for byte (`c4 diff >>`)                                  |
+| `v3.c4m`           | `v2.c4m` with the directory `sub/deep/`, and the file in it, removed                           |
+| `changeset-v3.c4m` | `PatchDiff(v2, v3)` written as `c4 diff` writes it                                             |
+| `chain-v3.c4m`     | `v2.c4m` then `changeset-v3.c4m`, byte for byte                                                |
 
-No line is composed by hand. `C4M_UPDATE_VECTORS=1 go test ./c4m -run
-TestChangesetVector` rewrites the files; the test then fails if they
-differ from what the library writes. The files are byte-identical to what
+No line is composed by hand. `C4M_UPDATE_VECTORS=1 go test ./scan -run
+TestChangesetVectorStates` rewrites `base.c4m`, `v2.c4m` and `v3.c4m`
+from the scanner, and `C4M_UPDATE_VECTORS=1 go test ./c4m -run
+TestChangesetVector` rewrites the changesets and chains; each test then
+fails if the files differ from what this line writes. The files are byte-identical to what
 core's CLI writes for the same tree on disk (`c4 id` on each state and
 `c4 diff base.c4m v2.c4m`, release/1.0.27 eb33848).
 
