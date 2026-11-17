@@ -26,7 +26,8 @@ func syncedDirs(t *testing.T) map[string]bool {
 // or by skipping because it is there, leaves that name's directory and
 // its ancestors synced by the time the writer's claim can be made: when
 // Put or Create's Close returns under SyncEach, when Sync returns in a
-// batch (GC-DESIGN-R4 S13; through 2026-11-16 no skip synced anything).
+// batch: a claim never rests on a name that isn't durable. Through
+// 2026-11-16 no skip synced anything.
 func TestTreeStoreHoldsEveryNameItRestsOn(t *testing.T) {
 	data := []byte("an object some writer rests on")
 	id := c4.Identify(bytes.NewReader(data))

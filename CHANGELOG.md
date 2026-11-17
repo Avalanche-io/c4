@@ -21,7 +21,7 @@ Now:
 - **Empty listings are stored:** the empty-content object is stored whenever a description names it.
 - **Journals:**
   - A store of several locations journals its claims in the one it writes to; `c4 log` reads them there.
-  - A store with no local journal (S3) still stores, and says once on stderr that the claim is not journaled. This differs from GC-DESIGN-R4 S10's "or `-s` is refused": collection is refused on stores that are not local, so an unjournaled remote claim can't cost content.
+  - A store with no local journal (S3) still stores, and says once on stderr that the claim is not journaled. It is not refused: collection is refused on stores that are not local, so an unjournaled remote claim can't cost content.
 
 **Exit codes change** for those runs: 2 where a file was given up, 1 where the store failed; before, both were 0. Tests drive the window between the scan and the store pass through a hook built only into test binaries (`-tags c4testhooks`). A release binary has none.
 

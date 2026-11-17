@@ -15,7 +15,8 @@ import (
 // A lookup tells "no copy at any level" from every other error. Through
 // 2026-11-16 a failed stat of any kind read as absent: Open said "no such
 // file" for an object it could not look for, Put published a second copy,
-// and Remove reported nothing to remove (GC-DESIGN-R3 S1). Here the store
+// and Remove reported nothing to remove: a lookup must tell absent from
+// unknown. Here the store
 // is mid-split (the object one level above its place) and the stat at the
 // object's level fails with an I/O error, through the stat seam, so every
 // platform runs it.

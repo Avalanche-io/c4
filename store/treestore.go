@@ -191,7 +191,8 @@ func (s *TreeStore) Has(id c4.ID) bool {
 // it must not be read as absent. Has and ContentPath can say only yes or
 // no, and say no for an unknown; Open, Put, Sync, Create's writer and
 // Remove return the error. Through 2026-11-16 every lookup read any
-// failed stat as absent (GC-DESIGN-R3 S1; TestTreeStoreLookupTellsAbsentFromError).
+// failed stat as absent (a lookup tells absent from unknown;
+// TestTreeStoreLookupTellsAbsentFromError).
 func (s *TreeStore) Lookup(id c4.ID) (string, error) {
 	s.mu.Lock()
 	tmpName, ok := s.pending[id]
@@ -586,7 +587,8 @@ func (s *TreeStore) publish(tmpName, p string, id c4.ID) (published bool, at str
 // batch whose objects were all present left Sync with nothing to do. The
 // name it skipped on may be another writer's, not yet synced (a SyncNone
 // writer, or one that died before its barrier), so a power cut could
-// leave a journaled claim whose content no store finds (GC-DESIGN-R4 S13;
+// leave a journaled claim whose content no store finds (a claim never
+// rests on a name that isn't durable;
 // TestSkippedObjectSurvivesAPowerCut). A SyncEach publish synced the
 // file's bytes and not its name either.
 //

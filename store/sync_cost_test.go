@@ -51,7 +51,8 @@ func TestSyncCost(t *testing.T) {
 	run("entry fsync per touched directory + final flush", fsyncDir)
 	run("no entry fsync (final flush only)", func(string) error { return nil })
 
-	// What holding every name a writer rests on costs (GC-DESIGN-R4 S13):
+	// What holding every name a writer rests on costs (a claim never rests
+	// on a name that isn't durable):
 	// a batch whose objects are all present already (a re-snapshot), and
 	// SyncEach Puts that publish or skip.
 	fill := func(n int, mode SyncMode) (string, [][]byte) {

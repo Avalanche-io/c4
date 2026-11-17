@@ -9,7 +9,7 @@ import (
 
 // A journal names its format version in its header (@c4 journal 1). A
 // reader refuses a version it doesn't know rather than reading it as its
-// own, and never appends to it (c4 issue #44; GC-DESIGN-R4 §7 S11).
+// own, and never appends to it (c4 issue #44).
 //
 // The fixtures are written by the library's own journal writer. The test
 // then changes the header's version digit from 1 to 2, and nothing else:

@@ -231,7 +231,7 @@ func journalClaim(s store.Store, id c4.ID, scanStart time.Time) {
 		// stores that are not local, so an unjournaled remote claim cannot
 		// cost content), but it is said, once. Through 2026-11-16 this
 		// returned silently, and a MultiStore, local or not, was never
-		// journaled (GC-DESIGN-R4 S10).
+		// journaled. Every claim path journals, or says it did not.
 		fmt.Fprintf(os.Stderr, "c4: %s is stored but not journaled: the store has no local journal\n", id)
 		return
 	}

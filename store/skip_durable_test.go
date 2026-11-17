@@ -50,7 +50,8 @@ func loseUnsyncedEntries(t *testing.T, root string, synced map[string]bool) (los
 // object is there, runs the barrier, and the claim is journaled. Through
 // 2026-11-16 the barrier of a batch with only skips returned at once and
 // synced nothing, so a power cut could leave a journaled claim whose
-// content no store can find (GC-DESIGN-R4 S13).
+// content no store can find. A claim never rests on a name that isn't
+// durable.
 func TestSkippedObjectSurvivesAPowerCut(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		t.Run(fmt.Sprintf("split=%v", split), func(t *testing.T) {

@@ -16,8 +16,8 @@ import (
 // MultiStore, which writes to its first; the claim is journaled beside
 // what was written, and c4 log lists it. Through 2026-11-16 journalClaim
 // returned silently for any store without Root(), so `c4 id -s` printed a
-// claim it never journaled and `c4 log` found no journal (GC-DESIGN-R4
-// S10).
+// claim it never journaled and `c4 log` found no journal. Every claim
+// path journals, or says it did not.
 func TestIDJournalsAMultiStore(t *testing.T) {
 	bin := buildC4(t)
 	dir := t.TempDir()
