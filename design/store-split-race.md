@@ -101,7 +101,7 @@ over 400 Puts of real splits. The code states them beside `foldFind`.
 | `journal` (c4m.JournalName; locks itself) | **moved to `jo/journal`**; claims dropped out    | stays                    |
 | `.ingest.<host>.<pid>.*` (Put, Create temps) | skipped (dot file)                           | skipped                  |
 | `.tmp.*` (DurableWriter temps, in leaves) | skipped (dot file)                              | skipped                  |
-| `config`, only if `C4_STORE` is `~/.c4`  | moved to `co/config`; the config read nothing    | stays                    |
+| `config`, if the store is rooted at `~/.c4` | moved to `co/config`; see below (corrected 2026-11-16) | stays             |
 | any other file a user leaves there      | moved into a two-character directory              | stays                    |
 
 The journal locks its own file, so the root holds no separate lock file.
@@ -235,6 +235,28 @@ other non-dot file: `~/.c4/config` in a store rooted at `~/.c4`, or a file
 a user left in a leaf. This line has no `SweepIngest`, so the root's only
 removes are temp clean-ups.
 
-The shared fixture (`store/testdata/split-race-store/`) is master's bytes,
-and this line's library writes it byte for byte
-(`TestSplitRaceStoreFixture`).
+**What reads `~/.c4/config`, corrected 2026-11-16.** The table above said
+the moved config "read nothing". That holds only while `C4_STORE` is set:
+the config is read by `configuredEndpoints` alone (its `store` lines), and
+only when `C4_STORE` is unset; `AutoStoreEnabled` reads `store_auto` but
+nothing calls it. A config that itself says `store = ~/.c4`, with
+`C4_STORE` unset, is read, and the root split lost it. Measured
+(`HOME` a scratch directory, 4,200 objects stored with `c4 id -s`):
+released 1.0.26 and release/1.0.27 before this change both leave
+`~/.c4/co/config`, and the next `c4 cat` fails with "no content store
+configured"; in a terminal `c4 id -s` would then offer to create
+`~/.c4/store` and write a new config naming it, so later content goes to a
+second store. With this change the config stays, and `c4 cat` finds the
+object. The default store is `~/.c4/store`, so only a hand-written
+`store = ~/.c4` reaches this. Whether a config already at `co/config` is
+read where it lies is the release lead's decision (2026-11-16, pending).
+
+## Same-ID publishers on Windows
+
+Not this change's fault and not its fix. Two writers storing the same
+bytes can both miss the look and both rename; on Windows the second rename
+can fail ("Access is denied"). It shows in this change's tests because they
+run several writers on one store, and it is on release/1.0.27 without them
+(measured in c4 #181: 160 to 240 of 5,760 same-ID Puts failed on every
+Windows leg, none elsewhere). The fix is its own PR, c4 #184 (master's is
+#179), and this change is stacked on it.

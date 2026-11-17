@@ -41,7 +41,8 @@ it. A split now moves only objects: before, it filed every other non-dot
 file under a two-character directory, such as `~/.c4/config` in a store
 rooted at `~/.c4`, or a file a user left in the store. Decided 2026-11-16
 by the release lead; reversible (`design/store-split-race.md`). Master's
-fix, the same change; the journal part of master's is 1.1-only.
+fix, the same change; the journal part of master's is 1.1-only. `Open`'s search again is bounded at 90 passes, one per
+character of a C4 ID, and ends as not found.
 
 ### On Windows, storing content another process was storing failed ⚠
 
