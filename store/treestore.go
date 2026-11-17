@@ -127,20 +127,23 @@ func (s *TreeStore) Sync() error {
 		if ok {
 			os.Remove(tmpName)
 			delete(s.pending, id)
+			s.markTouched(filepath.Dir(p)) // a skip rests on that name: sync it (holdName)
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 			return fmt.Errorf("mkdir: %w", err)
 		}
-		published, err := s.publish(tmpName, p, id)
+		published, at, err := s.publish(tmpName, p, id)
 		if err != nil {
 			return fmt.Errorf("rename: %w", err)
 		}
 		delete(s.pending, id)
-		if published {
-			s.markTouched(filepath.Dir(p))
-			s.noteAdd(filepath.Dir(p)) // may split, which marks the directories it moves into
+		if !published {
+			s.markTouched(filepath.Dir(at)) // another writer published it first; sync its name
+			continue
 		}
+		s.markTouched(filepath.Dir(p))
+		s.noteAdd(filepath.Dir(p)) // may split, which marks the directories it moves into
 	}
 	touched := s.touchedDirs()
 	for d := range touched {
@@ -308,10 +311,18 @@ type createWriter struct {
 func (w *createWriter) Close() error {
 	err := w.DurableWriter.Close()
 	var le *os.LinkError
-	if err != nil && errors.As(err, &le) && w.s.Has(w.id) {
-		return nil
+	if err != nil && !(errors.As(err, &le) && w.s.Has(w.id)) {
+		return err
 	}
-	return err
+	at := w.DurableWriter.final
+	if err != nil { // another writer published it first: hold that copy
+		if p, ok := w.s.ContentPath(w.id); ok {
+			at = p
+		}
+	}
+	w.s.mu.Lock()
+	defer w.s.mu.Unlock()
+	return w.s.holdName(filepath.Dir(at))
 }
 
 // pendingWriter is Create's batch-mode writer: bytes land in a temp
@@ -344,9 +355,9 @@ func (w *pendingWriter) Close() error {
 		os.Remove(tmpName)
 		return nil
 	}
-	if _, ok := w.s.locate(w.id); ok {
+	if found, ok := w.s.locate(w.id); ok {
 		os.Remove(tmpName)
-		return nil
+		return w.s.holdName(filepath.Dir(found))
 	}
 	if w.s.pending == nil {
 		w.s.pending = make(map[c4.ID]string)
@@ -395,9 +406,14 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// If content already exists, skip the rename.
+	// If content already exists, skip the rename. The skip rests on that
+	// name, which another writer may not have synced yet: hold it
+	// (holdName).
 	p, ok := s.locate(id)
 	if ok {
+		if err := s.holdName(filepath.Dir(p)); err != nil {
+			return c4.ID{}, err
+		}
 		return id, nil
 	}
 
@@ -422,9 +438,14 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return c4.ID{}, fmt.Errorf("mkdir: %w", err)
 	}
-	published, err := s.publish(tmpName, p, id)
+	published, at, err := s.publish(tmpName, p, id)
 	if err != nil {
 		return c4.ID{}, fmt.Errorf("rename: %w", err)
+	}
+	// Published here or by another writer first, the name is held the
+	// same way: under SyncEach its directory is synced before Put returns.
+	if err := s.holdName(filepath.Dir(at)); err != nil {
+		return c4.ID{}, err
 	}
 	if !published {
 		return id, nil // another writer published the same bytes first
@@ -453,20 +474,56 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 // instances failed on every Windows leg and none elsewhere (c4 #181; on
 // master #177; TestTreeStoreSameIDPublishers). A failure with the object
 // still absent is returned as before.
-func (s *TreeStore) publish(tmpName, p string, id c4.ID) (bool, error) {
+func (s *TreeStore) publish(tmpName, p string, id c4.ID) (published bool, at string, err error) {
 	rename := s.rename
 	if rename == nil {
 		rename = os.Rename
 	}
-	err := rename(tmpName, p)
+	err = rename(tmpName, p)
 	if err == nil {
-		return true, nil
+		return true, p, nil
 	}
-	if _, ok := s.locate(id); ok {
+	if found, ok := s.locate(id); ok {
 		os.Remove(tmpName)
-		return false, nil
+		return false, found, nil
 	}
-	return false, err
+	return false, "", err
+}
+
+// holdName makes the directory entry of an object this writer relies on,
+// in dir, durable by the time the caller's claim can be made: an object
+// it just published, or one it skipped because it was already there.
+//
+// Through 2026-11-16 every skip returned without syncing anything, and a
+// batch whose objects were all present left Sync with nothing to do. The
+// name it skipped on may be another writer's, not yet synced (a SyncNone
+// writer, or one that died before its barrier), so a power cut could
+// leave a journaled claim whose content no store finds (GC-DESIGN-R4 S13;
+// TestSkippedObjectSurvivesAPowerCut). A SyncEach publish synced the
+// file's bytes and not its name either.
+//
+// Under SyncBatch the directory is marked touched and the batch made
+// dirty, so the barrier syncs it, and its ancestors to the root, once
+// per batch however many objects rest on it. Under SyncEach the chain is
+// synced, then the device flushed, before the caller returns. Under
+// SyncNone nothing is done: atomic, not durable, by stated choice.
+// Caller holds s.mu.
+func (s *TreeStore) holdName(dir string) error {
+	switch s.syncMode {
+	case SyncBatch:
+		s.markTouched(dir)
+		s.dirty = true
+	case SyncEach:
+		for _, d := range dirsWithinRoot(s.root, dir) {
+			if err := syncDirEntries(d); err != nil {
+				return fmt.Errorf("sync %s: %w", d, err)
+			}
+		}
+		if err := syncDirFull(s.root); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ContentPath returns the local filesystem path for id when present.

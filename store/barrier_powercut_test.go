@@ -133,3 +133,70 @@ func TestBatchPublishSurvivesAPowerCut(t *testing.T) {
 		})
 	}
 }
+
+// The same cut after a batch that only skips. Another writer stored X and
+// its name never reached the disk (a SyncNone writer, or one that died
+// before its barrier). Then c4 id -s's path Puts the same bytes, skips
+// because X is there, runs the barrier, and prints the ID. Through
+// 2026-11-16 a batch of only skips made the barrier do nothing, so the
+// printed ID could name content a power cut had taken (GC-DESIGN-R4 S13;
+// master's #196).
+func TestSkippedObjectSurvivesAPowerCut(t *testing.T) {
+	for _, split := range []bool{false, true} {
+		t.Run(fmt.Sprintf("split=%v", split), func(t *testing.T) {
+			root := t.TempDir()
+			rec := newCutRecorder(t)
+			a, err := NewTreeStore(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.SetSyncMode(SyncNone)
+			if split {
+				a.SetSplitThreshold(4)
+			}
+			rec.renames(a)
+			for i := 0; split && i < 12; i++ {
+				a.Put(bytes.NewReader([]byte(fmt.Sprint("other ", i))))
+			}
+			data := []byte("bytes another writer stored and never synced")
+			id, err := a.Put(bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := NewTreeStore(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.SetSyncMode(SyncBatch)
+			if got, err := b.Put(bytes.NewReader(data)); err != nil || got != id {
+				t.Fatalf("Put: %v, %v", got, err)
+			}
+			if err := b.Sync(); err != nil {
+				t.Fatal(err)
+			}
+			lost := rec.cut(t, root)
+			old, had := os.LookupEnv("C4_STORE")
+			os.Setenv("C4_STORE", root)
+			defer func() {
+				if had {
+					os.Setenv("C4_STORE", old)
+				} else {
+					os.Unsetenv("C4_STORE")
+				}
+			}()
+			cs, err := OpenStore()
+			if err != nil || cs == nil {
+				t.Fatalf("OpenStore: %v, %v", cs, err)
+			}
+			f, err := cs.Open(id)
+			if err != nil {
+				t.Fatalf("c4 cat of the printed ID after a power cut: %v (%d names lost)", err, lost)
+			}
+			got, _ := io.ReadAll(f)
+			f.Close()
+			if !bytes.Equal(got, data) {
+				t.Fatal("c4 cat read the wrong bytes")
+			}
+		})
+	}
+}

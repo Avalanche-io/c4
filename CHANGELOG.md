@@ -2,6 +2,22 @@
 
 ## Unreleased (1.0.27)
 
+### A printed ID never rests on a name that isn't on disk ⚠
+
+**Data loss fixed.** When a snapshot stored nothing new, because every
+object was already in the store, its barrier did nothing. If another
+process had just stored an object and hadn't made its name durable (it
+stores without syncing, or it died before its barrier), `c4 id -s` skipped
+that object and printed the ID, while the object's name could still
+vanish in a power cut. A `SyncEach` store's own Puts made their bytes
+durable but not their names. Now every name a writer relies on, published
+or skipped, is synced before the ID can be printed. The barrier syncs each
+such directory once per batch, `SyncEach` syncs before `Put` or `Create`'s
+`Close` returns, and `SyncNone` stays atomic and not durable, by choice.
+`TestSkippedObjectSurvivesAPowerCut` fails without the change. Master's
+fix, the same change (c4 #196); master's journal part has no counterpart
+on this line.
+
 ### The batch barrier makes the names it publishes durable ⚠
 
 **Data loss fixed.** `c4 id -s` stores in a batch, runs the barrier, then
