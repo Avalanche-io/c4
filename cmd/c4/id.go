@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -102,8 +103,14 @@ func runID(args []string) {
 		}
 
 		if info.IsDir() {
-			m := scanDirectory(p, mode, *seqFlag, shouldStore, scanExcludes, excludeFile, guide)
+			m := scanDirectory(p, mode, *seqFlag, false, scanExcludes, excludeFile, guide)
 			partial := reportPartial(m, mode)
+			// The store pass runs after the scan's own partial: lines, so a
+			// file it gives up is named once, with why; it runs before the
+			// description is printed, so what is printed is what was stored.
+			if shouldStore && storeManifestContent(m, p) {
+				partial = true
+			}
 			if !*quiet {
 				outputManifest(m, *ergonomic)
 			}
@@ -268,10 +275,32 @@ func describeFile(entry *c4m.Entry, path string, info os.FileInfo, mode scan.Sca
 // so a test can change the tree or the store at exactly that point.
 var storePassHook = func(baseDir string, s store.Store) {}
 
-func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
+// mustPut stores r's bytes or ends the run. A store that cannot take an
+// object leaves the description naming a C4 ID the store does not hold,
+// so nothing may be reported after it (exit 1). Through 2026-11-16 each
+// store-pass Put failure printed a warning and the run went on to exit 0.
+func mustPut(s store.Store, r io.Reader, what string) c4.ID {
+	id, err := s.Put(r)
+	if err != nil {
+		fatalf("Error: failed to store %s; nothing claimed: %v", what, err)
+	}
+	return id
+}
+
+// storeManifestContent stores a scanned tree's content and listings, then
+// reports the stored description. It reports whether the store pass had to
+// give up a file: one gone, unreadable, or no longer the bytes the scan
+// hashed. Such a file is recorded as a scan that could not read it records
+// it (a null C4 ID, its directories re-derived from the listings that hold
+// it), each is named on stderr as partial:, and the caller exits 2. The
+// description stored and printed then names no C4 ID the store does not
+// hold. Through 2026-11-16 a file the store pass could not read was skipped
+// silently and the run exited 0; one that had changed was nulled, but the
+// directories above it kept IDs derived from its old bytes.
+func storeManifestContent(manifest *c4m.Manifest, baseDir string) bool {
 	s := getOrSetupStore()
 	if s == nil {
-		return
+		return false
 	}
 	storePassHook(baseDir, s)
 
@@ -288,7 +317,11 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 	// are grouped by sequence and their IDs collected positionally.
 	type seqGroup struct {
 		entry   *c4m.Entry
-		members []c4.ID
+		prefix  string   // the directory path the members are in
+		names   []string // member file names, in range order
+		members []c4.ID  // what the store pass stored for each
+		sizes   []int64
+		whys    []string // why a member could not be taken, or ""
 	}
 	var seqs []*seqGroup
 	var files []fileItem
@@ -321,7 +354,8 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 				continue
 			}
 			prefix := strings.Join(dirStack, "")
-			g := &seqGroup{entry: entry, members: make([]c4.ID, len(members))}
+			g := &seqGroup{entry: entry, prefix: prefix, names: members,
+				members: make([]c4.ID, len(members)), sizes: make([]int64, len(members)), whys: make([]string, len(members))}
 			seqs = append(seqs, g)
 			gi := len(seqs) - 1
 			for i, m := range members {
@@ -345,6 +379,8 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 	}
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	lost := map[*c4m.Entry]string{}
 	for _, it := range files {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -353,21 +389,65 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 			defer func() { <-sem }()
 			if it.entry == nil {
 				// Distinct slots, one writer each — no lock needed.
-				seqs[it.seq].members[it.pos] = storeSequenceMember(s, it.path, it.full)
+				g := seqs[it.seq]
+				g.members[it.pos], g.sizes[it.pos], g.whys[it.pos] = storeSequenceMember(s, it.path, it.full)
 				return
 			}
-			storeFileEntry(s, it.entry, it.path, it.full)
+			if why := storeFileEntry(s, it.entry, it.path, it.full); why != "" {
+				mu.Lock()
+				lost[it.entry] = why
+				mu.Unlock()
+			}
 		}(it)
 	}
 	wg.Wait()
 
 	// Every folded entry's ID-list object is stored after its members.
 	// Without it the stored listing names content that is not in the
-	// store and the description cannot resolve.
+	// store and the description cannot resolve. A range with a member the
+	// store pass could not take is unfolded instead.
+	unfolded := false
 	for _, g := range seqs {
-		if err := storeSequenceIDList(s, g.entry, g.members); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+		scanned := rangeMemberIDs(manifest, g.entry, len(g.names))
+		for i := range g.names {
+			if g.whys[i] == "" && (scanned == nil || g.members[i] != scanned[i]) {
+				g.whys[i] = "changed since the scan"
+			}
 		}
+		if scanned == nil && allTaken(g.whys) {
+			if c4.Identify(bytes.NewReader(c4m.IDListBytes(g.members))) == g.entry.C4ID {
+				for i := range g.whys {
+					g.whys[i] = ""
+				}
+			}
+		}
+		if allTaken(g.whys) {
+			if err := storeSequenceIDList(s, g.entry, g.members); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			}
+			continue
+		}
+		for e, why := range unfoldRange(manifest, g.entry, g.names, g.members, g.sizes, g.whys) {
+			lost[e] = why
+		}
+		unfolded = true
+	}
+	if unfolded {
+		manifest.SortEntries()
+		manifest.InvalidateIndex()
+	}
+	if len(lost) > 0 {
+		rederiveAbove(manifest, lost)
+	}
+	var lines []string
+	for path, e := range c4m.EntryPaths(manifest.Entries) {
+		if why, ok := lost[e]; ok {
+			lines = append(lines, fmt.Sprintf("partial: %s recorded with nulls (%s)", path, why))
+		}
+	}
+	sort.Strings(lines)
+	for _, l := range lines {
+		fmt.Fprintln(os.Stderr, l)
 	}
 
 	// Store directory c4m objects after all file entry IDs are final.
@@ -381,6 +461,117 @@ func storeManifestContent(manifest *c4m.Manifest, baseDir string) {
 	// Batch barrier: the whole ingest becomes durable in one flush.
 	syncStore(s)
 	reportStored(id)
+	return len(lost) > 0
+}
+
+func allTaken(whys []string) bool {
+	for _, w := range whys {
+		if w != "" {
+			return false
+		}
+	}
+	return true
+}
+
+var c4IDText = regexp.MustCompile(`c4[1-9A-HJ-NP-Za-km-z]{88}`)
+
+// rangeMemberIDs returns the member C4 IDs a folded entry's ID list names,
+// in range order: what the scan hashed. Nil when the description carries
+// no list for the range, or one that does not hold n IDs.
+func rangeMemberIDs(m *c4m.Manifest, e *c4m.Entry, n int) []c4.ID {
+	list, ok := m.RangeData[e.C4ID]
+	if !ok {
+		return nil
+	}
+	texts := c4IDText.FindAllString(list, -1)
+	if len(texts) != n {
+		return nil
+	}
+	ids := make([]c4.ID, n)
+	for i, t := range texts {
+		id, err := c4.Parse(t)
+		if err != nil {
+			return nil
+		}
+		ids[i] = id
+	}
+	return ids
+}
+
+// unfoldRange replaces a folded entry, one of whose members the store pass
+// could not take, with its members, as a scan that could not read that
+// member records them: a member with no C4 ID blocks the fold (the
+// maintainer's rule), and a range's frame IDs are never dropped (ruled
+// 2026-11-16). Each member takes the range line's mode and timestamp,
+// which the folded line states for every frame; a member taken keeps its
+// C4 ID and size, one given up has both null. The range's ID list goes with
+// the range. It returns the members given up, and why.
+func unfoldRange(m *c4m.Manifest, rangeEntry *c4m.Entry, names []string, ids []c4.ID, sizes []int64, whys []string) map[*c4m.Entry]string {
+	given := map[*c4m.Entry]string{}
+	at := -1
+	for i, e := range m.Entries {
+		if e == rangeEntry {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return given
+	}
+	members := make([]*c4m.Entry, len(names))
+	for i, name := range names {
+		e := &c4m.Entry{Mode: rangeEntry.Mode, Timestamp: rangeEntry.Timestamp, Size: -1, Depth: rangeEntry.Depth, Name: name}
+		if whys[i] == "" {
+			e.C4ID, e.Size = ids[i], sizes[i]
+		} else {
+			given[e] = whys[i]
+		}
+		members[i] = e
+	}
+	rest := append([]*c4m.Entry{}, m.Entries[at+1:]...)
+	m.Entries = append(append(m.Entries[:at], members...), rest...)
+	delete(m.RangeData, rangeEntry.C4ID)
+	return given
+}
+
+// rederiveAbove re-derives the size and C4 ID of every directory above an
+// entry the store pass changed, deepest first, so each is derived from
+// children already final: its size by PropagateMetadata over its own
+// subtree, its ID from its listing, as the scanner derives them. A stated
+// directory timestamp is kept. This line has no normaliser that re-derives
+// stated aggregates (master's c4m.Normalize).
+func rederiveAbove(m *c4m.Manifest, changed map[*c4m.Entry]string) {
+	type span struct{ start, end int }
+	var stack []int // indexes of the open directories
+	above := map[int]bool{}
+	for i, e := range m.Entries {
+		for len(stack) > 0 && m.Entries[stack[len(stack)-1]].Depth >= e.Depth {
+			stack = stack[:len(stack)-1]
+		}
+		if _, ok := changed[e]; ok {
+			for _, d := range stack {
+				above[d] = true
+			}
+		}
+		if e.IsDir() {
+			stack = append(stack, i)
+		}
+	}
+	var dirs []span
+	for i := range above {
+		end := i + 1
+		for end < len(m.Entries) && m.Entries[end].Depth > m.Entries[i].Depth {
+			end++
+		}
+		dirs = append(dirs, span{i, end})
+	}
+	sort.Slice(dirs, func(a, b int) bool { return m.Entries[dirs[a].start].Depth > m.Entries[dirs[b].start].Depth })
+	for _, d := range dirs {
+		dir := m.Entries[d.start]
+		dir.Size = -1
+		c4m.PropagateMetadata(m.Entries[d.start:d.end])
+		_, dir.C4ID = directoryRecord(m, dir)
+	}
 }
 
 // storeManifestSelf stores a manifest's own description: its canonical
@@ -413,22 +604,15 @@ func storeManifestSelf(s store.Store, m *c4m.Manifest) c4.ID {
 		fmt.Fprintf(os.Stderr, "Warning: failed to encode manifest: %v\n", err)
 		return c4.ID{}
 	}
-	id, err := s.Put(bytes.NewReader(data))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store manifest: %v\n", err)
-		return c4.ID{}
-	}
+	id := mustPut(s, bytes.NewReader(data), "the description")
 
 	// Root record: the canonical top-level view. Mirrors ComputeC4ID
 	// (copy, canonicalize, canonical text) so the stored bytes hash to
 	// the root directory's ID.
 	record := m.Copy()
 	record.Canonicalize()
-	if text := record.Canonical(); text != "" {
-		if _, err := s.Put(strings.NewReader(text)); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to store root record: %v\n", err)
-		}
-	}
+	// An empty root's record is the empty content, stored like any other.
+	mustPut(s, strings.NewReader(record.Canonical()), "the root record")
 	return id
 }
 
@@ -446,19 +630,43 @@ func reportStored(id c4.ID) {
 // entry and returns the member's own ID. A nil ID means the member
 // could not be stored, which makes the folded entry's ID-list
 // unbuildable.
-func storeSequenceMember(s store.Store, relPath, fullPath string) c4.ID {
+func storeSequenceMember(s store.Store, relPath, fullPath string) (c4.ID, int64, string) {
 	f, err := os.Open(fullPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: cannot read sequence member %s: %v\n", relPath, err)
-		return c4.ID{}
+		return c4.ID{}, -1, unreadableWhy(err)
 	}
 	defer f.Close()
-	id, err := s.Put(f)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
-		return c4.ID{}
+	cr := &countingReader{r: f}
+	id := mustPut(s, cr, relPath)
+	if cr.err != nil {
+		return c4.ID{}, -1, "unreadable at the store pass"
 	}
-	return id
+	return id, cr.n, ""
+}
+
+// countingReader counts the bytes read through it and keeps the first
+// read error, so a member cut short is not mistaken for a whole one.
+type countingReader struct {
+	r   io.Reader
+	n   int64
+	err error
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	if err != nil && err != io.EOF && c.err == nil {
+		c.err = err
+	}
+	return n, err
+}
+
+// unreadableWhy names why the store pass could not open a file.
+func unreadableWhy(err error) string {
+	if os.IsNotExist(err) {
+		return "gone at the store pass"
+	}
+	return "unreadable at the store pass"
 }
 
 // storeSequenceIDList stores the ID-list object a folded entry names.
@@ -480,9 +688,7 @@ func storeSequenceIDList(s store.Store, entry *c4m.Entry, memberIDs []c4.ID) err
 	if got := c4.Identify(bytes.NewReader(data)); got != entry.C4ID {
 		return fmt.Errorf("sequence %s: rebuilt ID list is %s, entry names %s", entry.Name, got, entry.C4ID)
 	}
-	if _, err := s.Put(bytes.NewReader(data)); err != nil {
-		return fmt.Errorf("sequence %s: failed to store ID list: %w", entry.Name, err)
-	}
+	mustPut(s, bytes.NewReader(data), "the ID list of "+entry.Name)
 	return nil
 }
 
@@ -490,32 +696,36 @@ func storeSequenceIDList(s store.Store, entry *c4m.Entry, memberIDs []c4.ID) err
 // tree is bytes, whatever its name and whatever its content parses as:
 // storing a transformed copy loses the original and leaves the entry
 // naming content that is not on disk.
-func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
+// storeFileEntry stores the bytes a file entry names. It returns "" when
+// the store holds them, else why it does not: the file is gone, unreadable,
+// or no longer the bytes the scan hashed. The entry's C4 ID is then null,
+// as a scan that could not read the file records it.
+func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) string {
 	// A symlink to a directory carries the directory's ID, and the
 	// directory's own entry stores that record; the link path has no
 	// bytes of its own to store (reading it as a file is "is a directory").
-	if info, err := os.Stat(fullPath); err != nil || info.IsDir() {
-		return
+	info, err := os.Stat(fullPath)
+	if err == nil && info.IsDir() {
+		return ""
 	}
-	f, err := os.Open(fullPath)
 	if err != nil {
-		return // skip files we can't open
-	}
-	defer f.Close()
-	newID, err := s.Put(f)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store %s: %v\n", relPath, err)
-		return
-	}
-	if newID != entry.C4ID {
-		// The scan hashed these bytes; the store hashed them again and
-		// disagreed, so the file changed under the scan. Record the
-		// entry unread rather than claiming an ID for bytes that are no
-		// longer there — rewriting it would silently describe a file
-		// the scan never saw.
-		fmt.Fprintf(os.Stderr, "Warning: %s changed during the scan, recorded with a null ID\n", relPath)
 		entry.C4ID = c4.ID{}
+		return unreadableWhy(err)
 	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		entry.C4ID = c4.ID{}
+		return unreadableWhy(err)
+	}
+	// The scan hashed these bytes; if they hash differently now, the file
+	// changed under the scan. Record the entry unread rather than claiming
+	// an ID for bytes that are no longer there.
+	if c4.Identify(bytes.NewReader(data)) != entry.C4ID {
+		entry.C4ID = c4.ID{}
+		return "changed since the scan"
+	}
+	mustPut(s, bytes.NewReader(data), relPath)
+	return ""
 }
 
 // storeDirectoryC4m extracts a directory's direct children from a manifest
@@ -527,9 +737,25 @@ func storeFileEntry(s store.Store, entry *c4m.Entry, relPath, fullPath string) {
 // The stored c4m is canonical: only direct children at depth 0, sorted.
 // This matches how directory C4 IDs are computed (one-level canonical form).
 func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Store) c4.ID {
+	// An empty directory's record is the empty content, and its line names
+	// that ID, so it is stored like any other record (approved 2026-11-16,
+	// option A). Through 2026-11-16 it was returned unstored, and a tree
+	// with an empty directory and no empty file named the empty-content ID
+	// without the store holding it.
+	canonical, id := directoryRecord(manifest, dirEntry)
+	if id.IsNil() {
+		return id
+	}
+	return mustPut(s, strings.NewReader(canonical), "the listing of "+dirEntry.Name)
+}
+
+// directoryRecord returns a directory's one-level canonical record from its
+// direct children in manifest, and the record's C4 ID, the directory's own.
+// No children gives the empty record and the empty-content ID.
+func directoryRecord(manifest *c4m.Manifest, dirEntry *c4m.Entry) (string, c4.ID) {
 	children := manifest.Children(dirEntry)
 	if len(children) == 0 {
-		return c4.Identify(bytes.NewReader(nil))
+		return "", c4.Identify(bytes.NewReader(nil))
 	}
 
 	sub := c4m.NewManifest()
@@ -545,15 +771,9 @@ func storeDirectoryC4m(manifest *c4m.Manifest, dirEntry *c4m.Entry, s store.Stor
 	sub.SortEntries()
 	canonical := sub.Canonical()
 	if canonical == "" {
-		return c4.ID{}
+		return "", c4.ID{}
 	}
-
-	id, err := s.Put(strings.NewReader(canonical))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to store directory c4m for %s: %v\n", dirEntry.Name, err)
-		return c4.ID{}
-	}
-	return id
+	return canonical, c4.Identify(strings.NewReader(canonical))
 }
 
 // ingestStore memoizes the store handle for ingest: every Put in a
@@ -668,9 +888,8 @@ func storeRangeLists(s store.Store, m *c4m.Manifest) {
 		if !ok {
 			continue
 		}
-		id, err := s.Put(strings.NewReader(list))
-		if err != nil || id != e.C4ID {
-			fmt.Fprintf(os.Stderr, "Warning: failed to store the ID list of %s: %v\n", e.Name, err)
+		if id := mustPut(s, strings.NewReader(list), "the ID list of "+e.Name); id != e.C4ID {
+			fmt.Fprintf(os.Stderr, "Warning: the ID list of %s hashes to %s, its line names %s\n", e.Name, id, e.C4ID)
 		}
 	}
 }
