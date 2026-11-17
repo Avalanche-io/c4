@@ -127,7 +127,10 @@ func (s *TreeStore) Sync() error {
 		return err
 	}
 	for id, tmpName := range s.pending {
-		p, ok := s.locate(id)
+		p, ok, err := s.locate(id)
+		if err != nil {
+			return fmt.Errorf("lookup: %w", err)
+		}
 		if ok {
 			os.Remove(tmpName)
 			delete(s.pending, id)
@@ -170,8 +173,34 @@ func (s *TreeStore) Has(id c4.ID) bool {
 	if ok {
 		return true
 	}
-	_, ok = s.locate(id)
+	_, ok, _ = s.locate(id)
 	return ok
+}
+
+// Lookup is the store's three-way answer for id. It returns the object's
+// path and nil when a copy exists (a pending batch object's temp path, as
+// ContentPath gives). It returns an error for which os.IsNotExist is true
+// when no level holds a copy. Any other error is one a stat met (a
+// permission error, EIO): whether the object exists is then unknown, and
+// it must not be read as absent. Has and ContentPath can say only yes or
+// no, and say no for an unknown; Open, Put, Sync, Create's writer and
+// Remove return the error. Through 2026-11-16 every lookup read any
+// failed stat as absent (GC-DESIGN-R3 S1; TestTreeStoreLookupTellsAbsentFromError).
+func (s *TreeStore) Lookup(id c4.ID) (string, error) {
+	s.mu.Lock()
+	tmpName, ok := s.pending[id]
+	s.mu.Unlock()
+	if ok {
+		return tmpName, nil
+	}
+	p, ok, err := s.locate(id)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", noCopy(s.root, id)
+	}
+	return p, nil
 }
 
 // Open opens the content for reading.
@@ -183,9 +212,13 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 		return os.Open(tmpName)
 	}
 	f, err := os.Open(s.path(id))
-	if err == nil || !os.IsNotExist(err) {
-		return f, err
+	if err == nil {
+		return f, nil
 	}
+	// Not at its place, or its place could not be opened: search every
+	// level. A copy found anywhere is opened; a search that met an error
+	// other than not-exist returns it; otherwise the first open's error.
+	//
 	// The search found the file at one level, and another process's split
 	// can move it down before the open: search again.
 	//
@@ -200,9 +233,12 @@ func (s *TreeStore) Open(id c4.ID) (io.ReadCloser, error) {
 	// not found is a true answer (TestTreeStoreOpenFollowsAMove,
 	// TestTreeStoreOpenRemovedMidSearch, TestTreeStoreOpenRetryIsBounded).
 	for i := 0; i < openFollows(id); i++ {
-		p, ok := s.foldFind(id)
-		if !ok {
-			return nil, err
+		p, ferr := s.foldFind(id)
+		if ferr != nil {
+			if os.IsNotExist(ferr) {
+				return nil, err
+			}
+			return nil, ferr
 		}
 		f, oerr := os.Open(p)
 		if oerr == nil || !os.IsNotExist(oerr) {
@@ -342,7 +378,12 @@ func (w *pendingWriter) Close() error {
 		os.Remove(tmpName)
 		return nil
 	}
-	if _, ok := w.s.locate(w.id); ok {
+	_, ok, err := w.s.locate(w.id)
+	if err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("lookup: %w", err)
+	}
+	if ok {
 		os.Remove(tmpName)
 		return nil
 	}
@@ -393,8 +434,12 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// If content already exists, skip the rename.
-	p, ok := s.locate(id)
+	// If content already exists, skip the rename. A lookup that met an
+	// error other than not-exist can't say, so Put returns it.
+	p, ok, err := s.locate(id)
+	if err != nil {
+		return c4.ID{}, fmt.Errorf("lookup: %w", err)
+	}
 	if ok {
 		return id, nil
 	}
@@ -460,7 +505,7 @@ func (s *TreeStore) publish(tmpName, p string, id c4.ID) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	if _, ok := s.locate(id); ok {
+	if _, ok, _ := s.locate(id); ok {
 		os.Remove(tmpName)
 		return false, nil
 	}
@@ -477,7 +522,7 @@ func (s *TreeStore) ContentPath(id c4.ID) (string, bool) {
 	if ok {
 		return tmpName, true
 	}
-	p, ok := s.locate(id)
+	p, ok, _ := s.locate(id)
 	if !ok {
 		return "", false
 	}
@@ -500,9 +545,12 @@ func (s *TreeStore) Remove(id c4.ID) error {
 	// at most one level per two characters of the ID, so the bound is
 	// never reached unless another process keeps publishing the ID.
 	for i := 0; i < len(id.String()); i++ {
-		p, ok := s.foldFind(id)
-		if !ok {
-			break
+		p, ferr := s.foldFind(id)
+		if ferr != nil {
+			if os.IsNotExist(ferr) {
+				break
+			}
+			return ferr
 		}
 		if rerr := os.Remove(p); rerr != nil {
 			if os.IsNotExist(rerr) {
@@ -558,16 +606,32 @@ func (s *TreeStore) path(id c4.ID) string {
 // The exact-case trie path is checked first with a single stat, exactly
 // as before; only on a miss is foldFind consulted, which looks at every
 // level of the trie on the way down. On a miss the exact-case path is
-// returned as the write target.
-func (s *TreeStore) locate(id c4.ID) (string, bool) {
+// returned as the write target. A copy found anywhere wins; failing that,
+// a stat error other than not-exist is returned, and the object's
+// presence is unknown; otherwise there is no copy (false, nil).
+func (s *TreeStore) locate(id c4.ID) (string, bool, error) {
 	p := s.path(id)
-	if _, err := s.statPath(p); err == nil {
-		return p, true
+	_, err := s.statPath(p)
+	if err == nil {
+		return p, true, nil
 	}
-	if fp, ok := s.foldFind(id); ok {
-		return fp, true
+	fp, ferr := s.foldFind(id)
+	if ferr == nil {
+		return fp, true, nil
 	}
-	return p, false
+	if !os.IsNotExist(ferr) {
+		return p, false, ferr
+	}
+	if !os.IsNotExist(err) {
+		return p, false, err
+	}
+	return p, false, nil
+}
+
+// noCopy is a lookup's answer when no level holds id: os.IsNotExist is
+// true for it.
+func noCopy(root string, id c4.ID) error {
+	return &os.PathError{Op: "lookup", Path: filepath.Join(root, id.String()), Err: os.ErrNotExist}
 }
 
 // foldFind searches for id's object file from the root down, looking for
@@ -611,31 +675,59 @@ func (s *TreeStore) locate(id c4.ID) (string, bool) {
 // this finds them without moving anything. Each level probes the file
 // and at most four case variants (exact first) by stat rather than
 // listing the directory, so a miss never reads a full leaf.
-func (s *TreeStore) foldFind(id c4.ID) (string, bool) {
-	return s.foldSearch(s.root, id.String(), 0)
+// foldFind returns the path of a copy of id and nil, or an error: one for
+// which os.IsNotExist is true when no level holds a copy, or the first
+// other error a stat met when none was found.
+func (s *TreeStore) foldFind(id c4.ID) (string, error) {
+	p, ok, err := s.foldSearch(s.root, id.String(), 0)
+	if ok {
+		return p, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return "", noCopy(s.root, id)
 }
 
-func (s *TreeStore) foldSearch(dir, str string, i int) (string, bool) {
+// foldSearch reports a copy found at or below dir. When none is found it
+// returns the first stat error other than not-exist it met, if any: the
+// search goes on past an error, so a copy elsewhere is still found, and
+// an error is never read as absent.
+func (s *TreeStore) foldSearch(dir, str string, i int) (string, bool, error) {
 	// The file at this level first, then the levels below: the order the
 	// files move in (see foldFind).
-	here := filepath.Join(dir, str)
-	if _, err := s.statPath(here); err == nil {
-		return here, true
+	var first error
+	note := func(err error) {
+		if first == nil && err != nil && !os.IsNotExist(err) {
+			first = err
+		}
 	}
+	here := filepath.Join(dir, str)
+	_, err := s.statPath(here)
+	if err == nil {
+		return here, true, nil
+	}
+	note(err)
 	if i+2 <= len(str) {
 		var seen []os.FileInfo
 		for _, seg := range foldVariants(str[i : i+2]) {
 			info, err := s.statPath(filepath.Join(dir, seg))
-			if err != nil || !info.IsDir() || sameAsAny(info, seen) {
+			if err != nil {
+				note(err)
+				continue
+			}
+			if !info.IsDir() || sameAsAny(info, seen) {
 				continue
 			}
 			seen = append(seen, info)
-			if p, ok := s.foldSearch(filepath.Join(dir, seg), str, i+2); ok {
-				return p, true
+			p, ok, err := s.foldSearch(filepath.Join(dir, seg), str, i+2)
+			if ok {
+				return p, true, nil
 			}
+			note(err)
 		}
 	}
-	return "", false
+	return "", false, first
 }
 
 // sameAsAny reports whether info is the same directory as any in seen.
