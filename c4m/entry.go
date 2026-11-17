@@ -98,7 +98,7 @@ func (e *Entry) Format(indentWidth int, displayFormat bool) string {
 
 	// Format timestamp (handle null value)
 	var timeStr string
-	if e.Timestamp.Equal(NullTimestamp()) {
+	if e.TimestampIsNull() {
 		timeStr = "-" // Null timestamp
 	} else {
 		// Canonical format MUST be UTC only
@@ -148,7 +148,7 @@ func (e *Entry) Canonical() string {
 	modeStr := e.modeText()
 	// Canonical format MUST be UTC only; null timestamps render as "-"
 	var timeStr string
-	if e.Timestamp.Equal(NullTimestamp()) {
+	if e.TimestampIsNull() {
 		timeStr = "-"
 	} else {
 		timeStr = e.Timestamp.UTC().Format(TimestampFormat)
@@ -388,6 +388,19 @@ func (e *Entry) IsSocket() bool {
 	return e.Mode&os.ModeSocket != 0
 }
 
+// TimestampIsNull reports whether the entry's timestamp is null at the
+// format's resolution. A c4m line carries whole seconds, written as the
+// second the time falls in, and the epoch is null (SPECIFICATION.md,
+// "Timestamp": "-" or "0", internally the Unix epoch). So a time inside
+// the epoch second, such as a file's mtime of 0.5 s, is null: its line is
+// "-". Through 2026-11-16 every null test compared the unfloored time
+// with the epoch, so such a file was written 1970-01-01T00:00:00Z, which
+// reads back as null, and a directory's description ID differed from the
+// ID of the c4m that describes it.
+func (e *Entry) TimestampIsNull() bool {
+	return e.Timestamp.Truncate(time.Second).Equal(nullTimestamp)
+}
+
 // SizeIsNull reports whether the entry's size is unknown. -1 is null. So
 // is a stated 0 beside the C4 ID of content that is not empty: a
 // filesystem surface has no number for "unknown", so a null size can
@@ -409,7 +422,7 @@ func (e *Entry) SizeIsNull() bool {
 func (e *Entry) HasNullValues() bool {
 	// Mode==0 is null (ZeroMode is a known zero) — directory-ness comes from trailing "/" in name.
 	hasNullMode := e.Mode == 0
-	hasNullTimestamp := e.Timestamp.Equal(NullTimestamp())
+	hasNullTimestamp := e.TimestampIsNull()
 	hasNullSize := e.SizeIsNull()
 	// C4ID being nil is OK for empty files or directories without computed IDs yet
 
@@ -423,7 +436,7 @@ func (e *Entry) GetNullFields() []string {
 	if e.Mode == 0 {
 		nullFields = append(nullFields, "Mode")
 	}
-	if e.Timestamp.Equal(NullTimestamp()) {
+	if e.TimestampIsNull() {
 		nullFields = append(nullFields, "Timestamp")
 	}
 	if e.SizeIsNull() {

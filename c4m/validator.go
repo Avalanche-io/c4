@@ -207,7 +207,7 @@ func (v *Validator) count(e *Entry) {
 	} else {
 		s.TotalSize += e.Size
 	}
-	if e.Timestamp.Equal(NullTimestamp()) {
+	if e.TimestampIsNull() {
 		s.NullTimes++
 	} else {
 		if s.OldestTime.IsZero() || e.Timestamp.Before(s.OldestTime) {

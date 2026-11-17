@@ -2,6 +2,26 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### ⚠ A time inside the epoch second is null: one description ID again
+
+**c4 could not read its own scan.** For a tree holding a subdirectory and
+a file timed inside the epoch second (an mtime of 0.5 s, say), `c4 id
+dir/` wrote a chain that its own reader rejected ("patch ID does not
+match prior content"), so `c4 patch`, `c4 id -q` and `c4 id -q -` all
+failed on c4's own output. **Convergence fixed:** even without a
+subdirectory, a directory's description ID differed from the ID of the
+c4m that describes it, which broke "every form lands on one description
+ID". Every null test
+compared the unfloored in-memory time with the epoch, so the entry was
+not null, and its line was written `1970-01-01T00:00:00Z`, which reads
+back as null. A c4m line carries the second a time falls in, and the
+epoch is null, so such a time is null and its only stable spelling is `-`.
+The new `Entry.TimestampIsNull`, beside `SizeIsNull`, floors to the second
+before comparing, and all 21 null-time tests (c4m, scan, reconcile,
+restore) use it. Scans still keep nanoseconds in memory. **C4 IDs change**
+only for trees holding a time in (0, 1) s after the epoch; a time of
+exactly 0 was already null. New shared vector `c4m/testdata/epoch-second-vector/`.
+
 ### A claim never rests on a name that isn't on disk ⚠
 
 **Data loss fixed.** When a snapshot stored nothing new, because every

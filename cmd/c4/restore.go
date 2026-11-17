@@ -363,7 +363,7 @@ func isContentLevel(m *c4m.Manifest) bool {
 	for _, e := range m.Entries {
 		// A content-level entry carries the content projection's mode:
 		// null, or lrwxrwxrwx for a symlink (scan.ContentMode).
-		if e.Mode != scan.ContentMode(e.Mode) || !e.Timestamp.Equal(c4m.NullTimestamp()) {
+		if e.Mode != scan.ContentMode(e.Mode) || !e.TimestampIsNull() {
 			return false
 		}
 	}
@@ -510,7 +510,7 @@ func projectToKnowledge(built, target *c4m.Manifest) *c4m.Manifest {
 		if t.Mode == 0 {
 			e.Mode = 0
 		}
-		if t.Timestamp.Equal(c4m.NullTimestamp()) {
+		if t.TimestampIsNull() {
 			e.Timestamp = c4m.NullTimestamp()
 		}
 		if t.Size < 0 {

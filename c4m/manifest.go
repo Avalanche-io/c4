@@ -639,7 +639,7 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 			}
 		}
 		// Resolve Timestamp if null. Empty dir → null. Nil-infectious otherwise.
-		if d.Timestamp.Equal(null) {
+		if d.TimestampIsNull() {
 			switch {
 			case !top.hadChildren, top.nullTs:
 				d.Timestamp = null
@@ -670,7 +670,7 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 		} else {
 			p.size += d.Size
 		}
-		if d.Timestamp.Equal(null) {
+		if d.TimestampIsNull() {
 			p.nullTs = true
 		} else if d.Timestamp.After(p.ts) {
 			p.ts = d.Timestamp
@@ -700,7 +700,7 @@ func propagateMetadata(entries []*Entry, deriveIDs bool) {
 		} else {
 			p.size += e.Size
 		}
-		if e.Timestamp.Equal(null) {
+		if e.TimestampIsNull() {
 			p.nullTs = true
 		} else if e.Timestamp.After(p.ts) {
 			p.ts = e.Timestamp

@@ -144,7 +144,7 @@ func (e *Encoder) formatEntryPretty(entry *Entry, maxSize int64, c4IDColumn int)
 
 	// Format timestamp (handle null value)
 	var timeStr string
-	if entry.Timestamp.Equal(NullTimestamp()) {
+	if entry.TimestampIsNull() {
 		timeStr = "-                        " // Null timestamp (padded to match typical timestamp width)
 	} else {
 		timeStr = formatTimestampPretty(entry.Timestamp)

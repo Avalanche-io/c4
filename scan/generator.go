@@ -261,7 +261,7 @@ func buildReuseMap(m *Manifest) map[string]*c4m.Entry {
 			continue
 		}
 		if e.IsSequence || e.Target != "" || e.C4ID.IsNil() ||
-			e.Size < 0 || e.Timestamp.Equal(c4m.NullTimestamp()) {
+			e.Size < 0 || e.TimestampIsNull() {
 			continue
 		}
 		out[strings.Join(dirStack[:min(e.Depth, len(dirStack))], "")+e.Name] = e
