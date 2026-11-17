@@ -30,6 +30,12 @@ testdata/
 !c4m/testdata/
 !c4m/testdata/*-vector/
 !c4m/testdata/*-vector/**
+# The store's fixtures (the split-race store, #171) live under testdata/
+# too, and were in the tree only because they were force-added: a file
+# added there without -f was dropped silently. Re-include them the same
+# way, parent first.
+!store/testdata/
+!store/testdata/**
 
 # Build artifacts
 _obj
