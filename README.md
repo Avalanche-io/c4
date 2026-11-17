@@ -122,6 +122,19 @@ c4 log project.c4m          # see what changed
 c4 patch -n 1 project.c4m   # recover the original state
 ```
 
+A chain grown with `c4 diff … >> FILE.c4m` on 1.0.26 or earlier may end
+with a bare C4 ID, which 1.0.27 refuses ("empty patch section"). This
+removes that line, and only that line:
+
+```bash
+if tail -n 1 FILE.c4m | grep -qE '^c4[1-9A-HJ-NP-Za-km-z]{88}$'; then
+  sed '$d' FILE.c4m > FILE.c4m.tmp && mv FILE.c4m.tmp FILE.c4m
+fi
+```
+
+Or run `c4 patch FILE.c4m > fixed.c4m` for one plain c4m of the final
+state, without the history.
+
 **Make a directory match a description.** Declarative — you say what
 the result should be, C4 figures out how to get there:
 

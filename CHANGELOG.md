@@ -2,6 +2,26 @@
 
 ## Unreleased (1.0.27)
 
+### Repairing a chain an older `c4 diff >>` grew
+
+A chain grown with `c4 diff … >> FILE.c4m` on 1.0.26 or earlier may end
+with a bare C4 ID, which 1.0.27 refuses ("empty patch section"). This
+removes that line, and only that line:
+
+```bash
+if tail -n 1 FILE.c4m | grep -qE '^c4[1-9A-HJ-NP-Za-km-z]{88}$'; then
+  sed '$d' FILE.c4m > FILE.c4m.tmp && mv FILE.c4m.tmp FILE.c4m
+fi
+```
+
+Or run `c4 patch FILE.c4m > fixed.c4m` for one plain c4m of the final
+state, without the history. The guard deletes nothing else: a decoder reads
+a line of exactly 90 characters as a bare C4 ID and a longer one as a
+range's ID list, and the shortest list, two members, is 180 characters.
+`TestTrailingIDRepair` runs this text over the 1.0.24 chain (now in
+`c4m/testdata/legacy/`, from master) and four healthy files, and checks
+that `c4 patch` flattens the chain unrepaired.
+
 ### ⚠ A time inside the epoch second is null: one description ID again
 
 **c4's scan was not a fixed point of its own normaliser.** For a file
