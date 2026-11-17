@@ -35,6 +35,8 @@ linux   cmd/c4     TestRestoreRefusesNamesThePlatformCannotHold                 
 # a symlink needs a privilege the runner does not have.
 windows cmd/c4     TestIdentifyFileBytesReportsAReadError                         # opening a directory fails at open
 windows cmd/c4     TestIDSaysCannotReadWhenTheReadFails                           # chmod 0 does not restrict reads
+windows cmd/c4     TestIDStoreGuideTrustsAnUnreadableFile                         # chmod 0 does not restrict reads
+windows cmd/c4     TestIDStorePassGivesUpAFile/unreadable                         # chmod 0 does not restrict reads
 windows cmd/c4     TestMetadataScanObservedEmptyDirectory                         # needs Unix permissions
 windows cmd/c4     TestPartialScanExitsTwo                                        # chmod 0 does not restrict reads
 windows cmd/c4     TestPartialScanUnreadableDirectory                             # chmod 0 does not restrict reads
