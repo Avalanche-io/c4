@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -568,6 +569,18 @@ func getOrSetupStore() store.Store {
 }
 
 func openOrSetupStore() store.Store {
+	return openOrSetupStoreFrom(os.Stdin, isTerminal())
+}
+
+// openOrSetupStoreFrom opens the configured store or, when none is
+// configured and terminal says someone can answer, asks on stderr whether
+// to create the default one, reading the answer from in. A typed line
+// answers: Enter, "y" or "yes" is yes, anything else no. End of input with
+// nothing read is no: stdin at /dev/null (cron, launchd, an agent) is a
+// character device, so isTerminal reports it as a terminal, and through
+// 1.0.26 its empty read counted as Enter and silently created ~/.c4/store
+// and a config pointing at it.
+func openOrSetupStoreFrom(in io.Reader, terminal bool) store.Store {
 	s, err := store.OpenStore()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: store error: %v\n", err)
@@ -578,13 +591,18 @@ func openOrSetupStore() store.Store {
 	}
 
 	// No store configured — offer to create default (local only).
-	if !isTerminal() {
+	if !terminal {
 		return nil
 	}
 
 	fmt.Fprintf(os.Stderr, "No content store configured. Create %s? [Y/n] ", store.DefaultStorePath())
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
+	reader := bufio.NewReader(in)
+	answer, err := reader.ReadString('\n')
+	if err != nil && answer == "" {
+		// Nobody answered: create nothing.
+		fmt.Fprintln(os.Stderr)
+		return nil
+	}
 	answer = strings.TrimSpace(strings.ToLower(answer))
 
 	if answer == "" || answer == "y" || answer == "yes" {
