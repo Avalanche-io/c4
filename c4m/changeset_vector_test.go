@@ -39,6 +39,22 @@ func changesetV2() *Manifest {
 	})
 }
 
+// changesetV3 is v2 with the directory sub/deep/ removed, a directory that
+// holds a file: a patch removes it by restating its line alone, since a
+// directory restated with children under it is deepened, never removed
+// (SPECIFICATION.md, "Patch Entry Semantics").
+func changesetV3() *Manifest {
+	t1 := time.Date(2026, 1, 2, 9, 4, 5, 0, time.UTC)
+	t2 := time.Date(2026, 1, 3, 10, 5, 6, 0, time.UTC)
+	t3 := time.Date(2026, 1, 4, 11, 6, 7, 0, time.UTC)
+	return changesetTree([]changesetEntry{
+		{0, "top.txt", "top", t1},
+		{0, "sub/", "", t3},
+		{1, "mid.txt", "mid", t1},
+		{1, "new.txt", "new", t2},
+	})
+}
+
 type changesetEntry struct {
 	depth int
 	name  string
@@ -68,14 +84,24 @@ func changesetTree(entries []changesetEntry) *Manifest {
 // `c4 diff` writes it, and the chain `c4 diff >>` makes.
 func changesetVectorFiles(t *testing.T) map[string][]byte {
 	t.Helper()
-	base, v2 := changesetBase(), changesetV2()
+	base, v2, v3 := changesetBase(), changesetV2(), changesetV3()
 	files := map[string][]byte{
-		"base.c4m":      encodeRD(t, base),
-		"v2.c4m":        encodeRD(t, v2),
-		"changeset.c4m": patchText(t, PatchDiff(base, v2)),
+		"base.c4m":         encodeRD(t, base),
+		"v2.c4m":           encodeRD(t, v2),
+		"v3.c4m":           encodeRD(t, v3),
+		"changeset.c4m":    patchText(t, PatchDiff(base, v2)),
+		"changeset-v3.c4m": patchText(t, PatchDiff(v2, v3)),
 	}
 	files["chain.c4m"] = append(append([]byte{}, files["base.c4m"]...), files["changeset.c4m"]...)
+	files["chain-v3.c4m"] = append(append([]byte{}, files["v2.c4m"]...), files["changeset-v3.c4m"]...)
 	return files
+}
+
+// changesetSteps are the vector's two changes: each names its old and new
+// states, the changeset between them and the chain that appends it.
+var changesetSteps = []struct{ old, new, changeset, chain string }{
+	{"base.c4m", "v2.c4m", "changeset.c4m", "chain.c4m"},
+	{"v2.c4m", "v3.c4m", "changeset-v3.c4m", "chain-v3.c4m"},
 }
 
 // TestChangesetVector pins testdata/changeset-vector: every patch writer,
@@ -113,32 +139,39 @@ func TestChangesetVector(t *testing.T) {
 		}
 		return m
 	}
-	// The patch writer, from the files as a port reads them.
-	if got := patchText(t, PatchDiff(read("base.c4m"), read("v2.c4m"))); !bytes.Equal(got, files["changeset.c4m"]) {
-		t.Errorf("PatchDiff(base, v2) writes\n%s\nwant changeset.c4m:\n%s", got, files["changeset.c4m"])
+	for _, st := range changesetSteps {
+		// The patch writer, from the files as a port reads them.
+		if got := patchText(t, PatchDiff(read(st.old), read(st.new))); !bytes.Equal(got, files[st.changeset]) {
+			t.Errorf("PatchDiff(%s, %s) writes\n%s\nwant %s:\n%s", st.old, st.new, got, st.changeset, files[st.changeset])
+		}
+		// A changeset never ends with a bare C4 ID.
+		lines := strings.Split(strings.TrimRight(string(files[st.changeset]), "\n"), "\n")
+		if last := lines[len(lines)-1]; len(last) == 90 && strings.HasPrefix(last, "c4") {
+			t.Errorf("%s ends with a bare C4 ID: %s", st.changeset, last)
+		}
+		// The chain, through the decoder and the chain readers.
+		if got := encodeRD(t, read(st.chain)); !bytes.Equal(got, files[st.new]) {
+			t.Errorf("Decode(%s) writes\n%s\nwant %s", st.chain, got, st.new)
+		}
+		secs, err := DecodePatchChain(bytes.NewReader(files[st.chain]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := encodeRD(t, ResolvePatchChain(secs, 0)); !bytes.Equal(got, files[st.new]) {
+			t.Errorf("ResolvePatchChain(%s) writes\n%s\nwant %s", st.chain, got, st.new)
+		}
+		// Applying the changeset's entries to the old state.
+		patch, err := Unmarshal([]byte(strings.SplitN(string(files[st.changeset]), "\n", 2)[1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := encodeRD(t, ApplyPatch(read(st.old), patch)); !bytes.Equal(got, files[st.new]) {
+			t.Errorf("ApplyPatch(%s, %s) writes\n%s\nwant %s", st.old, st.changeset, got, st.new)
+		}
 	}
-	// A changeset never ends with a bare C4 ID.
-	lines := strings.Split(strings.TrimRight(string(files["changeset.c4m"]), "\n"), "\n")
-	if last := lines[len(lines)-1]; len(last) == 90 && strings.HasPrefix(last, "c4") {
-		t.Errorf("changeset.c4m ends with a bare C4 ID: %s", last)
-	}
-	// The chain, through the decoder and the chain readers.
-	if got := encodeRD(t, read("chain.c4m")); !bytes.Equal(got, files["v2.c4m"]) {
-		t.Errorf("Decode(chain.c4m) writes\n%s\nwant v2.c4m", got)
-	}
-	secs, err := DecodePatchChain(bytes.NewReader(files["chain.c4m"]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := encodeRD(t, ResolvePatchChain(secs, 0)); !bytes.Equal(got, files["v2.c4m"]) {
-		t.Errorf("ResolvePatchChain(chain.c4m) writes\n%s\nwant v2.c4m", got)
-	}
-	// Applying the changeset's entries to base.
-	patch, err := Unmarshal([]byte(strings.SplitN(string(files["changeset.c4m"]), "\n", 2)[1]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := encodeRD(t, ApplyPatch(read("base.c4m"), patch)); !bytes.Equal(got, files["v2.c4m"]) {
-		t.Errorf("ApplyPatch(base, changeset) writes\n%s\nwant v2.c4m", got)
+	// A removed directory is its own line alone: nothing under sub/deep/ is
+	// restated, since a directory restated with children is deepened.
+	if bytes.Contains(files["changeset-v3.c4m"], []byte("leaf.txt")) {
+		t.Errorf("changeset-v3.c4m restates a child of the removed sub/deep/:\n%s", files["changeset-v3.c4m"])
 	}
 }
