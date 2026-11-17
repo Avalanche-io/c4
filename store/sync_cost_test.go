@@ -50,4 +50,70 @@ func TestSyncCost(t *testing.T) {
 	}
 	run("entry fsync per touched directory + final flush", fsyncDir)
 	run("no entry fsync (final flush only)", func(string) error { return nil })
+
+	// What holding every name a writer rests on costs (GC-DESIGN-R4 S13):
+	// a batch whose objects are all present already (a re-snapshot), and
+	// SyncEach Puts that publish or skip.
+	fill := func(n int, mode SyncMode) (string, [][]byte) {
+		root := filepath.Join(t.TempDir(), "store")
+		s, err := NewTreeStore(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.SetSyncMode(mode)
+		s.SetSplitThreshold(16)
+		var data [][]byte
+		for i := 0; i < n; i++ {
+			b := []byte(fmt.Sprintf("hold object %d\n", i))
+			data = append(data, b)
+			if _, err := s.Put(bytes.NewReader(b)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.Sync(); err != nil {
+			t.Fatal(err)
+		}
+		return root, data
+	}
+	reopen := func(root string, mode SyncMode) *TreeStore {
+		s, err := NewTreeStore(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.SetSyncMode(mode)
+		s.SetSplitThreshold(16)
+		return s
+	}
+	root, data := fill(objects, SyncBatch)
+	s := reopen(root, SyncBatch)
+	start := time.Now()
+	for _, b := range data {
+		if _, err := s.Put(bytes.NewReader(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	puts := time.Since(start)
+	start = time.Now()
+	if err := s.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("batch of %d objects all present: Puts %v, Sync %v", objects, puts, time.Since(start))
+
+	const each = 200
+	root, _ = fill(0, SyncEach)
+	s = reopen(root, SyncEach)
+	start = time.Now()
+	for i := 0; i < each; i++ {
+		if _, err := s.Put(bytes.NewReader([]byte(fmt.Sprintf("each object %d\n", i)))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("SyncEach: %d Puts that publish, %v each", each, time.Since(start)/each)
+	start = time.Now()
+	for i := 0; i < each; i++ {
+		if _, err := s.Put(bytes.NewReader([]byte(fmt.Sprintf("each object %d\n", i)))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("SyncEach: %d Puts that skip, %v each", each, time.Since(start)/each)
 }
