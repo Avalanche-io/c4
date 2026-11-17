@@ -447,16 +447,23 @@ func resolveGuideScanStart(guidePath string, guide *c4m.Manifest) time.Time {
 	rootID := guide.ComputeC4ID()
 	if s, _ := store.OpenStore(); s != nil {
 		if r, ok := s.(interface{ Root() string }); ok {
-			if claims, err := c4m.OpenJournal(r.Root()).Claims(); err == nil {
-				var found time.Time
-				for _, c := range claims {
-					if c.ID == rootID {
-						found = c.ScanStart // latest match wins
-					}
+			// A journal that can't be read is an error, not a missing
+			// claim: swallowing it would turn every -c warm re-scan into
+			// a cold one without a word, and hide a journal of a format
+			// this c4 doesn't know (c4 issue #44).
+			j := c4m.OpenJournal(r.Root())
+			claims, err := j.Claims()
+			if err != nil {
+				fatalf("Error reading %s: %v", j.Path(), err)
+			}
+			var found time.Time
+			for _, c := range claims {
+				if c.ID == rootID {
+					found = c.ScanStart // latest match wins
 				}
-				if !found.IsZero() {
-					return found
-				}
+			}
+			if !found.IsZero() {
+				return found
 			}
 		}
 	}
@@ -825,6 +832,15 @@ func getOrSetupStore() store.Store {
 	}
 	ingestStoreOpen = true
 	ingestStore = openOrSetupStore()
+	// Every path that stores and claims opens its store here first, so a
+	// journal of a format this c4 doesn't know is refused before anything
+	// is ingested: nothing is stored, and no v1 line is appended under a
+	// newer header (c4 issue #44).
+	if r, ok := ingestStore.(interface{ Root() string }); ok {
+		if err := c4m.OpenJournal(r.Root()).CheckVersion(); err != nil {
+			fatalf("Error: %s: %v", c4m.OpenJournal(r.Root()).Path(), err)
+		}
+	}
 	return ingestStore
 }
 

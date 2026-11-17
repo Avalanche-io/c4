@@ -32,8 +32,35 @@ import (
 // JournalName is the journal's filename inside a store root.
 const JournalName = "journal"
 
-// journalMagic is the required first line (with a format version).
+// journalPrefix opens every journal, whatever its format version.
+const journalPrefix = "@c4 journal"
+
+// JournalVersion is the one journal format this package reads and writes.
+const JournalVersion = 1
+
+// journalMagic is the required first line: the prefix and the version.
 const journalMagic = "@c4 journal 1"
+
+// checkJournalVersion refuses a journal whose header names a format this
+// package doesn't know. A journal written by a newer format is never
+// read as this one and never appended to, since v1 lines under its header
+// would corrupt it (c4 issue #44). It reads only the first line; data that
+// isn't a journal at all is left to the caller.
+func checkJournalVersion(data []byte) error {
+	if !IsJournal(data) {
+		return nil
+	}
+	line := data
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		line = data[:i]
+	}
+	if string(line) == journalMagic {
+		return nil
+	}
+	found := strings.TrimSpace(strings.TrimPrefix(string(line), journalPrefix))
+	return fmt.Errorf("journal: format version %q is not one this c4 knows (it reads and writes version %d); refusing to read or append to it — use a c4 that knows version %s",
+		found, JournalVersion, found)
+}
 
 // journalTimeFormat is RFC 3339 at second precision, always UTC.
 const journalTimeFormat = "2006-01-02T15:04:05Z"
@@ -92,6 +119,12 @@ func (j *Journal) Append(c Claim) error {
 	// releases it if this process dies, so a crashed writer never
 	// wedges the store.
 
+	// The version is checked before the torn tail is touched: a journal
+	// of a format this package doesn't know is left byte for byte as it is.
+	if err := checkJournalHead(f); err != nil {
+		return err
+	}
+
 	end, err := truncateTornTail(f)
 	if err != nil {
 		return fmt.Errorf("journal tail: %w", err)
@@ -108,6 +141,33 @@ func (j *Journal) Append(c Claim) error {
 		return fmt.Errorf("journal sync: %w", err)
 	}
 	return nil
+}
+
+// checkJournalHead reads the first line of an open journal and refuses a
+// format version this package doesn't know. An empty file passes.
+func checkJournalHead(f *os.File) error {
+	head := make([]byte, 256)
+	n, err := f.ReadAt(head, 0)
+	if n == 0 && err != nil {
+		return nil // empty: nothing written yet
+	}
+	return checkJournalVersion(head[:n])
+}
+
+// CheckVersion refuses a journal whose header names a format this package
+// doesn't know, before anything reads or appends to it. An absent journal
+// passes. Callers that are about to store and claim use it to refuse
+// before any ingest.
+func (j *Journal) CheckVersion() error {
+	f, err := os.Open(j.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	return checkJournalHead(f)
 }
 
 // truncateTornTail ensures the file ends at a line boundary, removing
@@ -177,9 +237,11 @@ func ParseClaimLine(line string) (Claim, error) {
 }
 
 // IsJournal reports whether data begins with the journal magic line
-// (any version).
+// (any version), so a journal of any format is recognised as a journal
+// and never parsed as a description. Reading it is DecodeJournal's job,
+// which refuses a version it doesn't know.
 func IsJournal(data []byte) bool {
-	return bytes.HasPrefix(data, []byte("@c4 journal"))
+	return bytes.HasPrefix(data, []byte(journalPrefix))
 }
 
 // Claims reads every complete claim line, ignoring a torn tail (the
@@ -228,8 +290,13 @@ var displacedJournal = filepath.Join(JournalName[:2], JournalName)
 
 // DecodeJournal parses journal bytes (a store's journal file, or a
 // copy of one): the magic header, then one claim per complete line.
-// A torn (unterminated) final line is dropped.
+// A torn (unterminated) final line is dropped. A journal whose header
+// names a format version other than JournalVersion is refused, never
+// read as this one.
 func DecodeJournal(data []byte) ([]Claim, error) {
+	if err := checkJournalVersion(data); err != nil {
+		return nil, err
+	}
 	// Drop a torn tail before parsing.
 	if n := len(data); n > 0 && data[n-1] != '\n' {
 		if cut := bytes.LastIndexByte(data, '\n'); cut >= 0 {
