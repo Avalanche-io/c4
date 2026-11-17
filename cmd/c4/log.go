@@ -32,11 +32,11 @@ func runLog(args []string) {
 			fmt.Fprintf(os.Stderr, "No store is configured (set C4_STORE or ~/.c4/config).\n")
 			os.Exit(1)
 		}
-		r, ok := s.(interface{ Root() string })
+		root, ok := journalRoot(s)
 		if !ok {
 			fatalf("Error: the configured store has no local journal.")
 		}
-		claims, err := c4m.OpenJournal(r.Root()).Claims()
+		claims, err := c4m.OpenJournal(root).Claims()
 		if err != nil {
 			fatalf("Error reading journal: %v", err)
 		}

@@ -224,15 +224,38 @@ func journalClaim(s store.Store, id c4.ID, scanStart time.Time) {
 	if id.IsNil() {
 		return
 	}
-	type rooted interface{ Root() string }
-	r, ok := s.(rooted)
+	root, ok := journalRoot(s)
 	if !ok {
+		// A store with no local root has no journal. The claim is stored,
+		// and the run goes on (decided 2026-11-16: collection is refused on
+		// stores that are not local, so an unjournaled remote claim cannot
+		// cost content), but it is said, once. Through 2026-11-16 this
+		// returned silently, and a MultiStore, local or not, was never
+		// journaled (GC-DESIGN-R4 S10).
+		fmt.Fprintf(os.Stderr, "c4: %s is stored but not journaled: the store has no local journal\n", id)
 		return
 	}
-	j := c4m.OpenJournal(r.Root())
+	j := c4m.OpenJournal(root)
 	if err := j.Append(c4m.Claim{ScanStart: scanStart, ID: id}); err != nil {
 		fatalf("Error: journal append failed; ID not reported: %v", err)
 	}
+}
+
+// journalRoot returns the directory holding s's claim journal: a local
+// store's root, or a MultiStore's write store's. A store with no local
+// root has no journal.
+func journalRoot(s store.Store) (string, bool) {
+	for {
+		ms, ok := s.(*store.MultiStore)
+		if !ok {
+			break
+		}
+		s = ms.WriteStore()
+	}
+	if r, ok := s.(interface{ Root() string }); ok {
+		return r.Root(), true
+	}
+	return "", false
 }
 
 // fatalf prints to stderr and exits.

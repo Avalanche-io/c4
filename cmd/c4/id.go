@@ -458,12 +458,12 @@ func scanDirectory(dirPath string, mode scan.ScanMode, seqFlag, shouldStore bool
 func resolveGuideScanStart(guidePath string, guide *c4m.Manifest) time.Time {
 	rootID := guide.ComputeC4ID()
 	if s, _ := store.OpenStore(); s != nil {
-		if r, ok := s.(interface{ Root() string }); ok {
+		if root, ok := journalRoot(s); ok {
 			// A journal that can't be read is an error, not a missing
 			// claim: swallowing it would turn every -c warm re-scan into
 			// a cold one without a word, and hide a journal of a format
 			// this c4 doesn't know (c4 issue #44).
-			j := c4m.OpenJournal(r.Root())
+			j := c4m.OpenJournal(root)
 			claims, err := j.Claims()
 			if err != nil {
 				fatalf("Error reading %s: %v", j.Path(), err)
