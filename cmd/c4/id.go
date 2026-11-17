@@ -1024,10 +1024,11 @@ func getOrSetupStore() store.Store {
 	// Every path that stores and claims opens its store here first, so a
 	// journal of a format this c4 doesn't know is refused before anything
 	// is ingested: nothing is stored, and no v1 line is appended under a
-	// newer header (c4 issue #44).
-	if r, ok := ingestStore.(interface{ Root() string }); ok {
-		if err := c4m.OpenJournal(r.Root()).CheckVersion(); err != nil {
-			fatalf("Error: %s: %v", c4m.OpenJournal(r.Root()).Path(), err)
+	// newer header (c4 issue #44). It is the journal -s writes: a local
+	// store's, or a MultiStore's write store's (journalRoot).
+	if root, ok := journalRoot(ingestStore); ok {
+		if err := c4m.OpenJournal(root).CheckVersion(); err != nil {
+			fatalf("Error: %s: %v", c4m.OpenJournal(root).Path(), err)
 		}
 	}
 	return ingestStore
