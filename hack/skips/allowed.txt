@@ -45,6 +45,7 @@ windows reconcile  TestApplyDirectoryTimestamps                                 
 windows reconcile  TestApplyMetadataUpdate                                        # needs Unix permissions
 windows reconcile  TestPlanLinkTimeOnExistingLink                                 # symlinks need a privilege
 windows store      TestSyncNeverLeavesAnUncleanRoot                               # needs Unix permissions
+windows store      TestTreeStoreUnreadableShardIsNotAbsent                        # needs Unix permissions
 windows scan       TestGenerateFromPathSymlinks                                   # symlinks need a privilege
 windows scan       TestSymlinkC4IDs                                               # symlinks need a privilege
 windows scan       TestGenerateFromPathSymlinkEdgeCases                           # symlinks need a privilege
