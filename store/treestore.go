@@ -2,6 +2,7 @@ package store
 
 import (
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,6 +40,9 @@ type TreeStore struct {
 	pending map[c4.ID]string
 	// stat is a test seam for trie lookups; nil means os.Stat.
 	stat func(string) (os.FileInfo, error)
+	// rename is a test seam for the publishing renames (Put, Sync and
+	// Create's writer); nil means os.Rename.
+	rename func(oldpath, newpath string) error
 }
 
 var _ Store = (*TreeStore)(nil)
@@ -97,11 +101,14 @@ func (s *TreeStore) Sync() error {
 		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 			return fmt.Errorf("mkdir: %w", err)
 		}
-		if err := os.Rename(tmpName, p); err != nil {
+		published, err := s.publish(tmpName, p, id)
+		if err != nil {
 			return fmt.Errorf("rename: %w", err)
 		}
-		s.noteAdd(filepath.Dir(p))
 		delete(s.pending, id)
+		if published {
+			s.noteAdd(filepath.Dir(p))
+		}
 	}
 	s.dirty = false
 	return nil
@@ -168,10 +175,34 @@ func (s *TreeStore) Create(id c4.ID) (io.WriteCloser, error) {
 		return nil, err
 	}
 	w.sync = s.syncMode
+	w.rename = s.rename
 	s.mu.Lock()
 	s.dirty = true
 	s.mu.Unlock()
-	return w, nil
+	return &createWriter{DurableWriter: w, s: s, id: id}, nil
+}
+
+// createWriter is Create's writer outside batch mode. Its rename is the
+// same publish as Put's and fails the same way on Windows when another
+// writer published the ID first (see publish); the object is then stored,
+// and Close reports success. Only a failed rename is forgiven, never a
+// failed flush, and only when the object is present; the DurableWriter
+// has already removed the temp file. DurableWriter itself keeps failing:
+// its other users write paths that are not content-addressed, where an
+// existing file is not the same bytes.
+type createWriter struct {
+	*DurableWriter
+	s  *TreeStore
+	id c4.ID
+}
+
+func (w *createWriter) Close() error {
+	err := w.DurableWriter.Close()
+	var le *os.LinkError
+	if err != nil && errors.As(err, &le) && w.s.Has(w.id) {
+		return nil
+	}
+	return err
 }
 
 // pendingWriter is Create's batch-mode writer: bytes land in a temp
@@ -282,8 +313,12 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return c4.ID{}, fmt.Errorf("mkdir: %w", err)
 	}
-	if err := os.Rename(tmpName, p); err != nil {
+	published, err := s.publish(tmpName, p, id)
+	if err != nil {
 		return c4.ID{}, fmt.Errorf("rename: %w", err)
+	}
+	if !published {
+		return id, nil // another writer published the same bytes first
 	}
 	s.dirty = true
 
@@ -291,6 +326,38 @@ func (s *TreeStore) Put(r io.Reader) (c4.ID, error) {
 	s.noteAdd(filepath.Dir(p))
 
 	return id, nil
+}
+
+// publish renames a complete temp file, whose bytes hash to id, to the
+// object's name p, and reports whether this rename is what published it.
+//
+// The store is content-addressed: a name is only ever given to bytes that
+// hash to it, so the same name means the same bytes. When the rename
+// fails and the object is now present, another writer (another process,
+// or another TreeStore on the same root) published the same bytes between
+// this writer's look and its rename. The object is stored; the temp file
+// is removed and the failure is not one. On POSIX the rename replaces the
+// other copy and does not fail. On Windows it replaces with MoveFileEx,
+// which can refuse ("Access is denied") while the other writer's rename
+// or a reader holds the name: measured 2026-11-16 on release/1.0.27
+// 9175b56 before this change, 3% of concurrent same-ID Puts across eight
+// instances failed on every Windows leg and none elsewhere (c4 #181; on
+// master #177; TestTreeStoreSameIDPublishers). A failure with the object
+// still absent is returned as before.
+func (s *TreeStore) publish(tmpName, p string, id c4.ID) (bool, error) {
+	rename := s.rename
+	if rename == nil {
+		rename = os.Rename
+	}
+	err := rename(tmpName, p)
+	if err == nil {
+		return true, nil
+	}
+	if _, ok := s.locate(id); ok {
+		os.Remove(tmpName)
+		return false, nil
+	}
+	return false, err
 }
 
 // ContentPath returns the local filesystem path for id when present.

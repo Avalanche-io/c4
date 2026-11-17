@@ -14,6 +14,8 @@ type DurableWriter struct {
 	tmp   *os.File
 	final string
 	sync  SyncMode
+	// rename is a test seam (TreeStore sets its own); nil means os.Rename.
+	rename func(oldpath, newpath string) error
 }
 
 // NewDurableWriter creates a temp file in the same directory as final,
@@ -86,7 +88,11 @@ func (w *DurableWriter) Close() error {
 		os.Remove(w.tmp.Name())
 		return err
 	}
-	if err := os.Rename(w.tmp.Name(), w.final); err != nil {
+	rename := w.rename
+	if rename == nil {
+		rename = os.Rename
+	}
+	if err := rename(w.tmp.Name(), w.final); err != nil {
 		os.Remove(w.tmp.Name())
 		return err
 	}

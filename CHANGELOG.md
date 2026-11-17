@@ -2,6 +2,21 @@
 
 ## Unreleased (1.0.27)
 
+### On Windows, storing content another process was storing failed ⚠
+
+**Correctness fix.** When two processes stored the same content in one
+store at the same moment, the second writer's rename met the first's
+object and Windows refused it ("Access is denied"). `Put`, a batch `Sync`
+or `Create`'s writer then returned an error for an object that was
+stored, and `c4 id -s` reported a store failure. Measured on the code
+before this change: about 3% of concurrent Puts of the same content
+across eight stores on one directory failed, on every Windows Go version
+tested (1.16, 1.21, 1.27), and none on Linux or macOS. The store is
+content-addressed, so a name that is already there holds the same bytes:
+such a publish now succeeds and leaves no temp file. A failed rename with
+nothing at the name is still an error. Master's fix, the same change (c4
+#179).
+
 ### A shared changeset vector pins every patch writer to `c4 diff`'s bytes
 
 New conformance fixture `c4m/testdata/changeset-vector/`, master's files
