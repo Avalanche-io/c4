@@ -9,6 +9,11 @@ import (
 	"github.com/Avalanche-io/c4/store"
 )
 
+// logResolve is the chain resolution log applies to build each layer, a
+// variable so log_perf_test.go can count the sections each layer applies:
+// one patch over the previous layer, never the chain from scratch.
+var logResolve = c4m.ResolvePatchChain
+
 func runLog(args []string) {
 	for _, a := range args {
 		if a == "--help" {
@@ -106,7 +111,7 @@ func runLog(args []string) {
 	for i, sec := range allSections {
 		var current *c4m.Manifest
 		if i == 0 && !external {
-			current = c4m.ResolvePatchChain(allSections[:1], 1)
+			current = logResolve(allSections[:1], 1)
 		} else {
 			// The same fold c4 patch uses: a collapsed directory the
 			// section deepens has its listing read from the store first.
@@ -117,7 +122,7 @@ func runLog(args []string) {
 				fatalf("Error: layer %d: %v", i+1, err)
 			}
 			prev = deep
-			current = c4m.ResolvePatchChain([]*c4m.PatchSection{{Entries: deep.Entries}, {Entries: sec.Entries}}, 0)
+			current = logResolve([]*c4m.PatchSection{{Entries: deep.Entries}, {Entries: sec.Entries}}, 0)
 		}
 		id := current.ComputeC4ID()
 
