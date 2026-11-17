@@ -67,10 +67,6 @@ func TestLogLongChainLinear(t *testing.T) {
 	if err := os.WriteFile(chainPath, chain.Bytes(), 0644); err != nil {
 		t.Fatal(err)
 	}
-	home := filepath.Join(dir, "home")
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Setenv("C4_STORE", filepath.Join(dir, "store"))
 
 	applied := 0
 	orig := logResolve
