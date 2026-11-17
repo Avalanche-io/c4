@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Avalanche-io/c4"
+	"github.com/Avalanche-io/c4/store"
 )
 
 // The store journal is the store's root record: one line per claim,
@@ -140,6 +141,18 @@ func (j *Journal) Append(c Claim) error {
 	if err := f.Sync(); err != nil {
 		return fmt.Errorf("journal sync: %w", err)
 	}
+	// The first append makes the file (or finds it empty, left so by an
+	// appender that died before writing). Its name is an entry in the
+	// store root, durable only once the root is synced; through
+	// 2026-11-16 nothing synced it, so a power cut after the first claim
+	// was reported could lose the journal and the claim with it
+	// (TestJournalFirstAppendSurvivesAPowerCut). Later appends write into
+	// a file whose name is already durable.
+	if end == 0 {
+		if err := syncJournalDir(filepath.Dir(j.path)); err != nil {
+			return fmt.Errorf("journal sync %s: %w", filepath.Dir(j.path), err)
+		}
+	}
 	return nil
 }
 
@@ -169,6 +182,10 @@ func (j *Journal) CheckVersion() error {
 	defer f.Close()
 	return checkJournalHead(f)
 }
+
+// syncJournalDir makes the store root's entry for a new journal durable.
+// A package variable so tests can observe it.
+var syncJournalDir = store.SyncDir
 
 // truncateTornTail ensures the file ends at a line boundary, removing
 // a crashed writer's partial final line. Returns the append offset.

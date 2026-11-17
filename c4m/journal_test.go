@@ -260,3 +260,51 @@ func TestJournalReadsADisplacedJournal(t *testing.T) {
 		t.Errorf("with a non-journal at jo/journal: %d claims, %v; want the root's 2", len(got), err)
 	}
 }
+
+// The first claim on a store creates <store>/journal. The file's bytes
+// were synced, but its name is an entry in the store root, and through
+// 2026-11-16 nothing synced the root: a power cut after the first claim
+// was reported could lose the journal and the claim with it. Here the
+// seam records the root syncs, the cut loses the journal's entry unless
+// the root was synced after the file appeared, and the claim must
+// survive. Later appends write into a file whose name is durable, so
+// they sync the root no more.
+func TestJournalFirstAppendSurvivesAPowerCut(t *testing.T) {
+	root := t.TempDir()
+	syncs := 0
+	old := syncJournalDir
+	syncJournalDir = func(d string) error {
+		err := old(d)
+		if filepath.Clean(d) == filepath.Clean(root) {
+			syncs++
+		}
+		return err
+	}
+	defer func() { syncJournalDir = old }()
+
+	j := OpenJournal(root)
+	first := testClaim("first claim on a fresh store", 1)
+	if err := j.Append(first); err != nil {
+		t.Fatal(err)
+	}
+	// The power cut: the journal's entry survives only if the root was
+	// synced after the file was created.
+	if syncs == 0 {
+		if err := os.Remove(j.Path()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claims, err := OpenJournal(root).Claims()
+	if err != nil || len(claims) != 1 || claims[0].ID != first.ID {
+		t.Fatalf("after a power cut following the first claim, the journal holds %v (%v); want the claim", claims, err)
+	}
+
+	for i := 2; i < 5; i++ {
+		if err := j.Append(testClaim(fmt.Sprint("later claim ", i), i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if syncs != 1 {
+		t.Fatalf("the root was synced %d times for 4 appends, want once (for the file's creation)", syncs)
+	}
+}
