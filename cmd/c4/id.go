@@ -557,11 +557,17 @@ func identifyFile(path string, info os.FileInfo, mode scan.ScanMode, shouldStore
 	return entry, readErr
 }
 
+// storePassHook runs between the scan and the store pass. A release build
+// leaves it empty; a test build (-tags c4testhooks, testhooks.go) sets it
+// so a test can change the tree or the store at exactly that point.
+var storePassHook = func(baseDir string, s store.Store) {}
+
 func storeManifestContent(manifest *c4m.Manifest, baseDir string, scanStart time.Time) {
 	s := getOrSetupStore()
 	if s == nil {
 		return
 	}
+	storePassHook(baseDir, s)
 
 	// Collect work sequentially — path reconstruction is order-dependent.
 	type fileItem struct {
