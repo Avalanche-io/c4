@@ -50,7 +50,8 @@ func TestTrailingIDRepair(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(b), trailingIDRepair) {
+		// A Windows checkout may turn the documents' line endings into CRLF.
+		if !strings.Contains(strings.ReplaceAll(string(b), "\r\n", "\n"), trailingIDRepair) {
 			t.Errorf("%s does not carry the tested repair text", doc)
 		}
 	}
@@ -148,8 +149,10 @@ func TestTrailingIDRepair(t *testing.T) {
 	// Each file repaired by the exact text (where a shell is available)
 	// and by the Go equivalent; the two must agree.
 	sh, shErr := exec.LookPath("sh")
+	n := 0
 	for name, data := range files {
-		work := filepath.Join(dir, "repair", strings.ReplaceAll(name, " ", "-"))
+		n++ // a directory per file, named by number: names hold ">", which Windows forbids
+		work := filepath.Join(dir, "repair", string(rune('0'+n)))
 		if err := os.MkdirAll(work, 0o755); err != nil {
 			t.Fatal(err)
 		}
