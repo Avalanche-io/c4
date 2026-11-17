@@ -206,8 +206,8 @@ func runID(args []string) {
 				// Under -s the store pass runs first and the body is
 				// written after it, so what is printed is what was stored:
 				// a file the store pass gives up is null in both (decided
-				// 2026-11-16 by the release lead; for Joshua at the 1.1
-				// triage, since it changes the -s streaming design). The
+				// 2026-11-16; to be revisited for 1.1, since it changes
+				// the -s streaming design). The
 				// scan is complete before either, so nothing reaches stdout
 				// earlier than it could; plain c4 id streams as before.
 				// The unbuilt alternative keeps streaming and appends one
