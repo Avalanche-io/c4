@@ -2,6 +2,27 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### ⚠ Under -S, a directory holding an empty directory printed a C4 ID that wasn't its own listing's
+
+**C4 IDs change** for `-S` scans of a tree holding an empty directory: the
+directory above it, and every directory up to the root. The new IDs are the
+correct ones. Each equals the ID of its own one-level listing, so
+`c4 cat` of a stored listing and `c4 id -q` of the directory reproduce it.
+Scans without `-S` don't change.
+
+In a full scan an empty directory's size stayed null until its parent's
+propagation filled it with 0. Under `-S` the parent propagates copies of
+its children (to fold them) but hashed the originals, so it hashed the
+empty child with a null size. The line printed after the whole-manifest
+pass said 0, under an ID that hashed `-`. `c4 id -S -s` then stored the
+listing under its true ID and printed the other one, so `c4 cat` of the
+printed ID failed (measured 2026-11-16: `b/` holding `two.txt` and an empty
+directory scanned as c41Zpa…, while its listing is c45uqQ…). An empty
+directory's ID is now set before its own propagation, so it has size 0 at
+its own close, as a metadata scan already gives it.
+`TestEmptyDirectoryParentIDIsItsListing` checks every directory, with and
+without `-S`.
+
 ### The store's journal survives the store's first split ⚠
 
 **Data loss fixed.** A local store's split moved every file in the
