@@ -455,7 +455,7 @@ Now:
 Pinned by the shared `c4m/testdata/name-rule-vector/`, made by the library.
 No CLI path writes such a name, since a filesystem cannot hold one.
 
-## Unreleased (1.0.x)
+## v1.0.26
 
 ### `c4 patch` no longer pairs one file's name with another's bytes on a case-insensitive volume ⚠
 
