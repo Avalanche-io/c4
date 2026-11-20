@@ -2,6 +2,21 @@
 
 ## Unreleased (1.0.27)
 
+### ⚠ `c4 patch` writes into a folder recorded without owner write
+
+`c4 patch` made a folder with its recorded mode before writing into it, so
+a folder recorded without owner write refused its own children:
+"permission denied", exit 1, nothing written inside it. That is not a
+corner case. A read-only delivery folder (`dr-xr-xr-x`, 0555) fails, as do
+0500 and 0000 (measured on 1.0.26 and on this line before the change). A
+folder that already existed and was recorded read-only was made so before
+files were written into or removed from it. Now a folder is made writable
+and searchable by its owner while it is filled, and every folder's
+recorded mode is set after its contents, deepest first; its recorded time
+is set last, as before. So a description holding a read-only folder
+patches into an empty folder and scans back at its own ID. No C4 ID
+changes. Master's fix, the same change.
+
 ### ⚠ Behaviour change: `c4 patch` creates a file or folder from a null timestamp at the epoch
 
 A description can leave a timestamp null (`-`): `c4 id` writes one for a

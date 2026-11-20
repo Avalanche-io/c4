@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,6 +28,11 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	r.root = dirPath
 
 	res := &Result{}
+
+	// Folders that exist and lack owner write or search, where the plan
+	// must work inside them, are opened for the duration; the post-pass
+	// sets each back (or to its recorded mode), deepest first.
+	opened := r.openFolders(plan, dirPath)
 
 	// Collect directory operations for a post-pass. Directory metadata
 	// (especially timestamps) must be set AFTER all children are written,
@@ -73,6 +77,13 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 				res.Errors = append(res.Errors, err)
 			}
 		case OpChmod:
+			// A folder's mode is set in the post-pass, after everything
+			// written into, moved out of or removed from it: a folder made
+			// read-only first would refuse them.
+			if op.Entry != nil && op.Entry.IsDir() {
+				dirOps = append(dirOps, op)
+				continue
+			}
 			if err := r.applyChmod(op, res); err != nil {
 				res.Errors = append(res.Errors, err)
 			}
@@ -112,12 +123,15 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	// Post-pass: set directory metadata. Process deepest first so that
 	// setting a child directory's timestamp doesn't reset its parent's.
 	if !r.dryRun {
-		sort.Slice(dirOps, func(i, j int) bool {
-			return depthOf(dirOps[i].Path) > depthOf(dirOps[j].Path) // deepest first
-		})
-		for _, op := range dirOps {
+		folderPostPass(dirOps, opened, res, func(op Operation) {
+			if op.Type == OpChmod {
+				if err := r.applyChmod(op, res); err != nil {
+					res.Errors = append(res.Errors, err)
+				}
+				return
+			}
 			r.setMetadata(op.Path, op.Entry, freshDirs[op.Path])
-		}
+		})
 	}
 
 	// Batch barrier: created files were handed to the device with cheap
@@ -205,11 +219,26 @@ func (r *Reconciler) applyMkdir(op Operation, res *Result) (made bool, err error
 				op.Path, rmErr)
 		}
 	}
+	// The folder is made writable and searchable by its owner, whatever
+	// mode it records, so its children can be written into it; the
+	// recorded mode is set in the post-pass, after them (a folder recorded
+	// 0555 or 0000 used to refuse its own children: permission denied).
+	// A missing parent, such as a target folder that does not exist yet,
+	// is made with the default mode: MkdirAll gives every folder it makes
+	// the one mode it is passed, so a read-only child used to make the
+	// target itself read-only before anything was written into it.
 	mode := os.FileMode(0755)
 	if op.Entry != nil && op.Entry.Mode != 0 {
-		mode = op.Entry.Mode.Perm() | os.ModeDir
+		mode = op.Entry.Mode.Perm() | 0o700
 	}
-	if err := os.MkdirAll(op.Path, mode.Perm()); err != nil {
+	if err := os.MkdirAll(filepath.Dir(op.Path), 0755); err != nil {
+		return false, err
+	}
+	if err := os.Mkdir(op.Path, mode.Perm()); err != nil {
+		if os.IsExist(err) {
+			res.Skipped++
+			return false, nil
+		}
 		return false, err
 	}
 	res.Created++
