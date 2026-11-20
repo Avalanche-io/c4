@@ -40,12 +40,12 @@ All four metadata fields (mode, timestamp, size, name) are required. The C4 ID o
 
 Standard Unix file mode string:
 
-| Position | Meaning |
-|----------|---------|
-| 0 | File type: `-` regular, `d` directory, `l` symlink, `p` pipe, `s` socket, `b` block device, `c` char device |
-| 1-3 | Owner permissions: `rwx` / `-` |
-| 4-6 | Group permissions: `rwx` / `-` |
-| 7-9 | Other permissions: `rwx` / `-` |
+| Position | Meaning                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------- |
+| 0        | File type: `-` regular, `d` directory, `l` symlink, `p` pipe, `s` socket, `b` block device, `c` char device |
+| 1-3      | Owner permissions: `rwx` / `-`                                                                              |
+| 4-6      | Group permissions: `rwx` / `-`                                                                              |
+| 7-9      | Other permissions: `rwx` / `-`                                                                              |
 
 Special bits: setuid (`s`/`S` at position 3), setgid (`s`/`S` at position 6), sticky (`t`/`T` at position 9).
 
@@ -83,12 +83,12 @@ The bare filename (not a path). Entry names never contain `/`: nesting is expres
 
 **c4m field-boundary escaping**: After SafeName encoding, the following characters are backslash-escaped to prevent ambiguity with c4m field delimiters:
 
-| Character | Escape | Reason |
-|-----------|--------|--------|
-| Space (U+0020) | `\ ` | Field delimiter |
-| Double-quote (U+0022) | `\"` | Reserved |
-| `[` | `\[` | Sequence notation (non-sequence names only) |
-| `]` | `\]` | Sequence notation (non-sequence names only) |
+| Character             | Escape | Reason                                      |
+| --------------------- | ------ | ------------------------------------------- |
+| Space (U+0020)        | `\ `   | Field delimiter                             |
+| Double-quote (U+0022) | `\"`   | Reserved                                    |
+| `[`                   | `\[`   | Sequence notation (non-sequence names only) |
+| `]`                   | `\]`   | Sequence notation (non-sequence names only) |
 
 No quoting mechanism exists. All field-boundary characters are backslash-escaped.
 
@@ -107,7 +107,7 @@ Between the name and C4 ID, an optional link operator specifies a relationship:
 ### Symlinks
 
 ```
-lrwxrwxrwx 2025-01-01T00:00:00Z 0 link.txt -> target.txt c4...
+lrwxrwxrwx 2025-01-01T00:00:00Z 10 link.txt -> target.txt c4...
 ```
 
 - `->` followed by the target path
@@ -136,11 +136,11 @@ drwxr-xr-x 2025-01-01T00:00:00Z 4096 inbox/  <- nas:renders/  c4...
 drwxr-xr-x 2025-01-01T00:00:00Z 4096 shared/ <> peer:shared/  c4...
 ```
 
-| Operator | Direction | Meaning |
-|----------|-----------|---------|
-| `->` | Outbound | Content here propagates there |
-| `<-` | Inbound | Content there propagates here |
-| `<>` | Bidirectional | Two-way sync |
+| Operator | Direction     | Meaning                       |
+| -------- | ------------- | ----------------------------- |
+| `->`     | Outbound      | Content here propagates there |
+| `<-`     | Inbound       | Content there propagates here |
+| `<>`     | Bidirectional | Two-way sync                  |
 
 The target is a location reference: `<location-name>:<path>`. Location names match `[a-zA-Z][a-zA-Z0-9_-]*`.
 
@@ -292,13 +292,13 @@ Directory timestamps come from the filesystem's modification time for the direct
 
 C4M supports null values to enable progressive resolution and manual editing:
 
-| Field | Null representation | Zero representation |
-|-------|-------------------|---------------------|
-| Mode | `-` (single dash — unknown) | `----------` (ten dashes — known zero) |
-| Timestamp | `-` or `0` | Unix epoch |
-| Size | `-` | -1 |
-| C4 ID | `-` or omitted | nil |
-| Name | (cannot be null) | — |
+| Field     | Null representation         | Zero representation                    |
+| --------- | --------------------------- | -------------------------------------- |
+| Mode      | `-` (single dash — unknown) | `----------` (ten dashes — known zero) |
+| Timestamp | `-` or `0`                  | Unix epoch                             |
+| Size      | `-`                         | -1                                     |
+| C4 ID     | `-` or omitted              | nil                                    |
+| Name      | (cannot be null)            | —                                      |
 
 ### Use Cases
 
@@ -345,11 +345,12 @@ A first-line bare C4 ID cannot be verified against accumulated content (there is
 
 Patch entries are matched against the current state **by name (and path)**:
 
-| Condition | Interpretation |
-|-----------|---------------|
-| Name exists only in patch | **Addition** — entry is added |
-| Name exists in both, any metadata differs | **Modification** — patch entry replaces the original |
-| Name exists in both, all fields identical | **Removal** — entry is deleted |
+| Condition                                                                  | Interpretation                                                       |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Name exists only in patch                                                  | **Addition** — entry is added                                        |
+| Name exists in both, any metadata differs                                  | **Modification** — patch entry replaces the original                 |
+| Name exists in both, all fields identical, patch entry has **no children** | **Removal** — entry is deleted                                       |
+| Name exists in both, all fields identical, patch entry **has children**    | **Deepening** — entry is unchanged; children are applied recursively |
 
 "All fields identical" means: same name, mode, timestamp, size, C4 ID, and target. This enables removal by restating an entry exactly — there is no separate delete syntax.
 
@@ -423,13 +424,13 @@ c4<patch boundary>
 
 ### Identity
 
-Inline ID list lines are **not part of the manifest identity**. Adding, removing, or reordering them does not change the manifest's C4 ID or patch boundaries. They are transport data — the content backing a range entry's C4 ID, inlined for portability.
+Inline ID list lines are **not part of the manifest identity**. Adding, removing, or reordering them does not change the description ID (the root's one-level listing) or any patch boundary. The file's own C4 ID is its bytes, so that does change. They are transport data — the content backing a range entry's C4 ID, inlined for portability.
 
 The C4 ID of an inline ID list line (computed by hashing the line content) matches the C4 ID of the corresponding sequence entry. This is self-verifying.
 
 ### Lifecycle
 
-- **With store**: ID lists are stored as regular objects. No inline lines in the c4m.
+- **With store**: ID lists are stored as regular objects (with `-s`), and are written inline as well.
 - **Without store**: ID lists are appended as inline lines for self-containment.
 - **Decompose**: Extract inline lines to files named by the range expression (e.g., `frames.[0001-0100].exr`). The file content is the bare-concatenated ID list.
 - **Compose**: Read range expression files and inline them back.
@@ -465,11 +466,11 @@ Parsers MAY:
 
 ## Error Types
 
-| Error | Meaning |
-|-------|---------|
-| `ErrInvalidEntry` | Malformed entry line |
-| `ErrDuplicatePath` | Duplicate path in manifest |
-| `ErrPathTraversal` | Path traversal attempt |
-| `ErrInvalidFlowTarget` | Malformed flow link target |
-| `ErrPatchIDMismatch` | Bare C4 ID does not match accumulated content |
-| `ErrEmptyPatch` | Patch section contains no entries |
+| Error                  | Meaning                                       |
+| ---------------------- | --------------------------------------------- |
+| `ErrInvalidEntry`      | Malformed entry line                          |
+| `ErrDuplicatePath`     | Duplicate path in manifest                    |
+| `ErrPathTraversal`     | Path traversal attempt                        |
+| `ErrInvalidFlowTarget` | Malformed flow link target                    |
+| `ErrPatchIDMismatch`   | Bare C4 ID does not match accumulated content |
+| `ErrEmptyPatch`        | Patch section contains no entries             |

@@ -125,29 +125,29 @@ null-mode   = "-"                ; single dash — mode is unspecified
 
 **Type characters**:
 
-| Character | File Type |
-|-----------|-----------|
-| `-` | Regular file |
-| `d` | Directory |
-| `l` | Symbolic link |
-| `p` | Named pipe (FIFO) |
-| `s` | Socket |
-| `b` | Block device |
-| `c` | Character device |
+| Character | File Type         |
+| --------- | ----------------- |
+| `-`       | Regular file      |
+| `d`       | Directory         |
+| `l`       | Symbolic link     |
+| `p`       | Named pipe (FIFO) |
+| `s`       | Socket            |
+| `b`       | Block device      |
+| `c`       | Character device  |
 
 **Permission bits** (positions 1-9):
 
-| Position | Bit | Characters |
-|----------|-----|------------|
-| 1 | Owner read | `r` / `-` |
-| 2 | Owner write | `w` / `-` |
-| 3 | Owner execute | `x` / `s` (setuid+exec) / `S` (setuid, no exec) / `-` |
-| 4 | Group read | `r` / `-` |
-| 5 | Group write | `w` / `-` |
-| 6 | Group execute | `x` / `s` (setgid+exec) / `S` (setgid, no exec) / `-` |
-| 7 | Other read | `r` / `-` |
-| 8 | Other write | `w` / `-` |
-| 9 | Other execute | `x` / `t` (sticky+exec) / `T` (sticky, no exec) / `-` |
+| Position | Bit           | Characters                                            |
+| -------- | ------------- | ----------------------------------------------------- |
+| 1        | Owner read    | `r` / `-`                                             |
+| 2        | Owner write   | `w` / `-`                                             |
+| 3        | Owner execute | `x` / `s` (setuid+exec) / `S` (setuid, no exec) / `-` |
+| 4        | Group read    | `r` / `-`                                             |
+| 5        | Group write   | `w` / `-`                                             |
+| 6        | Group execute | `x` / `s` (setgid+exec) / `S` (setgid, no exec) / `-` |
+| 7        | Other read    | `r` / `-`                                             |
+| 8        | Other write   | `w` / `-`                                             |
+| 9        | Other execute | `x` / `t` (sticky+exec) / `T` (sticky, no exec) / `-` |
 
 **Null mode**: `-` (single dash). Represents unspecified/unknown permissions.
 The entry's type (file vs directory) is determined by the trailing `/` in the
@@ -188,11 +188,11 @@ strict subset of RFC 3339.
 
 **Ergonomic forms** (accepted by decoder, converted to UTC):
 
-| Form | Example |
-|------|---------|
-| RFC 3339 with offset | `2025-01-01T10:00:00-08:00` |
-| Unix date | `Mon Jan  2 15:04:05 MST 2006` |
-| Pretty with TZ | `Jan  2 15:04:05 2006 MST` |
+| Form                 | Example                        |
+| -------------------- | ------------------------------ |
+| RFC 3339 with offset | `2025-01-01T10:00:00-08:00`    |
+| Unix date            | `Mon Jan  2 15:04:05 MST 2006` |
+| Pretty with TZ       | `Jan  2 15:04:05 2006 MST`     |
 
 Decoders MUST accept all ergonomic forms and convert to UTC.
 
@@ -286,13 +286,13 @@ escape sigil.
 **Tier 2 — Conventional control escapes**: Common control characters use
 standard backslash escapes:
 
-| Byte | Escape | Description |
-|------|--------|-------------|
-| 0x00 (NUL) | `\0` | Null / path delimiter |
-| 0x09 (TAB) | `\t` | Horizontal tab |
-| 0x0A (LF)  | `\n` | Line feed |
-| 0x0D (CR)  | `\r` | Carriage return |
-| 0x5C (`\`) | `\\` | Literal backslash |
+| Byte       | Escape | Description           |
+| ---------- | ------ | --------------------- |
+| 0x00 (NUL) | `\0`   | Null / path delimiter |
+| 0x09 (TAB) | `\t`   | Horizontal tab        |
+| 0x0A (LF)  | `\n`   | Line feed             |
+| 0x0D (CR)  | `\r`   | Carriage return       |
+| 0x5C (`\`) | `\\`   | Literal backslash     |
 
 **Tier 3 — Byte-level braille encoding**: All other non-printable bytes are
 encoded as Braille Pattern codepoints (U+2800–U+28FF) between `¤` (generic
@@ -321,12 +321,12 @@ transformation.
 After SafeName encoding, the following characters are backslash-escaped to
 prevent ambiguity with c4m field delimiters. No quoting mechanism exists.
 
-| Character | Escape | Reason |
-|-----------|--------|--------|
-| Space (U+0020) | `\ ` | Field delimiter |
-| Double-quote (U+0022) | `\"` | Reserved character |
-| `[` | `\[` | Sequence notation (non-sequence names only) |
-| `]` | `\]` | Sequence notation (non-sequence names only) |
+| Character             | Escape | Reason                                      |
+| --------------------- | ------ | ------------------------------------------- |
+| Space (U+0020)        | `\ `   | Field delimiter                             |
+| Double-quote (U+0022) | `\"`   | Reserved character                          |
+| `[`                   | `\[`   | Sequence notation (non-sequence names only) |
+| `]`                   | `\]`   | Sequence notation (non-sequence names only) |
 
 The encoder applies these escapes after SafeName encoding and before output.
 The decoder consumes them before applying UnsafeName.
@@ -339,10 +339,10 @@ portions are escaped.
 
 #### 4.4.4 Name Boundary Detection
 
-The parser uses `/` as a termination signal for directory names. Upon
-encountering `/`, the parser stops and returns the name including the
-trailing `/`. Directory names cannot contain embedded `/` characters —
-which is correct, since names are bare filenames.
+A directory name ends with `/`. The parser reads the whole name field; a
+`/` anywhere but at its end is refused, naming the line. Directory names
+cannot contain embedded `/` characters — which is correct, since names
+are bare filenames.
 
 For non-directory names, the parser scans until it encounters a boundary:
 a space followed by a link operator (`->`, `<-`, `<>`), a C4 ID prefix
@@ -392,7 +392,7 @@ location-name  = ALPHA *( ALPHA / DIGIT / "_" / "-" )
 ### 5.2 Symlinks
 
 ```
-lrwxrwxrwx 2025-01-01T00:00:00Z 0 link.txt -> target.txt c4abc...
+lrwxrwxrwx 2025-01-01T00:00:00Z 10 link.txt -> target.txt c4abc...
 ```
 
 The symlink target is the path stored by the filesystem. Target paths MAY
@@ -402,12 +402,12 @@ escape brackets (brackets in target paths are always literal).
 
 **C4 ID rules for symlinks**:
 
-| Target resolves to | C4 ID |
-|--------------------|-------|
-| Regular file | C4 ID of file content |
-| Directory | C4 ID of directory manifest |
-| Another symlink | Nil (prevents infinite recursion) |
-| Nonexistent (broken) | Nil |
+| Target resolves to   | C4 ID                             |
+| -------------------- | --------------------------------- |
+| Regular file         | C4 ID of file content             |
+| Directory            | C4 ID of directory manifest       |
+| Another symlink      | Nil (prevents infinite recursion) |
+| Nonexistent (broken) | Nil                               |
 
 ### 5.3 Hard Links
 
@@ -429,11 +429,11 @@ drwxr-xr-x 2025-01-01T00:00:00Z 4096 inbox/  <- nas:renders/  c4...
 drwxr-xr-x 2025-01-01T00:00:00Z 4096 shared/ <> peer:shared/  c4...
 ```
 
-| Operator | Direction | Semantics |
-|----------|-----------|-----------|
-| `->` | Outbound | Content at this path propagates to the remote location |
-| `<-` | Inbound | Content at the remote location propagates here |
-| `<>` | Bidirectional | Two-way synchronization |
+| Operator | Direction     | Semantics                                              |
+| -------- | ------------- | ------------------------------------------------------ |
+| `->`     | Outbound      | Content at this path propagates to the remote location |
+| `<-`     | Inbound       | Content at the remote location propagates here         |
+| `<>`     | Bidirectional | Two-way synchronization                                |
 
 The flow target MUST match the `location-name ":" [path]` pattern.
 
@@ -453,8 +453,11 @@ before the link operator):
    b. Otherwise, skip whitespace and examine the next token:
       - If the next token matches a flow target pattern (`name:...`):
         **outbound flow link**
-      - If remaining text is `-` or starts with `c4`: **ungrouped hard link**
-      - Otherwise: **symlink target** (fallback, for non-standard entries)
+      - If the C4 ID field (a C4 ID or `-`) is the only field left on the
+        line: **ungrouped hard link**
+      - Otherwise: **symlink target**, followed by the C4 ID field, even when
+        the target starts with `c4` (the C4 ID is always the last field, and
+        a target escapes its spaces)
 
 > **NOTE**: The flow target check MUST run before the `c4` prefix check.
 > Location names starting with `c4` (e.g., `c4studio:inbox/`) are legal
@@ -490,9 +493,9 @@ directory entry. The parent of an entry at depth N is the nearest preceding
 directory entry at depth N-1.
 
 ```
-drwxr-xr-x 2025-01-01T00:00:00Z 300 project/             ; depth 0
+drwxr-xr-x 2025-01-01T00:00:00Z 705 project/             ; depth 0
   -rw-r--r-- 2025-01-01T00:00:00Z 100 readme.txt c4...    ; depth 1
-  drwxr-xr-x 2025-01-01T00:00:00Z 200 src/                ; depth 1
+  drwxr-xr-x 2025-01-01T00:00:00Z 335 src/                ; depth 1
     -rw-r--r-- 2025-01-01T00:00:00Z 200 main.go c4...     ; depth 2
 ```
 
@@ -665,11 +668,20 @@ interpreted as a patch against the verified state.
 When applying a patch, entries are matched against the current manifest
 state by **name** (within the same parent context for nested entries):
 
-| Condition | Interpretation |
-|-----------|---------------|
-| Name does not exist in current state | **Addition** |
-| Name exists and entry differs in any compared field | **Modification** (patch entry replaces original) |
-| Name exists and all compared fields are identical | **Removal** (entry is deleted) |
+| Condition                                                                               | Interpretation                                                       |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Name does not exist in current state                                                    | **Addition**                                                         |
+| Name exists and entry differs in any compared field                                     | **Modification** (patch entry replaces original)                     |
+| Name exists, all compared fields are identical, and the patch entry has **no children** | **Removal** (entry is deleted)                                       |
+| Name exists, all compared fields are identical, and the patch entry **has children**    | **Deepening** (entry is unchanged; children are applied recursively) |
+
+> **ERRATUM (2026-07-31).** The removal row previously carried no
+> children condition, so a directory restated identically *while
+> declaring children under it* was deleted along with the children the
+> section had just declared — silently, with no diagnostic. A section
+> that adds children cannot be removing their parent. Removal of a whole
+> subtree is still expressed by restating the directory entry alone, with
+> no children.
 
 #### 10.4.1 Identity Comparison
 
@@ -751,11 +763,11 @@ greater than 90 (i.e., at least two concatenated IDs).
 
 Inline ID list lines are distinguished from other line types by length:
 
-| Line type | Length | Starts with |
-|-----------|--------|-------------|
-| Patch boundary | exactly 90 | `c4` |
-| Inline ID list | >90, multiple of 90 | `c4` |
-| Entry | varies | mode char or indent |
+| Line type      | Length              | Starts with         |
+| -------------- | ------------------- | ------------------- |
+| Patch boundary | exactly 90          | `c4`                |
+| Inline ID list | >90, multiple of 90 | `c4`                |
+| Entry          | varies              | mode char or indent |
 
 #### 10.8.3 Position
 
@@ -772,7 +784,9 @@ c4<checkpoint>
 
 Inline ID list lines MUST NOT be included in manifest C4 ID computation.
 They are supplementary transport data. Adding or removing inline ID list
-lines MUST NOT change the manifest's C4 ID or any patch boundary values.
+lines MUST NOT change the description ID (the root's one-level listing)
+or any patch boundary values. The file's own C4 ID is its bytes, so it
+does change.
 
 The C4 ID of an inline ID list (computed by hashing the line content as
 bytes) MUST match the C4 ID of the corresponding sequence entry. This
@@ -826,10 +840,12 @@ A folded range is one child entry, and the listing as written, with the range li
 
 ### 11.2 Identity Property
 
-`c4 id <dir> | c4` produces the directory's C4 ID
+`c4 id <dir> | grep -v '^ ' | c4 -x` produces the directory's C4 ID
 
-That is: the C4 ID of a directory equals the C4 ID of its canonical c4m
-listing piped through the C4 hash function.
+That is: the C4 ID of a directory equals the C4 ID of its canonical
+one-level c4m listing piped through the C4 hash function. (Piping the
+whole nested output gives that text's own byte ID, which matches only for
+a tree with no subdirectories.)
 
 ---
 
@@ -837,13 +853,13 @@ listing piped through the C4 hash function.
 
 ### 12.1 Null Value Summary
 
-| Field | Null text | Internal value | Notes |
-|-------|-----------|----------------|-------|
-| Mode | `-` or `----------` | 0 (zero) | Canonical: `-` |
-| Timestamp | `-` or `0` | Unix epoch (1970-01-01T00:00:00Z) | |
-| Size | `-` | -1 | |
-| C4 ID | `-` or absent | nil / zero-value ID | |
-| Name | (no null) | — | Required field |
+| Field     | Null text           | Internal value                    | Notes          |
+| --------- | ------------------- | --------------------------------- | -------------- |
+| Mode      | `-` or `----------` | 0 (zero)                          | Canonical: `-` |
+| Timestamp | `-` or `0`          | Unix epoch (1970-01-01T00:00:00Z) |                |
+| Size      | `-`                 | -1                                |                |
+| C4 ID     | `-` or absent       | nil / zero-value ID               |                |
+| Name      | (no null)           | —                                 | Required field |
 
 ### 12.2 Progressive Resolution
 
@@ -851,11 +867,11 @@ Null values enable progressive resolution: a c4m file can be created
 immediately with just filenames, then enriched with metadata as it becomes
 available. Each resolution pass fills in additional fields.
 
-| Phase | Mode | Timestamp | Size | C4 ID |
-|-------|------|-----------|------|-------|
-| 0 (names only) | `-` | `-` | `-` | `-` |
-| 1 (stat) | resolved | resolved | resolved | `-` |
-| 2 (full) | resolved | resolved | resolved | resolved |
+| Phase          | Mode     | Timestamp | Size     | C4 ID    |
+| -------------- | -------- | --------- | -------- | -------- |
+| 0 (names only) | `-`      | `-`       | `-`      | `-`      |
+| 1 (stat)       | resolved | resolved  | resolved | `-`      |
+| 2 (full)       | resolved | resolved  | resolved | resolved |
 
 ---
 
@@ -899,18 +915,18 @@ When sorting, if multiple entries at the same depth have the same name, the
 
 Decoders MUST reject streams containing:
 
-| Condition | Error |
-|-----------|-------|
-| Line starting with `@` | `ErrInvalidEntry` |
-| CR (0x0D) anywhere | Fatal parse error |
-| Invalid UTF-8 | Fatal parse error |
-| Missing required field (mode, timestamp, size, name) | `ErrInvalidEntry` |
-| Name is `.`, `..`, `/`, or empty | `ErrPathTraversal` |
-| Name contains `/` other than a directory's trailing one (a backslash is a literal character) | `ErrPathTraversal` |
-| Duplicate path within same scope | `ErrDuplicatePath` |
-| Bare C4 ID mismatch (non-first-line) | `ErrPatchIDMismatch` |
-| Empty patch section | `ErrEmptyPatch` |
-| Malformed flow target | `ErrInvalidFlowTarget` |
+| Condition                                                                                    | Error                  |
+| -------------------------------------------------------------------------------------------- | ---------------------- |
+| Line starting with `@`                                                                       | `ErrInvalidEntry`      |
+| CR (0x0D) anywhere                                                                           | Fatal parse error      |
+| Invalid UTF-8                                                                                | Fatal parse error      |
+| Missing required field (mode, timestamp, size, name)                                         | `ErrInvalidEntry`      |
+| Name is `.`, `..`, `/`, or empty                                                             | `ErrPathTraversal`     |
+| Name contains `/` other than a directory's trailing one (a backslash is a literal character) | `ErrPathTraversal`     |
+| Duplicate path within same scope                                                             | `ErrDuplicatePath`     |
+| Bare C4 ID mismatch (non-first-line)                                                         | `ErrPatchIDMismatch`   |
+| Empty patch section                                                                          | `ErrEmptyPatch`        |
+| Malformed flow target                                                                        | `ErrInvalidFlowTarget` |
 
 ### 14.2 Accepted Variations
 
@@ -1014,14 +1030,14 @@ BASE58CHAR     = %x31-39 / %x41-48 / %x4A-4E / %x50-5A
 
 ## Appendix B: Error Codes
 
-| Error | Sentinel | Description |
-|-------|----------|-------------|
-| Invalid entry | `ErrInvalidEntry` | Malformed entry line (missing fields, bad mode, directive line) |
-| Duplicate path | `ErrDuplicatePath` | Same path appears twice in manifest scope |
-| Path traversal | `ErrPathTraversal` | Name contains `.`, `..`, or path separators |
-| Invalid flow target | `ErrInvalidFlowTarget` | Flow target does not match `location:path` pattern |
-| Patch ID mismatch | `ErrPatchIDMismatch` | Bare C4 ID does not match accumulated manifest state |
-| Empty patch | `ErrEmptyPatch` | Patch section contains zero entries |
+| Error               | Sentinel               | Description                                                     |
+| ------------------- | ---------------------- | --------------------------------------------------------------- |
+| Invalid entry       | `ErrInvalidEntry`      | Malformed entry line (missing fields, bad mode, directive line) |
+| Duplicate path      | `ErrDuplicatePath`     | Same path appears twice in manifest scope                       |
+| Path traversal      | `ErrPathTraversal`     | Name contains `.`, `..`, or path separators                     |
+| Invalid flow target | `ErrInvalidFlowTarget` | Flow target does not match `location:path` pattern              |
+| Patch ID mismatch   | `ErrPatchIDMismatch`   | Bare C4 ID does not match accumulated manifest state            |
+| Empty patch         | `ErrEmptyPatch`        | Patch section contains zero entries                             |
 
 ---
 
