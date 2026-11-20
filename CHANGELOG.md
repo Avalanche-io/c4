@@ -37,8 +37,12 @@ rather than asking its runtime. **C4 IDs change only in a binary built
 with a Go older than Unicode 17.0.0:** a name holding one of those code
 points is now written as itself where it was escaped, so its C4 ID, and
 the IDs of the directories above it, change. The released 1.0.26
-binaries, built with Go 1.27 (Unicode 17.0.0), write every name as
-before. Non-ASCII spaces (U+00A0, U+202F, U+3000 and every other space
+archive and Homebrew binaries, built with Go 1.27 (Unicode 17.0.0),
+already wrote names this way, so for them nothing changes. The 1.0.26
+container images were built with Go 1.24 (Unicode 15.0.0) and escaped
+those code points, so there a name holding one gets a new C4 ID, and so
+do the directories above it. From 1.0.27 the Go version a binary is
+built with no longer changes how a name is written. Non-ASCII spaces (U+00A0, U+202F, U+3000 and every other space
 separator but U+0020) and code points unassigned in 17.0.0, such as
 U+0378, were escaped and stay escaped. With the ports' matching changes,
 every implementation writes a name as Go does. The shared
