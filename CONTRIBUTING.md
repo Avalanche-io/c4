@@ -13,7 +13,7 @@ The C4 project consists of:
 
 ### Branches
 
-- `master` — 1.1 development; the 1.0 line is `release/1.0.x`
+- `master` — development for a later release; the 1.0 line is `release/1.0.x`
 - Feature branches — created from `master` for new features (`feature/description`)
 - Bug branches — created from `master` for fixes (`fix/description`)
 

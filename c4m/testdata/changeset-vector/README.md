@@ -82,7 +82,7 @@ Every port runs the same check:
   line, the base C4 ID, removed, and otherwise byte for byte.
 
 On the 1.0.x line a decode keeps a changeset's first-line base C4 ID, and
-an encode drops it; writing it back is c4 #145, on the 1.1 line only. So
+an encode drops it; writing it back is c4 #145, on master only. So
 on 1.0.x each changeset re-encodes to its patch entries alone, and only
 `c4 diff` writes the base line, printing the old state's C4 ID before the
 encoded patch. Measured 2026-11-16 on core release/1.0.27 9175b56 and on

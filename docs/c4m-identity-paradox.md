@@ -41,8 +41,8 @@ m, err := c4m.Unmarshal(data) // the bytes of any c4m file describing the tree
 id := m.ComputeC4ID()        // the description ID
 ```
 
-In 1.1, `c4 id -q tree.c4m`, `c4 id -q dir/` and `c4 id dir/ | c4 id -q -`
-print it.
+On the development line (master), `c4 id -q tree.c4m`, `c4 id -q dir/` and
+`c4 id dir/ | c4 id -q -` print it; on 1.0.x `-q` prints nothing.
 
 What `c4 id -s` narrates on 1.0.x: `c4 id -s tree.c4m` and `c4 id -s dir/`
 print `stored: <ID>` on stderr, and that ID is the **byte ID of the stored
@@ -125,5 +125,5 @@ return the file, and `c4 cat FILE` printed the re-rendered form. The c4py
 port did the same in its identify, scan and store paths, and follows the
 same rule from 1.0.27. Canonical text,
 such as plain `c4 id` output, was unaffected, since re-rendering it changes
-nothing; the pretty form `-e` writes was. From 1.0.27, and in 1.1, `c4`
+nothing; the pretty form `-e` writes was. From 1.0.27, `c4`
 identifies, stores and cats by the bytes on every path.
