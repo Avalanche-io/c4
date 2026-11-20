@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -23,7 +24,15 @@ import (
 // A tree holding symbolic links is not written into the vector: a link's
 // own time cannot be set portably, so its description is not
 // reproducible. The link case is tested where it is refused (cmd/c4).
+//
+// The vector's trees carry POSIX permission bits (600, 640), which a
+// Windows file cannot hold, so its scan there differs from the vector by
+// design; Windows runs the round trip from its own scan of the same trees
+// (cmd/c4).
 func TestRangeRoundtripVectorIsTheLibrarys(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the vector's modes are POSIX permission bits, which Windows files cannot hold")
+	}
 	vec := filepath.Join("..", "c4m", "testdata", "range-roundtrip-vector")
 	cases, err := rangevector.Read(filepath.Join(vec, "trees.txt"))
 	if err != nil {
