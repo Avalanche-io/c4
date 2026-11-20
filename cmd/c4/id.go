@@ -1061,7 +1061,7 @@ func openOrSetupStore() store.Store {
 // refuse without one.
 func noStoreHint() string {
 	return "no content store is configured: set C4_STORE=" + store.DefaultStorePath() +
-		" (any directory; created on first use) or C4_STORE=s3://bucket/prefix, or put a store line in ~/.c4/config"
+		" (any directory; created on first use) or C4_STORE=s3://bucket/prefix/, or put a store line in ~/.c4/config"
 }
 
 func outputManifest(manifest *c4m.Manifest, ergonomic bool) {

@@ -49,7 +49,7 @@ func runCat(args []string) {
 			fatalf("Error opening store: %v", err)
 		}
 		if s == nil {
-			fatalf("Error: no content store configured.\nSet C4_STORE=/path/to/store or s3://bucket/prefix")
+			fatalf("Error: no content store configured.\nSet C4_STORE=/path/to/store or s3://bucket/prefix/")
 		}
 
 		finalID, assertListing := storeDescend(s, id, target[len(first):])

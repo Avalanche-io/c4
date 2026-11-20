@@ -29,17 +29,17 @@ The `c4` CLI and ecosystem tools share store configuration:
 C4_STORE=/data/c4store
 
 # Single S3 store
-C4_STORE=s3://bucket/prefix?region=us-west-2
+C4_STORE=s3://bucket/prefix/?region=us-west-2
 
 # Multiple stores — writes go to the first, reads check all
-C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
+C4_STORE=/fast/ssd,s3://bucket/c4/?region=us-west-2,/mnt/archive
 ```
 
 Or in `~/.c4/config`:
 
 ```
 store = /fast/ssd
-store = s3://bucket/c4?region=us-west-2
+store = s3://bucket/c4/?region=us-west-2
 store = /mnt/archive
 ```
 
@@ -54,13 +54,13 @@ S3 stores use standard AWS credentials:
 ```bash
 export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
-export C4_STORE=s3://mybucket/c4?region=us-west-2
+export C4_STORE=s3://mybucket/c4/?region=us-west-2
 ```
 
 For non-AWS endpoints:
 
 ```bash
-export C4_STORE=s3://mybucket/c4?endpoint=minio.local:9000
+export C4_STORE=s3://mybucket/c4/?endpoint=minio.local:9000
 # or
 export C4_S3_ENDPOINT=minio.local:9000
 ```
