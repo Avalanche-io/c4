@@ -1,0 +1,56 @@
+# Trees for the folded-range round-trip vector. Plain data, not c4m.
+# One line per path, tab separated:
+#   case  path  kind  mode  mtime  content
+# kind: d directory, f file (content is the file's bytes, \n for a newline),
+#       l symbolic link (content is the link target).
+# mode: octal permission bits. mtime: RFC 3339 UTC, or 0 for the Unix epoch.
+# Directories are listed before their contents and have no content field;
+# their times are set last.
+one	f.0001.exr	f	644	2026-01-02T03:04:00Z	frame-0001\n
+one	f.0002.exr	f	644	2026-01-02T03:04:00Z	frame-0002\n
+one	f.0003.exr	f	644	2026-01-02T03:04:00Z	frame-0003\n
+down1	shot	d	755	2026-01-02T03:04:00Z
+down1	readme.txt	f	644	2026-01-02T03:04:00Z	read me\n
+down1	shot/f.0001.exr	f	644	2026-01-02T03:04:00Z	shot-0001\n
+down1	shot/f.0002.exr	f	644	2026-01-02T03:04:00Z	shot-0002\n
+down1	shot/f.0003.exr	f	644	2026-01-02T03:04:00Z	shot-0003\n
+down2	seq	d	755	2026-01-02T03:04:00Z
+down2	seq/shot	d	755	2026-01-02T03:04:00Z
+down2	readme.txt	f	644	2026-01-02T03:04:00Z	read me\n
+down2	seq/shot/p.0001.exr	f	644	2026-01-02T03:04:00Z	plate-0001\n
+down2	seq/shot/p.0002.exr	f	644	2026-01-02T03:04:00Z	plate-0002\n
+down2	seq/shot/p.0003.exr	f	644	2026-01-02T03:04:00Z	plate-0003\n
+two	a.0001.exr	f	644	2026-01-02T03:04:00Z	a-0001\n
+two	a.0002.exr	f	644	2026-01-02T03:04:00Z	a-0002\n
+two	a.0003.exr	f	644	2026-01-02T03:04:00Z	a-0003\n
+two	b.0001.exr	f	644	2026-01-02T03:04:00Z	b-0001\n
+two	b.0002.exr	f	644	2026-01-02T03:04:00Z	b-0002\n
+two	b.0003.exr	f	644	2026-01-02T03:04:00Z	b-0003\n
+two	b.0004.exr	f	644	2026-01-02T03:04:00Z	b-0004\n
+beside	f.0001.exr	f	644	2026-01-02T03:04:00Z	frame-0001\n
+beside	f.0002.exr	f	644	2026-01-02T03:04:00Z	frame-0002\n
+beside	f.0003.exr	f	644	2026-01-02T03:04:00Z	frame-0003\n
+beside	notes.txt	f	644	2026-01-02T03:04:00Z	notes\n
+beside	z.dat	f	600	2026-01-05T06:07:08Z	zed\n
+gaps	f.0001.exr	f	644	2026-01-02T03:04:00Z	gap-0001\n
+gaps	f.0002.exr	f	644	2026-01-02T03:04:00Z	gap-0002\n
+gaps	f.0003.exr	f	644	2026-01-02T03:04:00Z	gap-0003\n
+gaps	f.0007.exr	f	644	2026-01-02T03:04:00Z	gap-0007\n
+gaps	f.0008.exr	f	644	2026-01-02T03:04:00Z	gap-0008\n
+gaps	f.0009.exr	f	644	2026-01-02T03:04:00Z	gap-0009\n
+unpadded	f.1.exr	f	644	2026-01-02T03:04:00Z	u-1\n
+unpadded	f.2.exr	f	644	2026-01-02T03:04:00Z	u-2\n
+unpadded	f.3.exr	f	644	2026-01-02T03:04:00Z	u-3\n
+unpadded	f.4.exr	f	644	2026-01-02T03:04:00Z	u-4\n
+mixed	f.0001.exr	f	600	2026-01-01T00:00:00Z	mixed-0001\n
+mixed	f.0002.exr	f	644	2026-03-03T03:03:00Z	mixed-0002\n
+mixed	f.0003.exr	f	640	2026-01-02T03:04:00Z	mixed-0003\n
+nulltime	f.0001.exr	f	644	0	null-0001\n
+nulltime	f.0002.exr	f	644	0	null-0002\n
+nulltime	f.0003.exr	f	644	0	null-0003\n
+links	t.0001.txt	f	644	2026-01-02T03:04:00Z	target-0001\n
+links	t.0002.txt	f	644	2026-01-02T03:04:00Z	target-0002\n
+links	t.0003.txt	f	644	2026-01-02T03:04:00Z	target-0003\n
+links	l.0001.exr	l	777	2026-01-02T03:04:00Z	t.0001.txt
+links	l.0002.exr	l	777	2026-01-02T03:04:00Z	t.0002.txt
+links	l.0003.exr	l	777	2026-01-02T03:04:00Z	t.0003.txt

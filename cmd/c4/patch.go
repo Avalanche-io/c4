@@ -208,6 +208,18 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 
 	s := reconcileStore(noStore)
 
+	// A folded range is written as its frames, from its ID list (inline,
+	// or from the store by the range's C4 ID). Expanded before the prior
+	// state is captured and the changeset printed, so a range that cannot
+	// be written refuses before anything happens, and the capture sees
+	// the frames' content IDs.
+	var listSource store.Source
+	if s != nil {
+		listSource = s
+	}
+	targetManifest, ranges := reconcile.ExpandRanges(targetManifest, listSource)
+	refuseRanges(ranges)
+
 	// Capture dest's prior state before anything is applied. Runs
 	// before the diff is printed so the changeset's OldID matches the
 	// stored root record.
@@ -250,13 +262,7 @@ func runPatchC4mToDir(target, dirPath string, mode scan.ScanMode, dryRun, noStor
 		fatalf("Error planning reconciliation: %v", err)
 	}
 
-	if len(plan.Missing) > 0 {
-		fmt.Fprintf(os.Stderr, "Missing content for %d entries:\n", len(plan.Missing))
-		for _, id := range plan.Missing {
-			fmt.Fprintf(os.Stderr, "  %s\n", id)
-		}
-		os.Exit(1)
-	}
+	exitIfIncomplete(plan)
 
 	refused := reportRefused(plan.Refused)
 	reportCollisionCandidates(plan)
@@ -355,13 +361,7 @@ func runPatchDirToDir(srcDir, destDir string, mode scan.ScanMode, dryRun, noStor
 		fatalf("Error planning reconciliation: %v", err)
 	}
 
-	if len(plan.Missing) > 0 {
-		fmt.Fprintf(os.Stderr, "Missing content for %d entries:\n", len(plan.Missing))
-		for _, id := range plan.Missing {
-			fmt.Fprintf(os.Stderr, "  %s\n", id)
-		}
-		os.Exit(1)
-	}
+	exitIfIncomplete(plan)
 
 	refused := reportRefused(plan.Refused)
 	reportCollisionCandidates(plan)
@@ -579,13 +579,7 @@ func runPatchReverse(source, dirPath string, storeRemovals, noStore bool, dryRun
 		fatalf("Error planning reconciliation: %v", err)
 	}
 
-	if len(plan.Missing) > 0 {
-		fmt.Fprintf(os.Stderr, "Missing content for %d entries:\n", len(plan.Missing))
-		for _, id := range plan.Missing {
-			fmt.Fprintf(os.Stderr, "  %s\n", id)
-		}
-		os.Exit(1)
-	}
+	exitIfIncomplete(plan)
 
 	refused := reportRefused(plan.Refused)
 	reportCollisionCandidates(plan)
@@ -810,4 +804,53 @@ func reportCollisionCandidates(plan *reconcile.Plan) {
 		}
 		fmt.Fprintf(os.Stderr, "not measured: %s: %s; its names are written as named\n", dir, c.Err)
 	}
+}
+
+// exitIfIncomplete reports what a plan is missing and exits 1, before
+// anything is applied: content no source holds, by C4 ID, and the folded
+// ranges it cannot write, each named with its reason.
+func exitIfIncomplete(plan *reconcile.Plan) {
+	if plan.IsComplete() {
+		return
+	}
+	if len(plan.Ranges) > 0 {
+		refuseRanges(plan.Ranges)
+	}
+	fmt.Fprintf(os.Stderr, "Missing content for %d entries:\n", len(plan.Missing))
+	for _, id := range plan.Missing {
+		fmt.Fprintf(os.Stderr, "  %s\n", id)
+	}
+	os.Exit(1)
+}
+
+// refuseRanges reports the folded ranges a patch cannot write and exits 1,
+// before anything is written: a range whose ID list neither the
+// description nor the store holds (the missing content is the list), a
+// range of symbolic links (a folded line does not carry the members' link
+// targets), or one whose list does not name its frames.
+func refuseRanges(ranges []reconcile.RangeProblem) {
+	if len(ranges) == 0 {
+		return
+	}
+	var noList, other []reconcile.RangeProblem
+	for _, p := range ranges {
+		if p.Reason == reconcile.RangeNoList {
+			noList = append(noList, p)
+		} else {
+			other = append(other, p)
+		}
+	}
+	if len(noList) > 0 {
+		fmt.Fprintf(os.Stderr, "Missing content for %d entries:\n", len(noList))
+		for _, p := range noList {
+			fmt.Fprintf(os.Stderr, "  %s\n", p)
+		}
+	}
+	if len(other) > 0 {
+		fmt.Fprintf(os.Stderr, "Cannot write %d folded ranges; nothing written:\n", len(other))
+		for _, p := range other {
+			fmt.Fprintf(os.Stderr, "  %s\n", p)
+		}
+	}
+	os.Exit(1)
 }

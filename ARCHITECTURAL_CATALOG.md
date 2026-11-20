@@ -287,7 +287,8 @@ Filesystem reconciliation. Depends on `c4`, `c4m`, and `store`.
 | `LocalSource` | Optional interface: `ContentPath(ID) (string, bool)`. Apply prefers local paths for file-to-file copies (CoW clone hook point — see design/reconcile-performance.md). |
 | `DirSource` | Wraps a directory + manifest as a `ContentSource` (also a `LocalSource`). |
 | `Saver` | Interface: `Put(io.Reader) (ID, error)` + `Has(ID) bool`. |
-| `Plan` | Ordered operation list with missing-content check. |
+| `Plan` | Ordered operation list with missing-content check; `Ranges` lists folded ranges it cannot write. |
+| `ExpandRanges` | A target with every folded range replaced by its frames: the ID list inline or from a source by the range's C4 ID, each frame named by the range expression with the range's mode and time. `Plan` calls it; `RangeProblem` names a range it cannot write (no list, a list that does not name its frames, a range of links). design/folded-range-round-trip.md |
 | `Operation` | Single filesystem operation (mkdir, create, move, remove, chmod, chtimes). |
 | `Result` | Outcome counts and errors from `Apply`. |
 

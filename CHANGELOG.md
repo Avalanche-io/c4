@@ -2,6 +2,28 @@
 
 ## Unreleased (1.0.27)
 
+### `c4 patch` writes folded ranges as their frames ⚠
+
+A description scanned with `-S` holds folded ranges, and `c4 patch` of it
+into a folder exited 1 with "Missing content for N entries", naming each
+range's own C4 ID, even when the store held the range's ID list and
+every frame (measured on this line). Nothing was written. Now a range is
+written as its frames: its ID list is read from the description when
+inline, or from the store by the range's C4 ID, as a subdirectory's
+listing is; each frame is named by the range expression and written with
+the range line's mode and timestamp. So `c4 id -S -s tree/`, `c4 patch`
+into an empty folder, `c4 id -S` again gives the same description ID
+(ruled 2026-11-20: "We do however NEED to have proper round trip for
+folded ranges"). It holds for null-dated ranges too, with the change
+below. A range with no list anywhere is still refused, exit 1, nothing
+written, and the message now names what is missing: "the ID list of
+NAME (ID)". A folded range of symbolic links is refused, because a folded
+line does not carry the members' link targets. **No C4 ID changes.**
+New shared vector `c4m/testdata/range-roundtrip-vector/`, master's bytes,
+written by the library on this line too (`design/folded-range-round-trip.md`).
+
+### ⚠ `c4 patch` writes into a folder recorded without owner write
+
 ### ⚠ A folder recorded read-only is patched with its contents
 
 A folder recorded read-only (`r-xr-xr-x`) was created empty: `c4 patch`

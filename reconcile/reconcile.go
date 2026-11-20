@@ -150,6 +150,12 @@ type Plan struct {
 	// after Apply, each is listed under exactly its own spelling, even
 	// where the folder already held it under another one.
 	Respell []string
+	// Ranges lists the target's folded ranges that cannot be written (see
+	// ExpandRanges): a range whose ID list no source holds, a range of
+	// symbolic links, or one whose list does not name its frames. When it
+	// is not empty nothing is planned; the ID of each range without its
+	// list is in Missing too, since that list is the missing content.
+	Ranges []RangeProblem
 }
 
 // Collision is two sibling target names that may name one entry in the
@@ -169,7 +175,7 @@ type Refusal struct {
 }
 
 // IsComplete returns true when all required content is available.
-func (p *Plan) IsComplete() bool { return len(p.Missing) == 0 }
+func (p *Plan) IsComplete() bool { return len(p.Missing) == 0 && len(p.Ranges) == 0 }
 
 // Result reports what happened during Apply.
 type Result struct {
