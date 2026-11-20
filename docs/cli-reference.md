@@ -210,7 +210,7 @@ the computed diff (changeset) to stdout when reconciling a directory.
 |--------|------|-------------|
 | `file.c4m` | *(none)* | Resolve patch chain, output final c4m to stdout |
 | `dir/` | *(none)* | Scan directory, store content, output c4m to stdout |
-| `file.c4m` | `file.c4m` | Resolve chain, write result to dest c4m |
+| `file.c4m` | `file.c4m` | Resolve the target chain and write it over the dest c4m (dest's old contents are lost) |
 | `file.c4m` | `dir/` | Reconcile directory to match c4m target state |
 | `dir/` | `file.c4m` | Scan directory, store content, write c4m |
 | `dir/` | `dir/` | Reconcile dest directory to match source directory |
@@ -262,8 +262,9 @@ c4 patch project.c4m
 # Resolve to specific patch number
 c4 patch -n 3 project.c4m
 
-# Resolve across files (branching)
-c4 patch common.c4m release.c4m
+# Resolve across files (branching): concatenate them, then resolve.
+# (Given two c4m files, c4 patch writes the first's state over the second.)
+cat common.c4m release.c4m > release-full.c4m && c4 patch release-full.c4m
 
 # Reconcile a directory to match a c4m, capture changeset
 # (the prior state is stored automatically; stderr prints the revert)

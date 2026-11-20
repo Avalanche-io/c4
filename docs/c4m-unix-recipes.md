@@ -387,7 +387,7 @@ c4 id ./project/ > v1.c4m
 # ... make changes ...
 c4 diff v1.c4m <(c4 id ./project/) > patch1.c4m
 # ... make more changes ...
-c4 diff <(c4 patch v1.c4m patch1.c4m) <(c4 id ./project/) > patch2.c4m
+c4 diff <(cat v1.c4m patch1.c4m) <(c4 id ./project/) > patch2.c4m
 
 # Combine into single file
 cat v1.c4m patch1.c4m patch2.c4m > history.c4m

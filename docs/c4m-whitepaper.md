@@ -204,7 +204,7 @@ The patch itself is a c4m file. You can open it in a text editor and read exactl
 A patch can be applied to a c4m file to produce a new c4m file representing the target state, or applied to a live directory to reconcile its contents with the target:
 
 ```
-$ c4 patch monday.c4m week.c4m.patch > friday.c4m
+$ cat monday.c4m week.c4m.patch > chain.c4m && c4 patch chain.c4m > friday.c4m
 ```
 
 When reconciling a directory, the process identifies which files are missing (by C4 ID), which are unchanged, and which need to be updated. Files that need to be fetched are identified by C4 ID and can be retrieved from any source that has them -- a content store, a peer, a cloud bucket. The operation is idempotent: running it again produces no changes.
