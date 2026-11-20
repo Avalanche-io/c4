@@ -74,6 +74,13 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 				res.Errors = append(res.Errors, err)
 			}
 		case OpChmod:
+			// A folder's mode is set in the post-pass, after everything
+			// written into, moved out of or removed from it: a folder made
+			// read-only first would refuse them.
+			if op.Entry != nil && op.Entry.IsDir() {
+				dirOps = append(dirOps, op)
+				continue
+			}
 			if err := r.applyChmod(op, res); err != nil {
 				res.Errors = append(res.Errors, err)
 			}
@@ -116,6 +123,12 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 			return len(dirOps[i].Path) > len(dirOps[j].Path) // deepest first
 		})
 		for _, op := range dirOps {
+			if op.Type == OpChmod {
+				if err := r.applyChmod(op, res); err != nil {
+					res.Errors = append(res.Errors, err)
+				}
+				continue
+			}
 			r.setMetadata(op.Path, op.Entry, freshDirs[op.Path])
 		}
 	}
@@ -205,9 +218,13 @@ func (r *Reconciler) applyMkdir(op Operation, res *Result) (made bool, err error
 				op.Path, rmErr)
 		}
 	}
+	// The folder is made writable and searchable by its owner, whatever
+	// mode it records, so its children can be written into it; the
+	// recorded mode is set in the post-pass, after them (a folder recorded
+	// 0555 or 0000 used to refuse its own children: permission denied).
 	mode := os.FileMode(0755)
 	if op.Entry != nil && op.Entry.Mode != 0 {
-		mode = op.Entry.Mode.Perm() | os.ModeDir
+		mode = op.Entry.Mode.Perm() | 0o700
 	}
 	if err := os.MkdirAll(op.Path, mode.Perm()); err != nil {
 		return false, err

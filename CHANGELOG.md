@@ -2,6 +2,21 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### ⚠ A folder recorded without owner write receives its contents
+
+`c4 restore` made a folder with its recorded mode before writing into it,
+so a folder recorded without owner write refused its own children:
+"permission denied", exit 3, nothing written inside it. That is not a
+corner case. A read-only delivery folder (`dr-xr-xr-x`, 0555) fails, as
+do 0500 and 0000 (measured on this line at f1bbcda, on 1.0.26 and on
+release/1.0.27). A folder that already existed and was recorded read-only was
+made so before files were written into or removed from it. Now a folder
+is made writable and searchable by its owner while it is filled, and every
+folder's recorded mode is set after its contents, deepest first; its
+recorded time is set last, as before. So a description holding a
+read-only folder restores, and a scan of the result has the description's
+ID. No C4 ID changes.
+
 ### `c4 restore` writes folded ranges as their frames
 
 A description scanned with `-S` holds folded ranges, and `c4 restore`
