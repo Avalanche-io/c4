@@ -125,16 +125,18 @@ IDENTITY
     with like, scanned alike.
 
     Sizes come from the scan: a file's size is the byte count read and hashed; a directory's is
-    the total file bytes read beneath it (null-ID entries contribute nothing); a symlink's is
-    its target text's length. A symlink entry is its name and target text - mode, time, and ID
+    the total file bytes read beneath it (null-ID entries contribute nothing) plus the byte
+    length of its own one-level listing and of every listing beneath it; a symlink's is its
+    target text's length. A symlink entry is its name and target text - mode, time, and ID
     null in every form; it names no store object; null target text when readlink was refused.
     Hard links are not recorded: a hard-linked file scans as an ordinary file. A directory's own
     mode and mtime appear only in its parent's full-form entry, never in its own listing; the
     scan root's appear nowhere. Nothing outside a scanned tree affects its ID.
 
     Sequences fold only under -S. A folded entry records the folded name and the ID of its ID
-    list - member file IDs, one per line, in the folded range's order: line N names the range's
-    Nth member. Its size is the sum of member sizes read and hashed; full-form mode = the
+    list - member file IDs concatenated, in the folded range's order: the Nth ID names the
+    range's Nth member. Its size is the sum of member sizes read and hashed plus the list's own
+    90 bytes per member; full-form mode = the
     members' shared mode; mtime = the newest member's. A run folds only when every member is a
     plain file, every member's bytes were read and hashed (a folded entry never records a
     null-ID member), and every observed mode is equal; any other run - an unreadable member
