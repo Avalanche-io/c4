@@ -14,9 +14,10 @@ import (
 // the store, `c4 restore --force` of the folded description deleted the
 // real members and wrote the ID list as a file named
 // `frame.[0001-0003].exr` (release 1.0.x: 7afd4d8). Now the list is
-// stored, and restore refuses a folded entry, naming it, with the members
-// untouched.
-func TestFoldedSequenceStoresItsListAndRestoreRefusesIt(t *testing.T) {
+// stored, and restore writes a folded entry as its frames, from that list:
+// over its own members it leaves them as they are, and no file is named by
+// the range (through 2026-11-20 restore refused a folded entry instead).
+func TestFoldedSequenceStoresItsListAndRestoreWritesItsFrames(t *testing.T) {
 	bin := buildC4(t)
 	work := t.TempDir()
 	seq := filepath.Join(work, "seq")
@@ -55,8 +56,8 @@ func TestFoldedSequenceStoresItsListAndRestoreRefusesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, errOut, code = runC4WithEnv(t, bin, env, "restore", "--force", foldedC4m, seq)
-	if code != 1 || !strings.Contains(errOut, "frame.[0001-0003].exr") {
-		t.Errorf("restore of a folded description: exit %d, stderr %.300s; want exit 1 naming the folded entry", code, errOut)
+	if code != 0 {
+		t.Errorf("restore of a folded description over its own members: exit %d, stderr %.300s; want 0", code, errOut)
 	}
 	entries, _ := os.ReadDir(seq)
 	var names []string
@@ -64,6 +65,12 @@ func TestFoldedSequenceStoresItsListAndRestoreRefusesIt(t *testing.T) {
 		names = append(names, e.Name())
 	}
 	if strings.Join(names, " ") != "frame.0001.exr frame.0002.exr frame.0003.exr" {
-		t.Errorf("seq/ after restore holds %v; the members must be untouched", names)
+		t.Errorf("seq/ after restore holds %v; the members must be untouched and no file named by the range", names)
+	}
+	for i := 1; i <= 3; i++ {
+		b, err := os.ReadFile(filepath.Join(seq, fmt.Sprintf("frame.000%d.exr", i)))
+		if err != nil || string(b) != fmt.Sprintf("f%d\n", i) {
+			t.Errorf("frame %d holds %q (%v), want its own bytes", i, b, err)
+		}
 	}
 }

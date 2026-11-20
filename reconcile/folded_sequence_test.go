@@ -10,10 +10,11 @@ import (
 	"github.com/Avalanche-io/c4/store"
 )
 
-// A folded sequence entry names an ID-list object, not file bytes. Even
-// when that object is available, the plan must refuse rather than write
-// the ID list under the range pattern's name and remove the real members.
-func TestPlanRefusesFoldedSequence(t *testing.T) {
+// A folded sequence entry names an ID-list object, not file bytes. The
+// plan writes its frames from that list; it never writes the list under
+// the range pattern's name, and never removes the real members (through
+// 2026-11-20 it refused instead; before 7afd4d8 it did both).
+func TestPlanWritesAFoldedSequencesFramesNeverItsList(t *testing.T) {
 	dstDir := t.TempDir()
 	var members []c4.ID
 	for i := 1; i <= 3; i++ {
@@ -35,10 +36,15 @@ func TestPlanRefusesFoldedSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.IsComplete() || len(plan.Missing) != 1 || plan.Missing[0] != listID {
-		t.Fatalf("expected the folded entry reported missing, got %v", plan.Missing)
+	if !plan.IsComplete() {
+		t.Fatalf("the list is in the store: the plan should be complete, missing %v, ranges %v", plan.Missing, plan.Ranges)
 	}
-	if len(plan.Operations) != 0 {
-		t.Fatalf("expected no operations, got %d", len(plan.Operations))
+	for _, op := range plan.Operations {
+		if op.Type == OpRemove || op.Type == OpRmdir {
+			t.Errorf("the members are the frames: nothing to remove, got %v %s", op.Type, op.Path)
+		}
+		if bytes.Contains([]byte(op.Path), []byte("[0001-0003]")) {
+			t.Errorf("an operation on the range pattern's name: %v %s", op.Type, op.Path)
+		}
 	}
 }

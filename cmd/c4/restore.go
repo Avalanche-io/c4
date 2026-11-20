@@ -50,6 +50,14 @@ func runRestore(args []string) {
 	}
 
 	target := resolveRestoreTarget(s, targetArg)
+	// A folded range is restored as its frames, from its ID list (inline,
+	// or from the store by the range's C4 ID). The folded description is
+	// kept for verification: the as-built tree is scanned with folding and
+	// must reproduce it. A range that cannot be written refuses here, with
+	// nothing touched.
+	folded := target
+	target, ranges := reconcile.ExpandRanges(folded, s)
+	refuseRanges(ranges)
 
 	// Destination per OS path resolution: an existing non-directory
 	// refuses; an absent path is created (with parents) on --force.
@@ -69,7 +77,6 @@ func runRestore(args []string) {
 	var missing []c4.ID
 	var incomplete []string
 	seen := make(map[c4.ID]bool)
-	var folded []string
 	// A file entry with no C4 ID has no content to write: writing zeros of
 	// its stated size would invent content. It is kept as found, named by
 	// its full path, and left out of verification on both sides (decided
@@ -87,14 +94,6 @@ func runRestore(args []string) {
 		if e.Target != "" { // symlink: no store object needed
 			continue
 		}
-		if e.IsSequence {
-			// A folded entry names its members' ID list, not file bytes;
-			// restore does not expand it. Writing the ID list under the
-			// pattern's name and removing the real members was silent
-			// corruption (release 1.0.x: 7afd4d8).
-			folded = append(folded, e.Name)
-			continue
-		}
 		if e.C4ID.IsNil() {
 			continue // an incomplete entry, listed above
 		}
@@ -105,13 +104,6 @@ func runRestore(args []string) {
 		if !s.Has(e.C4ID) {
 			missing = append(missing, e.C4ID)
 		}
-	}
-	if len(folded) > 0 {
-		fmt.Fprintf(os.Stderr, "Cannot restore %d folded sequence entries; nothing restored (restore a description made without -S):\n", len(folded))
-		for _, name := range folded {
-			fmt.Fprintf(os.Stderr, "  %s\n", name)
-		}
-		os.Exit(1)
 	}
 	// Content the destination already holds counts, by its ID: every file
 	// is hashed here, never matched by size and time, since a move must
@@ -151,7 +143,7 @@ func runRestore(args []string) {
 	// content-projection target verifies content identity; a
 	// full-fidelity target verifies recorded metadata too.
 	level := scan.ModeFull
-	if isContentLevel(target) {
+	if isContentLevel(folded) {
 		level = scan.ModeContent
 	}
 
@@ -273,13 +265,20 @@ func runRestore(args []string) {
 	// guide vouches for (size and mtime unchanged, racy-safe) is the
 	// guide's, as it was for the plan; every file this restore wrote is
 	// newer than the guide and is hashed.
+	// A target holding folded ranges is verified folded: the as-built
+	// tree is scanned with folding (as c4 id -S scans it), every file
+	// hashed, and must reproduce the folded description.
+	hasRanges := folded != target
 	var builtScan *c4m.Manifest
-	if trust {
+	switch {
+	case hasRanges:
+		builtScan = scanDirectory(destArg, level, true, false, nil, "", nil, time.Time{}, false)
+	case trust:
 		builtScan = scanForCompare(destArg, level, *continueFlag)
-	} else {
+	default:
 		builtScan = scanDirectory(destArg, level, false, false, nil, "", nil, time.Time{}, false)
 	}
-	verifyTarget := linkTimesAsBuilt(target, builtScan, destArg, result.LinkTimesUnset)
+	verifyTarget := linkTimesAsBuilt(folded, builtScan, destArg, result.LinkTimesUnset)
 	// Entries this platform cannot hold were refused, not written: the
 	// rest is verified exactly, on both sides without them, and the
 	// refused set is named in full so "verified" never reads as
@@ -389,9 +388,9 @@ func planRestore(s store.Store, target *c4m.Manifest, dest string, current *c4m.
 	if err != nil {
 		fatalf("Error planning restore: %v", err)
 	}
-	// Content the planner cannot materialise (a folded sequence entry, which
-	// names an ID list rather than file bytes) refuses before anything is
-	// applied. An incomplete plan used to apply as zero operations and then
+	// Content the planner cannot materialise (missing bytes, or a folded
+	// range it cannot write; runRestore refuses those first) refuses before
+	// anything is applied. An incomplete plan used to apply as zero operations and then
 	// fail its own verification with exit 3.
 	if !plan.IsComplete() {
 		fmt.Fprintf(os.Stderr, "Cannot restore %d entries; nothing restored:\n", len(plan.Missing))
@@ -614,4 +613,36 @@ func withoutPaths(m *c4m.Manifest, omitted []string) *c4m.Manifest {
 	out.Entries = kept
 	c4m.Normalize(out)
 	return out
+}
+
+// refuseRanges reports the folded ranges a restore cannot write and exits
+// 1, before anything is touched: a range whose ID list neither the
+// description nor the store holds (the missing content is the list), a
+// range of symbolic links (a folded line does not carry the members' link
+// targets), or one whose list does not name its frames.
+func refuseRanges(ranges []reconcile.RangeProblem) {
+	if len(ranges) == 0 {
+		return
+	}
+	var noList, other []reconcile.RangeProblem
+	for _, p := range ranges {
+		if p.Reason == reconcile.RangeNoList {
+			noList = append(noList, p)
+		} else {
+			other = append(other, p)
+		}
+	}
+	if len(noList) > 0 {
+		fmt.Fprintf(os.Stderr, "Missing content for %d entries; nothing restored:\n", len(noList))
+		for _, p := range noList {
+			fmt.Fprintf(os.Stderr, "  %s\n", p)
+		}
+	}
+	if len(other) > 0 {
+		fmt.Fprintf(os.Stderr, "Cannot restore %d folded ranges; nothing restored:\n", len(other))
+		for _, p := range other {
+			fmt.Fprintf(os.Stderr, "  %s\n", p)
+		}
+	}
+	os.Exit(1)
 }

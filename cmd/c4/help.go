@@ -329,7 +329,7 @@ NOTES
     recorded: ownership, xattrs, ACLs, special files, hard-link structure (a hard-linked tree
     restores as identical bytes, independent inodes). Folded members materialize with the
     entry's one recorded mode and mtime - snapshot without -S when per-member metadata must
-    survive. .git is ordinary recorded bytes: destroying and restoring it is the normal case.
+    survive. A folded range of symlinks is refused: its line holds no link targets. .git is ordinary recorded bytes: destroying and restoring it is the normal case.
     A snapshot taken with exclusions records the excluded names nowhere, so restoring it
     REMOVES them from <dir> like any unrecorded entry - the pre-image holds them.
 

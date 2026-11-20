@@ -2,6 +2,25 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
+### `c4 restore` writes folded ranges as their frames
+
+A description scanned with `-S` holds folded ranges, and `c4 restore`
+refused it ("Cannot restore N folded sequence entries … restore a
+description made without -S"), exit 1. Now a range is written as its
+frames: its ID list is read from the description when inline, or from the
+store by the range's C4 ID, as a subdirectory's listing is; each frame
+is named by the range expression and written with the range line's mode
+and timestamp. The restore verifies folded: the as-built tree, scanned
+with `-S`, reproduces the description. So `c4 id -S -s tree/`, restore,
+`c4 id -S` again gives the same description ID (ruled 2026-11-20: "We do
+however NEED to have proper round trip for folded ranges"). A range with
+no list anywhere is the ordinary missing-content case: exit 1, nothing
+restored, and the message names the list ("the ID list of NAME (ID)"). A
+folded range of symbolic links is refused, because a folded line does not
+carry the members' link targets. New shared vector
+`c4m/testdata/range-roundtrip-vector/`, written by the library
+(`design/folded-range-round-trip.md`).
+
 ### ⚠ `c4 id -s` never names content the store doesn't hold
 
 `c4 id -s` could print, store and journal a description naming a C4 ID the

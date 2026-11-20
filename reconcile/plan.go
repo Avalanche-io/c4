@@ -21,6 +21,21 @@ func (r *Reconciler) Plan(target *c4m.Manifest, dirPath string) (*Plan, error) {
 		return nil, err
 	}
 
+	// A folded range is written as its frames: its ID list, inline or
+	// from a source, names each frame's content (see ExpandRanges). A
+	// range that cannot be written refuses the plan before anything else
+	// is decided, so nothing partial is ever written.
+	target, ranges := ExpandRanges(target, sourcesOpener{r})
+	if len(ranges) > 0 {
+		var missing []c4.ID
+		for _, p := range ranges {
+			if p.Reason == RangeNoList {
+				missing = append(missing, p.ID)
+			}
+		}
+		return &Plan{Missing: missing, Ranges: ranges}, nil
+	}
+
 	// 1. Build target path map from manifest entries.
 	targetPaths := c4m.EntryPaths(target.Entries)
 
