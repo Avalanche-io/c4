@@ -17,7 +17,7 @@ After stripping leading spaces (which encode nesting depth):
 | Mode | 1 | `-rw-r--r--`, `drwxr-xr-x` | `d` = dir, `l` = symlink |
 | Timestamp | 2 | `2026-03-17T06:18:00Z` | UTC, ISO 8601 |
 | Size | 3 | `4404019`, `-` | Bytes, or `-` for null |
-| Name | 4 | `photo.jpg`, `src/` | Dirs end with `/` |
+| Name | 4 | `photo.jpg`, `src/` | Dirs end with `/`; a space is written `\ `, so a name with one spans several awk fields |
 | C4 ID | last | `c4abc...` (90 chars), `-` | Always starts with `c4` |
 
 Depth = number of leading spaces. Each nesting level adds 2 spaces.
@@ -102,13 +102,12 @@ done
 This outputs the raw c4m directory lines, deepest parent first:
 
 ```
-    drwxr-xr-x 2026-03-17T06:18:00Z - lib/ c4def...
-  drwxr-xr-x 2026-03-17T06:18:00Z - src/ c4ghi...
-drwxr-xr-x 2026-03-17T06:18:00Z - project/ c4jkl...
+    drwxr-xr-x 2026-03-17T06:18:00Z 300 lib/ c4def...
+  drwxr-xr-x 2026-03-17T06:18:00Z 579 src/ c4ghi...
 ```
 
 The indentation of the output itself shows the nesting. No parsing
-needed — you can see the path is `project/src/lib/` just from reading
+needed — you can see the path is `src/lib/` just from reading
 the directory names in the output.
 
 ---
@@ -299,9 +298,10 @@ awk '{
 # Remove build/, dist/, and node_modules/
 awk '{
   d=0; for(i=1;i<=length($0);i++){if(substr($0,i,1)==" ")d++;else break}
-  if(!skip && ($0~/build\// || $0~/dist\// || $0~/node_modules\//)) {skip=1; sd=d; next}
   if(skip && d>sd) next
-  skip=0; print
+  skip=0
+  if($0~/build\// || $0~/dist\// || $0~/node_modules\//) {skip=1; sd=d; next}
+  print
 }' project.c4m > filtered.c4m
 ```
 
@@ -337,7 +337,7 @@ Pipe through `awk '{print $4}'` to see just the names.
 # Resolve the full patch chain to final state
 c4 patch project.c4m
 
-# Resolve up to patch N
+# Resolve up to row N of c4 log (row 1 is the base)
 c4 patch -n 3 project.c4m
 ```
 
@@ -345,16 +345,14 @@ c4 patch -n 3 project.c4m
 
 ```bash
 # Apply target state, capturing the changeset
+# (the pre-patch state is stored by default; stderr prints the revert)
 c4 patch target.c4m ./project/ > changeset.c4m
-
-# Store pre-patch state for later reversal
-c4 patch -s target.c4m ./project/ > changeset.c4m
 ```
 
 ### Revert to pre-patch state
 
-If the forward patch was run with `-s`, the pre-patch manifest is in the
-content store. Use `-r` to revert:
+`c4 patch` stores the pre-patch state by default (unless run with
+`--no-store`) and prints the revert command on stderr. Use `-r` to revert:
 
 ```bash
 # Revert the directory to its pre-patch state
@@ -374,7 +372,7 @@ c4 diff -r changeset.c4m ./project/
 ### Split history at a branch point
 
 ```bash
-# Split after patch 3
+# Split after row 3 of c4 log (the base and the first two patches)
 c4 split project.c4m 3 common.c4m remainder.c4m
 ```
 
@@ -396,11 +394,12 @@ c4 log history.c4m
 
 ### Verify a patch chain
 
-Each patch boundary line validates the state above it. If the chain
-is corrupt, `c4 patch` will report a mismatch:
+Each patch boundary line names the state above it. The 1.0 line's
+`c4 patch` does not check that name, and exits 0 on a mismatch; 1.1
+verifies it:
 
 ```bash
-c4 patch project.c4m > /dev/null  # exits non-zero on mismatch
+c4 patch project.c4m > /dev/null  # 1.1: exits non-zero on mismatch
 ```
 
 ### Extract just the changes from a patch
@@ -427,10 +426,10 @@ comm -23 \
 ### Files with same name but different content
 
 ```bash
-# Join on name field, show where IDs differ
-join -j1 \
-  <(awk '{s=$0;gsub(/^ +/,"",s);split(s,f," ");n=split(s,g," ");if(f[4]!~/\/$/)print f[4],g[n]}' a.c4m | sort) \
-  <(awk '{s=$0;gsub(/^ +/,"",s);split(s,f," ");n=split(s,g," ");if(f[4]!~/\/$/)print f[4],g[n]}' b.c4m | sort) \
+# Join on each file's full path (a bare name can repeat in several
+# folders), show where IDs differ
+p='{d=0;s=$0;while(substr(s,1,1)==" "){d++;s=substr(s,2)};split(s,f," ");n=split(s,g," ");for(i in stk)if(i+0>=d)delete stk[i];if(f[4]~/\/$/){stk[d]=f[4];next};path="";for(i=0;i<d;i++)path=path stk[i];print path f[4],g[n]}'
+join -j1 <(awk "$p" a.c4m | sort) <(awk "$p" b.c4m | sort) \
   | awk '$2!=$3 {print $1, $2, "->", $3}'
 ```
 
@@ -439,9 +438,9 @@ join -j1 \
 Two c4m files describe identical content if their C4 IDs match:
 
 ```bash
-# Pipe each through c4 to get the tree ID, compare
-A=$(c4 id a.c4m | c4)
-B=$(c4 id b.c4m | c4)
+# Normalise each and compare the byte IDs of the canonical text
+A=$(c4 id a.c4m | c4 -x)
+B=$(c4 id b.c4m | c4 -x)
 [ "$A" = "$B" ] && echo "identical" || echo "different"
 ```
 
@@ -532,7 +531,8 @@ awk '{print $4}' project.c4m
 ```
 
 Awk's field splitting ignores leading whitespace, so `$4` is the name
-at any depth — no stripping needed. Similarly:
+at any depth — no stripping needed (for a name without spaces; a space
+is written `\ `, which awk splits on). Similarly:
 
 ```bash
 awk '{print $NF}' project.c4m  # C4 IDs (last field)

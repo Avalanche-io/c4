@@ -153,7 +153,9 @@ Properties:
 - Nil-infectious per `c4m/SPECIFICATION.md` for a directory whose own Size /
   Timestamp is null: a null descendant leaves it null, recursively to root; a
   stated value is never overwritten.
-- Empty directories resolve to Size = 0, null Timestamp.
+- A directory with no listed children resolves to Size 0 only when its C4 ID
+  is the empty listing's; otherwise a null Size stays null. A null Timestamp
+  stays null.
 - Whole-manifest early-out: returns immediately if no directory has any
   null values (fast path for repeated `Canonicalize`).
 - **Precondition**: entries must be in filesystem-walk order. `SortEntries`

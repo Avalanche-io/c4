@@ -13,6 +13,9 @@ C4 is a command line tool for identifying files, directories, and piped data usi
 | `c4 merge` | Combine 2+ filesystem trees (c4m files or directories) |
 | `c4 log` | List patches in a chain |
 | `c4 split` | Split a patch chain for branching |
+| `c4 paths` | Convert between c4m and path lists |
+| `c4 intersect` | Find common entries between c4m files |
+| `c4 explain` | Human-readable narration of a command |
 | `c4 version` | Print version |
 
 ## Quick Examples
@@ -20,7 +23,7 @@ C4 is a command line tool for identifying files, directories, and piped data usi
 ```bash
 # Identify a file
 $ c4 id photo.jpg
--rw-r--r-- 2026-03-04T14:22:10Z 4404019 photo.jpg c4VxG8n...
+-rw-r--r-- 2026-03-04T14:22:10Z 4404019 photo.jpg c43xG8n...
 
 # Identify a directory
 $ c4 id myproject/
@@ -32,7 +35,7 @@ $ echo "hello" | c4
 $ c4 id -s myproject/ > project.c4m
 
 # Retrieve stored content
-$ c4 cat c4VxG8n...
+$ c4 cat c43xG8n...
 
 # Version a directory over time
 $ c4 diff project.c4m <(c4 id myproject/) >> project.c4m

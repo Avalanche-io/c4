@@ -78,8 +78,9 @@ echo "hello" | c4 id
 # Store content while identifying (opt-in, zero extra I/O)
 c4 id -s myproject/ > project.c4m
 
-# Tree ID (pipe c4m through stdin)
-c4 id . | c4
+# The tree's description ID (the root's one-level listing, as c4 diff
+# and c4 log name it)
+c4 id . | grep -v '^ ' | c4 -x
 ```
 
 ### Self-capturing snapshots
@@ -151,9 +152,10 @@ c4 cat c43zYcLni5LF... > output.exr
 
 Compares two filesystem trees and outputs a c4m patch. Arguments can be
 c4m files, directories, or any combination. The patch format starts with
-the C4 ID of the base state, followed by changed entries, followed by
-the C4 ID of the new state. This output can be appended to the original
-c4m file for versioning.
+the C4 ID of the base state, followed by the changed entries. It does
+not end with an ID: the next appended patch's first line names the state
+before it. This output can be appended to the original c4m file for
+versioning.
 
 ```bash
 # Produce a patch (c4m files)
@@ -247,8 +249,9 @@ stable storage before the first destructive operation.
 | `-r` | `--reverse` | Revert a directory to a stored prior state (changeset file or manifest ID) |
 | `-q` | `--quiet` | Suppress changeset output to stdout |
 | `-e` | `--ergonomic` | Output ergonomic form |
-| `-n` | `--number` | Resolve to specific patch number (1-based) |
+| `-n` | `--number` | Resolve to row N of `c4 log` (1-based; row 1 is the base, so `-n 1` is the base alone) |
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
+| `-c` | `--continue` | Trust unchanged size+mtime from this guide c4m (default: every file in dest is hashed) |
 | | `--dry-run` | Show planned operations without making changes |
 | | `--no-store` | Skip prior-state capture and content storage |
 | | `--source` | Additional content source path (repeatable) |
@@ -341,7 +344,7 @@ Enumerates the patches in a c4m chain with summary statistics.
 
 ```bash
 $ c4 log project.c4m
-1  c4abc...  (base)  1,234 files, 45 dirs
+1  c4abc...  (base)  1234 files, 45 dirs
 2  c4def...  +12 -3 ~5
 3  c4ghi...  +2 -0 ~1
 ```
@@ -377,6 +380,7 @@ language. Never modifies any files.
 | Flag | Long | Description |
 |------|------|-------------|
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
+| | `--source` | `explain patch`: additional content source path (repeatable) |
 
 ### Examples
 
@@ -408,8 +412,8 @@ Reads from a file argument or stdin.
 # c4m → paths
 c4 paths project.c4m
 
-# paths → c4m
-find . -type f | c4 paths
+# paths → c4m (paths relative to the tree, without a leading ./)
+find . -type f | sed 's|^\./||' | c4 paths
 
 # Pipe from another c4 command
 c4 id -m s ./project/ | c4 paths
@@ -450,7 +454,7 @@ c4 intersect id old.c4m new.c4m | c4 paths
 
 ```bash
 $ c4 version
-c4 1.0.10 (darwin/arm64, go1.24.5)
+c4 <version> (<os>/<arch>, <go version>)
 ```
 
 ## Content Store
@@ -472,7 +476,9 @@ C4_STORE=/fast/ssd,s3://bucket/c4?region=us-west-2,/mnt/archive
 ```
 
 On first use of `-s` without a configured store, the CLI offers to
-create `~/.c4/store`.
+create `~/.c4/store`. Where the offer can't be answered (stdin not a
+terminal, as under cron), `c4 id -s` creates nothing and exits 1; set
+`C4_STORE`.
 
 ### Durability
 
@@ -558,7 +564,10 @@ spaces (which encode depth), each line has:
 - **Mode** (field 1): `d` prefix = directory, `-` = file, `l` = symlink
 - **Timestamp** (field 2): ISO 8601 UTC
 - **Size** (field 3): byte count, or `-` for null
-- **Name** (field 4): filename; directories always end with `/`
+- **Name** (field 4): filename; directories always end with `/`. A name
+  with a space is written with the space escaped (`my\ file.txt`), so awk
+  splits it across fields: field 4 is the whole name only for names
+  without spaces.
 - **C4 ID** (last field): 90-char ID starting with `c4`, or `-` for null
 
 Depth is the count of leading spaces (each level indented by 2).
@@ -576,7 +585,7 @@ grep '^[[:space:]]*d' project.c4m
 grep '\.exr ' project.c4m
 
 # Find files larger than 1MB (size is the 3rd whitespace-separated field)
-awk '{s=$0; gsub(/^ +/,"",s); split(s,f," "); if(f[3]+0 > 1000000) print}' project.c4m
+awk '{s=$0; gsub(/^ +/,"",s); split(s,f," "); if(f[3]+0 > 1000000 && f[4] !~ /\/$/) print}' project.c4m
 ```
 
 ### Listing directories with full paths

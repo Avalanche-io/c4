@@ -68,6 +68,17 @@ Now:
 
 **Exit codes change** for those runs: 2 where a file was given up, 1 where the store failed; before, both were 0. Tests drive the window between the scan and the store pass through a hook built only into test binaries (`-tags c4testhooks`). A release binary has none.
 
+### With no store configured, end of input declines the store prompt ⚠
+
+`c4 id -s` with no store configured and stdin at /dev/null (cron,
+launchd) read end of input as yes to its "Create ~/.c4/store?" prompt, and
+created `~/.c4/store` and `~/.c4/config` without anyone answering
+(measured with c4 1.0.26: exit 0, both made). End of input with nothing
+read now declines: nothing is created, and the run exits 1 naming
+`C4_STORE`. In a terminal the prompt is unchanged. If your store is
+configured elsewhere, `ls -d ~/.c4/store ~/.c4/config` shows whether an
+earlier run made one. Master goes further and never prompts. (c4 #187)
+
 ### A printed ID never rests on a name that isn't on disk ⚠
 
 **Data loss fixed.** When a snapshot stored nothing new, because every
@@ -478,7 +489,10 @@ Now:
   `ErrPathTraversal`, before writing anything.
 
 Pinned by the shared `c4m/testdata/name-rule-vector/`, made by the library.
-No CLI path writes such a name, since a filesystem cannot hold one.
+No scan writes such a name, since a filesystem cannot hold one. `c4 paths`
+could: it turned a `./`-prefixed path list (`find . -type f` output) into
+a `./` directory line. Such a list now gives no output, so strip the
+prefix first: `find . -type f | sed 's|^\./||' | c4 paths`.
 
 ## v1.0.26
 

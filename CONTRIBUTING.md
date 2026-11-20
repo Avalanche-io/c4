@@ -52,7 +52,7 @@ The C4 project consists of:
 
 ### Creating C4 Extension Tools
 
-The C4 ecosystem supports git-style extensibility. Any executable named `c4-*` in your PATH becomes available as a c4 subcommand.
+The C4 ecosystem supports git-style extensibility. Any executable named `c4-*` on your PATH runs as `c4 <name>`, when no file or directory of that name exists in the working folder.
 
 #### How It Works
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
 #### Proposed Tools
 
-The core `c4` CLI provides `id`, `cat`, `diff`, `patch`, `merge`, `log`, and `split` as built-in subcommands. Extension tools can add complementary functionality:
+The core `c4` CLI provides `id`, `cat`, `diff`, `patch`, `merge`, `paths`, `intersect`, `log`, `split`, `explain` and `version` as built-in subcommands. Extension tools can add complementary functionality:
 - `c4-verify` - Verify against c4m files
 - `c4-backup` - Backup workflows
 - `c4-watch` - Monitor filesystem changes

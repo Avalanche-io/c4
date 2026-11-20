@@ -106,7 +106,7 @@ already use.
 ## Display depth: what `c4 cat` shows
 
 ```
-$ c4 cat -e project.c4m          # the file as written: nesting included
+$ c4 cat -e project.c4m          # the description, pretty: nesting included
 $ c4 cat -e <root-dir-id>        # a stored listing: direct children only
 $ c4 cat -er <root-dir-id>       # the whole tree, fetched level by level
 ```
@@ -126,4 +126,6 @@ port did the same in its identify, scan and store paths, and follows the
 same rule from 1.0.27. Canonical text,
 such as plain `c4 id` output, was unaffected, since re-rendering it changes
 nothing; the pretty form `-e` writes was. From 1.0.27, `c4`
-identifies, stores and cats by the bytes on every path.
+identifies, stores and cats by the bytes on every path that reads a file
+as bytes; a `.c4m` file given to `c4 id` or `c4 id -s` is read as a
+description (above).

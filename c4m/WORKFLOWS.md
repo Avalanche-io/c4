@@ -14,8 +14,10 @@ This document describes common workflows for working with C4M manifests. For for
 ## Patch Chains
 
 A c4m file can contain a base manifest followed by one or more patches,
-separated by bare C4 ID lines. Each bare C4 ID validates the state of
+separated by bare C4 ID lines. Each bare C4 ID names the state of
 everything above it, then subsequent entries are applied as a patch.
+(The 1.0 line does not check that name against the state above it; 1.1
+does.)
 
 ### Basic Pattern
 
@@ -26,7 +28,7 @@ c4<C4 ID of the manifest above>
 -rw-r--r-- 2025-01-02T10:00:00Z 512 file2.txt c4NEW789...
 ```
 
-The bare C4 ID line after the base entries validates the manifest state,
+The bare C4 ID line after the base entries names the manifest state,
 then `file2.txt` is patched with its new content.
 
 ### Programmatic Example
@@ -208,7 +210,7 @@ frame.[0001,0005,0010].exr
 entry := &c4m.Entry{
     Name:       "render.[0001-0100].exr",
     Mode:       0644,
-    Size:       1024000,  // Total size of all frames
+    Size:       1024000 + 100*90,  // all frames' bytes plus the ID list (count × 90)
     Timestamp:  time.Now().UTC(),
     IsSequence: true,
     Pattern:    "render.[0001-0100].exr",
@@ -219,13 +221,13 @@ entry := &c4m.Entry{
 ### Manifest with Sequences
 
 ```
--rw-r--r-- 2025-01-01T12:00:00Z 102400000 frames.[0001-0100].exr c4SEQID...
+-rw-r--r-- 2025-01-01T12:00:00Z 102409000 frames.[0001-0100].exr c4SEQID...
 ```
 
 The sequence entry's C4 ID is the hash of the ID list file — a plain file
 containing the bare-concatenated C4 IDs of each frame (90 chars per ID, no
-separators). This file lives in the content store and can be retrieved with
-`c4 cat c4SEQID...`.
+separators). It is written inline after the range line, and stored in the
+content store with `-s`; `c4 cat c4SEQID...` returns it.
 
 ### Expanding Sequences
 

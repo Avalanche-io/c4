@@ -67,17 +67,19 @@ export C4_S3_ENDPOINT=minio.local:9000
 
 ## TreeStore
 
-The `TreeStore` uses adaptive trie sharding. Every C4 ID starts with `c4`,
-so the store has one top-level directory. When a leaf directory exceeds the
-split threshold, files redistribute into 2-char subdirectories:
+The `TreeStore` uses adaptive trie sharding. A new store keeps objects flat
+in its root. When it passes the split threshold, every object moves under
+`c4/` (every C4 ID starts with `c4`), which splits at once into 2-char
+subdirectories named by the ID's third and fourth characters; any leaf that
+later passes the threshold splits the same way:
 
 ```
 store/
   c4/
     5Y/
       c45Yxzabc...
-    8K/
-      c48Kdef123...
+    4K/
+      c44Kdef123...
 ```
 
 ```go

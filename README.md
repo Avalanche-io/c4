@@ -206,8 +206,9 @@ c4 id -c scan.c4m ./project/          # hash the rest
 | `c4 paths` | Convert between c4m format and plain path lists |
 | `c4 intersect` | Find common entries between two c4m files |
 
-Every command that takes a c4m file also takes a directory, and vice
-versa. `c4 <path>` is a shortcut for `c4 id -s` (identify and store).
+`c4 id`, `diff`, `patch`, `merge` and `intersect` take a directory
+wherever they take a c4m file; `log`, `split`, `paths` and `cat` read
+c4m files. `c4 <path>` is a shortcut for `c4 id -s` (identify and store).
 `echo "data" | c4` produces a bare ID from stdin and stores it.
 
 ## The c4m format
