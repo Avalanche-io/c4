@@ -353,7 +353,7 @@ store's journal included); other chains list with summary statistics:
 
 ```bash
 $ c4 log project.c4m
-1  c4abc...  (base)  1,234 files, 45 dirs
+1  c4abc...  (base)  1234 files, 45 dirs
 2  c4def...  +12 -3 ~5
 ```
 
@@ -467,8 +467,9 @@ aws s3api list-objects-v2 --bucket "$B" --prefix "${P}c4" --query 'Contents[].Ke
 
 Then change the URL to `s3://BUCKET/PREFIX/`.
 
-On first use of `-s` without a configured store, the CLI offers to
-create `~/.c4/store`.
+Without a configured store, `c4 id -s` creates nothing: it exits 1,
+saying how to configure one (`C4_STORE`, or a `store` line in
+`~/.c4/config`).
 
 ### Durability — the print barrier
 
@@ -513,7 +514,10 @@ spaces (which encode depth), each line has:
 - **Mode** (field 1): `d` prefix = directory, `-` = file or null (content level)
 - **Timestamp** (field 2): ISO 8601 UTC, or `-` for null (content level)
 - **Size** (field 3): byte count, or `-` for null
-- **Name** (field 4): filename; directories always end with `/`
+- **Name** (field 4): filename; directories always end with `/`. A name
+  with a space is written with the space escaped (`my\ file.txt`), so awk
+  splits it across fields: field 4 is the whole name only for names
+  without spaces.
 - **C4 ID** (last field): 90-char ID starting with `c4`, or `-` for null
 
 Depth is the count of leading spaces (each level indented by 2).
@@ -533,7 +537,7 @@ grep -E '(^| )[^ ]+/ ' project.c4m
 grep '\.exr ' project.c4m
 
 # Find files larger than 1MB (size is the 3rd whitespace-separated field)
-awk '{s=$0; gsub(/^ +/,"",s); split(s,f," "); if(f[3]+0 > 1000000) print}' project.c4m
+awk '{s=$0; gsub(/^ +/,"",s); split(s,f," "); if(f[3]+0 > 1000000 && f[4] !~ /\/$/) print}' project.c4m
 ```
 
 ### Listing directories with full paths

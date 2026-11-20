@@ -5,15 +5,15 @@ A c4m file is a complete description of a filesystem. It captures the full tree 
 ```
 -rw-r--r-- 2025-01-15T10:30:00Z  1,234 readme.txt   c41j3C6Jqga95PL2zmZVBW...
 -rw-r--r-- 2025-01-15T10:30:00Z 12,800 main.go      c43pCP9e69EGD253L3pcwc...
-drwxr-xr-x 2025-01-15T10:30:00Z 48,200 assets/      c4RgFeXFYL1FjFueMKjPjn...
-  -rw-r--r-- 2025-01-15T10:30:00Z 48,200 logo.png   c42RgFeXFYL1FjFueMKjPjn...
+drwxr-xr-x 2025-01-15T10:30:00Z 48,338 assets/      c4478oCCBA66isw67nNkc6...
+  -rw-r--r-- 2025-01-15T10:30:00Z 48,200 logo.png   c444GhEshxGuT5oRyBzhL...
 ```
 
 Every file has a C4 ID — a cryptographic content identifier (SMPTE ST 2114:2017). Every directory has one too, computed from its contents. If two directories have the same C4 ID, they contain exactly the same data, no matter where they are or how they got there.
 
 ## What c4m captures
 
-A c4m file represents the complete POSIX-like filesystem tree: regular files, directories, symlinks, hard links, named pipes, sockets, and device nodes — with permissions, timestamps, sizes, content C4 IDs, and support for arbitrary filenames including non-printable bytes and invalid UTF-8. Media file sequences like `frame.[0001-0100].exr` get compact notation.
+A c4m file represents the complete POSIX-like filesystem tree: regular files, directories, symlinks, hard links, named pipes, sockets, and device nodes — with permissions, timestamps, sizes, content C4 IDs, and support for arbitrary filenames including non-printable bytes and invalid UTF-8. Media file sequences like `frame.[0001-0100].exr` get compact notation. (The 1.0 scanner records hard-linked files as independent files, and writes a character device with an unknown type that its decoder refuses; see [METADATA_COVERAGE.md](METADATA_COVERAGE.md).)
 
 This covers the structural and content information of any filesystem you are likely to encounter. Environment-specific metadata like ownership and extended attributes is not part of the format but can be associated with c4m entries through external systems using paths or C4 IDs as join keys. See [METADATA_COVERAGE.md](METADATA_COVERAGE.md) for details.
 
@@ -38,8 +38,8 @@ c4 id myproject/
 # Save a c4m file
 c4 id myproject/ > snapshot.c4m
 
-# Get the tree's C4 ID (pipe c4m through stdin)
-c4 id myproject/ | c4
+# Get the tree's description ID
+c4 id -q myproject/
 
 # Compare two snapshots
 c4 diff old.c4m new.c4m

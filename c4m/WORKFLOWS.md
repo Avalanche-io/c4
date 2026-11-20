@@ -208,7 +208,7 @@ frame.[0001,0005,0010].exr
 entry := &c4m.Entry{
     Name:       "render.[0001-0100].exr",
     Mode:       0644,
-    Size:       1024000,  // Total size of all frames
+    Size:       1024000 + 100*90,  // all frames' bytes plus the ID list (count × 90)
     Timestamp:  time.Now().UTC(),
     IsSequence: true,
     Pattern:    "render.[0001-0100].exr",
@@ -219,13 +219,13 @@ entry := &c4m.Entry{
 ### Manifest with Sequences
 
 ```
--rw-r--r-- 2025-01-01T12:00:00Z 102400000 frames.[0001-0100].exr c4SEQID...
+-rw-r--r-- 2025-01-01T12:00:00Z 102409000 frames.[0001-0100].exr c4SEQID...
 ```
 
 The sequence entry's C4 ID is the hash of the ID list file — a plain file
 containing the bare-concatenated C4 IDs of each frame (90 chars per ID, no
-separators). This file lives in the content store and can be retrieved with
-`c4 cat c4SEQID...`.
+separators). It is written inline after the range line, and stored in the
+content store with `-s`; `c4 cat c4SEQID...` returns it.
 
 ### Expanding Sequences
 

@@ -17,7 +17,7 @@ After stripping leading spaces (which encode nesting depth):
 | Mode | 1 | `-rw-r--r--`, `drwxr-xr-x` | `d` = dir, `l` = symlink |
 | Timestamp | 2 | `2026-03-17T06:18:00Z` | UTC, ISO 8601 |
 | Size | 3 | `4404019`, `-` | Bytes, or `-` for null |
-| Name | 4 | `photo.jpg`, `src/` | Dirs end with `/` |
+| Name | 4 | `photo.jpg`, `src/` | Dirs end with `/`; a space is written `\ `, so a name with one spans several awk fields |
 | C4 ID | last | `c4abc...` (90 chars), `-` | Always starts with `c4` |
 
 Depth = number of leading spaces. Each nesting level adds 2 spaces.
@@ -102,13 +102,12 @@ done
 This outputs the raw c4m directory lines, deepest parent first:
 
 ```
-    drwxr-xr-x 2026-03-17T06:18:00Z - lib/ c4def...
-  drwxr-xr-x 2026-03-17T06:18:00Z - src/ c4ghi...
-drwxr-xr-x 2026-03-17T06:18:00Z - project/ c4jkl...
+  drwxr-xr-x 2026-03-17T06:18:00Z - lib/ -
+drwxr-xr-x 2026-03-17T06:18:00Z - src/ -
 ```
 
 The indentation of the output itself shows the nesting. No parsing
-needed — you can see the path is `project/src/lib/` just from reading
+needed — you can see the path is `src/lib/` just from reading
 the directory names in the output.
 
 ---
@@ -299,9 +298,10 @@ awk '{
 # Remove build/, dist/, and node_modules/
 awk '{
   d=0; for(i=1;i<=length($0);i++){if(substr($0,i,1)==" ")d++;else break}
-  if(!skip && ($0~/build\// || $0~/dist\// || $0~/node_modules\//)) {skip=1; sd=d; next}
   if(skip && d>sd) next
-  skip=0; print
+  skip=0
+  if($0~/build\// || $0~/dist\// || $0~/node_modules\//) {skip=1; sd=d; next}
+  print
 }' project.c4m > filtered.c4m
 ```
 
@@ -337,7 +337,7 @@ Pipe through `awk '{print $4}'` to see just the names.
 # Resolve the full patch chain to final state
 c4 patch project.c4m
 
-# Resolve up to patch N
+# Resolve up to row N of c4 log (row 1 is the base)
 c4 patch -n 3 project.c4m
 ```
 
@@ -419,10 +419,10 @@ comm -23 \
 ### Files with same name but different content
 
 ```bash
-# Join on name field, show where IDs differ
-join -j1 \
-  <(awk '{s=$0;gsub(/^ +/,"",s);split(s,f," ");n=split(s,g," ");if(f[4]!~/\/$/)print f[4],g[n]}' a.c4m | sort) \
-  <(awk '{s=$0;gsub(/^ +/,"",s);split(s,f," ");n=split(s,g," ");if(f[4]!~/\/$/)print f[4],g[n]}' b.c4m | sort) \
+# Join on each file's full path (a bare name can repeat in several
+# folders), show where IDs differ
+p='{d=0;s=$0;while(substr(s,1,1)==" "){d++;s=substr(s,2)};split(s,f," ");n=split(s,g," ");for(i in stk)if(i+0>=d)delete stk[i];if(f[4]~/\/$/){stk[d]=f[4];next};path="";for(i=0;i<d;i++)path=path stk[i];print path f[4],g[n]}'
+join -j1 <(awk "$p" a.c4m | sort) <(awk "$p" b.c4m | sort) \
   | awk '$2!=$3 {print $1, $2, "->", $3}'
 ```
 
@@ -431,9 +431,9 @@ join -j1 \
 Two c4m files describe identical content if their C4 IDs match:
 
 ```bash
-# Pipe each through c4 to get the tree ID, compare
-A=$(c4 id a.c4m | c4)
-B=$(c4 id b.c4m | c4)
+# Compare the two descriptions' IDs
+A=$(c4 id -q a.c4m)
+B=$(c4 id -q b.c4m)
 [ "$A" = "$B" ] && echo "identical" || echo "different"
 ```
 
@@ -524,7 +524,8 @@ awk '{print $4}' project.c4m
 ```
 
 Awk's field splitting ignores leading whitespace, so `$4` is the name
-at any depth — no stripping needed. Similarly:
+at any depth — no stripping needed (for a name without spaces; a space
+is written `\ `, which awk splits on). Similarly:
 
 ```bash
 awk '{print $NF}' project.c4m  # C4 IDs (last field)

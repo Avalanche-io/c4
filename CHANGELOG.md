@@ -547,7 +547,10 @@ Now:
   `ErrPathTraversal`, before writing anything.
 
 Pinned by the shared `c4m/testdata/name-rule-vector/`, made by the library.
-No CLI path writes such a name, since a filesystem cannot hold one.
+No scan writes such a name, since a filesystem cannot hold one. `c4 paths`
+could: it turned a `./`-prefixed path list (`find . -type f` output) into
+a `./` directory line. Such a list now gives no output, so strip the
+prefix first: `find . -type f | sed 's|^\./||' | c4 paths`.
 
 ### A store made on a case-insensitive volume is readable on a case-sensitive one
 

@@ -9,8 +9,8 @@ A c4m file represents the complete POSIX-like filesystem tree:
 - **Regular files** with permissions, timestamps, sizes, and content C4 IDs
 - **Directories** with recursive structure and computed content identity
 - **Symbolic links** with targets and target content identity
-- **Hard links** with group tracking
-- **Named pipes, sockets, block and character devices** (type and permissions)
+- **Hard links** with group tracking (in the format; the 1.0 scanner does not yet detect them, and records each link as an independent file)
+- **Named pipes, sockets, block and character devices** (type and permissions; the 1.0 scanner writes a character device with an unknown type, `?`, which its decoder refuses)
 - **Arbitrary filenames** including non-printable bytes, control characters, and invalid UTF-8 (via Universal Filename Encoding — see `SafeName`/`UnsafeName` in the c4m package)
 - **Media file sequences** like `frame.[0001-0100].exr` in compact notation
 
