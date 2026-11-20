@@ -2,6 +2,27 @@
 
 ## Unreleased (1.0.27)
 
+### ⚠ Behaviour change: `c4 patch` creates a file or folder from a null timestamp at the epoch
+
+A description can leave a timestamp null (`-`): `c4 id` writes one for a
+file or folder dated at the Unix epoch, and a metadata or structure scan
+(`-m s`) writes them throughout. When `c4 patch` (or `c4 patch -r`)
+created a file or folder from such an entry, it left the time of the
+moment it wrote it, so the folder scanned back as a different
+description and the materialisation did not round-trip. **Now a file or
+folder that the patch creates from a null timestamp is set to the epoch,**
+which scans back as `-`, so the folder reads back as the description it
+was made from. A path that already exists keeps its own time: a null
+never overwrites. A stated timestamp is set as before.
+
+**What changes for you:** files and folders that `c4 patch` creates from
+null-dated entries now carry 1970-01-01T00:00:00Z instead of the time of
+the patch, including every file created from a `c4 id -m s` description. If you relied on such files carrying the time they were
+written, set the time yourself afterwards (`touch`). This is the rule
+master's specification gives for materialising null metadata, and master's
+change (dfd6e12, its apply half); that commit's zero-mode half is not on
+this line. `TestPatchCreatesNullTimestampsAtTheEpoch` fails without it.
+
 ### SafeName's printable test is pinned to Unicode 17.0.0 ⚠
 
 SafeName wrote a code point as itself when `unicode.IsPrint` said it was
