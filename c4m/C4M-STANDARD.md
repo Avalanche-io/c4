@@ -742,9 +742,12 @@ preceding content and patches applied).
 A patch section that reaches EOF without a closing bare C4 ID is valid.
 The entries are applied as a patch, but no final verification occurs.
 
-> **NOTE**: This means the final patch in a stream is not verified by a
-> checkpoint. If stream integrity verification is required at the end, the
-> producer SHOULD append a closing bare C4 ID after the final patch entries.
+> **NOTE** *(corrected 2026-11-11)*: this previously recommended that a
+> producer append a closing bare C4 ID for end-of-stream integrity. That
+> line is a format error (Section 10.5). The integrity of a whole file is
+> its own byte ID wherever the file travels by ID; a reader that needs
+> the final state's ID computes it. A producer MUST NOT append the
+> resolved state's ID after the final entries.
 
 ### 10.8 Inline Range Data
 
@@ -1045,11 +1048,14 @@ BASE58CHAR     = %x31-39 / %x41-48 / %x4A-4E / %x50-5A
 
 ### C.1 Unclosed Final Patch
 
-The final patch section in a stream is not verified by a closing checkpoint
-(see Section 10.7). This is by design for streaming use cases where the
-final C4 ID may not be known at write time. Stream consumers who require
-end-to-end verification should compute the manifest's C4 ID after decoding
-and compare against an expected value.
+The final patch section in a stream is not followed by a checkpoint (see
+Sections 10.5 and 10.7). Two reasons: in streaming use the final C4 ID is
+not known at write time, and, decisively, a file cannot contain its own
+ID: a c4m file travels by the ID of its bytes, and that ID must summon
+exactly that file. Stream consumers who require end-to-end verification
+compute the resolved manifest's C4 ID after decoding and compare it
+against the value they were given out of band, never against a line
+inside the file.
 
 ### C.2 Null Mode vs Zero Mode
 

@@ -333,9 +333,11 @@ c4<90-char-id>
 -rw-r--r-- 2025-01-01T00:00:00Z 200 b.txt c4...
 ```
 
-A bare C4 ID appearing **after entries** is a block link. It is the C4 ID of the block immediately above it (the content between the previous boundary and this line). The decoder records it but does not verify it against accumulated state — verification is O(n) and does not scale to large directories.
+A bare C4 ID appearing **after entries** is a **checkpoint**: it names the accumulated manifest state at that point (all preceding entries and applied patches). The decoder records it but does not verify it against accumulated state — verification is O(n) and does not scale to large directories.
 
-Entries following the block link are interpreted as a patch against the accumulated state.
+> **ERRATUM (2026-07-13).** This paragraph previously defined the bare ID as a *block link* — the ID of the block immediately above, recorded unverified. That semantic was never emitted by any shipped tool (producers always wrote accumulated-state IDs) and contradicted the verification language elsewhere in this document and C4M-STANDARD Section 10.3. Checkpoints are accumulated-state, verified.
+
+Entries following the checkpoint are interpreted as a patch against the accumulated state.
 
 ### Why the First-Line Rule Differs
 
