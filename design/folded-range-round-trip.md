@@ -65,11 +65,13 @@ folded description.
 
 ## Symbolic-link ranges: held
 
-The detector folds a run of symbolic links, but a folded line carries the
-members' C4 IDs and not their link targets (the range's target is a pattern,
-or `...` when the targets do not share one). A materialiser cannot write
-them. Until the maintainer rules on whether links fold, a folded link range
-is refused with that reason, and the detector is unchanged.
+The detector folds a run of symbolic links (measured: `c4 id -S` of the
+vector's `links` tree writes `l.[0001-0003].exr -> t.[0001-0003].txt`). A
+folded line records the members' targets as one range expression, or `...`
+when they do not share one, not one target per member, and this version
+does not write links from it.
+Until the maintainer rules on whether links fold, a folded link range is
+refused with that reason, and the detector is unchanged.
 
 ## Windows
 

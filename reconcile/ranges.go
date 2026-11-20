@@ -28,8 +28,9 @@ const (
 	// RangeNoList: neither the description nor any source holds the
 	// range's ID list. The missing content is the list.
 	RangeNoList RangeReason = iota
-	// RangeLinks: the members are symbolic links, and a folded line does
-	// not carry their link targets.
+	// RangeLinks: the members are symbolic links. A folded line records
+	// their targets as one range expression (or ... when they differ), not
+	// one target per member, and links are not written from it.
 	RangeLinks
 	// RangeBadList: the list was found but does not name the range's
 	// frames (it does not parse, or its count differs from the range's).
@@ -42,7 +43,7 @@ func (p RangeProblem) String() string {
 	case RangeNoList:
 		return fmt.Sprintf("the ID list of %s (%s)", p.Path, p.ID)
 	case RangeLinks:
-		return fmt.Sprintf("%s: a folded range of symbolic links; the members' link targets are not in a folded line", p.Path)
+		return fmt.Sprintf("%s: a folded range of symbolic links records its members' targets as one range expression (or ... when they differ), not one target per member; this version does not write links from it", p.Path)
 	default:
 		return fmt.Sprintf("%s: its ID list (%s) does not name its frames: %v", p.Path, p.ID, p.Err)
 	}
@@ -66,9 +67,10 @@ func (p RangeProblem) String() string {
 //     expand a sequence if you don't have a description of it's contents,
 //     this is the same for any content", 2026-11-13). This is the ordinary
 //     missing-content case, and the missing content is the list.
-//   - RangeLinks: a range of symbolic links. A folded line carries the members'
-//     C4 IDs but not their link targets, so the links cannot be written
-//     (held until the maintainer rules on folding links).
+//   - RangeLinks: a range of symbolic links. A folded line records the
+//     members' targets as one range expression (or ... when they differ),
+//     not one target per member, and this version does not write links from
+//     it (held until the maintainer rules on folding links).
 //   - RangeBadList: a list that is found but does not name the range's frames.
 //
 // target itself is not changed. A target without ranges is returned as is.

@@ -16,8 +16,9 @@ with `-S`, reproduces the description. So `c4 id -S -s tree/`, restore,
 however NEED to have proper round trip for folded ranges"). A range with
 no list anywhere is the ordinary missing-content case: exit 1, nothing
 restored, and the message names the list ("the ID list of NAME (ID)"). A
-folded range of symbolic links is refused, because a folded line does not
-carry the members' link targets. New shared vector
+folded range of symbolic links is refused: a folded line records the
+members' targets as one range expression (or `...` when they differ), not
+one target per member, and this version does not write links from it. New shared vector
 `c4m/testdata/range-roundtrip-vector/`, written by the library
 (`design/folded-range-round-trip.md`).
 
