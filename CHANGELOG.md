@@ -2,20 +2,30 @@
 
 ## Unreleased — the snapshot loop (BREAKING)
 
-### ⚠ A folder recorded without owner write receives its contents
+### ⚠ A folder recorded read-only is restored with its contents
 
-`c4 restore` made a folder with its recorded mode before writing into it,
-so a folder recorded without owner write refused its own children:
-"permission denied", exit 3, nothing written inside it. That is not a
-corner case. A read-only delivery folder (`dr-xr-xr-x`, 0555) fails, as
-do 0500 and 0000 (measured on this line at f1bbcda, on 1.0.26 and on
-release/1.0.27). A folder that already existed and was recorded read-only was
-made so before files were written into or removed from it. Now a folder
-is made writable and searchable by its owner while it is filled, and every
-folder's recorded mode is set after its contents, deepest first; its
-recorded time is set last, as before. So a description holding a
-read-only folder restores, and a scan of the result has the description's
-ID. No C4 ID changes.
+A folder recorded read-only (`r-xr-xr-x`) was created empty: `c4 restore`
+could not write its contents (`c4 patch` on the 1.0 line, likewise). Every
+folder recorded without owner write fails this way, 0555, 0500 and 0000,
+in every release from 1.0.0 through 1.0.26: the code is unchanged since
+1.0.0 (6a6e6cf), and it was measured on 1.0.26, on release/1.0.27 and on
+this line at f1bbcda. Restoring into a target folder that did not exist yet was
+worse: the target itself was made read-only first, and nothing at all was
+written. The cause was the order of the work and one call: a folder was
+made with its recorded mode before its contents were written, and
+`MkdirAll` gave every missing parent, the target included, that same mode.
+A folder that already existed read-only also refused files written into it
+or removed from it.
+
+Now a folder is made writable and searchable by its owner while it is
+filled, missing parents get the default mode, and an existing folder that
+lacks owner write is opened for the work inside it. Every folder's recorded
+mode (or, for one the description leaves alone, its own mode) is set after
+its contents, deepest first, and its recorded time last, as before. If a
+run fails partway, a folder may be left owner-writable, the safe
+direction, and the error names each folder whose mode was not set back.
+`reconcile.Distribute` made the same read-only copy of a read-only source
+folder, and copies its contents first too. No C4 ID changes.
 
 ### `c4 restore` writes folded ranges as their frames
 
