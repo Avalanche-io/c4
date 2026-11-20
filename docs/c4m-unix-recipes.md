@@ -12,13 +12,13 @@ After stripping leading spaces (which encode nesting depth):
 <mode> <timestamp> <size> <name> [<flow> <target>] <c4id>
 ```
 
-| Field | Position | Example | Notes |
-|-------|----------|---------|-------|
-| Mode | 1 | `-rw-r--r--`, `drwxr-xr-x` | `d` = dir, `l` = symlink |
-| Timestamp | 2 | `2026-03-17T06:18:00Z` | UTC, ISO 8601 |
-| Size | 3 | `4404019`, `-` | Bytes, or `-` for null |
-| Name | 4 | `photo.jpg`, `src/` | Dirs end with `/`; a space is written `\ `, so a name with one spans several awk fields |
-| C4 ID | last | `c4abc...` (90 chars), `-` | Always starts with `c4` |
+| Field     | Position | Example                    | Notes                                                                                   |
+| --------- | -------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| Mode      | 1        | `-rw-r--r--`, `drwxr-xr-x` | `d` = dir, `l` = symlink                                                                |
+| Timestamp | 2        | `2026-03-17T06:18:00Z`     | UTC, ISO 8601                                                                           |
+| Size      | 3        | `4404019`, `-`             | Bytes, or `-` for null                                                                  |
+| Name      | 4        | `photo.jpg`, `src/`        | Dirs end with `/`; a space is written `\ `, so a name with one spans several awk fields |
+| C4 ID     | last     | `c4abc...` (90 chars), `-` | Always starts with `c4`                                                                 |
 
 Depth = number of leading spaces. Each nesting level adds 2 spaces.
 
@@ -395,11 +395,11 @@ c4 log history.c4m
 ### Verify a patch chain
 
 Each patch boundary line names the state above it. The 1.0 line's
-`c4 patch` does not check that name, and exits 0 on a mismatch; 1.1
-verifies it:
+`c4 patch` does not check that name, and exits 0 on a mismatch;
+master verifies it:
 
 ```bash
-c4 patch project.c4m > /dev/null  # 1.1: exits non-zero on mismatch
+c4 patch project.c4m > /dev/null  # on master: exits non-zero on mismatch
 ```
 
 ### Extract just the changes from a patch

@@ -16,8 +16,8 @@ This document describes common workflows for working with C4M manifests. For for
 A c4m file can contain a base manifest followed by one or more patches,
 separated by bare C4 ID lines. Each bare C4 ID names the state of
 everything above it, then subsequent entries are applied as a patch.
-(The 1.0 line does not check that name against the state above it; 1.1
-does.)
+(The 1.0 line does not check that name against the state above it;
+master does.)
 
 ### Basic Pattern
 

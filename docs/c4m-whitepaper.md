@@ -221,7 +221,7 @@ Changes to different files are applied independently. Additions from both sides 
 
 ### Version History
 
-c4m files support *patch chains*: a base state followed by a sequence of incremental patches, all in a single file. Each patch section is separated by a bare C4 ID line -- a 90-character checkpoint naming the accumulated state above it. (The 1.0 line does not check that name against the state above it; 1.1 does.)
+c4m files support *patch chains*: a base state followed by a sequence of incremental patches, all in a single file. Each patch section is separated by a bare C4 ID line -- a 90-character checkpoint naming the accumulated state above it. (The 1.0 line does not check that name against the state above it; master does.)
 
 ```
 -rw-r--r-- 2026-03-18T10:00:00Z 5069 README.md  c4abc...
@@ -232,7 +232,7 @@ c4xyz...
 
 The first section is the base state. The bare C4 ID `c4xyz...` commits that state cryptographically. The entries that follow are a patch containing only what changed. Applying the patch to the base reconstructs the second version. Additional patches can be appended indefinitely, each naming the state it applies to.
 
-This gives you version history in a single text file. The `c4 log` command lists the versions. The `c4 split` command extracts a specific one. The chain is append-only -- previous states are never modified -- and the checkpoints make the entire history tamper-evident once they are verified (in 1.1).
+This gives you version history in a single text file. The `c4 log` command lists the versions. The `c4 split` command extracts a specific one. The chain is append-only -- previous states are never modified -- and the checkpoints make the entire history tamper-evident once they are verified (on master).
 
 This is not a replacement for git. Git excels at versioning source code: text files measured in kilobytes, with merge semantics tuned for line-by-line changes. But git cannot version an 8 TB video project, because it needs a copy of the files. A c4m patch chain can version that project in a file small enough to email.
 
