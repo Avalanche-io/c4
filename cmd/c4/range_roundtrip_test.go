@@ -171,7 +171,7 @@ func TestPatchNamesAMissingRangeList(t *testing.T) {
 }
 
 // A folded range of symbolic links is not written: the folded line holds
-// the members' C4 IDs but not their link targets (held until the
+// the members' targets as one range expression, not one per member (held until the
 // maintainer rules on folding links). Exit 1, nothing written, the true
 // reason given. The detector is unchanged.
 func TestPatchRefusesAFoldedLinkRange(t *testing.T) {
@@ -212,7 +212,7 @@ func TestPatchRefusesAFoldedLinkRange(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("patch of a folded link range: exit %d, want 1: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "l.[0001-0003].exr: a folded range of symbolic links; the members' link targets are not in a folded line") {
+	if !strings.Contains(stderr, "l.[0001-0003].exr: a folded range of symbolic links records its members' targets as one range expression (or ... when they differ), not one target per member; this version does not write links from it") {
 		t.Errorf("the message should give the true reason:\n%s", stderr)
 	}
 	if entries, _ := os.ReadDir(dest); len(entries) != 0 {
@@ -295,7 +295,7 @@ func TestPatchRevertNamesAFoldedLinkRange(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("patch -r to a folded link range: exit %d, want 1: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "l.[0001-0003].exr: a folded range of symbolic links; the members' link targets are not in a folded line") {
+	if !strings.Contains(stderr, "l.[0001-0003].exr: a folded range of symbolic links records its members' targets as one range expression (or ... when they differ), not one target per member; this version does not write links from it") {
 		t.Errorf("the message should give the true reason:\n%s", stderr)
 	}
 	if entries, _ := os.ReadDir(dest); len(entries) != 0 {

@@ -826,8 +826,9 @@ func exitIfIncomplete(plan *reconcile.Plan) {
 // refuseRanges reports the folded ranges a patch cannot write and exits 1,
 // before anything is written: a range whose ID list neither the
 // description nor the store holds (the missing content is the list), a
-// range of symbolic links (a folded line does not carry the members' link
-// targets), or one whose list does not name its frames.
+// range of symbolic links (a folded line records the members' targets as one
+// range expression, not one per member, and links are not written from it),
+// or one whose list does not name its frames.
 func refuseRanges(ranges []reconcile.RangeProblem) {
 	if len(ranges) == 0 {
 		return

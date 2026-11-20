@@ -17,8 +17,10 @@ into an empty folder, `c4 id -S` again gives the same description ID
 folded ranges"). It holds for null-dated ranges too, with the change
 below. A range with no list anywhere is still refused, exit 1, nothing
 written, and the message now names what is missing: "the ID list of
-NAME (ID)". A folded range of symbolic links is refused, because a folded
-line does not carry the members' link targets. **No C4 ID changes.**
+NAME (ID)". A folded range of symbolic links is refused: a folded line
+records the members' targets as one range expression (or `...` when they
+differ), not one target per member, and this version does not write links
+from it. **No C4 ID changes.**
 New shared vector `c4m/testdata/range-roundtrip-vector/`, master's bytes,
 written by the library on this line too (`design/folded-range-round-trip.md`).
 
