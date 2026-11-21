@@ -53,6 +53,16 @@ windows scan       TestSymlinkC4IDs                                             
 windows scan       TestGenerateFromPathSymlinkEdgeCases                           # symlinks need a privilege
 windows scan       TestSymlinkRangeGrouping                                       # symlinks need a privilege
 
+# A Windows folder has no owner-write bit to withhold, so a folder recorded
+# read-only cannot be made on Windows (D12, folder modes set last).
+windows cmd/c4     TestRestoreRoundTripsAReadOnlyFolder                           # a Windows folder has no owner-write bit
+windows reconcile  TestApplyIntoANewTargetLeavesItsModeAlone                      # a Windows folder has no owner-write bit
+windows reconcile  TestApplySetsAnExistingFoldersModeLast                         # a Windows folder has no owner-write bit
+windows reconcile  TestApplySetsAnOpenedFolderBack                                # a Windows folder has no owner-write bit
+windows reconcile  TestApplyWritesIntoAFolderRecordedReadOnly                     # a Windows folder has no owner-write bit
+windows reconcile  TestApplyWritesIntoAnExistingReadOnlyFolder                    # a Windows folder has no owner-write bit
+windows reconcile  TestDistributeCopiesAReadOnlyFolder                            # a Windows folder has no owner-write bit
+
 # Windows has no POSIX permission bits or unprivileged symlinks: the
 # folded-range vector's modes (600, 640) cannot be held, so its generator
 # check runs elsewhere (Windows runs the round trip from its own scan,
