@@ -52,3 +52,10 @@ windows scan       TestGenerateFromPathSymlinks                                 
 windows scan       TestSymlinkC4IDs                                               # symlinks need a privilege
 windows scan       TestGenerateFromPathSymlinkEdgeCases                           # symlinks need a privilege
 windows scan       TestSymlinkRangeGrouping                                       # symlinks need a privilege
+
+# Windows has no POSIX permission bits or unprivileged symlinks: the
+# folded-range vector's modes (600, 640) cannot be held, so its generator
+# check runs elsewhere (Windows runs the round trip from its own scan,
+# TestRestoreRoundTripsFoldedRanges), and the link-range refusal needs a link.
+windows scan       TestRangeRoundtripVectorIsTheLibrarys                          # the vector's modes are POSIX permission bits
+windows cmd/c4     TestRestoreRefusesAFoldedLinkRange                             # symbolic links need privileges on Windows
