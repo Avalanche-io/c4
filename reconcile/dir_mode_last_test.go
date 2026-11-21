@@ -338,9 +338,8 @@ func TestDistributeCopiesAReadOnlyFolder(t *testing.T) {
 }
 
 // A read-only folder the plan only writes into, with nothing to set on the
-// folder itself (the target root, which no description names, or a folder
-// recorded with a null time and its own mode), is opened for the work and
-// set back to its own mode afterwards.
+// folder itself (one recorded with a null time and its own mode), is
+// opened for the work and set back to its own mode afterwards.
 func TestApplySetsAnOpenedFolderBack(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("a Windows folder has no owner-write bit to withhold")
@@ -351,31 +350,6 @@ func TestApplySetsAnOpenedFolderBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	ts := time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC)
-
-	t.Run("target root", func(t *testing.T) {
-		dest := t.TempDir()
-		unlock(t, dest)
-		if err := os.Chmod(dest, 0o555); err != nil {
-			t.Fatal(err)
-		}
-		target := c4m.NewManifest()
-		target.AddEntry(&c4m.Entry{Name: "new.txt", Mode: 0o644, Timestamp: ts, Size: 4, C4ID: id, Depth: 0})
-		r := New(WithSource(src))
-		plan, err := r.Plan(target, dest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res, err := r.Apply(plan, dest); err != nil || len(res.Errors) > 0 {
-			t.Fatalf("apply: %v %v", err, res.Errors)
-		}
-		info, _ := os.Stat(dest)
-		if info.Mode().Perm() != 0o555 {
-			t.Errorf("target root: mode %v, want its own 0555 set back", info.Mode().Perm())
-		}
-		if _, err := os.Stat(filepath.Join(dest, "new.txt")); err != nil {
-			t.Errorf("new.txt: %v", err)
-		}
-	})
 
 	t.Run("null-time folder", func(t *testing.T) {
 		dest := t.TempDir()
@@ -400,4 +374,67 @@ func TestApplySetsAnOpenedFolderBack(t *testing.T) {
 			t.Errorf("ro: mode %v, want 0555 set back", info.Mode().Perm())
 		}
 	})
+}
+
+// The destination root is never opened: it is not in the description, and
+// a read-only destination is the user's own statement (cp, rsync and tar
+// stop there too). A plan that writes into a 0555 root fails before
+// anything is written or opened, naming the root; the root stays 0555 and
+// the tree, a read-only ro/ inside it included, is untouched.
+func TestApplyRefusesAReadOnlyDestinationRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a Windows folder has no owner-write bit to withhold")
+	}
+	ts := time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC)
+	src := store.NewRAM()
+	top, err := src.Put(strings.NewReader("top\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, err := src.Put(strings.NewReader("inner\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir()
+	unlock(t, dest)
+	ro := filepath.Join(dest, "ro")
+	if err := os.MkdirAll(ro, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(filepath.Join(ro, "keep.txt"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{ro, dest} {
+		if err := os.Chmod(d, 0o555); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := c4m.NewManifest()
+	target.AddEntry(&c4m.Entry{Name: "top.txt", Mode: 0o644, Timestamp: ts, Size: 4, C4ID: top, Depth: 0})
+	target.AddEntry(&c4m.Entry{Name: "ro/", Mode: os.ModeDir | 0o555, Timestamp: ts, Size: -1, Depth: 0})
+	target.AddEntry(&c4m.Entry{Name: "inner.txt", Mode: 0o644, Timestamp: ts, Size: 6, C4ID: inner, Depth: 1})
+
+	r := New(WithSource(src))
+	plan, err := r.Plan(target, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.Apply(plan, dest)
+	if err == nil || !strings.Contains(err.Error(), dest) || !strings.Contains(err.Error(), "not writable") {
+		t.Fatalf("apply into a 0555 root: err %v, want one naming %s as not writable", err, dest)
+	}
+	for _, d := range []string{dest, ro} {
+		info, _ := os.Stat(d)
+		if info.Mode().Perm() != 0o555 {
+			t.Errorf("%s: mode %v, want it left 0555", d, info.Mode().Perm())
+		}
+	}
+	for _, p := range []string{"top.txt", "ro/inner.txt"} {
+		if _, err := os.Stat(filepath.Join(dest, filepath.FromSlash(p))); !os.IsNotExist(err) {
+			t.Errorf("%s was written (stat err %v); nothing should be", p, err)
+		}
+	}
+	if b, err := ioutil.ReadFile(filepath.Join(ro, "keep.txt")); err != nil || string(b) != "keep\n" {
+		t.Errorf("ro/keep.txt: %q, %v; want it untouched", b, err)
+	}
 }
