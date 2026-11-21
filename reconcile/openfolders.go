@@ -8,41 +8,69 @@ import (
 	"strings"
 )
 
-// openFolders gives the owner write and search on every folder that
-// already exists in the destination and that the plan writes into, moves
+// openFolders gives the owner write and search on every folder inside the
+// destination that already exists and that the plan writes into, moves
 // out of or removes from (and on each folder above it, which must be
 // searched), when its mode lacks them. A folder recorded or held read-only
 // (0555, 0500, 0000) otherwise refuses the plan's work inside it. It
 // returns each opened folder's own mode, which the post-pass sets back
 // (or replaces with the recorded mode), deepest first. Folders the plan
 // creates are made owner-writable by applyMkdir instead.
-func (r *Reconciler) openFolders(plan *Plan, root string) map[string]os.FileMode {
+//
+// The destination root itself is never opened: it is not in the
+// description, and a read-only destination is the user's own statement,
+// as it is to cp, rsync and tar. A plan that must write directly into a
+// root without owner write and search, or reach inside one without owner
+// search, fails here, before anything is opened or written, with an
+// error naming the root.
+func (r *Reconciler) openFolders(plan *Plan, root string) (map[string]os.FileMode, error) {
 	opened := make(map[string]os.FileMode)
 	if r.dryRun {
-		return opened
+		return opened, nil
 	}
-	seen := make(map[string]bool)
-	open := func(dir string) {
-		rel, err := filepath.Rel(root, dir)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return
+	var dirs []string
+	for _, op := range plan.Operations {
+		switch op.Type {
+		case OpMkdir, OpCreate, OpSymlink, OpRemove, OpRmdir:
+			dirs = append(dirs, filepath.Dir(op.Path))
+		case OpMove:
+			dirs = append(dirs, filepath.Dir(op.Path), filepath.Dir(op.SrcPath))
 		}
-		chain := []string{root}
-		if rel != "." {
-			p := root
-			for _, part := range strings.Split(rel, string(filepath.Separator)) {
-				p = filepath.Join(p, part)
-				chain = append(chain, p)
+	}
+
+	// The root first, before anything is touched.
+	if info, err := os.Lstat(root); err == nil && info.IsDir() {
+		perm := info.Mode().Perm()
+		for _, dir := range dirs {
+			rel, err := filepath.Rel(root, dir)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				continue
+			}
+			if rel == "." && perm&0o300 != 0o300 {
+				return nil, fmt.Errorf("%s is not writable (mode %v): the plan writes into it, and a destination's own mode is not changed", root, perm)
+			}
+			if perm&0o100 == 0 {
+				return nil, fmt.Errorf("%s is not searchable (mode %v): the plan works inside it, and a destination's own mode is not changed", root, perm)
 			}
 		}
-		for _, p := range chain { // top-down: a folder is opened before its child is examined
+	}
+
+	seen := make(map[string]bool)
+	for _, dir := range dirs {
+		rel, err := filepath.Rel(root, dir)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		p := root
+		for _, part := range strings.Split(rel, string(filepath.Separator)) { // top-down, below the root
+			p = filepath.Join(p, part)
 			if seen[p] {
 				continue
 			}
 			seen[p] = true
 			info, err := os.Lstat(p)
 			if err != nil || !info.IsDir() {
-				return // absent, or not a folder: nothing below it exists to open
+				break // absent, or not a folder (a link is never chmodded): nothing below it to open
 			}
 			perm := info.Mode().Perm()
 			if perm&0o300 == 0o300 {
@@ -53,16 +81,7 @@ func (r *Reconciler) openFolders(plan *Plan, root string) map[string]os.FileMode
 			}
 		}
 	}
-	for _, op := range plan.Operations {
-		switch op.Type {
-		case OpMkdir, OpCreate, OpSymlink, OpRemove, OpRmdir:
-			open(filepath.Dir(op.Path))
-		case OpMove:
-			open(filepath.Dir(op.Path))
-			open(filepath.Dir(op.SrcPath))
-		}
-	}
-	return opened
+	return opened, nil
 }
 
 // folderPostPass sets folder metadata after everything else, deepest

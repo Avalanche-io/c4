@@ -19,13 +19,17 @@ or removed from it.
 
 Now a folder is made writable and searchable by its owner while it is
 filled, missing parents get the default mode, and an existing folder that
-lacks owner write is opened for the work inside it. Every folder's recorded
-mode (or, for one the description leaves alone, its own mode) is set after
-its contents, deepest first, and its recorded time last, as before. If a
-run fails partway, a folder may be left owner-writable, the safe
-direction, and the error names each folder whose mode was not set back.
-`reconcile.Distribute` made the same read-only copy of a read-only source
-folder, and copies its contents first too. No C4 ID changes.
+lacks owner write is opened for the work inside it. The destination itself
+is never opened: it is not in the description, and a read-only destination
+is the user's own statement, as it is to cp, rsync and tar, so a restore
+that must write into one fails before anything is written, naming it.
+Every folder's recorded mode (or, for one the description leaves alone,
+its own mode) is set after its contents, deepest first, and its recorded
+time last, as before. If a run fails partway, a folder may be left
+owner-writable, the safe direction, and the error names each folder whose
+mode was not set back. `reconcile.Distribute` made the same read-only copy
+of a read-only source folder, and copies its contents first too. No C4 ID
+changes.
 
 ### `c4 restore` writes folded ranges as their frames
 

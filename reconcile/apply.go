@@ -33,7 +33,10 @@ func (r *Reconciler) Apply(plan *Plan, dirPath string) (*Result, error) {
 	// Folders that exist and lack owner write or search, where the plan
 	// must work inside them, are opened for the duration; the post-pass
 	// sets each back (or to its recorded mode), deepest first.
-	opened := r.openFolders(plan, dirPath)
+	opened, err := r.openFolders(plan, dirPath)
+	if err != nil {
+		return nil, err
+	}
 
 	// Collect directory operations for a post-pass. Directory metadata
 	// (especially timestamps) must be set AFTER all children are written,

@@ -62,6 +62,7 @@ windows reconcile  TestApplySetsAnOpenedFolderBack                              
 windows reconcile  TestApplyWritesIntoAFolderRecordedReadOnly                     # a Windows folder has no owner-write bit
 windows reconcile  TestApplyWritesIntoAnExistingReadOnlyFolder                    # a Windows folder has no owner-write bit
 windows reconcile  TestDistributeCopiesAReadOnlyFolder                            # a Windows folder has no owner-write bit
+windows reconcile  TestApplyRefusesAReadOnlyDestinationRoot                       # a Windows folder has no owner-write bit
 
 # Windows has no POSIX permission bits or unprivileged symlinks: the
 # folded-range vector's modes (600, 640) cannot be held, so its generator
