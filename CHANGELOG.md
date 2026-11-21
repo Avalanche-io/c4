@@ -24,8 +24,6 @@ from it. **No C4 ID changes.**
 New shared vector `c4m/testdata/range-roundtrip-vector/`, master's bytes,
 written by the library on this line too (`design/folded-range-round-trip.md`).
 
-### ⚠ `c4 patch` writes into a folder recorded without owner write
-
 ### ⚠ A folder recorded read-only is patched with its contents
 
 A folder recorded read-only (`r-xr-xr-x`) was created empty: `c4 patch`
