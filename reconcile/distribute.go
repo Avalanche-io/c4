@@ -120,7 +120,17 @@ func Distribute(srcPath string, targets ...Target) (*DistributeResult, error) {
 			// Create directory in all dir targets.
 			for _, dt := range dirTargets {
 				dstDir := filepath.Join(dt.Path, filepath.FromSlash(rel))
-				if mkErr := os.MkdirAll(dstDir, fi.Mode().Perm()); mkErr != nil {
+				// Made writable by its owner while it is filled, whatever
+				// the source folder's mode (a read-only source folder made
+				// a read-only copy that refused its own files), with missing
+				// parents at the default; the post-pass sets its mode.
+				mkErr := os.MkdirAll(filepath.Dir(dstDir), 0755)
+				if mkErr == nil {
+					if mkErr = os.Mkdir(dstDir, fi.Mode().Perm()|0o700); os.IsExist(mkErr) {
+						mkErr = nil
+					}
+				}
+				if mkErr != nil {
 					results[targetIdx[dt]].Errors = append(results[targetIdx[dt]].Errors, mkErr)
 				}
 			}

@@ -58,11 +58,11 @@ func TestPatchRoundTripsAReadOnlyFolder(t *testing.T) {
 	if err := os.WriteFile(descFile, []byte(desc), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// A new target: it does not exist yet. The trailing separator makes
+	// c4 patch read it as a folder (without one, a path that does not
+	// exist is a c4m file to write).
 	dest := filepath.Join(dir, "dest")
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if _, stderr, code = runC4WithEnv(t, bin, env, "patch", descFile, dest); code != 0 {
+	if _, stderr, code = runC4WithEnv(t, bin, env, "patch", descFile, dest+string(filepath.Separator)); code != 0 {
 		t.Fatalf("patch: exit %d: %s", code, stderr)
 	}
 	back, stderr, code := runC4WithEnv(t, bin, env, "id", dest)

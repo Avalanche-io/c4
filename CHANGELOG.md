@@ -2,20 +2,30 @@
 
 ## Unreleased (1.0.27)
 
-### ⚠ `c4 patch` writes into a folder recorded without owner write
+### ⚠ A folder recorded read-only is patched with its contents
 
-`c4 patch` made a folder with its recorded mode before writing into it, so
-a folder recorded without owner write refused its own children:
-"permission denied", exit 1, nothing written inside it. That is not a
-corner case. A read-only delivery folder (`dr-xr-xr-x`, 0555) fails, as do
-0500 and 0000 (measured on 1.0.26 and on this line before the change). A
-folder that already existed and was recorded read-only was made so before
-files were written into or removed from it. Now a folder is made writable
-and searchable by its owner while it is filled, and every folder's
-recorded mode is set after its contents, deepest first; its recorded time
-is set last, as before. So a description holding a read-only folder
-patches into an empty folder and scans back at its own ID. No C4 ID
-changes. Master's fix, the same change.
+A folder recorded read-only (`r-xr-xr-x`) was created empty: `c4 patch`
+could not write its contents. Every folder recorded without owner write
+fails this way, 0555, 0500 and 0000, in every release from 1.0.0 through
+1.0.26: the code is unchanged since 1.0.0 (6a6e6cf), and it was measured
+on 1.0.26 and on this line before the change. Patching into a target
+folder that did not exist yet was worse: the target itself was made
+read-only first, and nothing at all was written. The cause was the order of
+the work and one call: a folder was made with its recorded mode before its
+contents were written, and `MkdirAll` gave every missing parent, the target
+included, that same mode. A folder that already existed read-only also
+refused files written into it or removed from it.
+
+Now a folder is made writable and searchable by its owner while it is
+filled, missing parents get the default mode, and an existing folder that
+lacks owner write is opened for the work inside it. Every folder's recorded
+mode (or, for one the description leaves alone, its own mode) is set after
+its contents, deepest first, and its recorded time last, as before. If a
+run fails partway, a folder may be left owner-writable, the safe
+direction, and the error names each folder whose mode was not set back.
+`reconcile.Distribute` made the same read-only copy of a read-only source
+folder, and copies its contents first too. No C4 ID changes. Master's fix,
+the same change (#219).
 
 ### ⚠ Behaviour change: `c4 patch` creates a file or folder from a null timestamp at the epoch
 
