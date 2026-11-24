@@ -295,8 +295,8 @@ func TestNormaliserListAndDiff(t *testing.T) {
 // `c4 id -l` never lists a correct file: every description this line's own
 // tools write passes, on a settled tree holding nesting, an empty folder, a
 // zero-byte file, links to a file and to a folder, a 0750 folder with an
-// old time, and a three-frame sequence. Measured by the c4 lead on
-// 257c7dc, and pinned here.
+// old time, and a three-frame sequence. Measured on 257c7dc, and pinned
+// here.
 func TestNormaliserPassesTheLinesOwnOutputs(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symbolic links need privileges on Windows")
