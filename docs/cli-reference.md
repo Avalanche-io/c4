@@ -6,23 +6,23 @@ C4 commands divide into two categories:
 
 **Observer commands** — read-only by default, no side effects unless you opt in:
 
-| Command | Purpose |
-|---------|---------|
-| `c4 id` | Identify files, directories, or c4m files |
-| `c4 diff` | Compare two trees, produce a patch |
-| `c4 log` | List patches in a chain |
-| `c4 cat` | Retrieve content by C4 ID from store |
-| `c4 explain` | Human-readable narration of what a command would do |
-| `c4 paths` | Convert between c4m format and plain path lists |
-| `c4 intersect` | Find common entries between two c4m files |
+| Command        | Purpose                                             |
+| -------------- | --------------------------------------------------- |
+| `c4 id`        | Identify files, directories, or c4m files           |
+| `c4 diff`      | Compare two trees, produce a patch                  |
+| `c4 log`       | List patches in a chain                             |
+| `c4 cat`       | Retrieve content by C4 ID from store                |
+| `c4 explain`   | Human-readable narration of what a command would do |
+| `c4 paths`     | Convert between c4m format and plain path lists     |
+| `c4 intersect` | Find common entries between two c4m files           |
 
 **Actor commands** — modify the filesystem or produce transformed output:
 
-| Command | Purpose |
-|---------|---------|
+| Command    | Purpose                                         |
+| ---------- | ----------------------------------------------- |
 | `c4 patch` | Apply target state (reconcile, resolve, revert) |
-| `c4 merge` | Combine 2+ trees into one c4m |
-| `c4 split` | Split a patch chain for branching |
+| `c4 merge` | Combine 2+ trees into one c4m                   |
+| `c4 split` | Split a patch chain for branching               |
 
 `c4 version` prints version info.
 
@@ -66,8 +66,17 @@ c4 id myproject/
 # Multiple files → combined c4m
 c4 id *.exr
 
-# c4m file → canonical form (normalizer)
+# c4m file → canonical form (normalizer): re-derives every folder's size
+# and C4 ID that its listed children determine (a folder's time is its own:
+# never derived from its contents); each stated value it replaces is named
+# on stderr
 c4 id project.c4m
+
+# gofmt-style checks: list the files that would change, or show the diff
+# (exit 1 when any would change; the files are never written). -l and -d
+# check against the canonical form; a file in the pretty (-e) form is listed
+c4 id -l *.c4m
+c4 id -d project.c4m
 
 # Ergonomic form (aligned columns, formatted sizes)
 c4 id -e myproject/
@@ -106,16 +115,18 @@ With `-q` the stored line is the only output.
 
 ### Flags
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-s` | `--store` | Store content in the configured store (opt-in) |
-| `-q` | `--quiet` | Suppress output (useful with `-s`) |
-| `-e` | `--ergonomic` | Output ergonomic form c4m |
-| `-S` | `--sequence` | Detect and fold file sequences |
-| `-m` | `--mode` | Scan mode: `s`/`m`/`f` (see Scan Modes) |
-| `-c` | `--continue` | Continue from existing c4m (use as guide) |
-| | `--exclude` | Glob pattern to exclude (repeatable) |
-| | `--exclude-file` | File of exclude patterns (one per line) |
+| Flag | Long             | Description                                                                                                                                                        |
+| ---- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `-s` | `--store`        | Store content in the configured store (opt-in)                                                                                                                     |
+| `-q` | `--quiet`        | Suppress output (useful with `-s`)                                                                                                                                 |
+| `-e` | `--ergonomic`    | Output ergonomic form c4m                                                                                                                                          |
+| `-S` | `--sequence`     | Detect and fold file sequences                                                                                                                                     |
+| `-m` | `--mode`         | Scan mode: `s`/`m`/`f` (see Scan Modes)                                                                                                                            |
+| `-c` | `--continue`     | Continue from existing c4m (use as guide)                                                                                                                          |
+| `-l` | `--list`         | List the `.c4m` files whose normalised text differs from their bytes; exit 1 if any. Checks against the canonical form: a file in the pretty (`-e`) form is listed |
+| `-d` | `--diff`         | Show the diff from each `.c4m` file's bytes to its normalised canonical text; exit 1 if any                                                                        |
+|      | `--exclude`      | Glob pattern to exclude (repeatable)                                                                                                                               |
+|      | `--exclude-file` | File of exclude patterns (one per line)                                                                                                                            |
 
 ### Excluding Files
 
@@ -175,13 +186,13 @@ Empty diff produces no output.
 
 ### Flags
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-r` | `--reverse` | With a changeset: diff against the pre-patch state from store. With two manifests/dirs: swap old and new. |
-| `-s` | `--store` | Store content from directory arguments |
-| `-q` | `--quiet` | Suppress output (useful with `-s`) |
-| `-e` | `--ergonomic` | Output ergonomic form |
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
+| Flag | Long          | Description                                                                                               |
+| ---- | ------------- | --------------------------------------------------------------------------------------------------------- |
+| `-r` | `--reverse`   | With a changeset: diff against the pre-patch state from store. With two manifests/dirs: swap old and new. |
+| `-s` | `--store`     | Store content from directory arguments                                                                    |
+| `-q` | `--quiet`     | Suppress output (useful with `-s`)                                                                        |
+| `-e` | `--ergonomic` | Output ergonomic form                                                                                     |
+| `-m` | `--mode`      | Scan mode for directory arguments: `s`/`m`/`f`                                                            |
 
 ### Reverse diff with a changeset
 
@@ -208,15 +219,15 @@ the computed diff (changeset) to stdout when reconciling a directory.
 
 `c4 patch` dispatches based on what its arguments are:
 
-| Target | Dest | What it does |
-|--------|------|-------------|
-| `file.c4m` | *(none)* | Resolve patch chain, output final c4m to stdout |
-| `dir/` | *(none)* | Scan directory, store content, output c4m to stdout |
-| `file.c4m` | `file.c4m` | Resolve the target chain and write it over the dest c4m (dest's old contents are lost) |
-| `file.c4m` | `dir/` | Reconcile directory to match c4m target state |
-| `dir/` | `file.c4m` | Scan directory, store content, write c4m |
-| `dir/` | `dir/` | Reconcile dest directory to match source directory |
-| `file.c4m...` | *(none)* | Multi-file chain resolution (3+ args) |
+| Target        | Dest       | What it does                                                                           |
+| ------------- | ---------- | -------------------------------------------------------------------------------------- |
+| `file.c4m`    | *(none)*   | Resolve patch chain, output final c4m to stdout                                        |
+| `dir/`        | *(none)*   | Scan directory, store content, output c4m to stdout                                    |
+| `file.c4m`    | `file.c4m` | Resolve the target chain and write it over the dest c4m (dest's old contents are lost) |
+| `file.c4m`    | `dir/`     | Reconcile directory to match c4m target state                                          |
+| `dir/`        | `file.c4m` | Scan directory, store content, write c4m                                               |
+| `dir/`        | `dir/`     | Reconcile dest directory to match source directory                                     |
+| `file.c4m...` | *(none)*   | Multi-file chain resolution (3+ args)                                                  |
 
 When reconciling a directory (`c4m×dir`, `dir×dir`), the computed diff
 is written to stdout as a changeset. This changeset can be redirected
@@ -243,18 +254,18 @@ stable storage before the first destructive operation.
 
 ### Flags
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-s` | `--store` | Also store content at removal time during apply (redundant belt; prior state is captured by default) |
-| `-r` | `--reverse` | Revert a directory to a stored prior state (changeset file or manifest ID) |
-| `-q` | `--quiet` | Suppress changeset output to stdout |
-| `-e` | `--ergonomic` | Output ergonomic form |
-| `-n` | `--number` | Resolve to row N of `c4 log` (1-based; row 1 is the base, so `-n 1` is the base alone) |
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
-| `-c` | `--continue` | Trust unchanged size+mtime from this guide c4m (default: every file in dest is hashed) |
-| | `--dry-run` | Show planned operations without making changes |
-| | `--no-store` | Skip prior-state capture and content storage |
-| | `--source` | Additional content source path (repeatable) |
+| Flag | Long          | Description                                                                                          |
+| ---- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| `-s` | `--store`     | Also store content at removal time during apply (redundant belt; prior state is captured by default) |
+| `-r` | `--reverse`   | Revert a directory to a stored prior state (changeset file or manifest ID)                           |
+| `-q` | `--quiet`     | Suppress changeset output to stdout                                                                  |
+| `-e` | `--ergonomic` | Output ergonomic form                                                                                |
+| `-n` | `--number`    | Resolve to row N of `c4 log` (1-based; row 1 is the base, so `-n 1` is the base alone)               |
+| `-m` | `--mode`      | Scan mode for directory arguments: `s`/`m`/`f`                                                       |
+| `-c` | `--continue`  | Trust unchanged size+mtime from this guide c4m (default: every file in dest is hashed)               |
+|      | `--dry-run`   | Show planned operations without making changes                                                       |
+|      | `--no-store`  | Skip prior-state capture and content storage                                                         |
+|      | `--source`    | Additional content source path (repeatable)                                                          |
 
 ### Examples
 
@@ -330,10 +341,10 @@ c4 merge ./assets/ ./overrides/ ./extras/
 
 ### Flags
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-e` | `--ergonomic` | Output ergonomic form |
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
+| Flag | Long          | Description                                    |
+| ---- | ------------- | ---------------------------------------------- |
+| `-e` | `--ergonomic` | Output ergonomic form                          |
+| `-m` | `--mode`      | Scan mode for directory arguments: `s`/`m`/`f` |
 
 Conflicts (same path, different content in both inputs) are reported to
 stderr and cause a non-zero exit.
@@ -369,18 +380,18 @@ language. Never modifies any files.
 
 ### Subcommands
 
-| Subcommand | What it describes |
-|------------|-------------------|
-| `c4 explain id <path>` | What a directory or c4m file contains (file count, size, suggested next steps) |
-| `c4 explain diff <old> <new>` | What changed between two states (added, modified, removed counts with sizes) |
-| `c4 explain patch <target> [<dest>]` | What reconciliation would do (creates, updates, removes, store availability) |
+| Subcommand                           | What it describes                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| `c4 explain id <path>`               | What a directory or c4m file contains (file count, size, suggested next steps) |
+| `c4 explain diff <old> <new>`        | What changed between two states (added, modified, removed counts with sizes)   |
+| `c4 explain patch <target> [<dest>]` | What reconciliation would do (creates, updates, removes, store availability)   |
 
 ### Flags
 
-| Flag | Long | Description |
-|------|------|-------------|
-| `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
-| | `--source` | `explain patch`: additional content source path (repeatable) |
+| Flag | Long       | Description                                                  |
+| ---- | ---------- | ------------------------------------------------------------ |
+| `-m` | `--mode`   | Scan mode for directory arguments: `s`/`m`/`f`               |
+|      | `--source` | `explain patch`: additional content source path (repeatable) |
 
 ### Examples
 
@@ -426,15 +437,15 @@ Output is a valid c4m from the second argument's perspective.
 
 ### Subcommands
 
-| Subcommand | Match criterion |
-|------------|----------------|
-| `c4 intersect id <a> <b>` | Content identity (same C4 ID, regardless of path) |
-| `c4 intersect path <a> <b>` | Full path (same location in the tree) |
+| Subcommand                  | Match criterion                                   |
+| --------------------------- | ------------------------------------------------- |
+| `c4 intersect id <a> <b>`   | Content identity (same C4 ID, regardless of path) |
+| `c4 intersect path <a> <b>` | Full path (same location in the tree)             |
 
 ### Flags
 
-| Flag | Long | Description |
-|------|------|-------------|
+| Flag | Long     | Description                                    |
+| ---- | -------- | ---------------------------------------------- |
 | `-m` | `--mode` | Scan mode for directory arguments: `s`/`m`/`f` |
 
 ### Examples
@@ -505,11 +516,11 @@ tar cf - ./dir | c4
 
 The `-m` flag controls how much work `c4 id` does:
 
-| Flag | Mode | What it does | Cost |
-|------|------|-------------|------|
-| `-m s` or `-m 1` | Structure | Names and hierarchy only | Fast (readdir only) |
-| `-m m` or `-m 2` | Metadata | + permissions, timestamps, sizes | Fast (stat) |
-| `-m f` or `-m 3` | Full | + C4 IDs | Expensive (read every byte) |
+| Flag             | Mode      | What it does                     | Cost                        |
+| ---------------- | --------- | -------------------------------- | --------------------------- |
+| `-m s` or `-m 1` | Structure | Names and hierarchy only         | Fast (readdir only)         |
+| `-m m` or `-m 2` | Metadata  | + permissions, timestamps, sizes | Fast (stat)                 |
+| `-m f` or `-m 3` | Full      | + C4 IDs                         | Expensive (read every byte) |
 
 Default is full (`-m f`). Lower modes are useful for previewing what
 a scan will cover before committing to the expensive hashing phase.

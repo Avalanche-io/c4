@@ -329,6 +329,8 @@ Ten commands dispatched from `main.go`:
 | File | Command | Category |
 |------|---------|----------|
 | `id.go` | `c4 id` | Observer |
+| `derive.go` | (shared) | `rederiveDirectory`: the one derivation of a folder's size, timestamp and C4 ID from its listed children (PropagateMetadata over its subtree, `directoryRecord` for the ID), deepest first by `directorySpans`; the store pass (`rederiveAbove`) and the normaliser call it |
+| `id_normalize.go` | `c4 id FILE.c4m`, `-l`, `-d` | Observer: the tree walk (`normaliseManifest`), stderr narration of each stated value replaced, gofmt-style `-l`/`-d` |
 | `cat.go` | `c4 cat` | Observer |
 | `diff.go` | `c4 diff` | Observer |
 | `log.go` | `c4 log` | Observer |
