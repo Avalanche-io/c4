@@ -267,7 +267,15 @@ func TestNormaliserListAndDiff(t *testing.T) {
 		t.Errorf("-l: exit %d, stdout %q; want exit 1 and the stale file only", code, out)
 	}
 	out, _, code := runC4WithEnv(t, bin, env, "id", "-d", stale)
-	if code != 1 || !strings.Contains(out, "\n-  drwxr-xr-x ") || !strings.Contains(out, "\n+  drwxr-xr-x ") {
+	removed, added := false, false
+	for _, l := range strings.Split(out, "\n") {
+		if !strings.Contains(l, " s010/ ") {
+			continue
+		}
+		removed = removed || strings.HasPrefix(l, "-  d")
+		added = added || strings.HasPrefix(l, "+  d")
+	}
+	if code != 1 || !removed || !added {
 		t.Errorf("-d: exit %d, want 1 and the s010/ line removed and added:\n%s", code, out)
 	}
 	if after, _ := os.ReadFile(stale); string(after) != string(staleBytes) {
