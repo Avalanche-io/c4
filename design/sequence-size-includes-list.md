@@ -82,7 +82,8 @@ with #155, #159 and #160 applied, before this change, on the same three
 11-byte frames: the range folded to 33, `c4 id -S DIR` sized `sub/` 441
 from its unfolded children while hashing the folded listing, and the
 library's `PropagateMetadata` over the folded listing gave 175. After: 303
-and 446 on both paths. This line has no normaliser that re-derives a
+and 446 on both paths. This line had no normaliser that re-derives a
 stated size, so the tests check `sub/`'s size against its folded listing
-directly. The vector files are master's bytes; the library on this line
+directly. (Amended 2026-11-24: `c4 id FILE.c4m` now does the tree walk,
+`cmd/c4/id_normalize.go`, by the same derivation as the store pass.) The vector files are master's bytes; the library on this line
 writes them byte for byte.

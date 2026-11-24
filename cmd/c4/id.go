@@ -31,7 +31,13 @@ func runID(args []string) {
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s/1=structure, m/2=metadata, f/3=full")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Continue from existing c4m (use as guide)")
+	listFlag := fs.boolFlag("list", 'l', false, "List the .c4m files whose normalised text differs from their bytes; exit 1 if any")
+	diffFlag := fs.boolFlag("diff", 'd', false, "Show the diff from each .c4m file's bytes to its normalised text; exit 1 if any")
 	fs.parse(args)
+
+	if *listFlag || *diffFlag {
+		os.Exit(runIDCheck(fs.args, *listFlag, *diffFlag))
+	}
 
 	paths := fs.args
 
@@ -126,11 +132,13 @@ func runID(args []string) {
 		}
 
 		if strings.HasSuffix(p, ".c4m") {
-			// c4m input → normalize to canonical (or ergonomic) form
+			// c4m input → normalise: the tree walk (normaliseManifest),
+			// then canonical (or ergonomic) form.
 			m, err := loadManifest(p)
 			if err != nil {
 				fatalf("Error loading %s: %v", p, err)
 			}
+			reportNormalized(p, normaliseManifest(m))
 			// Store canonical c4m content if -s is set.
 			if shouldStore {
 				s := getOrSetupStore()
@@ -540,13 +548,8 @@ func unfoldRange(m *c4m.Manifest, rangeEntry *c4m.Entry, names []string, ids []c
 }
 
 // rederiveAbove re-derives the size and C4 ID of every directory above an
-// entry the store pass changed, deepest first, so each is derived from
-// children already final: its size by PropagateMetadata over its own
-// subtree, its ID from its listing, as the scanner derives them. A stated
-// directory timestamp is kept. This line has no normaliser that re-derives
-// stated aggregates (master's c4m.Normalize).
+// entry the store pass changed, deepest first, by rederiveDirectory.
 func rederiveAbove(m *c4m.Manifest, changed map[*c4m.Entry]string) {
-	type span struct{ start, end int }
 	var stack []int // indexes of the open directories
 	above := map[int]bool{}
 	for i, e := range m.Entries {
@@ -562,20 +565,8 @@ func rederiveAbove(m *c4m.Manifest, changed map[*c4m.Entry]string) {
 			stack = append(stack, i)
 		}
 	}
-	var dirs []span
-	for i := range above {
-		end := i + 1
-		for end < len(m.Entries) && m.Entries[end].Depth > m.Entries[i].Depth {
-			end++
-		}
-		dirs = append(dirs, span{i, end})
-	}
-	sort.Slice(dirs, func(a, b int) bool { return m.Entries[dirs[a].start].Depth > m.Entries[dirs[b].start].Depth })
-	for _, d := range dirs {
-		dir := m.Entries[d.start]
-		dir.Size = -1
-		c4m.PropagateMetadata(m.Entries[d.start:d.end])
-		_, dir.C4ID = directoryRecord(m, dir)
+	for _, sp := range directorySpans(m, func(i int, _ dirSpan) bool { return above[i] }) {
+		rederiveDirectory(m, sp)
 	}
 }
 

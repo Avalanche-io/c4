@@ -66,8 +66,15 @@ c4 id myproject/
 # Multiple files → combined c4m
 c4 id *.exr
 
-# c4m file → canonical form (normalizer)
+# c4m file → canonical form (normalizer): re-derives every folder's size,
+# timestamp and C4 ID that its listed children determine; each stated
+# value it replaces is named on stderr
 c4 id project.c4m
+
+# gofmt-style checks: list the files that would change, or show the diff
+# (exit 1 when any would change; the files are never written)
+c4 id -l *.c4m
+c4 id -d project.c4m
 
 # Ergonomic form (aligned columns, formatted sizes)
 c4 id -e myproject/
@@ -114,6 +121,8 @@ With `-q` the stored line is the only output.
 | `-S` | `--sequence` | Detect and fold file sequences |
 | `-m` | `--mode` | Scan mode: `s`/`m`/`f` (see Scan Modes) |
 | `-c` | `--continue` | Continue from existing c4m (use as guide) |
+| `-l` | `--list` | List the `.c4m` files whose normalised text differs from their bytes; exit 1 if any |
+| `-d` | `--diff` | Show the diff from each `.c4m` file's bytes to its normalised text; exit 1 if any |
 | | `--exclude` | Glob pattern to exclude (repeatable) |
 | | `--exclude-file` | File of exclude patterns (one per line) |
 

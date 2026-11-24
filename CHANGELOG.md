@@ -2,6 +2,26 @@
 
 ## Unreleased (1.0.27)
 
+### `c4 id FILE.c4m` re-derives folder values; new `-l` and `-d` ⚠
+
+`c4 id FILE.c4m` fixed form only: a null or stale folder size, timestamp
+or C4 ID passed through as written. It now does the tree walk (asked for
+2026-11-03: "we should have the normalizer do the tree walk fixes as
+well"): every folder whose children are listed is re-derived, deepest
+first, by the derivation the store pass already used. A null value the
+children determine is filled; a stale size or C4 ID is corrected, and
+each stated value replaced is named on stderr (`normalized: FILE: PATH:
+size OLD -> NEW`), stdout staying the c4m. A stated folder timestamp is
+kept (it is the folder's own mtime), and a folder listed without children
+keeps its stated values. Two cases are left as before: a stated size
+over a child with a null size is kept, not made null, and a folder over a
+child with a null C4 ID keeps its stated C4 ID. **New flags on a patch
+line:** `-l` lists the `.c4m` files the normaliser would change and `-d`
+shows the diff, gofmt-style, exit 1 when any would change; files are
+never written. A scan's own output (`c4 id DIR`) passes through
+unchanged. **C4 IDs change only for descriptions that held a stale or
+null folder value.**
+
 ### `c4 patch` writes folded ranges as their frames ⚠
 
 A description scanned with `-S` holds folded ranges, and `c4 patch` of it
