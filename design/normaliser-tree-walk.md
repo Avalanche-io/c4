@@ -43,7 +43,8 @@ through the c4m package from a real scan, came out exactly as it went in.
 - **`-l` and `-d`** check, gofmt-style: they list the files whose bytes
   differ from their normalised text, or show the diff, and exit 1 when any
   would change. Files are never written. These are new flags on a patch
-  line.
+  line. They check against the canonical form (one normal form, as gofmt
+  has), so a file in the pretty (`-e`) form is listed.
 
 ## Left as the line had it (not ruled)
 

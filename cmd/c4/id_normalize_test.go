@@ -2,7 +2,9 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -261,5 +263,94 @@ func TestNormaliserListAndDiff(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(stale); string(after) != string(staleBytes) {
 		t.Errorf("-l/-d wrote the file")
+	}
+
+	// -l checks against the canonical form, so the pretty form is listed
+	// (documented in the flag help and docs/cli-reference.md).
+	prettyText, _, _ := runC4WithEnv(t, bin, env, "id", "-e", filepath.Join(root, "tree"))
+	pretty := filepath.Join(root, "pretty.c4m")
+	os.WriteFile(pretty, []byte(prettyText), 0o644)
+	if out, _, code := runC4WithEnv(t, bin, env, "id", "-l", pretty); code != 1 || out != pretty+"\n" {
+		t.Errorf("-l on the pretty form: exit %d, stdout %q; want it listed, exit 1", code, out)
+	}
+}
+
+// `c4 id -l` never lists a correct file: every description this line's own
+// tools write passes, on a settled tree holding nesting, an empty folder, a
+// zero-byte file, links to a file and to a folder, a 0750 folder with an
+// old time, and a three-frame sequence. Measured by the c4 lead on
+// 257c7dc, and pinned here.
+func TestNormaliserPassesTheLinesOwnOutputs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	bin := buildC4(t)
+	root := t.TempDir()
+	env := map[string]string{"HOME": filepath.Join(root, "home"), "USERPROFILE": filepath.Join(root, "home"), "C4_STORE": filepath.Join(root, "store")}
+	os.MkdirAll(env["HOME"], 0o755)
+	dir := filepath.Join(root, "tree")
+	for _, d := range []string{"docs", "empty", "shots/s010", "plates"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := func(y int) time.Time { return time.Date(y, 1, 2, 3, 4, 5, 0, time.UTC) }
+	for _, f := range []struct {
+		path, body string
+		year       int
+	}{
+		{"docs/readme.txt", "readme\n", 2020},
+		{"docs/zero.bin", "", 2021},
+		{"shots/s010/a.exr", "frame a\n", 2022},
+		{"plates/f.001.exr", "frame 1\n", 2023},
+		{"plates/f.002.exr", "frame 2\n", 2023},
+		{"plates/f.003.exr", "frame 3\n", 2023},
+	} {
+		p := filepath.Join(dir, f.path)
+		if err := os.WriteFile(p, []byte(f.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		os.Chtimes(p, at(f.year), at(f.year))
+	}
+	for _, l := range []struct{ target, path string }{{"readme.txt", "docs/to-file"}, {"../shots", "docs/to-folder"}} {
+		p := filepath.Join(dir, l.path)
+		if err := os.Symlink(l.target, p); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("touch", "-h", "-t", at(2019).Format("200601021504.05"), p)
+		cmd.Env = append(os.Environ(), "TZ=UTC")
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.Chmod(filepath.Join(dir, "shots"), 0o750)
+	for _, d := range []struct {
+		path string
+		year int
+	}{{"shots/s010", 2017}, {"shots", 2010}, {"plates", 2016}, {"empty", 2014}, {"docs", 2018}, {".", 2015}} {
+		os.Chtimes(filepath.Join(dir, d.path), at(d.year), at(d.year))
+	}
+
+	for _, scan := range [][]string{{"id", dir}, {"id", "-S", dir}, {"id", "-m", "m", dir}, {"id", "-s", dir}} {
+		name := strings.Join(scan[:len(scan)-1], " ")
+		t.Run(name, func(t *testing.T) {
+			out, stderr, code := runC4WithEnv(t, bin, env, scan...)
+			if code != 0 {
+				t.Fatalf("c4 %s: exit %d\n%s", name, code, stderr)
+			}
+			scanned := filepath.Join(root, strings.ReplaceAll(name, " ", "")+".c4m")
+			os.WriteFile(scanned, []byte(out), 0o644)
+			flat, stderr, code := runC4WithEnv(t, bin, env, "patch", scanned)
+			if code != 0 {
+				t.Fatalf("c4 patch %s: exit %d\n%s", filepath.Base(scanned), code, stderr)
+			}
+			flattened := filepath.Join(root, strings.ReplaceAll(name, " ", "")+"-flat.c4m")
+			os.WriteFile(flattened, []byte(flat), 0o644)
+			for _, f := range []string{scanned, flattened} {
+				if out, stderr, code := runC4WithEnv(t, bin, env, "id", "-l", f); code != 0 {
+					t.Errorf("c4 id -l %s: exit %d, a correct file is listed\n%s%s", filepath.Base(f), code, out, stderr)
+				}
+			}
+		})
 	}
 }

@@ -18,7 +18,8 @@ over a child with a null size is kept, not made null, and a folder over a
 child with a null C4 ID keeps its stated C4 ID. **New flags on a patch
 line:** `-l` lists the `.c4m` files the normaliser would change and `-d`
 shows the diff, gofmt-style, exit 1 when any would change; files are
-never written. A scan's own output (`c4 id DIR`) passes through
+never written. They check against the canonical form, so a file in the
+pretty (`-e`) form is listed. A scan's own output (`c4 id DIR`) passes through
 unchanged. **C4 IDs change only for descriptions that held a stale or
 null folder value.**
 

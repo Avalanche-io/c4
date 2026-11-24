@@ -31,8 +31,8 @@ func runID(args []string) {
 	excludeFileFlag := fs.stringFlag("exclude-file", 0, "", "File of exclude patterns (one per line)")
 	modeFlag := fs.stringFlag("mode", 'm', "f", "Scan mode: s/1=structure, m/2=metadata, f/3=full")
 	continueFlag := fs.stringFlag("continue", 'c', "", "Continue from existing c4m (use as guide)")
-	listFlag := fs.boolFlag("list", 'l', false, "List the .c4m files whose normalised text differs from their bytes; exit 1 if any")
-	diffFlag := fs.boolFlag("diff", 'd', false, "Show the diff from each .c4m file's bytes to its normalised text; exit 1 if any")
+	listFlag := fs.boolFlag("list", 'l', false, "List the .c4m files whose normalised text differs from their bytes, checked against the canonical form (a file in the pretty -e form is listed); exit 1 if any")
+	diffFlag := fs.boolFlag("diff", 'd', false, "Show the diff from each .c4m file's bytes to its normalised canonical text (a file in the pretty -e form differs); exit 1 if any")
 	fs.parse(args)
 
 	if *listFlag || *diffFlag {
