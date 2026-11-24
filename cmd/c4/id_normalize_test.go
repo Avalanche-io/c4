@@ -155,15 +155,43 @@ func TestNormaliserTreeWalk(t *testing.T) {
 		})
 	}
 
-	t.Run("fills a null time from the newest child", func(t *testing.T) {
-		p := mutated(t, root, "null-time", full, func(m *c4m.Manifest) { entryAt(t, m, "shots/s010/").Timestamp = c4m.NullTimestamp() })
-		out, _ := normalise(t, p)
-		got := entryAt(t, decodeText(t, out), "shots/s010/")
-		want := entryAt(t, fm, "shots/s010/b.exr").Timestamp
-		if !got.Timestamp.Equal(want) {
-			t.Errorf("s010/ time %s, want its newest child's %s", got.Timestamp, want)
-		}
-	})
+	// A folder's time is never derived from its contents (the maintainer,
+	// 2026-11-24: "the mod time should NEVER be based on contents, that
+	// has bad sideffects."). A null one stays null, and each parent's
+	// size and C4 ID are those of its listing as written, the null line
+	// included: nothing is hashed or sized over a filled time.
+	for _, c := range []struct {
+		name  string
+		nulls []string
+	}{
+		{"keeps a null time null", []string{"shots/s010/"}},
+		{"keeps nested null times null", []string{"shots/", "shots/s010/"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := mutated(t, root, strings.ReplaceAll(c.name, " ", "-"), full, func(m *c4m.Manifest) {
+				for _, d := range c.nulls {
+					entryAt(t, m, d).Timestamp = c4m.NullTimestamp()
+				}
+			})
+			out, _ := normalise(t, p)
+			om := decodeText(t, out)
+			for _, d := range c.nulls {
+				if got := entryAt(t, om, d); !got.TimestampIsNull() {
+					t.Errorf("%s time %s: filled, want null", d, got.Timestamp)
+				}
+			}
+			for _, d := range []string{"shots/s010/", "shots/"} {
+				e := entryAt(t, om, d)
+				listing, id := directoryRecord(om, e)
+				if e.C4ID != id {
+					t.Errorf("%s C4 ID is not its listing's as written (stale hash)", d)
+				}
+				if want := listedSize(om.Children(e), listing); e.Size != want {
+					t.Errorf("%s size %d, its listing as written gives %d (stale size)", d, e.Size, want)
+				}
+			}
+		})
+	}
 
 	stale := []struct {
 		name, path, field string
@@ -384,5 +412,36 @@ func TestNormaliserPassesTheLinesOwnOutputs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The scan and the store pass keep their released time handling
+// (06f5f8f): a folder whose own mtime is the epoch, so reads as null, is
+// written with its newest child's time, filled by PropagateMetadata, in
+// the scan and again in the store pass's re-derivation above a file it
+// gives up. That is a time derived from contents, which the maintainer
+// ruled on 2026-11-24 must never be ("the mod time should NEVER be based
+// on contents, that has bad sideffects."), but changing a released
+// writer is his to order. This pins the line as it is until he does.
+func TestStorePassFolderTimeIsAsReleased(t *testing.T) {
+	bin := buildC4Hooked(t)
+	tree := filepath.Join(t.TempDir(), "sp")
+	writeTree(t, tree, map[string]string{"a.txt": "alpha", "sub/b.txt": "beta", "sub/c.txt": "gamma"})
+	older := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	newest := time.Date(2021, 2, 3, 4, 5, 6, 0, time.UTC)
+	for p, at := range map[string]time.Time{"a.txt": older, "sub/b.txt": older, "sub/c.txt": newest, "sub": time.Unix(0, 0), "": older} {
+		if err := os.Chtimes(filepath.Join(tree, p), at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := storePassEnv(t)
+	env["C4_TEST_STORE_PASS"] = "write sub/b.txt bytes the scan never saw"
+	out, stderr, code := runC4WithEnv(t, bin, env, "id", "-s", tree)
+	if code != 2 {
+		t.Fatalf("exit %d, want 2 (a file given up)\n%s", code, stderr)
+	}
+	sub := entryAt(t, decodeText(t, out), "sub/")
+	if !sub.Timestamp.Equal(newest) {
+		t.Errorf("sub/ time %s; on 06f5f8f it is its newest child's, %s", sub.Timestamp, newest)
 	}
 }

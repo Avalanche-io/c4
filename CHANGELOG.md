@@ -4,16 +4,18 @@
 
 ### `c4 id FILE.c4m` re-derives folder values; new `-l` and `-d` ⚠
 
-`c4 id FILE.c4m` fixed form only: a null or stale folder size, timestamp
-or C4 ID passed through as written. It now does the tree walk (asked for
+`c4 id FILE.c4m` fixed form only: a null or stale folder size or C4 ID
+passed through as written. It now does the tree walk (asked for
 2026-11-03: "we should have the normalizer do the tree walk fixes as
 well"): every folder whose children are listed is re-derived, deepest
-first, by the derivation the store pass already used. A null value the
-children determine is filled; a stale size or C4 ID is corrected, and
-each stated value replaced is named on stderr (`normalized: FILE: PATH:
-size OLD -> NEW`), stdout staying the c4m. A stated folder timestamp is
-kept (it is the folder's own mtime), and a folder listed without children
-keeps its stated values. A stated size over a child with a null size is
+first, by the derivation the store pass already used. A null size or C4
+ID the children determine is filled; a stale one is corrected, and each
+stated value replaced is named on stderr (`normalized: FILE: PATH: size
+OLD -> NEW`), stdout staying the c4m. A folder's time is never derived
+from its contents (ruled 2026-11-24: "the mod time should NEVER be based
+on contents, that has bad sideffects."): a stated one is kept (it is the
+folder's own mtime), and a null one stays null. A folder listed without
+children keeps its stated values. A stated size over a child with a null size is
 re-derived to null and reported (ruled 2026-11-03: "Re-derive to null").
 A folder over a child with a null C4 ID keeps its stated C4 ID, as before:
 that case is still open. There is no `-w` (ruled the same day: "No -w"). **New flags on a patch
@@ -22,7 +24,8 @@ shows the diff, gofmt-style, exit 1 when any would change; files are
 never written. They check against the canonical form, so a file in the
 pretty (`-e`) form is listed. A scan's own output (`c4 id DIR`) passes through
 unchanged. **C4 IDs change only for descriptions that held a stale or
-null folder value.**
+null folder value.** The scan and `c4 id -s` still fill a null folder
+time from the newest child, as before; changing those is pending.
 
 ### `c4 patch` writes folded ranges as their frames ⚠
 

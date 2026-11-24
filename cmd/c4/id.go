@@ -566,7 +566,7 @@ func rederiveAbove(m *c4m.Manifest, changed map[*c4m.Entry]string) {
 		}
 	}
 	for _, sp := range directorySpans(m, func(i int, _ dirSpan) bool { return above[i] }) {
-		rederiveDirectory(m, sp)
+		rederiveDirectory(m, sp, fillNullTimes)
 	}
 }
 

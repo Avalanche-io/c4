@@ -66,9 +66,10 @@ c4 id myproject/
 # Multiple files → combined c4m
 c4 id *.exr
 
-# c4m file → canonical form (normalizer): re-derives every folder's size,
-# timestamp and C4 ID that its listed children determine; each stated
-# value it replaces is named on stderr
+# c4m file → canonical form (normalizer): re-derives every folder's size
+# and C4 ID that its listed children determine (a folder's time is its own:
+# never derived from its contents); each stated value it replaces is named
+# on stderr
 c4 id project.c4m
 
 # gofmt-style checks: list the files that would change, or show the diff

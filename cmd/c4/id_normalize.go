@@ -19,9 +19,12 @@ type dirChange struct {
 
 // normaliseManifest is the tree walk `c4 id FILE.c4m` does: every
 // directory whose children are listed is re-derived by rederiveDirectory,
-// deepest first, so a null size, timestamp or C4 ID its children
-// determine is filled and a stale size or ID is corrected. A stated
-// directory timestamp is kept (SPECIFICATION.md "Directory Timestamps").
+// deepest first, so a null size or C4 ID its children determine is
+// filled and a stale size or ID is corrected. A directory's timestamp is
+// never derived from its contents (the maintainer, 2026-11-24: "the mod
+// time should NEVER be based on contents, that has bad sideffects."): a
+// stated one is kept (SPECIFICATION.md "Directory Timestamps"), and a null
+// one stays null.
 // A directory listed without children keeps its stated values. A stated
 // size whose children cannot support one (a child with a null size) is
 // re-derived to null, as the maintainer ruled on 2026-11-03, and reported
@@ -46,7 +49,7 @@ func normaliseManifest(m *c4m.Manifest) []dirChange {
 	for _, sp := range spans {
 		dir := m.Entries[sp.start]
 		stated := *dir
-		rederiveDirectory(m, sp)
+		rederiveDirectory(m, sp, keepNullTimes)
 		if hasNullIDChild(m, dir) {
 			dir.C4ID = stated.C4ID
 		}
