@@ -22,12 +22,13 @@ type dirChange struct {
 // deepest first, so a null size, timestamp or C4 ID its children
 // determine is filled and a stale size or ID is corrected. A stated
 // directory timestamp is kept (SPECIFICATION.md "Directory Timestamps").
-// A directory listed without children keeps its stated values. Two cases
-// keep what the c4m states, as `c4 id FILE.c4m` always has, because they
-// are not ruled: a stated size whose children cannot support one (a child
-// with a null size) is not re-derived to null, and a directory with a
-// null-ID child keeps its stated C4 ID. It returns each stated value it
-// replaced, in entry order; filled nulls are not changes.
+// A directory listed without children keeps its stated values. A stated
+// size whose children cannot support one (a child with a null size) is
+// re-derived to null, as the maintainer ruled on 2026-11-03, and reported
+// like any other replaced value. A directory with a null-ID child keeps
+// its stated C4 ID, as `c4 id FILE.c4m` always has: that case is not
+// ruled. It returns each stated value it replaced, in entry order; filled
+// nulls are not changes.
 func normaliseManifest(m *c4m.Manifest) []dirChange {
 	spans := directorySpans(m, func(_ int, sp dirSpan) bool { return sp.end > sp.start+1 })
 	if len(spans) == 0 {
@@ -46,9 +47,6 @@ func normaliseManifest(m *c4m.Manifest) []dirChange {
 		dir := m.Entries[sp.start]
 		stated := *dir
 		rederiveDirectory(m, sp)
-		if dir.Size < 0 && stated.Size >= 0 {
-			dir.Size = stated.Size
-		}
 		if hasNullIDChild(m, dir) {
 			dir.C4ID = stated.C4ID
 		}

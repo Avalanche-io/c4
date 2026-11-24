@@ -13,9 +13,10 @@ children determine is filled; a stale size or C4 ID is corrected, and
 each stated value replaced is named on stderr (`normalized: FILE: PATH:
 size OLD -> NEW`), stdout staying the c4m. A stated folder timestamp is
 kept (it is the folder's own mtime), and a folder listed without children
-keeps its stated values. Two cases are left as before: a stated size
-over a child with a null size is kept, not made null, and a folder over a
-child with a null C4 ID keeps its stated C4 ID. **New flags on a patch
+keeps its stated values. A stated size over a child with a null size is
+re-derived to null and reported (ruled 2026-11-03: "Re-derive to null").
+A folder over a child with a null C4 ID keeps its stated C4 ID, as before:
+that case is still open. There is no `-w` (ruled the same day: "No -w"). **New flags on a patch
 line:** `-l` lists the `.c4m` files the normaliser would change and `-d`
 shows the diff, gofmt-style, exit 1 when any would change; files are
 never written. They check against the canonical form, so a file in the

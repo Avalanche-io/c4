@@ -46,13 +46,24 @@ through the c4m package from a real scan, came out exactly as it went in.
   line. They check against the canonical form (one normal form, as gofmt
   has), so a file in the pretty (`-e`) form is listed.
 
-## Left as the line had it (not ruled)
+## The two edge cases
 
-The derivation computes both of these cases; the normaliser keeps what the
-c4m states, as `c4 id FILE.c4m` always has:
+**A stated size over a child with a null size is re-derived to null,** and
+the replacement is reported on stderr like any other (`size 117 -> -`). The
+maintainer ruled it on 2026-11-03 (15:03:45Z), answering the question "a
+directory line states size 117, but its listed children have null sizes
+(a structure-only listing), so re-deriving gives null. Should the
+normaliser replace the stated 117 with `-`?" with "Re-derive to null
+(Recommended)", the option the question, as framed, marked recommended.
+In the same dialog, on a gofmt-style `-w`: "No -w (Recommended)". So there
+is no `-w`; the normaliser writes to stdout and never rewrites a file.
 
-- **A stated size over a child with a null size** isn't re-derived to null.
-- **A folder over a child with a null C4 ID** keeps its stated C4 ID. Its size
+Reading A, a stated folder timestamp kept, was also a dialog answer
+(2026-11-04, 01:20:57Z): "A: own mtime (Recommended)".
+
+**A folder over a child with a null C4 ID** is the one edge still open. The
+derivation computes it; the normaliser keeps the stated C4 ID, as
+`c4 id FILE.c4m` always has. Its size
   still follows "Directory Sizes": the listing holds `-` where the ID was,
   so the size is re-derived from that listing.
 

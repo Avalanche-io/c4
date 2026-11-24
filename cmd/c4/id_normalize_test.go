@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -218,16 +219,24 @@ func TestNormaliserTreeWalk(t *testing.T) {
 		}
 	})
 
-	// Not ruled, so kept exactly as 06f5f8f keeps them: a stated size whose
-	// children cannot support one is not re-derived to null, and a
-	// directory over a null-ID child keeps its stated C4 ID.
-	t.Run("left out: a stated size over a null-size child", func(t *testing.T) {
+	// Ruled 2026-11-03 ("Re-derive to null"): a stated size whose children
+	// cannot support one is re-derived to null, and reported.
+	t.Run("re-derives a stated size over a null-size child to null", func(t *testing.T) {
 		p := mutated(t, root, "child-null-size", full, func(m *c4m.Manifest) { entryAt(t, m, "shots/s010/a.exr").Size = -1 })
-		out, _ := normalise(t, p)
-		if got := entryAt(t, decodeText(t, out), "shots/s010/"); got.Size != s010.Size {
-			t.Errorf("s010/ size %d, stated %d: re-derived", got.Size, s010.Size)
+		out, stderr := normalise(t, p)
+		om := decodeText(t, out)
+		for _, d := range []string{"shots/s010/", "shots/"} {
+			if got := entryAt(t, om, d); got.Size != -1 {
+				t.Errorf("%s size %d, want null: a child's size is null", d, got.Size)
+			}
+		}
+		want := fmt.Sprintf("normalized: %s: shots/s010/: size %d -> -", p, s010.Size)
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the replacement is not narrated: want %q in %q", want, stderr)
 		}
 	})
+	// Not ruled, so kept exactly as 06f5f8f keeps it: a directory over a
+	// null-ID child keeps its stated C4 ID.
 	t.Run("left out: the C4 ID over a null-ID child", func(t *testing.T) {
 		p := mutated(t, root, "child-null-id", full, func(m *c4m.Manifest) { entryAt(t, m, "shots/s010/a.exr").C4ID = c4.ID{} })
 		out, _ := normalise(t, p)
@@ -331,7 +340,7 @@ func TestNormaliserPassesTheLinesOwnOutputs(t *testing.T) {
 		os.Chtimes(filepath.Join(dir, d.path), at(d.year), at(d.year))
 	}
 
-	for _, scan := range [][]string{{"id", dir}, {"id", "-S", dir}, {"id", "-m", "m", dir}, {"id", "-s", dir}} {
+	for _, scan := range [][]string{{"id", dir}, {"id", "-S", dir}, {"id", "-m", "m", dir}, {"id", "-m", "s", dir}, {"id", "-s", dir}} {
 		name := strings.Join(scan[:len(scan)-1], " ")
 		t.Run(name, func(t *testing.T) {
 			out, stderr, code := runC4WithEnv(t, bin, env, scan...)
@@ -340,6 +349,21 @@ func TestNormaliserPassesTheLinesOwnOutputs(t *testing.T) {
 			}
 			scanned := filepath.Join(root, strings.ReplaceAll(name, " ", "")+".c4m")
 			os.WriteFile(scanned, []byte(out), 0o644)
+			// What each level states for sizes, measured on this line: a
+			// metadata scan (-m m) records file and folder sizes with null
+			// C4 IDs; a structure scan (-m s) records every file's size
+			// null, so each folder holding one is the null-size case the
+			// normaliser re-derives to null, and must already be null (an
+			// empty folder is size 0).
+			sm := decodeText(t, out)
+			for p, e := range c4m.EntryPaths(sm.Entries) {
+				switch {
+				case name == "id -m s" && p != "empty/" && e.Size != -1:
+					t.Errorf("-m s: %s states size %d; this test expects it null", p, e.Size)
+				case name == "id -m m" && e.Size < 0:
+					t.Errorf("-m m: %s states a null size; this test expects sizes recorded", p)
+				}
+			}
 			flat, stderr, code := runC4WithEnv(t, bin, env, "patch", scanned)
 			if code != 0 {
 				t.Fatalf("c4 patch %s: exit %d\n%s", filepath.Base(scanned), code, stderr)
