@@ -1,7 +1,47 @@
 # A sparse c4m is an intersection
 
-**Status:** proposal, 2026-11-24. Nothing is built. It needs the maintainer's
-answers to the four questions at the end.
+**Status:** proposal, 2026-11-24. Questions 1 and 4 are answered (see "The
+ruling" below); 2 and 3 are still open. The change is being built on the
+release line, not on master.
+
+**Read this first.** Several sections below were written before the ruling,
+and described a change on master. They are kept as the record. Where they
+disagree with "The ruling", the ruling wins. In particular, a folder named
+alone is no longer taken by reference.
+
+## The ruling (the maintainer, 2026-11-24)
+
+> "I think c4 intersect should do what we'd expect such an operation to do on
+> a filesystem comparison. Point is you want a new filesystem that represents
+> the intersection, so nececarily you need the correct new system's full
+> directory structure. And how directories are represented is already defined
+> for a filesystem so that should simply comply to the spec. If a folder
+> remains, but it has no files, then the size should be zero not null and not
+> the previous size as one might have from a nieve line copy."
+
+What follows from it, as built:
+- The result is the c4m of the new filesystem, and every folder above a kept
+  entry is present.
+- A folder's mode and timestamp are its own, as the second argument states
+  them. SPECIFICATION.md "Directory Timestamps": "Directory timestamps come
+  from the filesystem's modification time for the directory itself."
+- Its size and C4 ID are derived from what the result holds, by the spec's
+  rules ("Directory Sizes"; "Computing Directory C4 IDs"). They're never
+  copied from the second argument, and never null where the result's
+  children determine them.
+- A folder that remains with nothing in it has size 0 and the empty listing's
+  C4 ID.
+- **Question 1, by the release lead's reading of the ruling** (it's been put
+  to the maintainer, who can object): a folder named alone does NOT bring the
+  second argument's subtree; it remains as an empty folder. To take a subtree,
+  the caller names its paths. That's neither reading (a) nor (b) below, and
+  it's simpler than both.
+- **Question 4:** the change is made in place, on the release line (the
+  maintainer: "should simply comply to the spec").
+- `intersect id` uses the same builder.
+- The test that states the ruling: the output's description ID equals a scan
+  of a real folder holding exactly the kept files, with each folder's mode
+  and time set as the second argument states them.
 
 ## The point
 
@@ -157,7 +197,8 @@ weighed):
 
 ## Not decided here: the maintainer's
 
-1. **A folder named alone:** is it the whole subtree by reference (its line,
+1. **Answered 2026-11-24, see "The ruling".** The question as it was asked:
+   **A folder named alone:** is it the whole subtree by reference (its line,
    with its ID), as proposed, or only the folder's own line, with nothing
    below it?
 
@@ -186,6 +227,8 @@ weighed):
 3. **Selecting nothing:** the empty c4m (as today, a valid state, with the
    empty content's ID), or an error? A mount of nothing may be the caller's to
    refuse.
-4. **The behaviour change to `intersect path` on master** (above): acceptable
+4. **Answered 2026-11-24, see "The ruling": in place, on the release line.**
+   The question as it was asked: **The behaviour change to `intersect path`
+   on master** (above): acceptable
    as the way to get the sparse c4m, or should the corrected form be a
    separate function, leaving intersect's current output alone?
