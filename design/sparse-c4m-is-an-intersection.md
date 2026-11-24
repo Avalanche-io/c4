@@ -78,18 +78,35 @@ path lists.
 ## The two Filter functions
 
 `Manifest.FilterByPath` and `FilterByPrefix` (c4m/operations.go) return
-matched entries with no ancestors, so the result isn't a valid c4m. The
-implementations don't agree on what they match:
+matched entries with no ancestors, so the result isn't a valid c4m.
 
-| implementation | FilterByPath matches | FilterByPrefix matches |
+**Corrected 2026-11-24.** This section's table said c4py and c4ts both have
+FilterByPath and FilterByPrefix, matching the full path. That was wrong; it
+came from reading, not running. Measured on each release line:
+
+| implementation | path pattern | prefix |
 | --- | --- | --- |
-| Go | the bare name | the bare name |
-| c4py | the full path | the full path |
-| c4ts | the full path | the full path |
-| libc4 | the bare name | the full path |
+| Go core | `FilterByPath`, the bare name | `FilterByPrefix`, the bare name |
+| libc4 | `FilterByPath`, the bare name | `FilterByPrefix`, the full path |
+| c4py | `filter(glob or callable)`, the full path, where `*` also matches `/` | none |
+| c4ts | `filter(predicate)` only, with no glob | none |
+| c4-swift | none | none |
 
-Measured on Go: `FilterByPath("shots/s010/*.exr")` returns nothing, while
-`FilterByPath("*.exr")` returns the two files at depth 2 with no parents.
+The mains of c4py and c4ts have neither function either.
+
+Measured on Go core release/1.0.27 (the source is a scanned tree:
+`top.exr`, `docs/readme.txt`, and `shots/` holding `s010/{a,b}.exr` and
+`s020/c.exr`):
+- `FilterByPath("shots/s010/*.exr")` returns nothing.
+- `FilterByPath("*.exr")` returns `top.exr` at depth 0 and three files at
+  depth 2, with no parents. `Manifest.Validate()` accepts it, while
+  `NewValidator(true)` refuses its encoded text ("invalid depth jump from 0
+  to 2"). Encoded and decoded again, the three files come back at depth 1.
+- `FilterByPrefix("shots/")` returns the one line `shots/`.
+
+So the function disagrees with itself (one validator accepts, the other
+refuses), its result doesn't survive its own encoder and decoder, and for
+one call the implementations give three different answers.
 
 Nothing outside their own packages calls them (searched: c4-operator, c4sh,
 c4git, c4d and each port). Their only other users are each port's copy of the
@@ -98,6 +115,12 @@ shared range-data vector.
 **Recommendation: remove them on master and on each port's main,** replacing
 their range-data vector cases with the intersection. Leave the release lines
 as they are: removing a public function is not a patch-release change.
+
+**Superseded 2026-11-24.** The master line is to be retired, so a change
+made only there isn't a fix. The functions exist on the release lines of
+core and libc4 only (table above). What to do with them there is the
+maintainer's call, since removing a public function isn't a patch-release
+change.
 
 ## Where the link to the source is kept
 
