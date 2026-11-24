@@ -137,6 +137,22 @@ weighed):
 1. **A folder named alone:** is it the whole subtree by reference (its line,
    with its ID), as proposed, or only the folder's own line, with nothing
    below it?
+
+   This has an edge, measured on 2026-11-24 with the fix built as this note
+   writes it. A is a full scan with an empty folder `x/`, which A records
+   with size 0 and the empty listing's C4 ID; B is the same tree with `x/`
+   filled. `c4 intersect path A B` returns B's `x/` by reference, at size 258
+   with B's filled ID. A names-only set naming `x/` (its ID null) gives the
+   same. Two readings, both following the existing null rule:
+   - **(a) As this note is written:** any folder named alone takes B's line
+     and its subtree by reference, so A's stated-empty `x/` becomes B's filled
+     one.
+   - **(b) The null rule applied:** a folder line whose C4 ID is null says
+     nothing about what is under it (partial knowledge), so B's line and its
+     subtree come by reference. A folder line with a stated ID is a statement
+     about its listing, so a folder A states as empty stays empty, with B's
+     own mode and time, and its size and ID re-derived. No separate "matches
+     B's" clause is needed.
 2. **A folded range named in part:** a set naming some frames of a range.
    Options:
    - expand the range from its ID list and keep those frames (the 11-13
